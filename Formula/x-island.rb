@@ -18,7 +18,7 @@ cask "x-island" do
   app "X Island.app"
 
   zap trash: [
+    "~/.xisland",
     "~/Library/Preferences/dev.xisland.app.plist",
-    "~/.xisland"
   ]
 end
