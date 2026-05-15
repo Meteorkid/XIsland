@@ -10,3 +10,6 @@ DerivedData/
 *~
 .cursor/
 .worktrees/
+node_modules/
+out/
+*.vsix

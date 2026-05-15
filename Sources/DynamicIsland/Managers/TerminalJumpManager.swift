@@ -138,7 +138,7 @@ enum TerminalApp: String, CaseIterable {
         case .codex: return .codex
         case .copilot: return .vscode
         case .claudeCode, .geminiCli, .openCode, .droid, .qoder, .codeBuddy,
-             .qwen, .kimi, .deepseek, .kiro, .amp, .pi, .hermes, .glm:
+             .qwen, .kimi, .deepseek, .kiro, .amp, .pi, .hermes, .glm, .aider:
             return nil
         }
     }

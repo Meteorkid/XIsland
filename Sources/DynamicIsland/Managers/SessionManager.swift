@@ -86,13 +86,7 @@ final class SessionManager {
 
     func handleAppTerminated(bundleId: String) {
         guard let agentType = AgentType.fromBundleId(bundleId) else { return }
-        for session in activeSessions where session.agentType == agentType {
-            markCompleted(session)
-        }
-        if let selectedSessionId, sessions.first(where: { $0.id == selectedSessionId })?.status == .completed {
-            self.selectedSessionId = activeSessions.first?.id
-        }
-        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+        handleDeadAgents([agentType])
     }
 
     // MARK: - CLI Process Checking
@@ -143,12 +137,16 @@ final class SessionManager {
             }
         }
 
-        if let sid = selectedSessionId,
-           sessions.first(where: { $0.id == sid })?.status == .completed {
-            selectedSessionId = activeSessions.first?.id
-        }
-
+        reSelectIfCurrentCompleted()
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+    }
+
+    /// If the currently selected session has been completed, pick the next active session.
+    private func reSelectIfCurrentCompleted() {
+        guard let sid = selectedSessionId,
+              sessions.first(where: { $0.id == sid })?.status == .completed
+        else { return }
+        selectedSessionId = activeSessions.first?.id
     }
 
     private nonisolated static func isAnyProcessRunning(names: [String]) -> Bool {
@@ -175,9 +173,7 @@ final class SessionManager {
                 markCompleted(session)
             }
         }
-        if let selectedSessionId, sessions.first(where: { $0.id == selectedSessionId })?.status == .completed {
-            self.selectedSessionId = activeSessions.first?.id
-        }
+        reSelectIfCurrentCompleted()
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
     }
 

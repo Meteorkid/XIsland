@@ -38,6 +38,7 @@ enum ZeroConfigManager {
         case .pi: configurePi()
         case .hermes: configureHermes()
         case .glm: configureGLM()
+        case .aider: configureAider()
         }
     }
 
@@ -64,26 +65,37 @@ enum ZeroConfigManager {
     static func repairHooksIfNeeded() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
 
-        // Check Claude Code hooks
-        let claudeSettings = "\(home)/.claude/settings.json"
-        if isAutoConfigEnabled(for: .claudeCode), FileManager.default.fileExists(atPath: claudeSettings) {
-            if let settings = readJSON(claudeSettings),
-               let hooks = settings["hooks"] as? [String: Any] {
-                let hasDIBridge = hooks.values.contains { hookList in
-                    guard let list = hookList as? [[String: Any]] else { return false }
-                    return list.contains { entry in
-                        let cmds = entry["hooks"] as? [[String: Any]] ?? []
-                        return cmds.contains { ($0["command"] as? String)?.contains("di-bridge") == true }
-                    }
+        // JSON hooks agents: [agent, config path]
+        let jsonHookAgents: [(AgentType, String)] = [
+            (.claudeCode, "\(home)/.claude/settings.json"),
+            (.qwen, "\(home)/.qwen/settings.json"),
+            (.geminiCli, "\(home)/.gemini/settings.json"),
+            (.droid, "\(home)/.factory/settings.json"),
+            (.codeBuddy, "\(home)/.codebuddy/settings.json"),
+            (.kiro, "\(home)/.kiro/settings.json"),
+            (.codex, "\(home)/.codex/hooks.json"),
+        ]
+
+        for (agent, path) in jsonHookAgents {
+            guard isAutoConfigEnabled(for: agent),
+                  FileManager.default.fileExists(atPath: path),
+                  let settings = readJSON(path),
+                  let hooks = settings["hooks"] as? [String: Any] else { continue }
+
+            let hasDIBridge = hooks.values.contains { hookList in
+                guard let list = hookList as? [[String: Any]] else { return false }
+                return list.contains { entry in
+                    let cmds = entry["hooks"] as? [[String: Any]] ?? []
+                    return cmds.contains { ($0["command"] as? String)?.contains("di-bridge") == true }
                 }
-                if !hasDIBridge {
-                    configureClaudeCode()
-                    print("[ZeroConfig] Repaired Claude Code hooks")
-                }
+            }
+            if !hasDIBridge {
+                configure(agent)
+                print("[ZeroConfig] Repaired \(agent.displayName) hooks at \(path)")
             }
         }
 
-        // Check Cursor-family hooks (Cursor / Trae / Trae CN)
+        // Cursor-family hooks (Cursor / Trae / Trae CN) — different JSON format
         if isAutoConfigEnabled(for: .cursor) || isAutoConfigEnabled(for: .trae) {
             for hooksPath in cursorHookPaths {
                 guard FileManager.default.fileExists(atPath: hooksPath) else { continue }
@@ -100,6 +112,51 @@ enum ZeroConfigManager {
                     }
                 }
             }
+        }
+
+        // TOML hooks agents
+        let tomlAgents: [(AgentType, String, String)] = [
+            (.kimi, "\(home)/.kimi/config.toml", "# X Island hooks"),
+            (.deepseek, "\(home)/.deepseek/config.toml", "# X Island hooks"),
+            (.glm, "\(home)/.zhipu/config.toml", "# X Island hooks"),
+        ]
+
+        for (agent, path, marker) in tomlAgents {
+            guard isAutoConfigEnabled(for: agent),
+                  let text = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+            if !text.contains("di-bridge") {
+                configure(agent)
+                print("[ZeroConfig] Repaired \(agent.displayName) TOML hooks at \(path)")
+            }
+        }
+
+        // Plugin/script file agents
+        let fileAgents: [(AgentType, String)] = [
+            (.openCode, "\(home)/.config/opencode/plugins/xisland.js"),
+            (.amp, "\(home)/.config/amp/plugins/xisland.ts"),
+            (.pi, "\(home)/.pi/agent/extensions/xisland.ts"),
+        ]
+
+        for (agent, path) in fileAgents {
+            guard isAutoConfigEnabled(for: agent) else { continue }
+            if let text = try? String(contentsOfFile: path, encoding: .utf8),
+               !text.contains("di-bridge") {
+                configure(agent)
+                print("[ZeroConfig] Repaired \(agent.displayName) plugin at \(path)")
+            }
+        }
+
+        // Shell wrapper agents
+        let wrapperAgents: [(AgentType, String)] = [
+            (.hermes, "\(home)/.xisland/bin/hermes-bridge"),
+            (.aider, "\(home)/.xisland/bin/aider-bridge"),
+        ]
+
+        for (agent, path) in wrapperAgents {
+            guard isAutoConfigEnabled(for: agent),
+                  !FileManager.default.fileExists(atPath: path) else { continue }
+            configure(agent)
+            print("[ZeroConfig] Repaired \(agent.displayName) wrapper at \(path)")
         }
     }
 
@@ -282,10 +339,60 @@ enum ZeroConfigManager {
         ensureDir(configDir)
 
         var settings = readJSON(settingsPath) ?? [String: Any]()
-        if (settings["xisland_hook"] as? String)?.contains("di-bridge") != true {
-            settings["xisland_hook"] = "\(bridgePath) --agent gemini_cli"
-            writeJSON(settingsPath, settings)
+
+        // Clean up legacy xisland_hook key
+        if settings["xisland_hook"] != nil {
+            settings.removeValue(forKey: "xisland_hook")
         }
+
+        var hooks = settings["hooks"] as? [String: Any] ?? [:]
+
+        let hookMapping: [(String, String, Int)] = [
+            ("PreToolUse", "PreToolUse", 5),
+            ("PostToolUse", "PostToolUse", 5),
+            ("UserPromptSubmit", "session_start", 5),
+            ("SessionStart", "session_start", 5),
+            ("SessionEnd", "session_end", 5),
+            ("Stop", "notification", 5),
+            ("SubagentStart", "subagent_start", 5),
+            ("SubagentStop", "subagent_end", 5),
+            ("PreCompact", "compact", 5),
+            ("Notification", "Notification", 5),
+            ("PermissionRequest", "PermissionRequest", 300),
+        ]
+
+        for (hookType, hookArg, timeout) in hookMapping {
+            var hookList = hooks[hookType] as? [[String: Any]] ?? []
+
+            hookList.removeAll { entry in
+                let cmds = entry["hooks"] as? [[String: Any]] ?? []
+                return cmds.contains {
+                    guard let cmd = $0["command"] as? String else { return false }
+                    return cmd.contains("di-bridge")
+                }
+            }
+
+            let guardedCmd: String
+            if hookArg == "PermissionRequest" {
+                guardedCmd = "\(bridgePath) --agent gemini_cli --hook \(hookArg)"
+            } else {
+                guardedCmd = "\(bridgePath) --agent gemini_cli --hook \(hookArg) || true"
+            }
+            hookList.append([
+                "matcher": "*",
+                "hooks": [
+                    [
+                        "type": "command",
+                        "command": guardedCmd,
+                        "timeout": timeout
+                    ] as [String: Any]
+                ]
+            ] as [String: Any])
+            hooks[hookType] = hookList
+        }
+
+        settings["hooks"] = hooks
+        writeJSON(settingsPath, settings)
     }
 
     // MARK: - Cursor
@@ -595,57 +702,131 @@ enum ZeroConfigManager {
     // MARK: - Droid
 
     private static func configureDroid() {
-        let configDir = "\(home)/.droid"
-        let configPath = "\(configDir)/config.json"
+        let configDir = "\(home)/.factory"
+        let settingsPath = "\(configDir)/settings.json"
         ensureDir(configDir)
 
-        var config = readJSON(configPath) ?? [String: Any]()
-        if (config["xisland_hook"] as? String)?.contains("di-bridge") != true {
-            config["xisland_hook"] = "\(bridgePath) --agent droid"
-            writeJSON(configPath, config)
+        var settings = readJSON(settingsPath) ?? [String: Any]()
+        var hooks = settings["hooks"] as? [String: Any] ?? [:]
+
+        let hookMapping: [(String, String, Int)] = [
+            ("PreToolUse", "PreToolUse", 5),
+            ("PostToolUse", "PostToolUse", 5),
+            ("UserPromptSubmit", "session_start", 5),
+            ("SessionStart", "session_start", 5),
+            ("SessionEnd", "session_end", 5),
+            ("Stop", "notification", 5),
+            ("SubagentStart", "subagent_start", 5),
+            ("SubagentStop", "subagent_end", 5),
+            ("PreCompact", "compact", 5),
+            ("Notification", "Notification", 5),
+            ("PermissionRequest", "PermissionRequest", 300),
+        ]
+
+        for (hookType, hookArg, timeout) in hookMapping {
+            var hookList = hooks[hookType] as? [[String: Any]] ?? []
+
+            hookList.removeAll { entry in
+                let cmds = entry["hooks"] as? [[String: Any]] ?? []
+                return cmds.contains {
+                    guard let cmd = $0["command"] as? String else { return false }
+                    return cmd.contains("di-bridge")
+                }
+            }
+
+            let guardedCmd: String
+            if hookArg == "PermissionRequest" {
+                guardedCmd = "\(bridgePath) --agent droid --hook \(hookArg)"
+            } else {
+                guardedCmd = "\(bridgePath) --agent droid --hook \(hookArg) || true"
+            }
+            hookList.append([
+                "matcher": "*",
+                "hooks": [
+                    [
+                        "type": "command",
+                        "command": guardedCmd,
+                        "timeout": timeout
+                    ] as [String: Any]
+                ]
+            ] as [String: Any])
+            hooks[hookType] = hookList
         }
+
+        settings["hooks"] = hooks
+        writeJSON(settingsPath, settings)
     }
 
     // MARK: - Qoder
 
     private static func configureQoder() {
-        let configDir = "\(home)/.qoder"
-        let configPath = "\(configDir)/config.json"
-        ensureDir(configDir)
-
-        var config = readJSON(configPath) ?? [String: Any]()
-        if (config["xisland_hook"] as? String)?.contains("di-bridge") != true {
-            config["xisland_hook"] = "\(bridgePath) --agent qoder"
-            writeJSON(configPath, config)
-        }
+        // Qoder has no hook system — detection via process monitoring only.
+        print("[ZeroConfig] Qoder does not support hook injection. X Island will monitor it via process detection.")
     }
 
     // MARK: - Copilot
 
     private static func configureCopilot() {
-        let configDir = "\(home)/.copilot"
-        let configPath = "\(configDir)/config.json"
-        ensureDir(configDir)
-
-        var config = readJSON(configPath) ?? [String: Any]()
-        if (config["xisland_hook"] as? String)?.contains("di-bridge") != true {
-            config["xisland_hook"] = "\(bridgePath) --agent copilot"
-            writeJSON(configPath, config)
-        }
+        // Copilot has no hook system — detection via process/desktop app monitoring only.
+        print("[ZeroConfig] Copilot does not support hook injection. X Island will monitor it via process detection.")
     }
 
     // MARK: - CodeBuddy
 
     private static func configureCodeBuddy() {
         let configDir = "\(home)/.codebuddy"
-        let configPath = "\(configDir)/config.json"
+        let settingsPath = "\(configDir)/settings.json"
         ensureDir(configDir)
 
-        var config = readJSON(configPath) ?? [String: Any]()
-        if (config["xisland_hook"] as? String)?.contains("di-bridge") != true {
-            config["xisland_hook"] = "\(bridgePath) --agent code_buddy"
-            writeJSON(configPath, config)
+        var settings = readJSON(settingsPath) ?? [String: Any]()
+        var hooks = settings["hooks"] as? [String: Any] ?? [:]
+
+        let hookMapping: [(String, String, Int)] = [
+            ("PreToolUse", "PreToolUse", 5),
+            ("PostToolUse", "PostToolUse", 5),
+            ("UserPromptSubmit", "session_start", 5),
+            ("SessionStart", "session_start", 5),
+            ("SessionEnd", "session_end", 5),
+            ("Stop", "notification", 5),
+            ("SubagentStart", "subagent_start", 5),
+            ("SubagentStop", "subagent_end", 5),
+            ("PreCompact", "compact", 5),
+            ("Notification", "Notification", 5),
+            ("PermissionRequest", "PermissionRequest", 300),
+        ]
+
+        for (hookType, hookArg, timeout) in hookMapping {
+            var hookList = hooks[hookType] as? [[String: Any]] ?? []
+
+            hookList.removeAll { entry in
+                let cmds = entry["hooks"] as? [[String: Any]] ?? []
+                return cmds.contains {
+                    guard let cmd = $0["command"] as? String else { return false }
+                    return cmd.contains("di-bridge")
+                }
+            }
+
+            let guardedCmd: String
+            if hookArg == "PermissionRequest" {
+                guardedCmd = "\(bridgePath) --agent code_buddy --hook \(hookArg)"
+            } else {
+                guardedCmd = "\(bridgePath) --agent code_buddy --hook \(hookArg) || true"
+            }
+            hookList.append([
+                "matcher": "*",
+                "hooks": [
+                    [
+                        "type": "command",
+                        "command": guardedCmd,
+                        "timeout": timeout
+                    ] as [String: Any]
+                ]
+            ] as [String: Any])
+            hooks[hookType] = hookList
         }
+
+        settings["hooks"] = hooks
+        writeJSON(settingsPath, settings)
     }
 
     // MARK: - Qwen Code
@@ -818,11 +999,55 @@ enum ZeroConfigManager {
     // MARK: - Kiro
 
     private static func configureKiro() {
-        // Kiro is a VS Code-based AI IDE, not a CLI tool.
-        // It uses Shell Command actions via the .kiro/ directory configured through the UI.
-        // Full IDE integration is complex and requires manual user setup.
-        // This method is a placeholder documenting the limitation.
-        print("[ZeroConfig] Kiro does not support automatic hook injection. Please configure Shell Command actions manually in the Kiro IDE.")
+        let configDir = "\(home)/.kiro"
+        let settingsPath = "\(configDir)/settings.json"
+        ensureDir(configDir)
+
+        var settings = readJSON(settingsPath) ?? [String: Any]()
+        var hooks = settings["hooks"] as? [String: Any] ?? [:]
+
+        let hookMapping: [(String, String, Int)] = [
+            ("agentSpawn", "session_start", 5),
+            ("userPromptSubmit", "session_start", 5),
+            ("preToolUse", "PreToolUse", 5),
+            ("postToolUse", "PostToolUse", 5),
+            ("Stop", "session_end", 5),
+            ("Notification", "Notification", 5),
+            ("PermissionRequest", "PermissionRequest", 300),
+        ]
+
+        for (hookType, hookArg, timeout) in hookMapping {
+            var hookList = hooks[hookType] as? [[String: Any]] ?? []
+
+            hookList.removeAll { entry in
+                let cmds = entry["hooks"] as? [[String: Any]] ?? []
+                return cmds.contains {
+                    guard let cmd = $0["command"] as? String else { return false }
+                    return cmd.contains("di-bridge")
+                }
+            }
+
+            let guardedCmd: String
+            if hookArg == "PermissionRequest" {
+                guardedCmd = "\(bridgePath) --agent kiro --hook \(hookArg)"
+            } else {
+                guardedCmd = "\(bridgePath) --agent kiro --hook \(hookArg) || true"
+            }
+            hookList.append([
+                "matcher": "*",
+                "hooks": [
+                    [
+                        "type": "command",
+                        "command": guardedCmd,
+                        "timeout": timeout
+                    ] as [String: Any]
+                ]
+            ] as [String: Any])
+            hooks[hookType] = hookList
+        }
+
+        settings["hooks"] = hooks
+        writeJSON(settingsPath, settings)
     }
 
     // MARK: - Amp
@@ -949,6 +1174,29 @@ enum ZeroConfigManager {
         print("[ZeroConfig] Hermes wrapper installed at \(wrapperPath). Add it to Hermes Quick Commands for manual integration.")
     }
 
+    // MARK: - Aider
+
+    private static func configureAider() {
+        let wrapperDir = "\(home)/.xisland/bin"
+        let wrapperPath = "\(wrapperDir)/aider-bridge"
+        ensureDir(wrapperDir)
+
+        let wrapper = #"""
+        #!/bin/bash
+        # Aider X Island bridge wrapper
+        # Usage: aider-bridge <hook> [session_id]
+        HOOK="${1:-notification}"
+        PROMPT="${2:-}"
+        BRIDGE="$HOME/.xisland/bin/di-bridge"
+        SESSION="${3:-aider-$(echo "$PWD" | md5)}"
+        echo '{"prompt":"'"$PROMPT"'"}' | "$BRIDGE" --agent aider --hook "$HOOK" --session "$SESSION"
+        """#
+
+        try? wrapper.write(toFile: wrapperPath, atomically: true, encoding: String.Encoding.utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapperPath)
+        print("[ZeroConfig] Aider bridge wrapper installed at \(wrapperPath)")
+    }
+
     private static func configureGLM() {
         // GLM (Zhipu AI) uses TOML config at ~/.zhipu/config.toml
         let dir = "\(home)/.zhipu"
@@ -1066,19 +1314,25 @@ enum ZeroConfigManager {
             return text.contains("di-bridge")
         case .geminiCli:
             let path = "\(home)/.gemini/settings.json"
-            return configContainsBridge(path: path, key: "xisland_hook")
+            guard let settings = readJSON(path),
+                  let hooks = settings["hooks"] as? [String: Any] else { return false }
+            return hooksContainBridge(hooks)
         case .droid:
-            let path = "\(home)/.droid/config.json"
-            return configContainsBridge(path: path, key: "xisland_hook")
+            let path = "\(home)/.factory/settings.json"
+            guard let settings = readJSON(path),
+                  let hooks = settings["hooks"] as? [String: Any] else { return false }
+            return hooksContainBridge(hooks)
         case .qoder:
-            let path = "\(home)/.qoder/config.json"
-            return configContainsBridge(path: path, key: "xisland_hook")
+            // No hook system — always false
+            return false
         case .copilot:
-            let path = "\(home)/.copilot/config.json"
-            return configContainsBridge(path: path, key: "xisland_hook")
+            // No hook system — always false
+            return false
         case .codeBuddy:
-            let path = "\(home)/.codebuddy/config.json"
-            return configContainsBridge(path: path, key: "xisland_hook")
+            let path = "\(home)/.codebuddy/settings.json"
+            guard let settings = readJSON(path),
+                  let hooks = settings["hooks"] as? [String: Any] else { return false }
+            return hooksContainBridge(hooks)
         case .qwen:
             let path = "\(home)/.qwen/settings.json"
             guard let settings = readJSON(path),
@@ -1093,8 +1347,10 @@ enum ZeroConfigManager {
             guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
             return text.contains("di-bridge")
         case .kiro:
-            // Kiro has no auto-configurable hooks
-            return false
+            let path = "\(home)/.kiro/settings.json"
+            guard let settings = readJSON(path),
+                  let hooks = settings["hooks"] as? [String: Any] else { return false }
+            return hooksContainBridge(hooks)
         case .amp:
             let path = "\(home)/.config/amp/plugins/xisland.ts"
             guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
@@ -1110,6 +1366,9 @@ enum ZeroConfigManager {
             let path = "\(home)/.zhipu/config.toml"
             guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
             return text.contains("di-bridge")
+        case .aider:
+            let path = "\(home)/.xisland/bin/aider-bridge"
+            return FileManager.default.fileExists(atPath: path)
         }
     }
 
@@ -1128,15 +1387,19 @@ enum ZeroConfigManager {
         case .openCode:
             try? FileManager.default.removeItem(atPath: "\(home)/.config/opencode/plugins/xisland.js")
         case .geminiCli:
+            removeBridgeHooks(at: "\(home)/.gemini/settings.json")
+            // Also clean up legacy xisland_hook key if present
             removeBridgeConfigValue(at: "\(home)/.gemini/settings.json", key: "xisland_hook")
         case .droid:
-            removeBridgeConfigValue(at: "\(home)/.droid/config.json", key: "xisland_hook")
+            removeBridgeHooks(at: "\(home)/.factory/settings.json")
         case .qoder:
-            removeBridgeConfigValue(at: "\(home)/.qoder/config.json", key: "xisland_hook")
+            // No hook config — nothing to remove
+            break
         case .copilot:
-            removeBridgeConfigValue(at: "\(home)/.copilot/config.json", key: "xisland_hook")
+            // No hook config — nothing to remove
+            break
         case .codeBuddy:
-            removeBridgeConfigValue(at: "\(home)/.codebuddy/config.json", key: "xisland_hook")
+            removeBridgeHooks(at: "\(home)/.codebuddy/settings.json")
         case .qwen:
             removeBridgeHooks(at: "\(home)/.qwen/settings.json")
         case .kimi:
@@ -1144,8 +1407,7 @@ enum ZeroConfigManager {
         case .deepseek:
             removeTOMLBlock(at: "\(home)/.deepseek/config.toml", marker: "# X Island hooks")
         case .kiro:
-            // Nothing to remove for Kiro
-            break
+            removeBridgeHooks(at: "\(home)/.kiro/settings.json")
         case .amp:
             try? FileManager.default.removeItem(atPath: "\(home)/.config/amp/plugins/xisland.ts")
         case .pi:
@@ -1154,6 +1416,8 @@ enum ZeroConfigManager {
             try? FileManager.default.removeItem(atPath: "\(home)/.xisland/bin/hermes-bridge")
         case .glm:
             removeTOMLBlock(at: "\(home)/.zhipu/config.toml", marker: "# X Island hooks")
+        case .aider:
+            try? FileManager.default.removeItem(atPath: "\(home)/.xisland/bin/aider-bridge")
         }
     }
 
