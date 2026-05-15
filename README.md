@@ -44,6 +44,15 @@ X Island sits at the top of your screen as a compact pill. When your AI agents a
 - **Activity log** — Chronological feed of all tool calls across all sessions
 - **Tool event details** — Test result parsing and lines-read statistics per tool call
 - **SSH Remote Manager** — Connect and monitor remote servers directly from the island
+- **Panel size customization** — Adjustable panel width and max height (320–600/700 px)
+- **Quiet Hours** — Time-based automatic mute with cross-midnight window support
+- **Right-click context menu** — Quick access to Mute, Preferences, Dismiss All, and Quit
+- **Session Recap** — Completed sessions show a toggleable AI-generated summary
+- **Custom mute rules** — Regex-based mute rules matching agent type, tool name, or working directory
+- **Bypass/Auto mode** — Auto-approve all permissions, questions, and plan reviews
+- **Subagent nesting** — Visual indentation and expand/collapse for child agent sessions
+- **VS Code extension** — Direct terminal-tab jumping from the island
+- **Language switcher** — Manual language override in Preferences (auto-detect or pick from zh/en/ko/ja/fr)
 
 **Supported agents:**
 
@@ -52,12 +61,16 @@ X Island sits at the top of your screen as a compact pill. When your AI agents a
 | Claude Code | Native hooks (settings.json) | Full support |
 | Cursor | Hooks API (hooks.json) | Full support |
 | Codex (OpenAI) | Native hooks | Full support |
+| Aider | Index-based signal file | Full support |
 | OpenCode | JS plugin | Full support |
 | GLM (Zhipu) | TOML hooks (config.toml) | Full support |
 | Kimi (Moonshot) | TOML hooks (config.toml) | Full support |
 | DeepSeek | TOML hooks (config.toml) | Full support |
+| Kiro | Spec hook | Full support |
+| CodeBuddy | Config hook | Full support |
 | Gemini CLI | Config hook | Basic support |
 | Copilot (VS Code) | Config hook | Basic support |
+| Droid (Factory) | Config hook | Basic support |
 
 ## Install
 
@@ -164,6 +177,7 @@ Sources/
     │   ├── AgentSession.swift
     │   ├── AgentType.swift
     │   ├── ToolEvent.swift
+    │   ├── MuteRule.swift
     │   └── QuotaInfo.swift
     ├── Managers/
     │   ├── SessionManager.swift
@@ -232,10 +246,18 @@ All settings are accessible from the X Island Settings panel:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| Language | Auto | Manual language override (Auto/zh/en/ko/ja/fr) |
+| Bypass mode | Off | Auto-approve all permissions, questions, and plan reviews |
 | Auto-collapse delay | 3s | How long the panel stays open after interaction |
 | Completed session display | 2 min | How long completed sessions remain visible (10s–5min or Never) |
 | Smart suppression | On | Don't auto-expand when agent terminal is focused |
-| Sound effects | Per-event | Toggle individual sound events on/off |
+| Panel width | 420px | Expanded panel width (320–600, step 20) |
+| Panel max height | 480px | Max list height (320–700, step 20) |
+| Sound enabled | On | Master sound toggle |
+| Volume | 1.0 | Sound effect volume slider |
+| Quiet Hours | Off | Time-based auto-mute with From/To time pickers |
+| Mute Rules | None | Regex-based per-event mute rules |
+| Sound effects | Per-event | Toggle individual sound effects on/off |
 
 ## How It Works
 
