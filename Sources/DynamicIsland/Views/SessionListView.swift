@@ -46,7 +46,7 @@ struct SessionCardView: View {
                             .font(.system(size: 8))
                             .foregroundStyle(session.agentType.color.opacity(0.5))
                             .padding(.top, 2)
-                        Text("You: \(session.prompt)")
+                        Text("\(L10n.youPrefix): \(session.prompt)")
                             .font(.system(size: 11))
                             .foregroundStyle(.white.opacity(0.6))
                             .lineLimit(2)
@@ -211,7 +211,7 @@ struct SessionCardView: View {
                     ProgressView()
                         .scaleEffect(0.4)
                         .frame(width: 10, height: 10)
-                    Text("Running \(tool)...")
+                    Text(L10n.toolRunning(tool))
                         .font(.system(size: 10))
                         .foregroundStyle(.white.opacity(0.5))
                 }
@@ -231,7 +231,7 @@ struct SessionCardView: View {
                             content.opacity(phase ? 1.0 : 0.3)
                         } animation: { _ in .easeInOut(duration: 0.8) }
 
-                    Text("Thinking...")
+                    Text(L10n.thinking)
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.blue.opacity(0.4))
                 }
@@ -257,7 +257,7 @@ struct SessionCardView: View {
                     Image(systemName: "arrow.triangle.branch")
                         .font(.system(size: 9))
                         .foregroundStyle(.purple.opacity(0.6))
-                    Text("\(children.count) subagent\(children.count > 1 ? "s" : "")")
+                    Text(L10n.subagentCount(children.count))
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.purple.opacity(0.5))
                     Image(systemName: childrenExpanded ? "chevron.down" : "chevron.right")
@@ -289,7 +289,7 @@ struct SessionCardView: View {
                     Image(systemName: recapExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(.blue.opacity(0.5))
-                    Text(recapExpanded ? "Hide recap" : "Show recap")
+                    Text(recapExpanded ? L10n.hideRecap : L10n.showRecap)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.blue.opacity(0.5))
                 }

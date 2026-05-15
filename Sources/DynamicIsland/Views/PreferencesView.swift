@@ -12,10 +12,10 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .general: "General"
-        case .agents: "Agents"
-        case .sound: "Sound"
-        case .about: "About"
+        case .general: L10n.paneGeneral
+        case .agents: L10n.paneAgents
+        case .sound: L10n.sectionSound
+        case .about: L10n.sectionAbout
         }
     }
 
@@ -163,30 +163,43 @@ struct PreferencesView: View {
 
     private var generalPane: some View {
         VStack(alignment: .leading, spacing: 20) {
-            section("System") {
+            section(L10n.sectionSystem) {
                 card {
-                    row("Launch at Login") {
+                    row(L10n.language) {
+                        Picker("", selection: Binding(
+                            get: { L10n.effectiveLanguage },
+                            set: { UserDefaults.standard.set($0, forKey: "appLanguage") }
+                        )) {
+                            ForEach(L10n.availableLanguages, id: \.code) { lang in
+                                Text(lang.name).tag(lang.code)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 120)
+                    }
+                    dividerLine
+                    row(L10n.launchAtLogin) {
                         Toggle("", isOn: $launchAtLogin)
                             .labelsHidden()
                             .onChange(of: launchAtLogin) { _, v in toggleLaunchAtLogin(v) }
                     }
                     dividerLine
-                    row("Show on all Spaces") {
+                    row(L10n.showOnAllSpaces) {
                         Toggle("", isOn: $showOnAllSpaces).labelsHidden()
                     }
                 }
             }
 
-            section("Behavior") {
+            section(L10n.sectionBehavior) {
                 card {
-                    row("Bypass mode", subtitle: "Auto-approve all permissions, questions, and plan reviews") {
+                    row(L10n.bypassMode, subtitle: L10n.bypassDesc) {
                         Toggle("", isOn: Binding(
                             get: { sessionManager.bypassMode },
                             set: { sessionManager.bypassMode = $0 }
                         )).labelsHidden()
                     }
                     dividerLine
-                    row("Auto-collapse delay", subtitle: "How long the panel stays open after a task completes") {
+                    row(L10n.autoCollapse, subtitle: L10n.autoCollapseDesc) {
                         Picker("", selection: $autoCollapseDelay) {
                             Text("1.5s").tag(1.5)
                             Text("3s").tag(3.0)
@@ -198,19 +211,19 @@ struct PreferencesView: View {
                         .frame(width: 100)
                     }
                     dividerLine
-                    row("Hide in fullscreen") {
+                    row(L10n.hideInFullscreen) {
                         Toggle("", isOn: $hideInFullscreen).labelsHidden()
                     }
                     dividerLine
-                    row("Auto-hide when idle") {
+                    row(L10n.autoHideIdle) {
                         Toggle("", isOn: $autoHideWhenNoActiveSessions).labelsHidden()
                     }
                     dividerLine
-                    row("Smart suppression", subtitle: "Don't auto-expand when the agent terminal is focused") {
+                    row(L10n.smartSuppression, subtitle: L10n.smartSuppressionDesc) {
                         Toggle("", isOn: $smartSuppression).labelsHidden()
                     }
                     dividerLine
-                    row("Completed session display", subtitle: "How long completed sessions remain visible") {
+                    row(L10n.completedDisplay, subtitle: L10n.completedDisplayDesc) {
                         Picker("", selection: $completedLingerDuration) {
                             Text("10s").tag(10.0)
                             Text("30s").tag(30.0)
@@ -225,33 +238,33 @@ struct PreferencesView: View {
                 }
             }
 
-            section("Display") {
+            section(L10n.sectionDisplay) {
                 card {
-                    row("Panel width", subtitle: "\(Int(panelWidth))px") {
+                    row(L10n.panelWidth, subtitle: L10n.panelSizePx(Int(panelWidth))) {
                         Slider(value: $panelWidth, in: 320...600, step: 20)
                             .frame(width: 140)
                     }
                     dividerLine
-                    row("Panel max height", subtitle: "\(Int(panelMaxHeight))px") {
+                    row(L10n.panelMaxHeight, subtitle: L10n.panelSizePx(Int(panelMaxHeight))) {
                         Slider(value: $panelMaxHeight, in: 320...700, step: 20)
                             .frame(width: 140)
                     }
                     dividerLine
-                    row("Compact badges") {
+                    row(L10n.compactBadges) {
                         Toggle("", isOn: $compactBadgesInExpandedView).labelsHidden()
                     }
                     dividerLine
-                    row("Show timestamps") {
+                    row(L10n.showTimestamps) {
                         Toggle("", isOn: $displayTimestamp).labelsHidden()
                     }
                     dividerLine
-                    row("Reduce motion") {
+                    row(L10n.reduceMotion) {
                         Toggle("", isOn: $reduceMotion).labelsHidden()
                     }
                 }
             }
 
-            section("Usage Tracking") {
+            section(L10n.sectionUsageTracking) {
                 card {
                     providerRow("Anthropic", enabled: $anthropicEnabled, key: $anthropicAPIKey,
                                 provider: "anthropic", placeholder: "sk-ant-...")
@@ -270,10 +283,10 @@ struct PreferencesView: View {
                 }
             }
 
-            section("Remote Servers") {
+            section(L10n.sectionRemoteServers) {
                 card {
                     if sshManager.servers.isEmpty {
-                        Text("No remote servers configured")
+                        Text(L10n.noRemoteServers)
                             .font(.system(size: 12))
                             .foregroundStyle(.tertiary)
                             .padding(.vertical, 8)
@@ -416,7 +429,7 @@ struct PreferencesView: View {
 
     private var agentsPane: some View {
         VStack(alignment: .leading, spacing: 20) {
-            section("CLI Hooks") {
+            section(L10n.sectionCLIHooks) {
                 card {
                     ForEach(Array(AgentType.allCases.enumerated()), id: \.element.id) { index, agent in
                         hookRow(agent)
@@ -438,7 +451,7 @@ struct PreferencesView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            section("IDE Integration") {
+            section(L10n.sectionIDEIntegration) {
                 card {
                     ideRow(name: "VS Code", bundleId: "com.microsoft.VSCode")
                     dividerLine
@@ -463,16 +476,16 @@ struct PreferencesView: View {
     private var soundPane: some View {
         @Bindable var engine = audioEngine
         return VStack(alignment: .leading, spacing: 20) {
-            section("Playback") {
+            section(L10n.sectionPlayback) {
                 card {
-                    row("Sound enabled") {
+                    row(L10n.soundEnabled) {
                         Toggle("", isOn: Binding(
                             get: { !engine.isMuted },
                             set: { engine.isMuted = !$0 }
                         )).labelsHidden()
                     }
                     dividerLine
-                    row("Volume") {
+                    row(L10n.volume) {
                         Slider(value: Binding(
                             get: { Double(engine.volume) },
                             set: { engine.volume = Float($0) }
@@ -482,21 +495,21 @@ struct PreferencesView: View {
                 }
             }
 
-            section("Quiet Hours") {
+            section(L10n.quietHours) {
                 card {
-                    row("Enable quiet hours") {
+                    row(L10n.enableQuietHours) {
                         Toggle("", isOn: $quietHoursEnabled).labelsHidden()
                     }
                     if quietHoursEnabled {
                         dividerLine
-                        row("From") {
+                        row(L10n.fromTime) {
                             timePicker(selection: $quietHoursStart)
                         }
                         dividerLine
-                        row("To") {
+                        row(L10n.toTime) {
                             timePicker(selection: $quietHoursEnd)
                         }
-                        row("Status", subtitle: quietHoursStatusText) {
+                        row(L10n.statusLabel, subtitle: quietHoursStatusText) {
                             Circle()
                                 .fill(engine.isQuietHoursActive ? Color.orange : Color.green.opacity(0.5))
                                 .frame(width: 8, height: 8)
@@ -505,11 +518,11 @@ struct PreferencesView: View {
                 }
             }
 
-            section("Mute Rules") {
+            section(L10n.muteRules) {
                 card {
                     let rules = audioEngine.muteRules
                     if rules.isEmpty {
-                        Text("No rules configured")
+                        Text(L10n.noRules)
                             .font(.system(size: 12))
                             .foregroundStyle(.tertiary)
                             .padding(.vertical, 8)
@@ -551,7 +564,7 @@ struct PreferencesView: View {
                     }
                     dividerLine
                     HStack(spacing: 8) {
-                        TextField("Regex pattern", text: $newRulePattern)
+                        TextField(L10n.regexPattern, text: $newRulePattern)
                             .textFieldStyle(.roundedBorder)
                             .font(.system(size: 11))
                             .frame(width: 140)
@@ -563,7 +576,7 @@ struct PreferencesView: View {
                         .pickerStyle(.menu)
                         .frame(width: 120)
                         Spacer()
-                        Button("Add") {
+                        Button(L10n.addRule) {
                             guard !newRulePattern.isEmpty else { return }
                             var updated = audioEngine.muteRules
                             updated.append(MuteRule(pattern: newRulePattern, matchField: newRuleField))
@@ -576,7 +589,7 @@ struct PreferencesView: View {
                 }
             }
 
-            section("Events") {
+            section(L10n.sectionEvents) {
                 card {
                     ForEach(Array(SoundEvent.allCases.enumerated()), id: \.element.id) { index, event in
                         soundEventRow(event)
@@ -587,7 +600,7 @@ struct PreferencesView: View {
                 }
             }
 
-            section("Sound Pack") {
+            section(L10n.sectionSoundPack) {
                 card {
                     if let packName = audioEngine.soundPackName {
                         row("Current") {
@@ -624,7 +637,7 @@ struct PreferencesView: View {
 
     private var aboutPane: some View {
         VStack(alignment: .leading, spacing: 20) {
-            section("Application") {
+            section(L10n.sectionApplication) {
                 card {
                     row("Version") {
                         Text(appVersionText)
@@ -648,7 +661,7 @@ struct PreferencesView: View {
                 }
             }
 
-            section("Updates") {
+            section(L10n.sectionUpdates) {
                 card {
                     row("Current Version") {
                         Text(updateManager.currentVersion)
@@ -700,7 +713,7 @@ struct PreferencesView: View {
                 }
             }
 
-            section("Maintenance") {
+            section(L10n.sectionMaintenance) {
                 card {
                     row("Reconfigure Hooks") {
                         Button("Run Now") { ZeroConfigManager.configureAllAgents() }
@@ -714,7 +727,7 @@ struct PreferencesView: View {
                 }
             }
 
-            section("Sessions") {
+            section(L10n.sectionSessions) {
                 card {
                     row("Active") {
                         Text("\(sessionManager.activeSessions.count)")
@@ -740,7 +753,7 @@ struct PreferencesView: View {
                     Circle()
                         .fill(status == .active ? .green : Color.secondary.opacity(0.4))
                         .frame(width: 6, height: 6)
-                    Text(status == .active ? "Active" : "Off")
+                    Text(status == .active ? L10n.hookActive : L10n.hookOff)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
@@ -764,7 +777,7 @@ struct PreferencesView: View {
                 Image(systemName: installed ? "checkmark.circle.fill" : "xmark.circle.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(installed ? .green : .secondary)
-                Text(installed ? "Installed" : "Not Found")
+                Text(installed ? L10n.ideInstalled : L10n.ideNotFound)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
@@ -1034,8 +1047,8 @@ struct PreferencesView: View {
     }
 
     private var quietHoursStatusText: String {
-        guard quietHoursEnabled else { return "Disabled" }
-        return audioEngine.isQuietHoursActive ? "Active — sounds muted" : "Outside quiet hours"
+        guard quietHoursEnabled else { return L10n.disabled }
+        return audioEngine.isQuietHoursActive ? L10n.quietHoursActive : L10n.quietHoursInactive
     }
 
     private func toggleLaunchAtLogin(_ enabled: Bool) {

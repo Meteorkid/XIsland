@@ -130,7 +130,7 @@ struct CollapsedPillView: View {
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.92))
                 .monospacedDigit()
-            Text("active")
+            Text(L10n.active)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.white.opacity(0.38))
         }
@@ -142,7 +142,7 @@ struct CollapsedPillView: View {
             Circle()
                 .fill(.green.opacity(0.6))
                 .frame(width: 6, height: 6)
-            Text("Ready")
+            Text(L10n.ready)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.white.opacity(0.6))
         }

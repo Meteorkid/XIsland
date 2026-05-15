@@ -242,22 +242,22 @@ struct NotchContentView: View {
             Button {
                 audio.isMuted.toggle()
             } label: {
-                Text(audio.isMuted ? "Unmute" : "Mute")
+                Text(audio.isMuted ? L10n.unmute : L10n.soundMute)
             }
             Divider()
-            Button("Preferences...") {
+            Button(L10n.prefsEllipsis) {
                 openSettingsWindow()
             }
             if isExpanded {
                 Divider()
-                Button("Dismiss All Sessions") {
+                Button(L10n.dismissAll) {
                     for s in manager.visibleSessions {
                         manager.dismissSession(s)
                     }
                 }
             }
             Divider()
-            Button("Quit X Island") {
+            Button(L10n.quitApp) {
                 NSApp.terminate(nil)
             }
         }
@@ -829,7 +829,7 @@ struct NotchContentView: View {
                     Image(systemName: "list.bullet.rectangle")
                         .font(.system(size: 10))
                         .foregroundStyle(.white.opacity(0.4))
-                    Text("Activity Log")
+                    Text(L10n.activityLog)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.6))
                 }
@@ -840,7 +840,7 @@ struct NotchContentView: View {
             }
 
             if allEvents.isEmpty {
-                Text("No activity yet")
+                Text(L10n.noActivity)
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.2))
                     .padding(.top, 4)
