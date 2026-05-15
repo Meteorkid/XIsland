@@ -4,11 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_SCRIPT="$PROJECT_DIR/Scripts/build.sh"
-APP_BUNDLE="$PROJECT_DIR/.build/Tower Island.app"
-UI_DRIVER="$PROJECT_DIR/.build/release/TowerIslandUITestDriver"
+APP_BUNDLE="$PROJECT_DIR/.build/X Island.app"
+UI_DRIVER="$PROJECT_DIR/.build/release/XIslandUITestDriver"
 MODE="${1:-smoke}"
 TEST_HOME="$PROJECT_DIR/.build/test-home"
-TEST_BIN_DIR="$TEST_HOME/.tower-island/bin"
+TEST_BIN_DIR="$TEST_HOME/.xisland/bin"
 
 cd "$PROJECT_DIR"
 
@@ -16,8 +16,8 @@ mkdir -p "$TEST_BIN_DIR"
 
 env \
     HOME="$TEST_HOME" \
-    TOWER_ISLAND_BIN_DIR="$TEST_BIN_DIR" \
-    TOWER_ISLAND_SKIP_PATH_CONFIGURE=1 \
+    X_ISLAND_BIN_DIR="$TEST_BIN_DIR" \
+    X_ISLAND_SKIP_PATH_CONFIGURE=1 \
     bash "$BUILD_SCRIPT"
 
 if [[ ! -x "$UI_DRIVER" ]]; then

@@ -1,11 +1,11 @@
 import XCTest
-@testable import TowerIsland
+@testable import XIsland
 
 final class AppTestConfigurationTests: XCTestCase {
     func testParsesUITestModeAndFixtureName() {
         let config = AppTestConfiguration.make(
-            arguments: ["TowerIsland", "--ui-test-mode", "--fixture", "permission-smoke"],
-            environment: ["TOWER_ISLAND_DISABLE_ANIMATIONS": "1"]
+            arguments: ["XIsland", "--ui-test-mode", "--fixture", "permission-smoke"],
+            environment: ["X_ISLAND_DISABLE_ANIMATIONS": "1"]
         )
 
         let expected = AppTestConfiguration(
@@ -24,16 +24,16 @@ final class AppTestConfigurationTests: XCTestCase {
     func testMakeEnablesTestModeFromArgumentsAndEnvironment() {
         let configuration = AppTestConfiguration.make(
             arguments: [
-                "TowerIsland",
+                "XIsland",
                 "--ui-test-mode",
                 "--fixture", "sample-fixture",
                 "--fixture-path", "/tmp/sample.json"
             ],
             environment: [
-                "TOWER_ISLAND_TEST_FIXTURE": "env-fixture",
-                "TOWER_ISLAND_TEST_FIXTURE_PATH": "/tmp/env.json",
-                "TOWER_ISLAND_TEST_DIAGNOSTICS_PATH": "/tmp/diagnostics.log",
-                "TOWER_ISLAND_DISABLE_ANIMATIONS": "1"
+                "X_ISLAND_TEST_FIXTURE": "env-fixture",
+                "X_ISLAND_TEST_FIXTURE_PATH": "/tmp/env.json",
+                "X_ISLAND_TEST_DIAGNOSTICS_PATH": "/tmp/diagnostics.log",
+                "X_ISLAND_DISABLE_ANIMATIONS": "1"
             ]
         )
 
@@ -48,11 +48,11 @@ final class AppTestConfigurationTests: XCTestCase {
 
     func testMakeEnablesTestModeFromEnvironmentOnly() {
         let configuration = AppTestConfiguration.make(
-            arguments: ["TowerIsland"],
+            arguments: ["XIsland"],
             environment: [
-                "TOWER_ISLAND_TEST_MODE": "1",
-                "TOWER_ISLAND_TEST_FIXTURE": "env-fixture",
-                "TOWER_ISLAND_TEST_FIXTURE_PATH": "/tmp/env.json"
+                "X_ISLAND_TEST_MODE": "1",
+                "X_ISLAND_TEST_FIXTURE": "env-fixture",
+                "X_ISLAND_TEST_FIXTURE_PATH": "/tmp/env.json"
             ]
         )
 
@@ -67,7 +67,7 @@ final class AppTestConfigurationTests: XCTestCase {
 
     func testProductionModeKeepsProductionGlobalStartupSideEffectsEnabled() {
         let configuration = AppTestConfiguration.make(
-            arguments: ["TowerIsland"],
+            arguments: ["XIsland"],
             environment: [:]
         )
 
@@ -79,15 +79,15 @@ final class AppTestConfigurationTests: XCTestCase {
     func testCurrentBuildsConfigurationFromProcessInfo() {
         let processInfo = ProcessInfoStub(
             arguments: [
-                "TowerIsland",
+                "XIsland",
                 "--ui-test-mode",
                 "--fixture", "current-fixture",
                 "--open-preferences"
             ],
             environment: [
-                "TOWER_ISLAND_TEST_FIXTURE_PATH": "/tmp/current.json",
-                "TOWER_ISLAND_TEST_DIAGNOSTICS_PATH": "/tmp/current.log",
-                "TOWER_ISLAND_DISABLE_ANIMATIONS": "1"
+                "X_ISLAND_TEST_FIXTURE_PATH": "/tmp/current.json",
+                "X_ISLAND_TEST_DIAGNOSTICS_PATH": "/tmp/current.log",
+                "X_ISLAND_DISABLE_ANIMATIONS": "1"
             ]
         )
 
@@ -103,12 +103,12 @@ final class AppTestConfigurationTests: XCTestCase {
 
     func testMakeParsesOpenPreferencesFromArgumentsOrEnvironment() {
         let fromArguments = AppTestConfiguration.make(
-            arguments: ["TowerIsland", "--ui-test-mode", "--open-preferences"],
+            arguments: ["XIsland", "--ui-test-mode", "--open-preferences"],
             environment: [:]
         )
         let fromEnvironment = AppTestConfiguration.make(
-            arguments: ["TowerIsland", "--ui-test-mode"],
-            environment: ["TOWER_ISLAND_TEST_OPEN_PREFERENCES": "1"]
+            arguments: ["XIsland", "--ui-test-mode"],
+            environment: ["X_ISLAND_TEST_OPEN_PREFERENCES": "1"]
         )
 
         XCTAssertTrue(fromArguments.opensPreferencesOnLaunch)

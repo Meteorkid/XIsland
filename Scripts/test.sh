@@ -2,14 +2,14 @@
 set -euo pipefail
 
 ###############################################################################
-# Tower Island — Integration Test Suite
+# X Island — Integration Test Suite
 #
 # Sends simulated agent messages via di-bridge and verifies behavior by
-# checking the app's debug log (~/.tower-island/debug.log).
+# checking the app's debug log (~/.xisland/debug.log).
 #
 # Prerequisites:
 #   1. `swift build -c release` (or Scripts/build.sh)
-#   2. Tower Island app must be running (the SocketServer must be listening)
+#   2. X Island app must be running (the SocketServer must be listening)
 #
 # Usage:
 #   bash Scripts/test.sh           # run all tests
@@ -19,9 +19,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-BRIDGE="$HOME/.tower-island/bin/di-bridge"
-LOG="$HOME/.tower-island/debug.log"
-SOCK="$HOME/.tower-island/di.sock"
+BRIDGE="$HOME/.xisland/bin/di-bridge"
+LOG="$HOME/.xisland/debug.log"
+SOCK="$HOME/.xisland/di.sock"
 
 PASSED=0
 FAILED=0
@@ -67,8 +67,8 @@ check_prereqs() {
         exit 1
     fi
     if [[ ! -S "$SOCK" ]]; then
-        local app_bundle="$PROJECT_DIR/.build/Tower Island.app"
-        local system_app_bundle="/Applications/Tower Island.app"
+        local app_bundle="$PROJECT_DIR/.build/X Island.app"
+        local system_app_bundle="/Applications/X Island.app"
         local app_to_open=""
 
         if [[ -d "$app_bundle" ]]; then
@@ -78,8 +78,8 @@ check_prereqs() {
         fi
 
         if [[ -n "$app_to_open" ]]; then
-            echo -e "${YELLOW}Socket not found at $SOCK; restarting Tower Island...${NC}"
-            pkill -f "TowerIsland" 2>/dev/null || true
+            echo -e "${YELLOW}Socket not found at $SOCK; restarting X Island...${NC}"
+            pkill -f "XIsland" 2>/dev/null || true
             rm -f "$SOCK"
             open "$app_to_open" 2>/dev/null || true
             for _ in {1..50}; do
@@ -90,7 +90,7 @@ check_prereqs() {
     fi
     if [[ ! -S "$SOCK" ]]; then
         echo -e "${RED}ERROR: Socket not found at $SOCK${NC}"
-        echo "Is Tower Island app running?"
+        echo "Is X Island app running?"
         exit 1
     fi
 }
@@ -661,7 +661,7 @@ test_m15() {
 test_m16() {
     section "M16: Session Title & Workspace Name"
 
-    local STDIN_LOG="$HOME/.tower-island/bridge-stdin.log"
+    local STDIN_LOG="$HOME/.xisland/bridge-stdin.log"
 
     # T16.1: session_start with prompt → bridge receives and forwards prompt
     mark_log
@@ -805,7 +805,7 @@ test_m19() {
 
 main() {
     echo -e "${CYAN}╔══════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║   Tower Island — Integration Test Suite      ║${NC}"
+    echo -e "${CYAN}║   X Island — Integration Test Suite      ║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
 
     check_prereqs
@@ -843,10 +843,10 @@ main() {
     else
         echo -e "${GREEN}All tests passed!${NC}"
         echo ""
-        echo -e "${CYAN}Restarting Tower Island to clear test data...${NC}"
-        pkill -f TowerIsland 2>/dev/null
+        echo -e "${CYAN}Restarting X Island to clear test data...${NC}"
+        pkill -f XIsland 2>/dev/null
         sleep 1
-        open "$PROJECT_DIR/.build/Tower Island.app" 2>/dev/null || true
+        open "$PROJECT_DIR/.build/X Island.app" 2>/dev/null || true
         exit 0
     fi
 }

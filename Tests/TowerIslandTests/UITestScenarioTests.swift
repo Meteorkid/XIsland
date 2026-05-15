@@ -1,5 +1,5 @@
 import XCTest
-@testable import TowerIslandUITestDriver
+@testable import XIslandUITestDriver
 
 final class UITestScenarioTests: XCTestCase {
     func testSmokeSelectionUsesApprovedSmokeScenarios() throws {
@@ -70,7 +70,7 @@ final class UITestScenarioTests: XCTestCase {
 
     func testLaunchRequestUsesAppBundlePathAndScenarioEnvironment() throws {
         let runner = UITestScenarioRunner(
-            appBundlePath: "/tmp/Tower Island.app",
+            appBundlePath: "/tmp/X Island.app",
             timeout: 15
         )
         let scenario = try UITestScenario.named("preferences-update")
@@ -78,16 +78,16 @@ final class UITestScenarioTests: XCTestCase {
 
         let request = runner.makeLaunchRequest(for: scenario, diagnosticsURL: diagnosticsURL)
 
-        XCTAssertEqual(request.bundleURL.path, "/tmp/Tower Island.app")
+        XCTAssertEqual(request.bundleURL.path, "/tmp/X Island.app")
         XCTAssertEqual(request.arguments, [
             "--ui-test-mode",
             "--fixture", "update-available",
             "--open-preferences",
         ])
-        XCTAssertEqual(request.environment["TOWER_ISLAND_TEST_MODE"], "1")
-        XCTAssertEqual(request.environment["TOWER_ISLAND_TEST_FIXTURE"], "update-available")
-        XCTAssertEqual(request.environment["TOWER_ISLAND_TEST_DIAGNOSTICS_PATH"], diagnosticsURL.path)
-        XCTAssertEqual(request.environment["TOWER_ISLAND_DISABLE_ANIMATIONS"], "1")
-        XCTAssertEqual(request.environment["TOWER_ISLAND_TEST_OPEN_PREFERENCES"], "1")
+        XCTAssertEqual(request.environment["X_ISLAND_TEST_MODE"], "1")
+        XCTAssertEqual(request.environment["X_ISLAND_TEST_FIXTURE"], "update-available")
+        XCTAssertEqual(request.environment["X_ISLAND_TEST_DIAGNOSTICS_PATH"], diagnosticsURL.path)
+        XCTAssertEqual(request.environment["X_ISLAND_DISABLE_ANIMATIONS"], "1")
+        XCTAssertEqual(request.environment["X_ISLAND_TEST_OPEN_PREFERENCES"], "1")
     }
 }

@@ -1,5 +1,5 @@
 import XCTest
-@testable import TowerIsland
+@testable import XIsland
 
 final class AppUpdaterTests: XCTestCase {
     final class URLRecorder: @unchecked Sendable {
@@ -54,9 +54,9 @@ final class AppUpdaterTests: XCTestCase {
     }
 
     func testExtractsMountDirectoryFromHdiutilOutput() {
-        let output = "/dev/disk16\tGUID_partition_scheme\t\n/dev/disk16s1\tApple_HFS\t/Volumes/Tower Island 7"
+        let output = "/dev/disk16\tGUID_partition_scheme\t\n/dev/disk16s1\tApple_HFS\t/Volumes/X Island 7"
 
-        XCTAssertEqual(AppUpdater.mountDirectory(from: output), "/Volumes/Tower Island 7")
+        XCTAssertEqual(AppUpdater.mountDirectory(from: output), "/Volumes/X Island 7")
     }
 
     func testReturnsNilWhenMountDirectoryLineIsMissing() {
@@ -66,9 +66,9 @@ final class AppUpdaterTests: XCTestCase {
     }
 
     func testIgnoresTrailingBlankLinesWhenParsingMountDirectory() {
-        let output = "/dev/disk16\tGUID_partition_scheme\t\n/dev/disk16s1\tApple_HFS\t/Volumes/Tower Island 7\n\n"
+        let output = "/dev/disk16\tGUID_partition_scheme\t\n/dev/disk16s1\tApple_HFS\t/Volumes/X Island 7\n\n"
 
-        XCTAssertEqual(AppUpdater.mountDirectory(from: output), "/Volumes/Tower Island 7")
+        XCTAssertEqual(AppUpdater.mountDirectory(from: output), "/Volumes/X Island 7")
     }
 
     func testDefaultRunCommandSurfacesProcessFailureWithoutCollapsingIt() throws {
@@ -107,8 +107,8 @@ final class AppUpdaterTests: XCTestCase {
         let recorder = StageRecorder()
         try await updater.install(
             version: "1.2.5",
-            releaseURL: URL(string: "https://example.com/TowerIsland-1.2.5.dmg")!,
-            appPath: "/Applications/Tower Island.app",
+            releaseURL: URL(string: "https://example.com/XIsland-1.2.5.dmg")!,
+            appPath: "/Applications/X Island.app",
             onStage: { recorder.record($0) }
         )
 
@@ -126,7 +126,7 @@ final class AppUpdaterTests: XCTestCase {
         let updater = AppUpdater(
             runCommand: { launchPath, arguments in
                 commands.append(launchPath, arguments)
-                return "/dev/disk16\tGUID_partition_scheme\t\n/dev/disk16s1\tApple_HFS\t/Volumes/Tower Island"
+                return "/dev/disk16\tGUID_partition_scheme\t\n/dev/disk16s1\tApple_HFS\t/Volumes/X Island"
             },
             downloadFile: { sourceURL, destinationURL in
                 downloads.append(sourceURL)
@@ -142,43 +142,43 @@ final class AppUpdaterTests: XCTestCase {
                 tempRoot
             },
             fileExists: { path in
-                path == "/Volumes/Tower Island/Tower Island.app"
+                path == "/Volumes/X Island/X Island.app"
             }
         )
 
         try await updater.install(
             version: "1.2.5",
-            releaseURL: URL(string: "https://example.com/TowerIsland-1.2.5.dmg")!,
-            appPath: "/Applications/Tower Island.app",
+            releaseURL: URL(string: "https://example.com/XIsland-1.2.5.dmg")!,
+            appPath: "/Applications/X Island.app",
             onStage: { _ in }
         )
 
         let downloadedURLs = downloads.all()
-        XCTAssertEqual(downloadedURLs, [URL(string: "https://example.com/TowerIsland-1.2.5.dmg")!])
+        XCTAssertEqual(downloadedURLs, [URL(string: "https://example.com/XIsland-1.2.5.dmg")!])
 
         let recordedCommands = commands.all()
         XCTAssertEqual(recordedCommands.first?.0, "/usr/bin/hdiutil")
-        XCTAssertEqual(recordedCommands.first?.1.prefix(2), ["attach", tempRoot.appendingPathComponent("TowerIsland-1.2.5.dmg").path])
+        XCTAssertEqual(recordedCommands.first?.1.prefix(2), ["attach", tempRoot.appendingPathComponent("XIsland-1.2.5.dmg").path])
 
         let launchedHelperPath = try XCTUnwrap(helperPath.all().first)
         let scriptContents = try String(contentsOf: launchedHelperPath, encoding: .utf8)
-        XCTAssertTrue(scriptContents.contains("/Volumes/Tower Island/Tower Island.app"))
-        XCTAssertTrue(scriptContents.contains("/Applications/Tower Island.app"))
+        XCTAssertTrue(scriptContents.contains("/Volumes/X Island/X Island.app"))
+        XCTAssertTrue(scriptContents.contains("/Applications/X Island.app"))
     }
 
     func testBuildsDmgFilenameFromVersion() {
-        XCTAssertEqual(AppUpdater.dmgFilename(for: "1.2.5"), "TowerIsland-1.2.5.dmg")
+        XCTAssertEqual(AppUpdater.dmgFilename(for: "1.2.5"), "XIsland-1.2.5.dmg")
     }
 
     func testBuildsDmgFilenameFromGitHubStyleTag() {
-        XCTAssertEqual(AppUpdater.dmgFilename(for: "v1.2.6"), "TowerIsland-1.2.6.dmg")
+        XCTAssertEqual(AppUpdater.dmgFilename(for: "v1.2.6"), "XIsland-1.2.6.dmg")
     }
 
     func testAppUpdaterErrorDescriptions() {
         let cases: [(AppUpdaterError, String)] = [
             (.downloadFailed, "Unable to download the update."),
             (.mountFailed, "Unable to mount the downloaded update."),
-            (.appNotFound, "The downloaded update did not contain Tower Island.app."),
+            (.appNotFound, "The downloaded update did not contain X Island.app."),
             (.installFailed, "Unable to replace the installed app."),
             (.relaunchFailed, "The update installed, but the app could not relaunch.")
         ]

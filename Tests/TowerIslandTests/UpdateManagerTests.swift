@@ -1,5 +1,5 @@
 import XCTest
-@testable import TowerIsland
+@testable import XIsland
 
 final class UpdateManagerTests: XCTestCase {
     actor FetchGate {
@@ -83,14 +83,14 @@ final class UpdateManagerTests: XCTestCase {
 
     @MainActor
     func testParsesGitHubReleasePayload() throws {
-        let data = #"{"tag_name":"v1.2.6","html_url":"https://example.com/release","published_at":"2026-04-14T12:00:00Z","assets":[{"name":"TowerIsland-1.2.6.dmg","browser_download_url":"https://example.com/TowerIsland-1.2.6.dmg"}]}"#.data(using: .utf8)!
+        let data = #"{"tag_name":"v1.2.6","html_url":"https://example.com/release","published_at":"2026-04-14T12:00:00Z","assets":[{"name":"XIsland-1.2.6.dmg","browser_download_url":"https://example.com/XIsland-1.2.6.dmg"}]}"#.data(using: .utf8)!
         let release = try UpdateManager.githubReleaseDecoder.decode(UpdateManager.ReleaseInfo.self, from: data)
         let expectedDate = ISO8601DateFormatter().date(from: "2026-04-14T12:00:00Z")
 
         XCTAssertEqual(release.tagName, "v1.2.6")
         XCTAssertEqual(release.htmlURL, URL(string: "https://example.com/release"))
         XCTAssertEqual(release.publishedAt, expectedDate)
-        XCTAssertEqual(release.dmgURL, URL(string: "https://example.com/TowerIsland-1.2.6.dmg"))
+        XCTAssertEqual(release.dmgURL, URL(string: "https://example.com/XIsland-1.2.6.dmg"))
     }
 
     @MainActor
@@ -174,12 +174,12 @@ final class UpdateManagerTests: XCTestCase {
             publishedAt: ISO8601DateFormatter().date(from: "2026-04-14T12:00:00Z")!,
             assets: [
                 .init(
-                    name: "TowerIsland-1.2.6.dmg",
-                    browserDownloadURL: URL(string: "https://example.com/TowerIsland-1.2.6.dmg")!
+                    name: "XIsland-1.2.6.dmg",
+                    browserDownloadURL: URL(string: "https://example.com/XIsland-1.2.6.dmg")!
                 )
             ]
         )
-        let expectedDMGURL = URL(string: "https://example.com/TowerIsland-1.2.6.dmg")!
+        let expectedDMGURL = URL(string: "https://example.com/XIsland-1.2.6.dmg")!
         let capturedReleaseURL = URLCapture()
         let updater = AppUpdater(
             runCommand: { _, _ in "" },
@@ -350,7 +350,7 @@ final class UpdateManagerTests: XCTestCase {
     @MainActor
     func testCheckForUpdatesRecoversAfterTransientFailure() async {
         let currentVersion = UpdateManager().currentVersion
-        let successData = #"{"tag_name":"v\#(currentVersion)","html_url":"https://example.com/release","published_at":"2026-04-15T07:00:00Z","assets":[{"name":"TowerIsland.dmg","browser_download_url":"https://example.com/TowerIsland.dmg"}]}"#
+        let successData = #"{"tag_name":"v\#(currentVersion)","html_url":"https://example.com/release","published_at":"2026-04-15T07:00:00Z","assets":[{"name":"XIsland.dmg","browser_download_url":"https://example.com/XIsland.dmg"}]}"#
             .data(using: .utf8)!
         let sequence = FetchSequence([
             .failure(URLError(.cannotConnectToHost)),
@@ -386,8 +386,8 @@ final class UpdateManagerTests: XCTestCase {
                 publishedAt: ISO8601DateFormatter().date(from: "2026-04-15T08:00:00Z")!,
                 assets: [
                     .init(
-                        name: "TowerIsland-1.2.9.dmg",
-                        browserDownloadURL: URL(string: "https://example.com/TowerIsland-1.2.9.dmg")!
+                        name: "XIsland-1.2.9.dmg",
+                        browserDownloadURL: URL(string: "https://example.com/XIsland-1.2.9.dmg")!
                     )
                 ]
             ),
@@ -472,17 +472,17 @@ final class UpdateManagerTests: XCTestCase {
     func testBuildsReleasePayloadFromLatestRedirectURL() throws {
         let checkedAt = ISO8601DateFormatter().date(from: "2026-04-15T06:42:03Z")!
         let payload = try UpdateManager.releaseDataFromLatestRedirectURL(
-            URL(string: "https://github.com/g535879/TowerIsland/releases/tag/v1.2.8")!,
+            URL(string: "https://github.com/g535879/xisland/releases/tag/v1.2.8")!,
             checkedAt: checkedAt
         )
         let release = try UpdateManager.githubReleaseDecoder.decode(UpdateManager.ReleaseInfo.self, from: payload)
 
         XCTAssertEqual(release.tagName, "v1.2.8")
-        XCTAssertEqual(release.htmlURL, URL(string: "https://github.com/g535879/TowerIsland/releases/tag/v1.2.8"))
+        XCTAssertEqual(release.htmlURL, URL(string: "https://github.com/g535879/xisland/releases/tag/v1.2.8"))
         XCTAssertEqual(release.publishedAt, checkedAt)
         XCTAssertEqual(
             release.dmgURL,
-            URL(string: "https://github.com/g535879/TowerIsland/releases/download/v1.2.8/TowerIsland.dmg")
+            URL(string: "https://github.com/user/xisland/releases/download/v1.2.8/XIsland.dmg")
         )
     }
 
@@ -490,7 +490,7 @@ final class UpdateManagerTests: XCTestCase {
     func testRejectsUnexpectedLatestRedirectURL() {
         XCTAssertThrowsError(
             try UpdateManager.releaseDataFromLatestRedirectURL(
-                URL(string: "https://github.com/g535879/TowerIsland/releases")!,
+                URL(string: "https://github.com/g535879/xisland/releases")!,
                 checkedAt: Date()
             )
         )
@@ -500,7 +500,7 @@ final class UpdateManagerTests: XCTestCase {
     func testBuildsReleasePayloadFromLatestRedirectURLWithQueryString() throws {
         let checkedAt = ISO8601DateFormatter().date(from: "2026-04-15T07:30:00Z")!
         let payload = try UpdateManager.releaseDataFromLatestRedirectURL(
-            URL(string: "https://github.com/g535879/TowerIsland/releases/tag/v1.2.9?from=latest")!,
+            URL(string: "https://github.com/g535879/xisland/releases/tag/v1.2.9?from=latest")!,
             checkedAt: checkedAt
         )
         let release = try UpdateManager.githubReleaseDecoder.decode(UpdateManager.ReleaseInfo.self, from: payload)
@@ -508,7 +508,7 @@ final class UpdateManagerTests: XCTestCase {
         XCTAssertEqual(release.tagName, "v1.2.9")
         XCTAssertEqual(
             release.dmgURL,
-            URL(string: "https://github.com/g535879/TowerIsland/releases/download/v1.2.9/TowerIsland.dmg")
+            URL(string: "https://github.com/user/xisland/releases/download/v1.2.9/XIsland.dmg")
         )
     }
 }

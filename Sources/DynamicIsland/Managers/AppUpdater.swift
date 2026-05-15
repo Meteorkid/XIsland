@@ -23,7 +23,7 @@ enum AppUpdaterError: LocalizedError, Equatable {
         case .mountFailed:
             return "Unable to mount the downloaded update."
         case .appNotFound:
-            return "The downloaded update did not contain Tower Island.app."
+            return "The downloaded update did not contain X Island.app."
         case .installFailed:
             return "Unable to replace the installed app."
         case .relaunchFailed:
@@ -212,7 +212,7 @@ struct AppUpdater {
 
     static func dmgFilename(for version: String) -> String {
         let normalizedVersion = version.hasPrefix("v") ? String(version.dropFirst()) : version
-        return "TowerIsland-\(normalizedVersion).dmg"
+        return "XIsland-\(normalizedVersion).dmg"
     }
 
     static func mountDirectory(from output: String) -> String? {
@@ -267,7 +267,7 @@ extension AppUpdater {
         }
 
         let mountedAppPath = URL(fileURLWithPath: mountDirectory)
-            .appendingPathComponent("Tower Island.app")
+            .appendingPathComponent("X Island.app")
             .path
         guard fileExists(mountedAppPath) else {
             throw AppUpdaterError.appNotFound

@@ -4,11 +4,13 @@ import Observation
 import SwiftUI
 
 extension Notification.Name {
-    static let towerIslandShowAboutPane = Notification.Name("TowerIslandShowAboutPane")
+    static let xislandShowAboutPane = Notification.Name("XIslandShowAboutPane")
+    static let xislandCollapse = Notification.Name("xislandCollapse")
+    static let xislandToggleActivityLog = Notification.Name("xislandToggleActivityLog")
 }
 
 enum PreferencesRouting {
-    static let pendingPaneSelectionKey = "TowerIsland.Preferences.PendingPaneSelection"
+    static let pendingPaneSelectionKey = "XIsland.Preferences.PendingPaneSelection"
     static let aboutPaneValue = "about"
 }
 
@@ -38,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let sessionManager = SessionManager()
     let audioEngine = AudioEngine()
     let updateManager = UpdateManager()
+    let quotaTracker = QuotaTracker()
     private var socketServer: SocketServer?
     private var notchWindow: NotchWindow?
     private var statusItem: NSStatusItem?
@@ -140,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .environment(sessionManager)
             .environment(audioEngine)
             .environment(updateManager)
+            .environment(quotaTracker)
         )
         hostView.frame = window.contentView!.bounds
         hostView.autoresizingMask = [.width, .height]
@@ -149,12 +153,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentView?.addSubview(hostView)
         window.orderFrontRegardless()
         notchWindow = window
+
+        window.keyEquivalentHandler = { [weak self] event in
+            guard let self = self else { return false }
+            let flags = event.modifierFlags
+            let chars = event.charactersIgnoringModifiers?.lowercased()
+            let isCommand = flags.contains(.command)
+
+            if isCommand, let chars = chars {
+                switch chars {
+                case "y":
+                    switch self.sessionManager.currentIslandState {
+                    case .permission(let id):
+                        if let session = self.sessionManager.sessions.first(where: { $0.id == id }) {
+                            self.sessionManager.approvePermission(session: session)
+                            NotificationCenter.default.post(name: .xislandCollapse, object: nil)
+                            return true
+                        }
+                    case .planReview(let id):
+                        if let session = self.sessionManager.sessions.first(where: { $0.id == id }) {
+                            self.sessionManager.respondToPlan(session: session, approved: true, feedback: nil)
+                            NotificationCenter.default.post(name: .xislandCollapse, object: nil)
+                            return true
+                        }
+                    default:
+                        break
+                    }
+                case "n":
+                    switch self.sessionManager.currentIslandState {
+                    case .permission(let id):
+                        if let session = self.sessionManager.sessions.first(where: { $0.id == id }) {
+                            self.sessionManager.denyPermission(session: session)
+                            NotificationCenter.default.post(name: .xislandCollapse, object: nil)
+                            return true
+                        }
+                    case .planReview(let id):
+                        if let session = self.sessionManager.sessions.first(where: { $0.id == id }) {
+                            self.sessionManager.respondToPlan(session: session, approved: false, feedback: nil)
+                            NotificationCenter.default.post(name: .xislandCollapse, object: nil)
+                            return true
+                        }
+                    default:
+                        break
+                    }
+                case "1", "2", "3":
+                    if case .question(let id) = self.sessionManager.currentIslandState,
+                       let session = self.sessionManager.sessions.first(where: { $0.id == id }),
+                       let question = session.pendingQuestion,
+                       let digit = Int(chars),
+                       digit >= 1, digit <= question.options.count {
+                        let option = question.options[digit - 1]
+                        self.sessionManager.answerQuestion(session: session, answer: option)
+                        NotificationCenter.default.post(name: .xislandCollapse, object: nil)
+                        return true
+                    }
+                case "o":
+                    NotificationCenter.default.post(name: .xislandToggleActivityLog, object: nil)
+                    return true
+                default:
+                    break
+                }
+            }
+
+            return false
+        }
     }
 
     private func setupMenuBarItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "Tower Island")
+            button.image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "X Island")
             button.action = #selector(toggleNotch)
             button.target = self
         }
@@ -270,7 +338,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         openPreferences()
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .towerIslandShowAboutPane, object: nil)
+            NotificationCenter.default.post(name: .xislandShowAboutPane, object: nil)
         }
         Task { @MainActor in
             await updateManager.checkForUpdates()
@@ -303,7 +371,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         w.isFloatingPanel = true
         w.hidesOnDeactivate = false
-        w.title = "Tower Island Settings"
+        w.title = "X Island Settings"
         if let screen = notchWindow?.screen ?? NSScreen.main {
             let sf = screen.visibleFrame
             let x = sf.origin.x + (sf.width - 680) / 2
@@ -319,6 +387,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .environment(sessionManager)
                 .environment(audioEngine)
                 .environment(updateManager)
+                .environment(quotaTracker)
         )
 
         settingsWindow = w
@@ -344,7 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Returns false if another instance is already running (exclusive lock held).
     private static func acquireSingleInstanceLock() -> Bool {
-        let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".tower-island")
+        let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".xisland")
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let path = (dir as NSString).appendingPathComponent("instance.lock")
         let fd = open(path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
@@ -460,7 +529,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItem?.button?.image = NSImage(
             systemSymbolName: imageName,
-            accessibilityDescription: "Tower Island"
+            accessibilityDescription: "X Island"
         )
     }
 }

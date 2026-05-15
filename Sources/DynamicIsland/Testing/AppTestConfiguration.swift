@@ -44,16 +44,16 @@ struct AppTestConfiguration: Equatable {
     }
 
     static func make(arguments: [String], environment: [String: String]) -> Self {
-        let isEnabled = arguments.contains("--ui-test-mode") || environment["TOWER_ISLAND_TEST_MODE"] == "1"
+        let isEnabled = arguments.contains("--ui-test-mode") || environment["X_ISLAND_TEST_MODE"] == "1"
 
         return Self(
             isEnabled: isEnabled,
-            fixtureName: argumentValue(for: "--fixture", in: arguments) ?? environment["TOWER_ISLAND_TEST_FIXTURE"],
-            fixturePath: argumentValue(for: "--fixture-path", in: arguments) ?? environment["TOWER_ISLAND_TEST_FIXTURE_PATH"],
-            diagnosticsPath: environment["TOWER_ISLAND_TEST_DIAGNOSTICS_PATH"],
-            disableAnimations: environment["TOWER_ISLAND_DISABLE_ANIMATIONS"] == "1",
+            fixtureName: argumentValue(for: "--fixture", in: arguments) ?? environment["X_ISLAND_TEST_FIXTURE"],
+            fixturePath: argumentValue(for: "--fixture-path", in: arguments) ?? environment["X_ISLAND_TEST_FIXTURE_PATH"],
+            diagnosticsPath: environment["X_ISLAND_TEST_DIAGNOSTICS_PATH"],
+            disableAnimations: environment["X_ISLAND_DISABLE_ANIMATIONS"] == "1",
             opensPreferencesOnLaunch: arguments.contains("--open-preferences")
-                || environment["TOWER_ISLAND_TEST_OPEN_PREFERENCES"] == "1"
+                || environment["X_ISLAND_TEST_OPEN_PREFERENCES"] == "1"
         )
     }
 

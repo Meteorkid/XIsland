@@ -1,5 +1,5 @@
 import XCTest
-@testable import TowerIsland
+@testable import XIsland
 
 final class NotchShapeGeometryTests: XCTestCase {
     func testExpandedStateKeepsTopEdgeFlat() {

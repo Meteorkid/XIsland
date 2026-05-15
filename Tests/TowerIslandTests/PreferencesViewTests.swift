@@ -1,5 +1,5 @@
 import XCTest
-@testable import TowerIsland
+@testable import XIsland
 
 final class PreferencesViewTests: XCTestCase {
     func testAccessibilityIdentifiersRemainStable() {
@@ -50,8 +50,8 @@ final class PreferencesViewTests: XCTestCase {
             publishedAt: ISO8601DateFormatter().date(from: "2026-04-15T00:00:00Z")!,
             assets: [
                 .init(
-                    name: "TowerIsland-\(version).dmg",
-                    browserDownloadURL: URL(string: "https://example.com/TowerIsland-\(version).dmg")!
+                    name: "XIsland-\(version).dmg",
+                    browserDownloadURL: URL(string: "https://example.com/XIsland-\(version).dmg")!
                 )
             ]
         )

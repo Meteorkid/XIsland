@@ -1,5 +1,5 @@
 import XCTest
-@testable import TowerIsland
+@testable import XIsland
 
 @MainActor
 final class AppTestFixtureLoaderTests: XCTestCase {
@@ -36,7 +36,7 @@ final class AppTestFixtureLoaderTests: XCTestCase {
         XCTAssertEqual(updateManager.latestRelease?.normalizedVersion, "1.2.9")
         XCTAssertEqual(
             updateManager.latestRelease?.dmgURL,
-            URL(string: "https://example.com/TowerIsland-1.2.9.dmg")
+            URL(string: "https://example.com/XIsland-1.2.9.dmg")
         )
     }
 

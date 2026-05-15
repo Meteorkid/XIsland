@@ -1,13 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-TOWER_ISLAND_REPO="${TOWER_ISLAND_REPO:-g535879/TowerIsland}"
-TOWER_ISLAND_APP_PATH="${TOWER_ISLAND_APP_PATH:-/Applications/Tower Island.app}"
-TOWER_ISLAND_BIN_DIR="${TOWER_ISLAND_BIN_DIR:-$HOME/.tower-island/bin}"
+X_ISLAND_REPO="${X_ISLAND_REPO:-user/xisland}"
+X_ISLAND_APP_PATH="${X_ISLAND_APP_PATH:-/Applications/X Island.app}"
+X_ISLAND_BIN_DIR="${X_ISLAND_BIN_DIR:-$HOME/.xisland/bin}"
 
-tower_island_usage() {
+xisland_usage() {
     cat <<'EOF'
-Usage: tower-island <command>
+Usage: xisland <command>
 
 Commands:
   upgrade    Download and install the latest GitHub release
@@ -15,7 +15,7 @@ Commands:
 EOF
 }
 
-tower_island_require_command() {
+xisland_require_command() {
     local cmd="$1"
     if ! command -v "$cmd" >/dev/null 2>&1; then
         echo "error: required command not found: $cmd" >&2
@@ -23,7 +23,7 @@ tower_island_require_command() {
     fi
 }
 
-tower_island_release_asset_url() {
+xisland_release_asset_url() {
     local release_json="$1"
 
     RELEASE_JSON="$release_json" python3 - <<'PY'
@@ -42,9 +42,9 @@ else:
 PY
 }
 
-tower_island_release_tag() {
+xisland_release_tag() {
     gh release list \
-        --repo "$TOWER_ISLAND_REPO" \
+        --repo "$X_ISLAND_REPO" \
         --exclude-drafts \
         --exclude-pre-releases \
         --limit 1 \
@@ -52,24 +52,24 @@ tower_island_release_tag() {
         --jq '.[0].tagName'
 }
 
-tower_island_release_json() {
+xisland_release_json() {
     local tag="$1"
     gh release view "$tag" \
-        --repo "$TOWER_ISLAND_REPO" \
+        --repo "$X_ISLAND_REPO" \
         --json tagName,assets,name,publishedAt
 }
 
-tower_island_download_release_asset() {
+xisland_download_release_asset() {
     local tag="$1"
     local output="$2"
     gh release download "$tag" \
-        --repo "$TOWER_ISLAND_REPO" \
+        --repo "$X_ISLAND_REPO" \
         --pattern '*.dmg' \
         --output "$output" \
         --clobber
 }
 
-tower_island_mount_dir_from_attach_output() {
+xisland_mount_dir_from_attach_output() {
     local attach_output="$1"
 
     printf '%s\n' "$attach_output" \
@@ -77,7 +77,7 @@ tower_island_mount_dir_from_attach_output() {
         | tail -n 1
 }
 
-tower_island_cleanup_upgrade_artifacts() {
+xisland_cleanup_upgrade_artifacts() {
     local mount_dir="${1:-}"
     local tmpdir="${2:-}"
 
@@ -90,14 +90,14 @@ tower_island_cleanup_upgrade_artifacts() {
     fi
 }
 
-tower_island_cli_bin_in_path() {
+xisland_cli_bin_in_path() {
     case ":$PATH:" in
-        *":$TOWER_ISLAND_BIN_DIR:"*) return 0 ;;
+        *":$X_ISLAND_BIN_DIR:"*) return 0 ;;
         *) return 1 ;;
     esac
 }
 
-tower_island_shell_profile_path_hint() {
+xisland_shell_profile_path_hint() {
     local shell_name
     shell_name="$(basename "${SHELL:-}")"
 
@@ -117,7 +117,7 @@ tower_island_shell_profile_path_hint() {
     esac
 }
 
-tower_island_shell_profile_path() {
+xisland_shell_profile_path() {
     local shell_name
     shell_name="$(basename "${SHELL:-}")"
 
@@ -137,163 +137,163 @@ tower_island_shell_profile_path() {
     esac
 }
 
-tower_island_path_export_line() {
+xisland_path_export_line() {
     local shell_name
     shell_name="$(basename "${SHELL:-}")"
 
     case "$shell_name" in
         fish)
-            printf '%s\n' 'set -gx PATH "$HOME/.tower-island/bin" $PATH'
+            printf '%s\n' 'set -gx PATH "$HOME/.xisland/bin" $PATH'
             ;;
         *)
-            printf '%s\n' 'export PATH="$HOME/.tower-island/bin:$PATH"'
+            printf '%s\n' 'export PATH="$HOME/.xisland/bin:$PATH"'
             ;;
     esac
 }
 
-tower_island_ensure_cli_on_path() {
-    if tower_island_cli_bin_in_path; then
+xisland_ensure_cli_on_path() {
+    if xisland_cli_bin_in_path; then
         return 0
     fi
 
     local profile_path profile_dir export_line
-    profile_path="$(tower_island_shell_profile_path)" || return 1
+    profile_path="$(xisland_shell_profile_path)" || return 1
     profile_dir="$(dirname "$profile_path")"
-    export_line="$(tower_island_path_export_line)"
+    export_line="$(xisland_path_export_line)"
 
     mkdir -p "$profile_dir"
     touch "$profile_path"
 
-    if grep -F 'tower-island/bin' "$profile_path" >/dev/null 2>&1; then
+    if grep -F 'xisland/bin' "$profile_path" >/dev/null 2>&1; then
         return 0
     fi
 
     {
         printf '\n'
-        printf '%s\n' '# Added by Tower Island'
+        printf '%s\n' '# Added by X Island'
         printf '%s\n' "$export_line"
     } >> "$profile_path"
 }
 
-tower_island_print_path_guidance() {
-    if tower_island_cli_bin_in_path; then
+xisland_print_path_guidance() {
+    if xisland_cli_bin_in_path; then
         return 0
     fi
 
     local profile_hint
-    profile_hint="$(tower_island_shell_profile_path_hint)"
+    profile_hint="$(xisland_shell_profile_path_hint)"
 
     echo ""
-    echo "To run 'tower-island upgrade' from any directory, add this to $profile_hint:"
-    echo "  export PATH=\"$TOWER_ISLAND_BIN_DIR:\$PATH\""
+    echo "To run 'xisland upgrade' from any directory, add this to $profile_hint:"
+    echo "  export PATH=\"$X_ISLAND_BIN_DIR:\$PATH\""
 }
 
-tower_island_configure_cli_path() {
-    if tower_island_cli_bin_in_path; then
+xisland_configure_cli_path() {
+    if xisland_cli_bin_in_path; then
         return 0
     fi
 
-    if tower_island_ensure_cli_on_path; then
+    if xisland_ensure_cli_on_path; then
         local profile_hint
-        profile_hint="$(tower_island_shell_profile_path_hint)"
+        profile_hint="$(xisland_shell_profile_path_hint)"
         echo ""
         echo "Configured your shell PATH in $profile_hint."
         echo "Open a new shell window, or run:"
-        echo "  export PATH=\"$TOWER_ISLAND_BIN_DIR:\$PATH\""
+        echo "  export PATH=\"$X_ISLAND_BIN_DIR:\$PATH\""
         return 0
     fi
 
-    tower_island_print_path_guidance
+    xisland_print_path_guidance
 }
 
-tower_island_upgrade() {
-    if [[ "${TOWER_ISLAND_TEST_MODE:-0}" == "1" ]]; then
+xisland_upgrade() {
+    if [[ "${X_ISLAND_TEST_MODE:-0}" == "1" ]]; then
         echo "upgrade:test-mode"
         return 0
     fi
 
-    tower_island_require_command gh
-    tower_island_require_command hdiutil
-    tower_island_require_command xattr
-    tower_island_require_command open
+    xisland_require_command gh
+    xisland_require_command hdiutil
+    xisland_require_command xattr
+    xisland_require_command open
 
     local tag
-    tag="$(tower_island_release_tag)"
+    tag="$(xisland_release_tag)"
     if [[ -z "$tag" || "$tag" == "null" ]]; then
         echo "error: unable to determine latest release tag" >&2
         exit 1
     fi
 
     local release_json
-    release_json="$(tower_island_release_json "$tag")"
+    release_json="$(xisland_release_json "$tag")"
 
     local asset_api_url
-    asset_api_url="$(tower_island_release_asset_url "$release_json")" || {
+    asset_api_url="$(xisland_release_asset_url "$release_json")" || {
         echo "error: latest release does not contain a DMG asset" >&2
         exit 1
     }
 
     local tmpdir dmg_path mount_dir volume_app
     tmpdir="$(mktemp -d)"
-    trap 'tower_island_cleanup_upgrade_artifacts "" "$tmpdir"' EXIT
+    trap 'xisland_cleanup_upgrade_artifacts "" "$tmpdir"' EXIT
 
-    dmg_path="$tmpdir/TowerIsland.dmg"
+    dmg_path="$tmpdir/XIsland.dmg"
     echo "==> Downloading $tag from GitHub Releases..."
-    tower_island_download_release_asset "$tag" "$dmg_path"
+    xisland_download_release_asset "$tag" "$dmg_path"
 
     echo "==> Mounting DMG..."
     local attach_output
     attach_output="$(hdiutil attach "$dmg_path" -nobrowse)"
-    mount_dir="$(tower_island_mount_dir_from_attach_output "$attach_output")"
+    mount_dir="$(xisland_mount_dir_from_attach_output "$attach_output")"
     if [[ -z "$mount_dir" ]]; then
         echo "error: failed to mount DMG" >&2
         exit 1
     fi
 
-    trap 'tower_island_cleanup_upgrade_artifacts "${mount_dir:-}" "${tmpdir:-}"' EXIT
+    trap 'xisland_cleanup_upgrade_artifacts "${mount_dir:-}" "${tmpdir:-}"' EXIT
 
-    volume_app="$mount_dir/Tower Island.app"
+    volume_app="$mount_dir/X Island.app"
     if [[ ! -d "$volume_app" ]]; then
-        echo "error: mounted DMG does not contain Tower Island.app" >&2
+        echo "error: mounted DMG does not contain X Island.app" >&2
         exit 1
     fi
 
     echo "==> Stopping running app..."
-    pkill -x "TowerIsland" >/dev/null 2>&1 || true
+    pkill -x "XIsland" >/dev/null 2>&1 || true
 
-    echo "==> Installing to $TOWER_ISLAND_APP_PATH..."
-    rm -rf "$TOWER_ISLAND_APP_PATH"
-    cp -R "$volume_app" "$TOWER_ISLAND_APP_PATH"
+    echo "==> Installing to $X_ISLAND_APP_PATH..."
+    rm -rf "$X_ISLAND_APP_PATH"
+    cp -R "$volume_app" "$X_ISLAND_APP_PATH"
 
     echo "==> Clearing Gatekeeper quarantine..."
-    xattr -cr "$TOWER_ISLAND_APP_PATH" || true
+    xattr -cr "$X_ISLAND_APP_PATH" || true
 
     echo "==> Unmounting DMG..."
     hdiutil detach "$mount_dir" -quiet >/dev/null 2>&1 || true
     mount_dir=""
 
     echo "==> Launching app..."
-    open "$TOWER_ISLAND_APP_PATH"
+    open "$X_ISLAND_APP_PATH"
 
-    echo "Upgraded Tower Island to $tag"
+    echo "Upgraded X Island to $tag"
     echo "Release asset: $asset_api_url"
-    tower_island_configure_cli_path
+    xisland_configure_cli_path
 }
 
-tower_island_dispatch() {
+xisland_dispatch() {
     local command="${1:-}"
     shift || true
 
     case "$command" in
         "" | help | --help | -h)
-            tower_island_usage
+            xisland_usage
             ;;
         upgrade)
-            tower_island_upgrade "$@"
+            xisland_upgrade "$@"
             ;;
         *)
             echo "error: unknown command: $command" >&2
-            tower_island_usage >&2
+            xisland_usage >&2
             return 1
             ;;
     esac

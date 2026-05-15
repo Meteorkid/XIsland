@@ -8,4 +8,4 @@ If macOS blocks the app after installing from the DMG, run:
 xattr -cr /Applications/Tower\ Island.app
 ```
 
-Alternatively: **System Settings → Privacy & Security** → scroll to the message about Tower Island → **Open Anyway**.
+Alternatively: **System Settings → Privacy & Security** → scroll to the message about X Island → **Open Anyway**.

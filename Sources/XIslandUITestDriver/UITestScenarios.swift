@@ -51,7 +51,7 @@ struct UITestDriverConfiguration {
     static func make(arguments: [String]) throws -> Self {
         var appBundlePath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent(".build")
-            .appendingPathComponent("Tower Island.app")
+            .appendingPathComponent("X Island.app")
             .path
         var scenarioArguments: [String] = []
         var timeout: TimeInterval = 15
@@ -223,7 +223,7 @@ struct UITestScenario {
                 ) {
                     $0.update.state == "updateAvailable" && $0.update.version == "1.2.9"
                 }
-                guard snapshot.update.dmgURL == "https://example.com/TowerIsland-1.2.9.dmg" else {
+                guard snapshot.update.dmgURL == "https://example.com/XIsland-1.2.9.dmg" else {
                     throw UITestDriverError.actionFailed("Unexpected update diagnostics DMG URL")
                 }
             }
@@ -262,7 +262,7 @@ struct UITestScenarioContext {
 
     func activate() throws {
         guard let runningApplication = NSRunningApplication(processIdentifier: process.processIdentifier) else {
-            throw UITestDriverError.launchFailed("Unable to resolve running Tower Island application")
+            throw UITestDriverError.launchFailed("Unable to resolve running X Island application")
         }
         _ = runningApplication.activate()
     }
@@ -353,7 +353,7 @@ struct UITestScenarioRunner {
 
     private func launch(scenario: UITestScenario) throws -> UITestScenarioContext {
         let diagnosticsURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("tower-island-ui-tests")
+            .appendingPathComponent("xisland-ui-tests")
             .appendingPathComponent(UUID().uuidString)
             .appendingPathComponent("diagnostics.json")
         try FileManager.default.createDirectory(
@@ -363,7 +363,7 @@ struct UITestScenarioRunner {
 
         let request = makeLaunchRequest(for: scenario, diagnosticsURL: diagnosticsURL)
         guard Bundle(url: request.bundleURL) != nil else {
-            throw UITestDriverError.launchFailed("Tower Island app bundle not found at \(request.bundleURL.path)")
+            throw UITestDriverError.launchFailed("X Island app bundle not found at \(request.bundleURL.path)")
         }
 
         let process = Process()
@@ -406,14 +406,14 @@ struct UITestScenarioRunner {
 
     private func launchEnvironment(diagnosticsURL: URL, scenario: UITestScenario) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
-        environment["TOWER_ISLAND_TEST_MODE"] = "1"
-        environment["TOWER_ISLAND_TEST_FIXTURE"] = scenario.fixtureName
-        environment["TOWER_ISLAND_TEST_DIAGNOSTICS_PATH"] = diagnosticsURL.path
-        environment["TOWER_ISLAND_DISABLE_ANIMATIONS"] = "1"
+        environment["X_ISLAND_TEST_MODE"] = "1"
+        environment["X_ISLAND_TEST_FIXTURE"] = scenario.fixtureName
+        environment["X_ISLAND_TEST_DIAGNOSTICS_PATH"] = diagnosticsURL.path
+        environment["X_ISLAND_DISABLE_ANIMATIONS"] = "1"
         if scenario.opensPreferencesOnLaunch {
-            environment["TOWER_ISLAND_TEST_OPEN_PREFERENCES"] = "1"
+            environment["X_ISLAND_TEST_OPEN_PREFERENCES"] = "1"
         } else {
-            environment.removeValue(forKey: "TOWER_ISLAND_TEST_OPEN_PREFERENCES")
+            environment.removeValue(forKey: "X_ISLAND_TEST_OPEN_PREFERENCES")
         }
         return environment
     }
@@ -431,7 +431,7 @@ struct UITestScenarioRunner {
 
         return try AXUIHelpers.waitUntil(
             timeout: timeout,
-            description: "Timed out waiting for Tower Island to launch for \(scenario.name)"
+            description: "Timed out waiting for X Island to launch for \(scenario.name)"
         ) {
             guard FileManager.default.fileExists(atPath: diagnosticsURL.path) else {
                 return nil
@@ -450,7 +450,7 @@ struct UITestScenarioRunner {
         guard let bundle = Bundle(url: bundleURL),
               let bundleIdentifier = bundle.bundleIdentifier,
               !bundleIdentifier.isEmpty else {
-            throw UITestDriverError.launchFailed("Tower Island bundle identifier not found at \(bundleURL.path)")
+            throw UITestDriverError.launchFailed("X Island bundle identifier not found at \(bundleURL.path)")
         }
         return bundleIdentifier
     }

@@ -11,6 +11,14 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
     case qoder = "qoder"
     case copilot = "copilot"
     case codeBuddy = "code_buddy"
+    case qwen = "qwen"
+    case kimi = "kimi"
+    case deepseek = "deepseek"
+    case kiro = "kiro"
+    case amp = "amp"
+    case pi = "pi"
+    case hermes = "hermes"
+    case glm = "glm"
 
     var id: String { rawValue }
 
@@ -26,6 +34,14 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .qoder: "Qoder"
         case .copilot: "Copilot"
         case .codeBuddy: "CodeBuddy"
+        case .qwen: "Qwen Code"
+        case .kimi: "Kimi Code"
+        case .deepseek: "DeepSeek-TUI"
+        case .kiro: "Kiro"
+        case .amp: "Amp"
+        case .pi: "Pi Agent"
+        case .hermes: "Hermes"
+        case .glm: "GLM (Zhipu)"
         }
     }
 
@@ -41,6 +57,14 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .qoder: "Qoder"
         case .copilot: "Copilot"
         case .codeBuddy: "CodeBuddy"
+        case .qwen: "Qwen"
+        case .kimi: "Kimi"
+        case .deepseek: "DeepSeek"
+        case .kiro: "Kiro"
+        case .amp: "Amp"
+        case .pi: "Pi"
+        case .hermes: "Hermes"
+        case .glm: "GLM"
         }
     }
 
@@ -56,6 +80,14 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .qoder: Color(red: 0.9, green: 0.3, blue: 0.5)
         case .copilot: Color(red: 0.4, green: 0.7, blue: 0.9)
         case .codeBuddy: Color(red: 0.7, green: 0.9, blue: 0.3)
+        case .qwen: Color(red: 0.35, green: 0.55, blue: 0.95)
+        case .kimi: Color(red: 0.95, green: 0.35, blue: 0.45)
+        case .deepseek: Color(red: 0.25, green: 0.75, blue: 0.55)
+        case .kiro: Color(red: 0.6, green: 0.5, blue: 0.85)
+        case .amp: Color(red: 0.9, green: 0.6, blue: 0.2)
+        case .pi: Color(red: 0.5, green: 0.8, blue: 0.95)
+        case .hermes: Color(red: 0.75, green: 0.75, blue: 0.75)
+        case .glm: Color(red: 0.25, green: 0.45, blue: 0.95)
         }
     }
 
@@ -71,6 +103,14 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .qoder: "qrcode"
         case .copilot: "airplane"
         case .codeBuddy: "person.2"
+        case .qwen: "q.circle"
+        case .kimi: "k.circle"
+        case .deepseek: "d.circle"
+        case .kiro: "k.square"
+        case .amp: "bolt.fill"
+        case .pi: "p.circle"
+        case .hermes: "h.circle"
+        case .glm: "g.circle"
         }
     }
 
@@ -114,6 +154,12 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .trae: ["Trae", "Trae CN"]
         case .codex: ["Codex"]
         case .copilot: ["Code"]
+        case .qwen: ["qwen"]
+        case .kimi: ["kimi"]
+        case .deepseek: ["deepseek"]
+        case .amp: ["amp"]
+        case .pi: ["pi"]
+        case .glm: ["glm", "zhipu"]
         default: []
         }
     }
@@ -128,6 +174,13 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
     var sendsSessionEnd: Bool {
         switch self {
         case .codex, .openCode: false
+        default: true
+        }
+    }
+
+    var isSupported: Bool {
+        switch self {
+        case .kiro, .hermes: false
         default: true
         }
     }
@@ -162,6 +215,22 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
             return .trae
         case "windsurf":
             return .cursor
+        case "qwen", "qwen-code", "qwen_code":
+            return .qwen
+        case "kimi", "kimi-code", "kimi_code":
+            return .kimi
+        case "deepseek", "deepseek-tui", "deepseek_tui":
+            return .deepseek
+        case "kiro":
+            return .kiro
+        case "amp":
+            return .amp
+        case "pi", "pi-agent", "pi_agent":
+            return .pi
+        case "hermes":
+            return .hermes
+        case "glm", "zhipu", "glm-code", "glm_code":
+            return .glm
         default:
             break
         }
@@ -177,6 +246,21 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
         }
         if lower.contains("claude") {
             return .claudeCode
+        }
+        if lower.contains("qwen") {
+            return .qwen
+        }
+        if lower.contains("kimi") {
+            return .kimi
+        }
+        if lower.contains("deepseek") {
+            return .deepseek
+        }
+        if lower.contains("hermes") {
+            return .hermes
+        }
+        if lower.contains("glm") || lower.contains("zhipu") {
+            return .glm
         }
 
         return nil

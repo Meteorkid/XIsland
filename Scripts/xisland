@@ -4,6 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=/dev/null
-source "$SCRIPT_DIR/lib/tower-island-cli.sh"
+source "$SCRIPT_DIR/lib/xisland-cli.sh"
 
-tower_island_dispatch "${1:-}" "${@:2}"
+xisland_dispatch "${1:-}" "${@:2}"

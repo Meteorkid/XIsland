@@ -12,7 +12,7 @@ enum UITestDriverError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .accessibilityNotTrusted:
-            return "Accessibility access is required to run TowerIslandUITestDriver."
+            return "Accessibility access is required to run XIslandUITestDriver."
         case .timeout(let message), .missingElement(let message), .actionFailed(let message), .launchFailed(let message), .invalidArguments(let message):
             return message
         }

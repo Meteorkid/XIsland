@@ -94,7 +94,7 @@ struct CollapsedPillView: View {
                         .offset(x: 2, y: -1)
                 }
             }
-            .accessibilityLabel("Tower Island")
+            .accessibilityLabel("X Island")
         }
     }
 

@@ -4,42 +4,71 @@ struct AgentActivityView: View {
     let event: ToolEvent
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: iconName)
-                .font(.system(size: 10))
-                .foregroundStyle(iconColor)
-                .frame(width: 16, height: 16)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: iconName)
+                    .font(.system(size: 10))
+                    .foregroundStyle(iconColor)
+                    .frame(width: 16, height: 16)
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(event.displayName)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.8))
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(event.displayName)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.8))
 
-                    if event.isComplete {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 7, weight: .bold))
-                            .foregroundStyle(.green.opacity(0.7))
+                        if event.isComplete {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundStyle(.green.opacity(0.7))
+                        }
                     }
+
+                    Text(event.summary)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .lineLimit(2)
                 }
 
-                Text(event.summary)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.4))
-                    .lineLimit(1)
+                Spacer()
+
+                if let added = event.linesAdded, let removed = event.linesRemoved {
+                    HStack(spacing: 4) {
+                        Text("+\(added)")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.green.opacity(0.7))
+                        Text("-\(removed)")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.red.opacity(0.7))
+                    }
+                } else if let lines = event.linesRead, lines > 0 {
+                    Text("\(lines) lines")
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.blue.opacity(0.6))
+                }
             }
 
-            Spacer()
-
-            if let added = event.linesAdded, let removed = event.linesRemoved {
-                HStack(spacing: 4) {
-                    Text("+\(added)")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.green.opacity(0.7))
-                    Text("-\(removed)")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.red.opacity(0.7))
+            // Test result details
+            if let tr = event.testResults, tr.total > 0 {
+                HStack(spacing: 6) {
+                    if tr.passed > 0 {
+                        Label("\(tr.passed) passed", systemImage: "checkmark.circle.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.green.opacity(0.7))
+                    }
+                    if tr.failed > 0 {
+                        Label("\(tr.failed) failed", systemImage: "xmark.circle.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.red.opacity(0.7))
+                    }
+                    if tr.skipped > 0 {
+                        Label("\(tr.skipped) skipped", systemImage: "minus.circle")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.yellow.opacity(0.6))
+                    }
                 }
+                .padding(.leading, 24)
+                .padding(.top, 1)
             }
         }
         .padding(.horizontal, 16)

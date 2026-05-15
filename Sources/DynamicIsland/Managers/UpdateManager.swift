@@ -75,7 +75,7 @@ final class UpdateManager {
         return decoder
     }()
 
-    private static let latestReleaseURL = URL(string: "https://github.com/g535879/TowerIsland/releases/latest")!
+    private static let latestReleaseURL = URL(string: "https://github.com/user/xisland/releases/latest")!
     init(
         fetchReleaseData: @escaping ReleaseFetcher = UpdateManager.fetchLatestReleaseData,
         updater: AppUpdater = AppUpdater()
@@ -100,7 +100,7 @@ final class UpdateManager {
             return installedURL.path
         }
 
-        return "/Applications/Tower Island.app"
+        return "/Applications/X Island.app"
     }
 
     nonisolated static func normalize(version: String) -> String {
@@ -262,7 +262,7 @@ final class UpdateManager {
         let pathComponents = finalURL.pathComponents
         guard pathComponents.count >= 6,
               pathComponents[1] == "g535879",
-              pathComponents[2] == "TowerIsland",
+              pathComponents[2] == "xisland",
               pathComponents[3] == "releases",
               pathComponents[4] == "tag"
         else {
@@ -274,9 +274,9 @@ final class UpdateManager {
             throw URLError(.badServerResponse)
         }
 
-        let dmgURL = URL(string: "https://github.com/g535879/TowerIsland/releases/download")!
+        let dmgURL = URL(string: "https://github.com/user/xisland/releases/download")!
             .appendingPathComponent(tag)
-            .appendingPathComponent("TowerIsland.dmg")
+            .appendingPathComponent("XIsland.dmg")
 
         let payload: [String: Any] = [
             "tag_name": tag,
@@ -284,7 +284,7 @@ final class UpdateManager {
             "published_at": ISO8601DateFormatter().string(from: checkedAt),
             "assets": [
                 [
-                    "name": "TowerIsland.dmg",
+                    "name": "XIsland.dmg",
                     "browser_download_url": dmgURL.absoluteString
                 ]
             ]
@@ -296,7 +296,7 @@ final class UpdateManager {
     private static func fetchLatestReleaseData() async throws -> Data {
         var request = URLRequest(url: latestReleaseURL)
         request.httpMethod = "HEAD"
-        request.setValue("TowerIsland", forHTTPHeaderField: "User-Agent")
+        request.setValue("XIsland", forHTTPHeaderField: "User-Agent")
 
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {

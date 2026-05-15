@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Record the screen (or convert an existing .mov) into Assets/demo.gif for README.
 #
-# Prerequisites: ffmpeg (Homebrew), Tower Island running, optional: bash Scripts/demo-media.sh seed
+# Prerequisites: ffmpeg (Homebrew), X Island running, optional: bash Scripts/demo-media.sh seed
 #
 # Usage:
 #   bash Scripts/record-demo-gif.sh                    # record ~20s then write Assets/demo.gif

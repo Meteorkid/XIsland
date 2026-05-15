@@ -1,5 +1,5 @@
 import XCTest
-@testable import TowerIsland
+@testable import XIsland
 
 @MainActor
 final class NotchContentViewTests: XCTestCase {

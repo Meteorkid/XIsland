@@ -11,6 +11,7 @@ enum IslandState: Equatable {
 struct NotchContentView: View {
     @Environment(SessionManager.self) private var manager
     @Environment(AudioEngine.self) private var audio
+    @Environment(QuotaTracker.self) private var quotaTracker
     @State private var islandObscuredByNotch = false
     @State private var state: IslandState = .collapsed
     @State private var isHovering = false
@@ -28,6 +29,8 @@ struct NotchContentView: View {
     @State private var lastExpandedInteractionMarkAt: Date = .distantPast
     /// Last known expanded `shapeHeight` (black panel), used to interpolate notch corner radii with `shapeHeight` during spring (avoids boolean snap).
     @State private var cachedExpandedShapeHeight: CGFloat = 220
+    @State var activityLogExpanded = false
+    @State private var notificationTokens: [NSObjectProtocol] = []
     @AppStorage("disableAnimations") private var disableAnimations = false
     @AppStorage("autoCollapseDelay") private var autoCollapseDelay = 3.0
     @AppStorage("smartSuppression") private var smartSuppression = true
@@ -62,7 +65,8 @@ struct NotchContentView: View {
         case .expanded:
             let count = manager.visibleSessions.count
             let listH = min(CGFloat(count) * 80 + 30, 480)
-            return Self.expandedPanelHeaderHeight + listH + Self.expandedPanelBottomInset
+            let logH: CGFloat = activityLogExpanded ? 140 : 0
+            return Self.expandedPanelHeaderHeight + listH + logH + Self.expandedPanelBottomInset
         case .permission(let id):
             return permissionExpandedTotalHeight(sessionId: id)
         case .question(let id):
@@ -280,9 +284,20 @@ struct NotchContentView: View {
             }
             reportSize()
             startHoverPolling()
+            let collapseToken = NotificationCenter.default.addObserver(forName: .xislandCollapse, object: nil, queue: .main) { _ in
+                collapse()
+            }
+            let toggleToken = NotificationCenter.default.addObserver(forName: .xislandToggleActivityLog, object: nil, queue: .main) { _ in
+                toggleActivityLog()
+            }
+            notificationTokens = [collapseToken, toggleToken]
         }
         .onDisappear {
             cancelExpandedAutoHide()
+            for token in notificationTokens {
+                NotificationCenter.default.removeObserver(token)
+            }
+            notificationTokens = []
         }
         .onChange(of: manager.hasInteraction) { _, hasInteraction in
             if hasInteraction {
@@ -446,6 +461,10 @@ struct NotchContentView: View {
                     collapse()
                 })
 
+                if activityLogExpanded {
+                    activityLogContent
+                }
+
             case .permission(let id):
                 if let session = manager.sessions.first(where: { $0.id == id }) {
                     PermissionApprovalView(session: session) {
@@ -471,6 +490,10 @@ struct NotchContentView: View {
             case .collapsed:
                 EmptyView()
             }
+
+            if case .expanded = state, !quotaTracker.quotas.isEmpty {
+                quotaPills
+            }
         }
         .padding(.bottom, Self.expandedPanelBottomInset)
         .simultaneousGesture(TapGesture().onEnded {
@@ -479,6 +502,76 @@ struct NotchContentView: View {
         .simultaneousGesture(DragGesture(minimumDistance: 1).onChanged { _ in
             markExpandedInteraction(throttled: true)
         })
+    }
+
+    private var quotaPills: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(quotaTracker.quotas, id: \.provider) { quota in
+                    if let (label, value, color) = quotaDisplayInfo(for: quota) {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(color)
+                                .frame(width: 5, height: 5)
+                            Text(label)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.55))
+                            Text(value)
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(color)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(color.opacity(0.12))
+                        )
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+        }
+        .padding(.top, 8)
+    }
+
+    /// Returns (providerLabel, valueText, accentColor) for a quota entry.
+    private func quotaDisplayInfo(for quota: QuotaInfo) -> (String, String, Color)? {
+        switch quota.provider {
+        case "Anthropic":
+            if let remaining = quota.tokensRemaining {
+                return ("Claude", formatTokens(remaining), Color(red: 0.85, green: 0.45, blue: 0.25))
+            }
+        case "OpenAI":
+            if let used = quota.tokensRemaining {
+                return ("Codex", formatTokens(used), Color(red: 0.2, green: 0.8, blue: 0.4))
+            }
+        case "Kimi":
+            // balance from Moonshot API is in approximate token count
+            if let tokens = quota.tokensRemaining, tokens > 0 {
+                return ("Kimi", "¥\(tokens / 100)", Color(red: 0.95, green: 0.35, blue: 0.45))
+            }
+        case "DeepSeek":
+            if let tokens = quota.tokensRemaining {
+                return tokens > 0
+                    ? ("DeepSeek", formatTokens(tokens), Color(red: 0.25, green: 0.75, blue: 0.55))
+                    : ("DeepSeek", "Exhausted", Color.red.opacity(0.7))
+            }
+        case "GLM":
+            if let remaining = quota.requestsRemaining {
+                return remaining > 0
+                    ? ("GLM", "Active", Color(red: 0.25, green: 0.45, blue: 0.95))
+                    : ("GLM", "N/A", Color.red.opacity(0.7))
+            }
+        default:
+            break
+        }
+        return nil
+    }
+
+    private func formatTokens(_ count: Int) -> String {
+        if count < 1000 { return "\(count)" }
+        if count < 1_000_000 { return String(format: "%.1fK", Double(count) / 1000) }
+        return String(format: "%.2fM", Double(count) / 1_000_000)
     }
 
     private var expandedHeader: some View {
@@ -519,7 +612,7 @@ struct NotchContentView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                 } else {
-                    Text("\(manager.activeSessions.count) active")
+                    Text("\(manager.activeSessions.count)\(L10n.activeSessions)")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.white.opacity(0.3))
                 }
@@ -695,5 +788,77 @@ struct NotchContentView: View {
                 collapse()
             }
         }
+    }
+
+    private var activityLogContent: some View {
+        let allEvents = manager.sessions
+            .flatMap { session in
+                session.events.map { (session: session, event: $0) }
+            }
+            .sorted { $0.event.timestamp > $1.event.timestamp }
+            .prefix(30)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "list.bullet.rectangle")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.4))
+                    Text("Activity Log")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                Spacer()
+                Text("⌘O")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.3))
+            }
+
+            if allEvents.isEmpty {
+                Text("No activity yet")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.2))
+                    .padding(.top, 4)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 3) {
+                        ForEach(Array(allEvents), id: \.event.id) { item in
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(item.session.agentType.color.opacity(0.6))
+                                    .frame(width: 4, height: 4)
+                                Text(item.session.agentType.shortName)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(item.session.agentType.color.opacity(0.7))
+                                Text(item.event.displayName)
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.white.opacity(0.5))
+                                Text(item.event.summary)
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.3))
+                                    .lineLimit(1)
+                                Spacer()
+                                Text(item.event.timestamp, style: .time)
+                                    .font(.system(size: 8, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.2))
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .frame(maxHeight: 100)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(IslandStyle.insetFill)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+
+    private func toggleActivityLog() {
+        activityLogExpanded.toggle()
+        reportSize()
     }
 }

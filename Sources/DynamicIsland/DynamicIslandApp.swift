@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct TowerIslandApp: App {
+struct XIslandApp: App {
     private let testConfiguration = AppTestConfiguration.current()
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 

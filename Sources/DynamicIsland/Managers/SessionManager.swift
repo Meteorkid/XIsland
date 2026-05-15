@@ -622,6 +622,8 @@ final class SessionManager {
             session.events[idx].linesAdded = message.linesAdded
             session.events[idx].linesRemoved = message.linesRemoved
             session.events[idx].isComplete = true
+            session.events[idx].linesRead = ToolEvent.estimateLinesRead(from: message.toolResult)
+            session.events[idx].testResults = ToolEvent.parseTestResults(from: message.toolResult)
         }
         session.currentTool = nil
         updateTokenUsage(session: session, message: message)

@@ -3,7 +3,7 @@ import Foundation
 public enum DISocketConfig {
     public static var socketDir: String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return "\(home)/.tower-island"
+        return "\(home)/.xisland"
     }
 
     public static var socketPath: String {

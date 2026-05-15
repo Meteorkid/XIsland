@@ -54,10 +54,7 @@ struct SessionCardView: View {
                 }
 
                 if !session.agentResponse.isEmpty {
-                    Text(session.agentResponse)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.45))
-                        .lineLimit(3)
+                    streamingThoughtView(for: session)
                         .padding(.horizontal, 14)
                         .padding(.bottom, 6)
                 }
@@ -73,6 +70,15 @@ struct SessionCardView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.bottom, 8)
+                }
+
+                if !session.events.isEmpty {
+                    Divider()
+                        .background(.white.opacity(0.06))
+                        .padding(.horizontal, 12)
+                    toolActivity
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
                 }
             }
             .background(
@@ -188,6 +194,32 @@ struct SessionCardView: View {
                         .foregroundStyle(.purple.opacity(0.5))
                 }
             }
+        }
+    }
+
+    private func streamingThoughtView(for session: AgentSession) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                if session.status == .thinking {
+                    Image(systemName: "brain.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.blue.opacity(0.5))
+                        .phaseAnimator([false, true]) { content, phase in
+                            content.opacity(phase ? 1.0 : 0.3)
+                        } animation: { _ in .easeInOut(duration: 0.8) }
+
+                    Text("Thinking...")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.blue.opacity(0.4))
+                }
+            }
+
+            Text(session.agentResponse)
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.5))
+                .lineLimit(nil)
+                .multilineTextAlignment(.leading)
+                .animation(.easeInOut(duration: 0.3), value: session.agentResponse)
         }
     }
 

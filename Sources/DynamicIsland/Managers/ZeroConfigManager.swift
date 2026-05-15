@@ -30,6 +30,14 @@ enum ZeroConfigManager {
         case .qoder: configureQoder()
         case .copilot: configureCopilot()
         case .codeBuddy: configureCodeBuddy()
+        case .qwen: configureQwen()
+        case .kimi: configureKimi()
+        case .deepseek: configureDeepSeek()
+        case .kiro: configureKiro()
+        case .amp: configureAmp()
+        case .pi: configurePi()
+        case .hermes: configureHermes()
+        case .glm: configureGLM()
         }
     }
 
@@ -96,14 +104,14 @@ enum ZeroConfigManager {
     }
 
     private static var bridgePath: String {
-        let stable = "\(home)/.tower-island/bin/di-bridge"
+        let stable = "\(home)/.xisland/bin/di-bridge"
         let bundled = Bundle.main.bundlePath + "/Contents/MacOS/di-bridge"
         syncBundledFileIfNeeded(bundled: bundled, stable: stable)
         return stable
     }
 
     private static func syncCommandLineTools() {
-        let binDir = "\(home)/.tower-island/bin"
+        let binDir = "\(home)/.xisland/bin"
         ensureDir(binDir)
         ensureDir("\(binDir)/lib")
 
@@ -112,12 +120,12 @@ enum ZeroConfigManager {
             stable: "\(binDir)/di-bridge"
         )
         syncBundledFileIfNeeded(
-            bundled: Bundle.main.bundlePath + "/Contents/Resources/cli/tower-island",
-            stable: "\(binDir)/tower-island"
+            bundled: Bundle.main.bundlePath + "/Contents/Resources/cli/xisland",
+            stable: "\(binDir)/xisland"
         )
         syncBundledFileIfNeeded(
-            bundled: Bundle.main.bundlePath + "/Contents/Resources/cli/lib/tower-island-cli.sh",
-            stable: "\(binDir)/lib/tower-island-cli.sh"
+            bundled: Bundle.main.bundlePath + "/Contents/Resources/cli/lib/xisland-cli.sh",
+            stable: "\(binDir)/lib/xisland-cli.sh"
         )
     }
 
@@ -274,8 +282,8 @@ enum ZeroConfigManager {
         ensureDir(configDir)
 
         var settings = readJSON(settingsPath) ?? [String: Any]()
-        if (settings["tower_island_hook"] as? String)?.contains("di-bridge") != true {
-            settings["tower_island_hook"] = "\(bridgePath) --agent gemini_cli"
+        if (settings["xisland_hook"] as? String)?.contains("di-bridge") != true {
+            settings["xisland_hook"] = "\(bridgePath) --agent gemini_cli"
             writeJSON(settingsPath, settings)
         }
     }
@@ -405,13 +413,13 @@ enum ZeroConfigManager {
     // (reference: vibe-island plugin architecture).
     private static func configureOpenCode() {
         let pluginDir = "\(home)/.config/opencode/plugins"
-        let pluginPath = "\(pluginDir)/tower-island.js"
+        let pluginPath = "\(pluginDir)/xisland.js"
         ensureDir(pluginDir)
 
         let pluginSource = #"""
         import { spawn, execSync } from "child_process";
         import { homedir } from "os";
-        const BRIDGE = homedir() + "/.tower-island/bin/di-bridge";
+        const BRIDGE = homedir() + "/.xisland/bin/di-bridge";
         function sendViaBridge(hookType, sessionId, data) {
           try {
             const stdin = JSON.stringify({ ...data, session_id: sessionId });
@@ -515,7 +523,7 @@ enum ZeroConfigManager {
               // Kill any previous bridge for this session.
               const prevBridge = activeQ.get(sid);
               if (prevBridge) { try { prevBridge.kill("SIGTERM"); } catch {} activeQ.delete(sid); }
-              // Walk through questions one at a time via Tower Island.
+              // Walk through questions one at a time via X Island.
               async function askSequentially() {
                 answeringQ.add(sid);
                 try {
@@ -577,7 +585,7 @@ enum ZeroConfigManager {
         var config = readJSON(configPath) ?? ["$schema": "https://opencode.ai/config.json"]
         var plugins = config["plugin"] as? [String] ?? []
         if !plugins.contains(pluginURL) {
-            plugins.removeAll { ($0 as? String)?.contains("tower-island") == true || ($0 as? String)?.contains("open-island") == true || ($0 as? String)?.contains("dynamic-island") == true || ($0 as? String)?.contains("vibe-island") == true }
+            plugins.removeAll { ($0 as? String)?.contains("xisland") == true || ($0 as? String)?.contains("open-island") == true || ($0 as? String)?.contains("dynamic-island") == true || ($0 as? String)?.contains("vibe-island") == true }
             plugins.append(pluginURL)
             config["plugin"] = plugins
             writeJSON(configPath, config)
@@ -592,8 +600,8 @@ enum ZeroConfigManager {
         ensureDir(configDir)
 
         var config = readJSON(configPath) ?? [String: Any]()
-        if (config["tower_island_hook"] as? String)?.contains("di-bridge") != true {
-            config["tower_island_hook"] = "\(bridgePath) --agent droid"
+        if (config["xisland_hook"] as? String)?.contains("di-bridge") != true {
+            config["xisland_hook"] = "\(bridgePath) --agent droid"
             writeJSON(configPath, config)
         }
     }
@@ -606,8 +614,8 @@ enum ZeroConfigManager {
         ensureDir(configDir)
 
         var config = readJSON(configPath) ?? [String: Any]()
-        if (config["tower_island_hook"] as? String)?.contains("di-bridge") != true {
-            config["tower_island_hook"] = "\(bridgePath) --agent qoder"
+        if (config["xisland_hook"] as? String)?.contains("di-bridge") != true {
+            config["xisland_hook"] = "\(bridgePath) --agent qoder"
             writeJSON(configPath, config)
         }
     }
@@ -620,8 +628,8 @@ enum ZeroConfigManager {
         ensureDir(configDir)
 
         var config = readJSON(configPath) ?? [String: Any]()
-        if (config["tower_island_hook"] as? String)?.contains("di-bridge") != true {
-            config["tower_island_hook"] = "\(bridgePath) --agent copilot"
+        if (config["xisland_hook"] as? String)?.contains("di-bridge") != true {
+            config["xisland_hook"] = "\(bridgePath) --agent copilot"
             writeJSON(configPath, config)
         }
     }
@@ -634,10 +642,363 @@ enum ZeroConfigManager {
         ensureDir(configDir)
 
         var config = readJSON(configPath) ?? [String: Any]()
-        if (config["tower_island_hook"] as? String)?.contains("di-bridge") != true {
-            config["tower_island_hook"] = "\(bridgePath) --agent code_buddy"
+        if (config["xisland_hook"] as? String)?.contains("di-bridge") != true {
+            config["xisland_hook"] = "\(bridgePath) --agent code_buddy"
             writeJSON(configPath, config)
         }
+    }
+
+    // MARK: - Qwen Code
+
+    private static func configureQwen() {
+        let configDir = "\(home)/.qwen"
+        let settingsPath = "\(configDir)/settings.json"
+        ensureDir(configDir)
+
+        var settings = readJSON(settingsPath) ?? [String: Any]()
+        var hooks = settings["hooks"] as? [String: Any] ?? [:]
+
+        let hookMapping: [(String, String, Int)] = [
+            ("PreToolUse", "PreToolUse", 5),
+            ("PostToolUse", "PostToolUse", 5),
+            ("UserPromptSubmit", "session_start", 5),
+            ("SessionStart", "session_start", 5),
+            ("SessionEnd", "session_end", 5),
+            ("Stop", "notification", 5),
+            ("SubagentStart", "subagent_start", 5),
+            ("SubagentStop", "subagent_end", 5),
+            ("PreCompact", "compact", 5),
+            ("Notification", "Notification", 5),
+            ("PermissionRequest", "PermissionRequest", 300),
+        ]
+
+        for (hookType, hookArg, timeout) in hookMapping {
+            var hookList = hooks[hookType] as? [[String: Any]] ?? []
+
+            hookList.removeAll { entry in
+                let cmds = entry["hooks"] as? [[String: Any]] ?? []
+                return cmds.contains {
+                    guard let cmd = $0["command"] as? String else { return false }
+                    return cmd.contains("di-bridge")
+                }
+            }
+
+            let guardedCmd: String
+            if hookArg == "PermissionRequest" {
+                guardedCmd = "\(bridgePath) --agent qwen --hook \(hookArg)"
+            } else {
+                guardedCmd = "\(bridgePath) --agent qwen --hook \(hookArg) || true"
+            }
+            hookList.append([
+                "matcher": "*",
+                "hooks": [
+                    [
+                        "type": "command",
+                        "command": guardedCmd,
+                        "timeout": timeout
+                    ] as [String: Any]
+                ]
+            ] as [String: Any])
+            hooks[hookType] = hookList
+        }
+
+        settings["hooks"] = hooks
+        writeJSON(settingsPath, settings)
+    }
+
+    // MARK: - Kimi Code
+
+    private static func configureKimi() {
+        let configDir = "\(home)/.kimi"
+        let configPath = "\(configDir)/config.toml"
+        ensureDir(configDir)
+
+        let hookMapping: [(String, String, Int)] = [
+            ("PreToolUse", "PreToolUse", 5),
+            ("PostToolUse", "PostToolUse", 5),
+            ("UserPromptSubmit", "session_start", 5),
+            ("SessionStart", "session_start", 5),
+            ("SessionEnd", "session_end", 5),
+            ("Stop", "notification", 5),
+            ("SubagentStart", "subagent_start", 5),
+            ("SubagentStop", "subagent_end", 5),
+            ("PreCompact", "compact", 5),
+            ("Notification", "Notification", 5),
+            ("PermissionRequest", "PermissionRequest", 300),
+        ]
+
+        var toml = ""
+        if let existing = try? String(contentsOfFile: configPath, encoding: .utf8) {
+            toml = existing
+        }
+
+        // Remove existing xisland hooks block
+        if let range = toml.range(of: "# X Island hooks") {
+            let rest = toml[range.lowerBound...]
+            if let nextSection = rest.range(of: "\n[", options: .literal, range: rest.index(after: range.lowerBound)..<rest.endIndex) {
+                toml.removeSubrange(range.lowerBound..<nextSection.lowerBound)
+            } else {
+                toml.removeSubrange(range.lowerBound...)
+            }
+        }
+
+        toml += "\n# X Island hooks\n"
+        for (hookType, hookArg, timeout) in hookMapping {
+            let guardedCmd: String
+            if hookArg == "PermissionRequest" {
+                guardedCmd = "\(bridgePath) --agent kimi --hook \(hookArg)"
+            } else {
+                guardedCmd = "\(bridgePath) --agent kimi --hook \(hookArg) || true"
+            }
+            toml += """
+            [[hooks]]
+            event = "\(hookType)"
+            command = "\(guardedCmd)"
+            matcher = "*"
+            timeout = \(timeout)
+
+            """
+        }
+
+        try? toml.write(toFile: configPath, atomically: true, encoding: .utf8)
+    }
+
+    // MARK: - DeepSeek-TUI
+
+    private static func configureDeepSeek() {
+        let configDir = "\(home)/.deepseek"
+        let configPath = "\(configDir)/config.toml"
+        ensureDir(configDir)
+
+        let hookMapping: [(String, String)] = [
+            ("session_start", "session_start"),
+            ("session_end", "session_end"),
+            ("message_submit", "session_start"),
+            ("tool_call_before", "PreToolUse"),
+            ("tool_call_after", "PostToolUse"),
+            ("mode_change", "notification"),
+            ("on_error", "notification"),
+        ]
+
+        var toml = ""
+        if let existing = try? String(contentsOfFile: configPath, encoding: .utf8) {
+            toml = existing
+        }
+
+        // Remove existing xisland hooks block
+        if let range = toml.range(of: "# X Island hooks") {
+            let rest = toml[range.lowerBound...]
+            if let nextSection = rest.range(of: "\n[", options: .literal, range: rest.index(after: range.lowerBound)..<rest.endIndex) {
+                toml.removeSubrange(range.lowerBound..<nextSection.lowerBound)
+            } else {
+                toml.removeSubrange(range.lowerBound...)
+            }
+        }
+
+        // Ensure global hooks enabled
+        if !toml.contains("[hooks]") {
+            toml += "\n[hooks]\nenabled = true\n"
+        }
+
+        toml += "\n# X Island hooks\n"
+        for (event, hookArg) in hookMapping {
+            toml += """
+            [[hooks.hooks]]
+            name = "xisland_\(event)"
+            event = "\(event)"
+            command = "\(bridgePath) --agent deepseek --hook \(hookArg) || true"
+            condition = "*"
+
+            """
+        }
+
+        try? toml.write(toFile: configPath, atomically: true, encoding: .utf8)
+    }
+
+    // MARK: - Kiro
+
+    private static func configureKiro() {
+        // Kiro is a VS Code-based AI IDE, not a CLI tool.
+        // It uses Shell Command actions via the .kiro/ directory configured through the UI.
+        // Full IDE integration is complex and requires manual user setup.
+        // This method is a placeholder documenting the limitation.
+        print("[ZeroConfig] Kiro does not support automatic hook injection. Please configure Shell Command actions manually in the Kiro IDE.")
+    }
+
+    // MARK: - Amp
+
+    private static func configureAmp() {
+        let pluginDir = "\(home)/.config/amp/plugins"
+        let pluginPath = "\(pluginDir)/xisland.ts"
+        ensureDir(pluginDir)
+
+        let pluginSource = #"""
+        import { execSync } from "child_process";
+        import { homedir } from "os";
+        const BRIDGE = homedir() + "/.xisland/bin/di-bridge";
+        function send(hookType: string, sessionId: string, data: Record<string, any>) {
+          try {
+            const stdin = JSON.stringify({ ...data, session_id: sessionId });
+            execSync(`${BRIDGE} --agent amp --hook ${hookType} --session ${sessionId}`, {
+              input: stdin, timeout: 5000, stdio: ["pipe", "pipe", "pipe"],
+            });
+          } catch {}
+        }
+        export default {
+          onSessionStart: (ctx: { sessionId: string }) => {
+            send("session_start", ctx.sessionId, { terminal: process.env.TERM_PROGRAM || "Terminal" });
+          },
+          onSessionEnd: (ctx: { sessionId: string }) => {
+            send("session_end", ctx.sessionId, {});
+          },
+          onAgentStart: (ctx: { sessionId: string; task: string }) => {
+            send("session_start", ctx.sessionId, { prompt: ctx.task });
+          },
+          onAgentEnd: (ctx: { sessionId: string }) => {
+            send("session_end", ctx.sessionId, {});
+          },
+          onToolCall: (ctx: { sessionId: string; tool: string; input: any }) => {
+            send("PreToolUse", ctx.sessionId, { tool_name: ctx.tool, tool_input: ctx.input });
+          },
+          onToolResult: (ctx: { sessionId: string; tool: string; result: any }) => {
+            send("PostToolUse", ctx.sessionId, { tool_name: ctx.tool, result: ctx.result });
+          },
+        };
+        """#
+
+        try? pluginSource.write(toFile: pluginPath, atomically: true, encoding: String.Encoding.utf8)
+
+        // Amp loads plugins from .amp/plugins/*.ts automatically if present.
+        // No additional config registration needed for basic file-based plugins.
+    }
+
+    // MARK: - Pi Agent
+
+    private static func configurePi() {
+        let extDir = "\(home)/.pi/agent/extensions"
+        let extPath = "\(extDir)/xisland.ts"
+        ensureDir(extDir)
+
+        let extSource = #"""
+        import { spawn } from "child_process";
+        import { homedir } from "os";
+        const BRIDGE = homedir() + "/.xisland/bin/di-bridge";
+        function send(hookType: string, sessionId: string, data: Record<string, any>) {
+          return new Promise<void>((resolve) => {
+            try {
+              const child = spawn(BRIDGE, ["--agent","pi","--hook",hookType,"--session",sessionId], {
+                stdio: ["pipe","pipe","pipe"]
+              });
+              child.stdin.write(JSON.stringify(data)); child.stdin.end();
+              child.on("close", () => resolve());
+              child.on("error", () => resolve());
+              setTimeout(() => { child.kill(); resolve(); }, 5000);
+            } catch { resolve(); }
+          });
+        }
+        export default {
+          session_start: async (ctx: { sessionId: string; cwd?: string }) => {
+            await send("session_start", ctx.sessionId, { cwd: ctx.cwd || "", terminal: process.env.TERM_PROGRAM || "Terminal" });
+          },
+          session_end: async (ctx: { sessionId: string }) => {
+            await send("session_end", ctx.sessionId, {});
+          },
+          agent_start: async (ctx: { sessionId: string; task?: string }) => {
+            await send("session_start", ctx.sessionId, { prompt: ctx.task || "" });
+          },
+          agent_end: async (ctx: { sessionId: string }) => {
+            await send("session_end", ctx.sessionId, {});
+          },
+          tool_call: async (ctx: { sessionId: string; tool: string; input?: any }) => {
+            await send("PreToolUse", ctx.sessionId, { tool_name: ctx.tool, tool_input: ctx.input });
+          },
+          tool_result: async (ctx: { sessionId: string; tool: string; result?: any }) => {
+            await send("PostToolUse", ctx.sessionId, { tool_name: ctx.tool, result: ctx.result });
+          },
+        };
+        """#
+
+        try? extSource.write(toFile: extPath, atomically: true, encoding: String.Encoding.utf8)
+
+        // Pi Agent loads extensions from ~/.pi/agent/extensions/*.ts automatically.
+    }
+
+    // MARK: - Hermes
+
+    private static func configureHermes() {
+        // Hermes does not have a formal hook system.
+        // It only supports MCP / Quick Commands / Skills as indirect integration points.
+        // We create a simple wrapper script that users can invoke via Quick Commands.
+        let wrapperDir = "\(home)/.xisland/bin"
+        let wrapperPath = "\(wrapperDir)/hermes-bridge"
+        ensureDir(wrapperDir)
+
+        let wrapper = #"""
+        #!/bin/bash
+        # Hermes X Island bridge wrapper
+        # Usage: hermes-bridge <hook> [session_id]
+        # Add this to Hermes Quick Commands to forward events to X Island.
+        HOOK="${1:-notification}"
+        SESSION="${2:-hermes-$(pwd)}"
+        echo '{}' | /Users/$USER/.xisland/bin/di-bridge --agent hermes --hook "$HOOK" --session "$SESSION"
+        """#
+
+        try? wrapper.write(toFile: wrapperPath, atomically: true, encoding: String.Encoding.utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapperPath)
+
+        print("[ZeroConfig] Hermes wrapper installed at \(wrapperPath). Add it to Hermes Quick Commands for manual integration.")
+    }
+
+    private static func configureGLM() {
+        // GLM (Zhipu AI) uses TOML config at ~/.zhipu/config.toml
+        let dir = "\(home)/.zhipu"
+        let configPath = "\(dir)/config.toml"
+        ensureDir(dir)
+
+        let block = """
+        # X Island hooks — managed by X Island
+        [[hooks]]
+        name = "xisland_session_start"
+        command = "~/.xisland/bin/di-bridge --agent glm --hook session_start --session glm-$(pwd | md5)"
+        events = ["SessionStart"]
+
+        [[hooks]]
+        name = "xisland_session_end"
+        command = "~/.xisland/bin/di-bridge --agent glm --hook session_end --session glm-$(pwd | md5)"
+        events = ["SessionEnd"]
+
+        [[hooks]]
+        name = "xisland_tool_start"
+        command = "~/.xisland/bin/di-bridge --agent glm --hook tool_start --session glm-$(pwd | md5)"
+        events = ["PreToolUse"]
+
+        [[hooks]]
+        name = "xisland_tool_complete"
+        command = "~/.xisland/bin/di-bridge --agent glm --hook tool_complete --session glm-$(pwd | md5)"
+        events = ["PostToolUse"]
+
+        [[hooks]]
+        name = "xisland_permission"
+        command = "~/.xisland/bin/di-bridge --agent glm --hook permission_request --session glm-$(pwd | md5)"
+        events = ["PermissionRequest"]
+
+        [[hooks]]
+        name = "xisland_question"
+        command = "~/.xisland/bin/di-bridge --agent glm --hook question --session glm-$(pwd | md5)"
+        events = ["AskUserQuestion"]
+        """
+
+        if let existing = try? String(contentsOfFile: configPath, encoding: .utf8),
+           existing.contains("# X Island hooks") {
+            // Already configured, skip
+            print("[ZeroConfig] GLM hooks already present")
+            return
+        }
+
+        let content = (try? String(contentsOfFile: configPath, encoding: .utf8)) ?? ""
+        let newContent = content + "\n" + block + "\n"
+        try? newContent.write(toFile: configPath, atomically: true, encoding: .utf8)
+        print("[ZeroConfig] GLM hooks configured at \(configPath)")
     }
 
     // MARK: - Helpers
@@ -700,24 +1061,55 @@ enum ZeroConfigManager {
         case .trae:
             return hasConfiguration(for: .cursor)
         case .openCode:
-            let path = "\(home)/.config/opencode/plugins/tower-island.js"
+            let path = "\(home)/.config/opencode/plugins/xisland.js"
             guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
             return text.contains("di-bridge")
         case .geminiCli:
             let path = "\(home)/.gemini/settings.json"
-            return configContainsBridge(path: path, key: "tower_island_hook")
+            return configContainsBridge(path: path, key: "xisland_hook")
         case .droid:
             let path = "\(home)/.droid/config.json"
-            return configContainsBridge(path: path, key: "tower_island_hook")
+            return configContainsBridge(path: path, key: "xisland_hook")
         case .qoder:
             let path = "\(home)/.qoder/config.json"
-            return configContainsBridge(path: path, key: "tower_island_hook")
+            return configContainsBridge(path: path, key: "xisland_hook")
         case .copilot:
             let path = "\(home)/.copilot/config.json"
-            return configContainsBridge(path: path, key: "tower_island_hook")
+            return configContainsBridge(path: path, key: "xisland_hook")
         case .codeBuddy:
             let path = "\(home)/.codebuddy/config.json"
-            return configContainsBridge(path: path, key: "tower_island_hook")
+            return configContainsBridge(path: path, key: "xisland_hook")
+        case .qwen:
+            let path = "\(home)/.qwen/settings.json"
+            guard let settings = readJSON(path),
+                  let hooks = settings["hooks"] as? [String: Any] else { return false }
+            return hooksContainBridge(hooks)
+        case .kimi:
+            let path = "\(home)/.kimi/config.toml"
+            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
+            return text.contains("di-bridge")
+        case .deepseek:
+            let path = "\(home)/.deepseek/config.toml"
+            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
+            return text.contains("di-bridge")
+        case .kiro:
+            // Kiro has no auto-configurable hooks
+            return false
+        case .amp:
+            let path = "\(home)/.config/amp/plugins/xisland.ts"
+            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
+            return text.contains("di-bridge")
+        case .pi:
+            let path = "\(home)/.pi/agent/extensions/xisland.ts"
+            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
+            return text.contains("di-bridge")
+        case .hermes:
+            let path = "\(home)/.xisland/bin/hermes-bridge"
+            return FileManager.default.fileExists(atPath: path)
+        case .glm:
+            let path = "\(home)/.zhipu/config.toml"
+            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
+            return text.contains("di-bridge")
         }
     }
 
@@ -734,17 +1126,34 @@ enum ZeroConfigManager {
         case .trae:
             removeConfiguration(for: .cursor)
         case .openCode:
-            try? FileManager.default.removeItem(atPath: "\(home)/.config/opencode/plugins/tower-island.js")
+            try? FileManager.default.removeItem(atPath: "\(home)/.config/opencode/plugins/xisland.js")
         case .geminiCli:
-            removeBridgeConfigValue(at: "\(home)/.gemini/settings.json", key: "tower_island_hook")
+            removeBridgeConfigValue(at: "\(home)/.gemini/settings.json", key: "xisland_hook")
         case .droid:
-            removeBridgeConfigValue(at: "\(home)/.droid/config.json", key: "tower_island_hook")
+            removeBridgeConfigValue(at: "\(home)/.droid/config.json", key: "xisland_hook")
         case .qoder:
-            removeBridgeConfigValue(at: "\(home)/.qoder/config.json", key: "tower_island_hook")
+            removeBridgeConfigValue(at: "\(home)/.qoder/config.json", key: "xisland_hook")
         case .copilot:
-            removeBridgeConfigValue(at: "\(home)/.copilot/config.json", key: "tower_island_hook")
+            removeBridgeConfigValue(at: "\(home)/.copilot/config.json", key: "xisland_hook")
         case .codeBuddy:
-            removeBridgeConfigValue(at: "\(home)/.codebuddy/config.json", key: "tower_island_hook")
+            removeBridgeConfigValue(at: "\(home)/.codebuddy/config.json", key: "xisland_hook")
+        case .qwen:
+            removeBridgeHooks(at: "\(home)/.qwen/settings.json")
+        case .kimi:
+            removeTOMLBlock(at: "\(home)/.kimi/config.toml", marker: "# X Island hooks")
+        case .deepseek:
+            removeTOMLBlock(at: "\(home)/.deepseek/config.toml", marker: "# X Island hooks")
+        case .kiro:
+            // Nothing to remove for Kiro
+            break
+        case .amp:
+            try? FileManager.default.removeItem(atPath: "\(home)/.config/amp/plugins/xisland.ts")
+        case .pi:
+            try? FileManager.default.removeItem(atPath: "\(home)/.pi/agent/extensions/xisland.ts")
+        case .hermes:
+            try? FileManager.default.removeItem(atPath: "\(home)/.xisland/bin/hermes-bridge")
+        case .glm:
+            removeTOMLBlock(at: "\(home)/.zhipu/config.toml", marker: "# X Island hooks")
         }
     }
 
@@ -808,5 +1217,18 @@ enum ZeroConfigManager {
             config.removeValue(forKey: key)
             writeJSON(path, config)
         }
+    }
+
+    private static func removeTOMLBlock(at path: String, marker: String) {
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8),
+              let range = text.range(of: marker) else { return }
+        var cleaned = text
+        let rest = cleaned[range.lowerBound...]
+        if let nextSection = rest.range(of: "\n[", options: .literal, range: rest.index(after: range.lowerBound)..<rest.endIndex) {
+            cleaned.removeSubrange(range.lowerBound..<nextSection.lowerBound)
+        } else {
+            cleaned.removeSubrange(range.lowerBound...)
+        }
+        try? cleaned.write(toFile: path, atomically: true, encoding: .utf8)
     }
 }

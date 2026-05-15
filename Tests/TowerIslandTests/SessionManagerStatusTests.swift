@@ -1,6 +1,6 @@
 import XCTest
 import DIShared
-@testable import TowerIsland
+@testable import XIsland
 
 @MainActor
 final class SessionManagerStatusTests: XCTestCase {

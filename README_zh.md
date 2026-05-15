@@ -1,10 +1,10 @@
 中文 | [English](README.md)
 
 <p align="center">
-  <img src="Assets/app-icon.png" width="128" alt="Tower Island">
+  <img src="Assets/app-icon.png" width="128" alt="X Island">
 </p>
 
-<h1 align="center">Tower Island</h1>
+<h1 align="center">X Island</h1>
 
 <p align="center">
   一款 macOS 灵动岛风格的 AI 编程助手控制塔。<br>
@@ -14,7 +14,7 @@
 ## 演示
 
 <p align="center">
-  <img src="Assets/demo.gif" width="560" alt="Tower Island 演示">
+  <img src="Assets/demo.gif" width="560" alt="X Island 演示">
 </p>
 
 | 收起（刘海屏） | 收起（外接屏） | 展开状态 | 问题回答 |
@@ -23,7 +23,7 @@
 
 ## 功能介绍
 
-Tower Island 以一个紧凑的药丸形状悬浮在屏幕顶部。当 AI Agent 工作时，它会实时显示状态。鼠标悬停即可展开，查看所有活跃会话的详细信息。
+X Island 以一个紧凑的药丸形状悬浮在屏幕顶部。当 AI Agent 工作时，它会实时显示状态。鼠标悬停即可展开，查看所有活跃会话的详细信息。
 
 **核心功能：**
 
@@ -37,6 +37,13 @@ Tower Island 以一个紧凑的药丸形状悬浮在屏幕顶部。当 AI Agent 
 - **窗口跳转** — 点击会话卡片直接跳转到对应的终端标签页或 IDE 窗口（支持 iTerm2 标签级精确跳转）
 - **水平拖动** — 可沿屏幕顶部左右拖动灵动岛位置
 - **智能标题** — 显示首条用户提问作为标题，工作目录文件夹名作为副标题
+- **多语言** — 支持简体中文、英文、韩文、日文、法文
+- **配额追踪** — 查看 Kimi、DeepSeek、GLM API 的剩余额度
+- **外接显示器** — 灵动岛自动跟随鼠标在屏幕间切换
+- **流式思考展示** — Agent 推理时显示实时动画思考状态
+- **活动日志** — 按时间线展示所有会话的工具调用记录
+- **工具事件详情** — 每次工具调用的测试结果解析和行数统计
+- **SSH 远程管理** — 在灵动岛中直接连接和监控远程服务器
 
 **支持的 AI Agent：**
 
@@ -46,6 +53,9 @@ Tower Island 以一个紧凑的药丸形状悬浮在屏幕顶部。当 AI Agent 
 | Cursor | Hooks API (hooks.json) | 完整支持 |
 | Codex (OpenAI) | 原生 hooks | 完整支持 |
 | OpenCode | JS 插件 | 完整支持 |
+| GLM (智谱) | TOML hooks (config.toml) | 完整支持 |
+| Kimi (月之暗面) | TOML hooks (config.toml) | 完整支持 |
+| DeepSeek | TOML hooks (config.toml) | 完整支持 |
 | Gemini CLI | 配置 hook | 基础支持 |
 | Copilot (VS Code) | 配置 hook | 基础支持 |
 
@@ -53,36 +63,36 @@ Tower Island 以一个紧凑的药丸形状悬浮在屏幕顶部。当 AI Agent 
 
 ### 方式一：下载 DMG 安装（推荐）
 
-1. 前往 [Releases](https://github.com/g535879/TowerIsland/releases) 下载最新的 `.dmg` 文件
-2. 打开 DMG，将 **Tower Island** 拖入应用程序文件夹
-3. 启动 Tower Island
+1. 前往 [Releases](https://github.com/user/xisland/releases) 下载最新的 `.dmg` 文件
+2. 打开 DMG，将 **X Island** 拖入应用程序文件夹
+3. 启动 X Island
 
 > **macOS 安全提示：** 由于应用未经 Apple 开发者签名，首次打开时 macOS 会拦截。解除方法：
 >
 > ```bash
-> xattr -cr /Applications/Tower\ Island.app
+> xattr -cr /Applications/X\ Island.app
 > ```
 >
-> 或者：**系统设置 → 隐私与安全性 → 下滑找到 Tower Island 的提示 → 点击「仍要打开」**
+> 或者：**系统设置 → 隐私与安全性 → 下滑找到 X Island 的提示 → 点击「仍要打开」**
 
 ### CLI 升级
 
-Tower Island 会安装一个配套命令行工具到 `~/.tower-island/bin/tower-island`。
+X Island 会安装一个配套命令行工具到 `~/.xisland/bin/xisland`。
 
 如果这个目录已经加入 `PATH`，你可以直接通过 GitHub Releases 升级：
 
 ```bash
-tower-island upgrade
+xisland upgrade
 ```
 
 前提：
 - 已安装并登录 `gh`
-- Tower Island 已安装在 `/Applications/Tower Island.app`
+- X Island 已安装在 `/Applications/X Island.app`
 
-如果提示找不到 `tower-island`，可以把下面这行加入 shell 配置：
+如果提示找不到 `xisland`，可以把下面这行加入 shell 配置：
 
 ```bash
-export PATH="$HOME/.tower-island/bin:$PATH"
+export PATH="$HOME/.xisland/bin:$PATH"
 ```
 
 执行 `bash Scripts/build.sh` 后，也会根据你当前使用的 shell，提示应该把这行配置写到哪个文件里。
@@ -92,29 +102,29 @@ export PATH="$HOME/.tower-island/bin:$PATH"
 **环境要求：** macOS 14.0+、Swift 5.9+
 
 ```bash
-git clone https://github.com/g535879/TowerIsland.git
-cd TowerIsland
+git clone https://github.com/user/xisland.git
+cd xisland
 bash Scripts/build.sh
-open ".build/Tower Island.app"
+open ".build/X Island.app"
 ```
 
 ### Agent 配置
 
-Tower Island 在首次启动时会**自动配置**所有已检测到的 Agent 的 hook。无需手动设置。
+X Island 在首次启动时会**自动配置**所有已检测到的 Agent 的 hook。无需手动设置。
 
 如需验证或手动配置：
-- 打开 Tower Island 设置（齿轮图标或菜单栏）
+- 打开 X Island 设置（齿轮图标或菜单栏）
 - 进入 **Agents** 标签页
 - 按需开启/关闭各 Agent
 
-底层原理：安装一个轻量的 bridge 可执行文件（`di-bridge`）到 `~/.tower-island/bin/`，并在各 Agent 的配置文件中注册 hook。
-同一个目录下也会安装 `tower-island` 命令，用于直接升级应用。
+底层原理：安装一个轻量的 bridge 可执行文件（`di-bridge`）到 `~/.xisland/bin/`，并在各 Agent 的配置文件中注册 hook。
+同一个目录下也会安装 `xisland` 命令，用于直接升级应用。
 
 ## 架构
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                Tower Island App                  │
+│                X Island App                      │
 │                                                  │
 │   NotchWindow (NSPanel)                          │
 │   ├── CollapsedPillView (状态指示)                │
@@ -134,7 +144,7 @@ Agent hook 触发 → di-bridge 编码消息 → Unix Socket → SessionManager
 
 **核心组件：**
 
-- **`TowerIsland`** — 主应用。SwiftUI 视图托管在 `NSPanel` 中，实现浮动灵动岛 UI
+- **`XIsland`** — 主应用。SwiftUI 视图托管在 `NSPanel` 中，实现浮动灵动岛 UI
 - **`DIBridge`** — 轻量 CLI 工具，由 Agent hook 调用。读取 stdin JSON，编码为 `DIMessage`，通过 Unix Socket 发送
 - **`DIShared`** — 共享协议定义（`DIMessage`、Socket 配置）
 
@@ -147,44 +157,60 @@ Sources/
 ├── DIBridge/          # Bridge CLI 工具
 │   └── DIBridge.swift
 └── DynamicIsland/     # 主应用
-    ├── TowerIslandApp.swift
+    ├── XIslandApp.swift
     ├── AppDelegate.swift
     ├── NotchWindow.swift
     ├── Models/
     │   ├── AgentSession.swift
-    │   └── AgentType.swift
+    │   ├── AgentType.swift
+    │   ├── ToolEvent.swift
+    │   └── QuotaInfo.swift
     ├── Managers/
     │   ├── SessionManager.swift
     │   ├── AudioEngine.swift
     │   ├── SocketServer.swift
     │   ├── ZeroConfigManager.swift
-    │   └── TerminalJumpManager.swift
+    │   ├── TerminalJumpManager.swift
+    │   ├── UpdateManager.swift
+    │   ├── AppUpdater.swift
+    │   ├── L10n.swift
+    │   ├── QuotaTracker.swift
+    │   └── SSHRemoteManager.swift
     └── Views/
         ├── NotchContentView.swift
         ├── CollapsedPillView.swift
         ├── SessionListView.swift
         ├── ExpandedSessionView.swift
+        ├── AgentActivityView.swift
         ├── PermissionApprovalView.swift
         ├── QuestionAnswerView.swift
         ├── PlanReviewView.swift
         └── PreferencesView.swift
 
+Sources/XIslandUITestDriver/     # UI 测试驱动与场景运行器
+Tests/
+├── TowerIslandTests/            # 125 个 Swift XCTest 测试
+├── Fixtures/                    # 测试数据
+└── TestUtilities/               # 共享测试辅助
+
 Scripts/
 ├── build.sh           # Release 构建 + .app 打包
-└── test.sh            # 集成测试套件（100 个测试）
+├── test-all.sh        # 全量测试 (Swift + CLI)
+├── test.sh            # 集成测试套件
+├── package-dmg.sh     # DMG 打包
+└── xisland            # CLI 辅助脚本
 ```
 
 ## 测试
 
-项目包含完整的 bash 集成测试套件：
+项目包含 Swift XCTest 和 bash 集成测试两套体系：
 
 ```bash
-# 全量测试（每次提交前必须执行）
-# 1) 先确保 Tower Island 应用正在运行
-bash Scripts/test-all.sh
+# Swift 测试（125 个测试，无需运行 app）
+swift test
 
-# 运行所有测试（需要 app 正在运行）
-bash Scripts/test.sh
+# 全量 bash 集成测试（需 app 正在运行）
+bash Scripts/test-all.sh
 
 # 运行指定模块
 bash Scripts/test.sh M1 M15 M17
@@ -202,7 +228,7 @@ bash Scripts/install-git-hooks.sh
 
 ## 设置选项
 
-所有设置可在 Tower Island 设置面板中调整：
+所有设置可在 X Island 设置面板中调整：
 
 | 设置项 | 默认值 | 说明 |
 |--------|-------|------|

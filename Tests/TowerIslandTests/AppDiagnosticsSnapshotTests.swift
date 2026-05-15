@@ -1,5 +1,5 @@
 import XCTest
-@testable import TowerIsland
+@testable import XIsland
 
 @MainActor
 final class AppDiagnosticsSnapshotTests: XCTestCase {
@@ -52,8 +52,8 @@ final class AppDiagnosticsSnapshotTests: XCTestCase {
             publishedAt: ISO8601DateFormatter().date(from: "2026-04-15T08:00:00Z")!,
             assets: [
                 .init(
-                    name: "TowerIsland-1.2.9.dmg",
-                    browserDownloadURL: URL(string: "https://example.com/TowerIsland-1.2.9.dmg")!
+                    name: "XIsland-1.2.9.dmg",
+                    browserDownloadURL: URL(string: "https://example.com/XIsland-1.2.9.dmg")!
                 )
             ]
         )
@@ -68,7 +68,7 @@ final class AppDiagnosticsSnapshotTests: XCTestCase {
 
         XCTAssertEqual(snapshot.update.state, "updateAvailable")
         XCTAssertEqual(snapshot.update.version, "1.2.9")
-        XCTAssertEqual(snapshot.update.dmgURL, "https://example.com/TowerIsland-1.2.9.dmg")
+        XCTAssertEqual(snapshot.update.dmgURL, "https://example.com/XIsland-1.2.9.dmg")
         XCTAssertEqual(snapshot.visibleAccessibilityIdentifiers, [
             TestAccessibility.collapsedPill,
         ])
@@ -83,8 +83,8 @@ final class AppDiagnosticsSnapshotTests: XCTestCase {
             publishedAt: ISO8601DateFormatter().date(from: "2026-04-15T08:00:00Z")!,
             assets: [
                 .init(
-                    name: "TowerIsland-1.2.9.dmg",
-                    browserDownloadURL: URL(string: "https://example.com/TowerIsland-1.2.9.dmg")!
+                    name: "XIsland-1.2.9.dmg",
+                    browserDownloadURL: URL(string: "https://example.com/XIsland-1.2.9.dmg")!
                 )
             ]
         )

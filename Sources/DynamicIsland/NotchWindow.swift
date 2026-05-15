@@ -27,10 +27,13 @@ final class NotchWindow: NSPanel {
     }
 
     var customX: CGFloat?
+    var keyEquivalentHandler: ((NSEvent) -> Bool)?
     private(set) var isDragging = false
     private var dragTracking = false
     private var dragStartWindowX: CGFloat = 0
     private var dragStartMouseX: CGFloat = 0
+    private var mouseTrackingTimer: Timer?
+    private var lastActiveScreenID: CGDirectDisplayID?
 
     init() {
         let screen = Self.bestScreen()
@@ -76,6 +79,41 @@ final class NotchWindow: NSPanel {
             self, selector: #selector(activeSpaceDidChange),
             name: NSWorkspace.activeSpaceDidChangeNotification, object: nil
         )
+
+        // Track mouse movement between screens (throttled to 2 Hz)
+        mouseTrackingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.followMouseIfScreenChanged()
+        }
+    }
+
+    private func followMouseIfScreenChanged() {
+        let mouseLocation = NSEvent.mouseLocation
+        guard let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }),
+              let screenID = mouseScreen.deviceDescription[NSDeviceDescriptionKey(rawValue: "NSScreenNumber")] as? CGDirectDisplayID
+        else { return }
+
+        if screenID != lastActiveScreenID {
+            lastActiveScreenID = screenID
+            // Only reposition if not being dragged
+            guard !dragTracking else { return }
+            repositionOnScreen(mouseScreen)
+        }
+    }
+
+    private func repositionOnScreen(_ screen: NSScreen) {
+        let currentFrame = frame
+        let x: CGFloat
+        if let cx = customX, cx.isFinite {
+            let ratio = screen.frame.width / (self.screen?.frame.width ?? screen.frame.width)
+            x = max(screen.frame.origin.x,
+                    min(cx * ratio - currentFrame.width / 2,
+                        screen.frame.origin.x + screen.frame.width - currentFrame.width))
+        } else {
+            x = screen.frame.origin.x + (screen.frame.width - currentFrame.width) / 2
+        }
+        let screenTop = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen)
+        let y = screenTop - currentFrame.height
+        setFrameDirect(NSRect(x: x, y: y, width: currentFrame.width, height: currentFrame.height), display: true)
     }
 
     func applySpaceBehavior() {
@@ -196,14 +234,28 @@ final class NotchWindow: NSPanel {
         return NSRect(x: x, y: y, width: w, height: h)
     }
 
+    /// Returns the screen that currently contains the mouse cursor.
+    /// Falls back to built-in, then first screen.
     static func bestScreen() -> NSScreen {
+        let mouseLocation = NSEvent.mouseLocation
+        if let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) {
+            return mouseScreen
+        }
         if let builtIn = NSScreen.screens.first(where: {
             $0.deviceDescription[NSDeviceDescriptionKey(rawValue: "NSScreenNumber")]
                 as? CGDirectDisplayID == CGMainDisplayID()
         }) {
             return builtIn
         }
-        return NSScreen.screens[0]
+        return NSScreen.screens.first ?? NSScreen()
+    }
+
+    /// True when this screen has a physical notch (camera housing).
+    static func screenHasPhysicalNotch(_ screen: NSScreen) -> Bool {
+        if #available(macOS 14.0, *) {
+            return screen.safeAreaInsets.top > 0
+        }
+        return false
     }
 
     @objc private func screenDidChange(_ note: Notification) {
@@ -326,6 +378,13 @@ final class NotchWindow: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let handler = keyEquivalentHandler, handler(event) {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }
 
 private class FlippedView: NSView {

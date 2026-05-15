@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import TowerIsland
+@testable import XIsland
 
 @MainActor
 final class AppDelegateUITestLaunchTests: XCTestCase {
@@ -10,7 +10,7 @@ final class AppDelegateUITestLaunchTests: XCTestCase {
 
         defer {
             NSApp.windows
-                .filter { $0.title == "Tower Island Settings" }
+                .filter { $0.title == "X Island Settings" }
                 .forEach { $0.close() }
             NSApp.setActivationPolicy(previousPolicy)
         }
@@ -32,6 +32,6 @@ final class AppDelegateUITestLaunchTests: XCTestCase {
 
         appDelegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
 
-        XCTAssertTrue(NSApp.windows.contains(where: { $0.title == "Tower Island Settings" }))
+        XCTAssertTrue(NSApp.windows.contains(where: { $0.title == "X Island Settings" }))
     }
 }

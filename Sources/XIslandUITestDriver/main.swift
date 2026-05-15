@@ -17,6 +17,6 @@ do {
         print("PASS \(scenario.name)")
     }
 } catch {
-    fputs("TowerIslandUITestDriver failed: \(error.localizedDescription)\n", stderr)
+    fputs("XIslandUITestDriver failed: \(error.localizedDescription)\n", stderr)
     exit(1)
 }

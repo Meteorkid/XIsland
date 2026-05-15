@@ -43,7 +43,7 @@ struct ExpandedSessionView: View {
                 HStack(spacing: 3) {
                     Image(systemName: "arrow.up.right.square")
                         .font(.system(size: 10))
-                    Text("Jump")
+                    Text(L10n.jumpTitle)
                         .font(.system(size: 10, weight: .medium))
                 }
                 .foregroundStyle(.white.opacity(0.7))
@@ -102,26 +102,26 @@ struct ExpandedSessionView: View {
         case .active:
             HStack(spacing: 3) {
                 Circle().fill(.blue).frame(width: 5, height: 5)
-                Text("Running")
+                Text(L10n.running)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.blue)
             }
         case .thinking:
-            badgeLabel("Thinking", color: .blue)
+            badgeLabel(L10n.thinking, color: .blue)
         case .compacting:
-            badgeLabel("Compacting", color: .yellow)
+            badgeLabel(L10n.compacting, color: .yellow)
         case .waitingPermission:
-            badgeLabel("Permission", color: .orange)
+            badgeLabel(L10n.permission, color: .orange)
         case .waitingAnswer:
-            badgeLabel("Question", color: .blue)
+            badgeLabel(L10n.question, color: .blue)
         case .waitingPlanReview:
-            badgeLabel("Review", color: .purple)
+            badgeLabel(L10n.review, color: .purple)
         case .idle:
-            badgeLabel("Done", color: .green)
+            badgeLabel(L10n.done, color: .green)
         case .completed:
-            badgeLabel("Done", color: .green)
+            badgeLabel(L10n.done, color: .green)
         case .error:
-            badgeLabel("Error", color: .red)
+            badgeLabel(L10n.error, color: .red)
         }
     }
 

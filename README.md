@@ -1,10 +1,10 @@
 [中文](README_zh.md) | English
 
 <p align="center">
-  <img src="Assets/app-icon.png" width="128" alt="Tower Island">
+  <img src="Assets/app-icon.png" width="128" alt="X Island">
 </p>
 
-<h1 align="center">Tower Island</h1>
+<h1 align="center">X Island</h1>
 
 <p align="center">
   A macOS Dynamic Island-style control tower for all your AI coding agents.<br>
@@ -14,7 +14,7 @@
 ## Demo
 
 <p align="center">
-  <img src="Assets/demo.gif" width="560" alt="Tower Island Demo">
+  <img src="Assets/demo.gif" width="560" alt="X Island Demo">
 </p>
 
 | Collapsed (Notch) | Collapsed (External) | Expanded | Question |
@@ -23,7 +23,7 @@
 
 ## What It Does
 
-Tower Island sits at the top of your screen as a compact pill. When your AI agents are working, it shows their status at a glance. Hover to expand and see all active sessions with full details.
+X Island sits at the top of your screen as a compact pill. When your AI agents are working, it shows their status at a glance. Hover to expand and see all active sessions with full details.
 
 **Core features:**
 
@@ -37,6 +37,13 @@ Tower Island sits at the top of your screen as a compact pill. When your AI agen
 - **Window jumping** — Click a session to jump to the exact terminal tab or IDE window (iTerm2 tab-level precision)
 - **Horizontal dragging** — Drag the island left/right along the top edge
 - **Session titles** — Shows first user prompt as title, workspace folder as subtitle
+- **Multi-language** — Supports English, Chinese, Korean, Japanese, French
+- **Quota tracking** — Check remaining balance for Kimi, DeepSeek, GLM APIs
+- **External monitor support** — Island automatically follows mouse between displays
+- **Streaming thought display** — Real-time animated thinking indicator during agent reasoning
+- **Activity log** — Chronological feed of all tool calls across all sessions
+- **Tool event details** — Test result parsing and lines-read statistics per tool call
+- **SSH Remote Manager** — Connect and monitor remote servers directly from the island
 
 **Supported agents:**
 
@@ -46,6 +53,9 @@ Tower Island sits at the top of your screen as a compact pill. When your AI agen
 | Cursor | Hooks API (hooks.json) | Full support |
 | Codex (OpenAI) | Native hooks | Full support |
 | OpenCode | JS plugin | Full support |
+| GLM (Zhipu) | TOML hooks (config.toml) | Full support |
+| Kimi (Moonshot) | TOML hooks (config.toml) | Full support |
+| DeepSeek | TOML hooks (config.toml) | Full support |
 | Gemini CLI | Config hook | Basic support |
 | Copilot (VS Code) | Config hook | Basic support |
 
@@ -53,36 +63,36 @@ Tower Island sits at the top of your screen as a compact pill. When your AI agen
 
 ### Option 1: Download DMG (Recommended)
 
-1. Go to [Releases](https://github.com/g535879/TowerIsland/releases) and download the latest `.dmg` file
-2. Open the DMG and drag **Tower Island** to your Applications folder
-3. Launch Tower Island
+1. Go to [Releases](https://github.com/user/xisland/releases) and download the latest `.dmg` file
+2. Open the DMG and drag **X Island** to your Applications folder
+3. Launch X Island
 
 > **macOS Gatekeeper notice:** Since the app is not signed with an Apple Developer certificate, macOS will block it on first launch. To bypass:
 >
 > ```bash
-> xattr -cr /Applications/Tower\ Island.app
+> xattr -cr /Applications/X\ Island.app
 > ```
 >
-> Or: **System Settings → Privacy & Security → scroll down → click "Open Anyway"** next to the Tower Island warning.
+> Or: **System Settings → Privacy & Security → scroll down → click "Open Anyway"** next to the X Island warning.
 
 ### CLI Upgrade
 
-Tower Island installs a companion CLI at `~/.tower-island/bin/tower-island`.
+X Island installs a companion CLI at `~/.xisland/bin/xisland`.
 
 If that directory is in your `PATH`, you can upgrade directly from GitHub Releases with:
 
 ```bash
-tower-island upgrade
+xisland upgrade
 ```
 
 Requirements:
 - `gh` must be installed and authenticated
-- Tower Island must already be installed in `/Applications/Tower Island.app`
+- X Island must already be installed in `/Applications/X Island.app`
 
-If `tower-island` is not found, add this to your shell profile:
+If `xisland` is not found, add this to your shell profile:
 
 ```bash
-export PATH="$HOME/.tower-island/bin:$PATH"
+export PATH="$HOME/.xisland/bin:$PATH"
 ```
 
 `bash Scripts/build.sh` will also print the right profile file for your current shell after installing the CLI.
@@ -92,29 +102,29 @@ export PATH="$HOME/.tower-island/bin:$PATH"
 **Prerequisites:** macOS 14.0+, Swift 5.9+
 
 ```bash
-git clone https://github.com/g535879/TowerIsland.git
-cd TowerIsland
+git clone https://github.com/user/xisland.git
+cd xisland
 bash Scripts/build.sh
-open ".build/Tower Island.app"
+open ".build/X Island.app"
 ```
 
 ### Agent Configuration
 
-Tower Island **auto-configures** hooks for all detected agents on first launch. No manual setup needed.
+X Island **auto-configures** hooks for all detected agents on first launch. No manual setup needed.
 
 To verify or manually trigger configuration:
-- Open Tower Island Settings (gear icon or menu bar)
+- Open X Island Settings (gear icon or menu bar)
 - Go to the **Agents** tab
 - Toggle agents on/off as needed
 
-Under the hood, it installs a lightweight bridge binary (`di-bridge`) at `~/.tower-island/bin/` and registers hooks in each agent's config file.
-The same directory also contains the `tower-island` CLI used for in-place upgrades.
+Under the hood, it installs a lightweight bridge binary (`di-bridge`) at `~/.xisland/bin/` and registers hooks in each agent's config file.
+The same directory also contains the `xisland` CLI used for in-place upgrades.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                  Tower Island App                │
+│                  X Island App                    │
 │                                                  │
 │   NotchWindow (NSPanel)                          │
 │   ├── CollapsedPillView (status dots)            │
@@ -134,7 +144,7 @@ Agent hooks fire → di-bridge encodes message → socket → SessionManager
 
 **Key components:**
 
-- **`TowerIsland`** — Main app. SwiftUI views hosted in an `NSPanel` for the floating island UI
+- **`XIsland`** — Main app. SwiftUI views hosted in an `NSPanel` for the floating island UI
 - **`DIBridge`** — Lightweight CLI binary invoked by agent hooks. Reads stdin JSON, encodes it as a `DIMessage`, sends via Unix socket
 - **`DIShared`** — Shared protocol definitions (`DIMessage`, socket config)
 
@@ -147,44 +157,60 @@ Sources/
 ├── DIBridge/          # Bridge CLI binary
 │   └── DIBridge.swift
 └── DynamicIsland/     # Main app
-    ├── TowerIslandApp.swift
+    ├── XIslandApp.swift
     ├── AppDelegate.swift
     ├── NotchWindow.swift
     ├── Models/
     │   ├── AgentSession.swift
-    │   └── AgentType.swift
+    │   ├── AgentType.swift
+    │   ├── ToolEvent.swift
+    │   └── QuotaInfo.swift
     ├── Managers/
     │   ├── SessionManager.swift
     │   ├── AudioEngine.swift
     │   ├── SocketServer.swift
     │   ├── ZeroConfigManager.swift
-    │   └── TerminalJumpManager.swift
+    │   ├── TerminalJumpManager.swift
+    │   ├── UpdateManager.swift
+    │   ├── AppUpdater.swift
+    │   ├── L10n.swift
+    │   ├── QuotaTracker.swift
+    │   └── SSHRemoteManager.swift
     └── Views/
         ├── NotchContentView.swift
         ├── CollapsedPillView.swift
         ├── SessionListView.swift
         ├── ExpandedSessionView.swift
+        ├── AgentActivityView.swift
         ├── PermissionApprovalView.swift
         ├── QuestionAnswerView.swift
         ├── PlanReviewView.swift
         └── PreferencesView.swift
 
+Sources/XIslandUITestDriver/    # UI test driver & scenario runner
+Tests/
+├── TowerIslandTests/            # 125 Swift XCTest tests
+├── Fixtures/                    # Test fixture data
+└── TestUtilities/               # Shared test helpers
+
 Scripts/
 ├── build.sh           # Release build + .app bundle
-└── test.sh            # Integration test suite (100 tests)
+├── test-all.sh        # Full test suite (Swift + CLI)
+├── test.sh            # Integration test suite
+├── package-dmg.sh     # DMG packaging
+└── xisland            # CLI helper script
 ```
 
 ## Testing
 
-The project includes a comprehensive bash integration test suite:
+The project includes both Swift XCTest and bash integration test suites:
 
 ```bash
-# Full suite (required before every commit)
-# 1) Ensure Tower Island app is running
-bash Scripts/test-all.sh
+# Swift tests (125 tests, no running app required)
+swift test
 
-# Run all tests (requires app to be running)
-bash Scripts/test.sh
+# Full bash integration test suite (requires app running)
+bash Scripts/test-all.sh
 
 # Run specific modules
 bash Scripts/test.sh M1 M15 M17
@@ -202,7 +228,7 @@ Test modules cover: message encoding, session lifecycle, agent identity, permiss
 
 ## Configuration
 
-All settings are accessible from the Tower Island Settings panel:
+All settings are accessible from the X Island Settings panel:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -213,7 +239,7 @@ All settings are accessible from the Tower Island Settings panel:
 
 ## How It Works
 
-1. **Zero-config setup**: On launch, Tower Island scans for installed agents and injects lightweight hooks into their config files
+1. **Zero-config setup**: On launch, X Island scans for installed agents and injects lightweight hooks into their config files
 2. **Hook → Bridge → Socket**: When an agent event fires (tool use, permission request, completion), the hook invokes `di-bridge` which sends a structured message over a Unix socket
 3. **Real-time UI**: The main app receives messages via `SocketServer`, updates `SessionManager`, and the SwiftUI views react immediately
 4. **Interactive responses**: For permissions and questions, the bridge process stays alive waiting for the user's response, then writes it back to stdout for the agent to consume

@@ -3,9 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-SOCK="$HOME/.tower-island/di.sock"
-APP_BUNDLE="$PROJECT_DIR/.build/Tower Island.app"
-SYSTEM_APP_BUNDLE="/Applications/Tower Island.app"
+SOCK="$HOME/.xisland/di.sock"
+APP_BUNDLE="$PROJECT_DIR/.build/X Island.app"
+SYSTEM_APP_BUNDLE="/Applications/X Island.app"
 
 cd "$PROJECT_DIR"
 
@@ -21,16 +21,16 @@ resolve_app_bundle() {
     return 1
 }
 
-restart_tower_island() {
+restart_xisland() {
     local app_to_open
     if ! app_to_open="$(resolve_app_bundle)"; then
-        echo "ERROR: Tower Island socket not found at $SOCK"
-        echo "Please launch Tower Island first, then rerun: bash Scripts/test-all.sh"
+        echo "ERROR: X Island socket not found at $SOCK"
+        echo "Please launch X Island first, then rerun: bash Scripts/test-all.sh"
         exit 1
     fi
 
-    echo "==> Restarting Tower Island for integration tests..."
-    pkill -f "TowerIsland" 2>/dev/null || true
+    echo "==> Restarting X Island for integration tests..."
+    pkill -f "XIsland" 2>/dev/null || true
     rm -f "$SOCK"
     open "$app_to_open"
 
@@ -41,7 +41,7 @@ restart_tower_island() {
         sleep 0.2
     done
 
-    echo "ERROR: Tower Island socket not found at $SOCK after launching $app_to_open"
+    echo "ERROR: X Island socket not found at $SOCK after launching $app_to_open"
     exit 1
 }
 
@@ -49,7 +49,7 @@ echo "==> [1/2] Running Swift unit tests..."
 swift test
 
 echo "==> [2/2] Running integration tests..."
-restart_tower_island
+restart_xisland
 
 bash Scripts/test.sh
 

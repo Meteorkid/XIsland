@@ -2,17 +2,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "TowerIsland",
+    name: "XIsland",
     platforms: [.macOS(.v14)],
     targets: [
         .target(name: "DIShared"),
-        .executableTarget(name: "TowerIsland", dependencies: ["DIShared"], path: "Sources/DynamicIsland"),
+        .executableTarget(name: "XIsland", dependencies: ["DIShared"], path: "Sources/DynamicIsland"),
         .executableTarget(name: "DIBridge", dependencies: ["DIShared"]),
         .executableTarget(
-            name: "TowerIslandUITestDriver",
+            name: "XIslandUITestDriver",
             dependencies: [],
-            path: "Sources/TowerIslandUITestDriver"
+            path: "Sources/XIslandUITestDriver"
         ),
-        .testTarget(name: "TowerIslandTests", dependencies: ["TowerIsland", "DIBridge", "TowerIslandUITestDriver"]),
+        .testTarget(name: "XIslandTests", dependencies: ["XIsland", "DIBridge", "XIslandUITestDriver"]),
     ]
 )

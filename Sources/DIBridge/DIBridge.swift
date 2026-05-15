@@ -82,7 +82,7 @@ struct DIBridge {
                     if agentType == "cursor" {
                         let jsonObj: [String: Any] = [
                             "permission": "deny",
-                            "agent_message": "The user already answered this question via Tower Island. User selected: \(answer). Do NOT ask the same question again. Continue with the conversation using this answer."
+                            "agent_message": "The user already answered this question via X Island. User selected: \(answer). Do NOT ask the same question again. Continue with the conversation using this answer."
                         ]
                         if let data = try? JSONSerialization.data(withJSONObject: jsonObj),
                            let str = String(data: data, encoding: .utf8) {

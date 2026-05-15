@@ -33,8 +33,16 @@ struct PreferencesView: View {
     @Environment(AudioEngine.self) private var audioEngine
     @Environment(SessionManager.self) private var sessionManager
     @Environment(UpdateManager.self) private var updateManager
+    @State private var sshManager = SSHRemoteManager()
     @State private var selection: PreferencesPane = .general
     @State private var isShowingInstallConfirmation = false
+    @State private var showAddServerSheet = false
+    @State private var serverLabel = ""
+    @State private var serverHost = ""
+    @State private var serverPort = 22
+    @State private var serverUser = ""
+    @State private var serverIdentityFile = ""
+    @State private var serverConnectionStatus: String?
 
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("showOnAllSpaces") private var showOnAllSpaces = true
@@ -46,6 +54,16 @@ struct PreferencesView: View {
     @AppStorage("displayTimestamp") private var displayTimestamp = true
     @AppStorage("reduceMotion") private var reduceMotion = false
     @AppStorage("completedLingerDuration") private var completedLingerDuration = 120.0
+    @AppStorage(QuotaTracker.anthropicEnabledKey) private var anthropicEnabled = false
+    @AppStorage(QuotaTracker.openAIEnabledKey) private var openAIEnabled = false
+    @AppStorage(QuotaTracker.kimiEnabledKey) private var kimiEnabled = false
+    @AppStorage(QuotaTracker.deepseekEnabledKey) private var deepseekEnabled = false
+    @AppStorage(QuotaTracker.glmEnabledKey) private var glmEnabled = false
+    @State private var anthropicAPIKey = ""
+    @State private var openAIAPIKey = ""
+    @State private var kimiAPIKey = ""
+    @State private var deepseekAPIKey = ""
+    @State private var glmAPIKey = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -73,12 +91,12 @@ struct PreferencesView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Tower Island will close and relaunch to finish the update.")
+            Text("X Island will close and relaunch to finish the update.")
         }
         .onAppear {
             applyPendingPaneSelectionIfNeeded()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .towerIslandShowAboutPane)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .xislandShowAboutPane)) { _ in
             applyPendingPaneSelectionIfNeeded(fallbackToAbout: true)
         }
     }
@@ -209,7 +227,165 @@ struct PreferencesView: View {
                 }
             }
 
+            section("Usage Tracking") {
+                card {
+                    providerRow("Anthropic", enabled: $anthropicEnabled, key: $anthropicAPIKey,
+                                provider: "anthropic", placeholder: "sk-ant-...")
+                    dividerLine
+                    providerRow("OpenAI", enabled: $openAIEnabled, key: $openAIAPIKey,
+                                provider: "openai", placeholder: "sk-...")
+                    dividerLine
+                    providerRow("Kimi (Moonshot)", enabled: $kimiEnabled, key: $kimiAPIKey,
+                                provider: "kimi", placeholder: "sk-...")
+                    dividerLine
+                    providerRow("DeepSeek", enabled: $deepseekEnabled, key: $deepseekAPIKey,
+                                provider: "deepseek", placeholder: "sk-...")
+                    dividerLine
+                    providerRow("GLM (Zhipu)", enabled: $glmEnabled, key: $glmAPIKey,
+                                provider: "glm", placeholder: "...")
+                }
+            }
+
+            section("Remote Servers") {
+                card {
+                    if sshManager.servers.isEmpty {
+                        Text("No remote servers configured")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.tertiary)
+                            .padding(.vertical, 8)
+                    } else {
+                        ForEach(sshManager.servers) { server in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    HStack(spacing: 6) {
+                                        Circle()
+                                            .fill(server.connected ? Color.green : Color.gray.opacity(0.4))
+                                            .frame(width: 6, height: 6)
+                                        Text(server.label)
+                                            .font(.system(size: 13, weight: .medium))
+                                        Text("\(server.user)@\(server.host):\(server.port)")
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    Spacer()
+                                    HStack(spacing: 8) {
+                                        Button("Test") {
+                                            Task {
+                                                serverConnectionStatus = try? await sshManager.verifyConnection(for: server)
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.blue)
+                                        Button("Remove") {
+                                            sshManager.removeServer(server)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.red.opacity(0.7))
+                                    }
+                                }
+                                if let status = serverConnectionStatus, !status.isEmpty {
+                                    Text(status)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(status == "OK" ? .green : .red.opacity(0.7))
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    dividerLine
+                    Button("Add Remote Server...") {
+                        showAddServerSheet = true
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.blue)
+                }
+            }
         }
+        .onAppear {
+            anthropicAPIKey = QuotaTracker.loadAPIKey(for: "anthropic") ?? ""
+            openAIAPIKey = QuotaTracker.loadAPIKey(for: "openai") ?? ""
+            kimiAPIKey = QuotaTracker.loadAPIKey(for: "kimi") ?? ""
+            deepseekAPIKey = QuotaTracker.loadAPIKey(for: "deepseek") ?? ""
+            glmAPIKey = QuotaTracker.loadAPIKey(for: "glm") ?? ""
+        }
+        .sheet(isPresented: $showAddServerSheet) {
+            addServerSheet
+        }
+    }
+
+    private var addServerSheet: some View {
+        VStack(spacing: 16) {
+            Text("Add Remote Server")
+                .font(.system(size: 16, weight: .semibold))
+
+            VStack(spacing: 8) {
+                HStack {
+                    Text("Label:").frame(width: 80, alignment: .trailing)
+                    TextField("e.g. dev-server", text: $serverLabel)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 250)
+                }
+                HStack {
+                    Text("Host:").frame(width: 80, alignment: .trailing)
+                    TextField("e.g. 192.168.1.10", text: $serverHost)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 250)
+                }
+                HStack {
+                    Text("Port:").frame(width: 80, alignment: .trailing)
+                    TextField("22", value: $serverPort, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                    Spacer()
+                }
+                HStack {
+                    Text("User:").frame(width: 80, alignment: .trailing)
+                    TextField("e.g. root", text: $serverUser)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 250)
+                }
+                HStack {
+                    Text("Identity File:").frame(width: 80, alignment: .trailing)
+                    TextField("optional path to private key", text: $serverIdentityFile)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 250)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Button("Cancel") {
+                    showAddServerSheet = false
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+
+                Button("Add Server") {
+                    sshManager.addServer(
+                        label: serverLabel,
+                        host: serverHost,
+                        port: serverPort,
+                        user: serverUser,
+                        identityFile: serverIdentityFile.isEmpty ? nil : serverIdentityFile
+                    )
+                    serverLabel = ""
+                    serverHost = ""
+                    serverPort = 22
+                    serverUser = ""
+                    serverIdentityFile = ""
+                    showAddServerSheet = false
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.blue)
+                .disabled(serverLabel.isEmpty || serverHost.isEmpty || serverUser.isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 420, height: 300)
     }
 
     // MARK: - Agents
@@ -339,14 +515,14 @@ struct PreferencesView: View {
                     }
                     dividerLine
                     row("Socket") {
-                        Text("~/.tower-island/di.sock")
+                        Text("~/.xisland/di.sock")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
                     dividerLine
                     row("Bridge") {
-                        Text("~/.tower-island/bin/di-bridge")
+                        Text("~/.xisland/bin/di-bridge")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
@@ -590,6 +766,25 @@ struct PreferencesView: View {
         Divider().overlay(.quaternary.opacity(0.4))
     }
 
+    private func providerRow(_ name: String, enabled: Binding<Bool>, key: Binding<String>,
+                             provider: String, placeholder: String) -> some View {
+        Group {
+            row(name) {
+                Toggle("", isOn: enabled).labelsHidden()
+            }
+            if enabled.wrappedValue {
+                dividerLine
+                row("\(name) API Key", subtitle: "Stored in Keychain") {
+                    SecureField(placeholder, text: key)
+                        .frame(width: 200)
+                        .onChange(of: key.wrappedValue) { _, newValue in
+                            _ = QuotaTracker.saveAPIKey(newValue, for: provider)
+                        }
+                }
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private var appVersionText: String {
@@ -661,7 +856,7 @@ struct PreferencesView: View {
         case .failed(let message):
             return message
         case .installing:
-            return "Tower Island will close and relaunch when installation is ready."
+            return "X Island will close and relaunch when installation is ready."
         default:
             return nil
         }

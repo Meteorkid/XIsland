@@ -15,6 +15,14 @@ enum TerminalApp: String, CaseIterable {
     case trae = "Trae"
     case traeCn = "Trae CN"
     case codex = "Codex"
+    case wezTerm = "WezTerm"
+    case zellij = "Zellij"
+    case antigravity = "Antigravity"
+    case hyper = "Hyper"
+    case zed = "Zed"
+    case cmux = "CMux"
+    case conductor = "Conductor"
+    case termius = "Termius"
 
     var bundleIds: [String] {
         switch self {
@@ -30,6 +38,14 @@ enum TerminalApp: String, CaseIterable {
         case .trae: ["com.trae.app"]
         case .traeCn: ["cn.trae.app"]
         case .codex: ["com.openai.codex"]
+        case .wezTerm: ["org.wezfurlong.wezterm"]
+        case .zellij: ["no.bundle.id.zellij"] // multiplexer, runs inside another terminal
+        case .antigravity: ["com.antigravity.Antigravity"] // Antigravity IDE terminal
+        case .hyper: ["co.zeit.hyper"]
+        case .zed: ["dev.zed.Zed"]
+        case .cmux: [] // cmux runs inside another terminal — no macOS bundle
+        case .conductor: [] // conductor runs inside another terminal — no macOS bundle
+        case .termius: ["com.termius.mac"]
         }
     }
 
@@ -51,12 +67,20 @@ enum TerminalApp: String, CaseIterable {
         case .trae: ["trae"]
         case .traeCn: ["trae cn", "trae-cn", "traecn"]
         case .codex: ["codex"]
+        case .wezTerm: ["wezterm"]
+        case .zellij: ["zellij"]
+        case .antigravity: ["antigravity"]
+        case .hyper: ["hyper"]
+        case .zed: ["zed"]
+        case .cmux: ["cmux"]
+        case .conductor: ["conductor"]
+        case .termius: ["termius"]
         }
     }
 
     var isVSCodeFamily: Bool {
         switch self {
-        case .vscode, .cursor, .windsurf, .trae, .traeCn:
+        case .vscode, .cursor, .windsurf, .trae, .traeCn, .antigravity:
             true
         default:
             false
@@ -71,6 +95,14 @@ enum TerminalApp: String, CaseIterable {
         if lower.contains("ghostty") { return .ghostty }
         if lower.contains("alacritty") { return .alacritty }
         if lower.contains("kitty") { return .kitty }
+        if lower.contains("wezterm") { return .wezTerm }
+        if lower.contains("zellij") { return .zellij }
+        if lower.contains("antigravity") { return .antigravity }
+        if lower.contains("hyper") { return .hyper }
+        if lower.contains("zed") { return .zed }
+        if lower.contains("cmux") { return .cmux }
+        if lower.contains("conductor") { return .conductor }
+        if lower.contains("termius") { return .termius }
         if lower.contains("apple_terminal") || lower == "terminal" || lower.contains("com.apple.terminal") {
             return .terminal
         }
@@ -105,7 +137,8 @@ enum TerminalApp: String, CaseIterable {
         case .trae: return .trae
         case .codex: return .codex
         case .copilot: return .vscode
-        case .claudeCode, .geminiCli, .openCode, .droid, .qoder, .codeBuddy:
+        case .claudeCode, .geminiCli, .openCode, .droid, .qoder, .codeBuddy,
+             .qwen, .kimi, .deepseek, .kiro, .amp, .pi, .hermes, .glm:
             return nil
         }
     }
@@ -145,6 +178,23 @@ enum TerminalJumpManager {
 
             if app == .terminal, jumpToTerminalWindow(session: session) {
                 log("matched Terminal window")
+                return true
+            }
+
+            if let tsid = session.termSessionId, !tsid.isEmpty,
+               (tsid.lowercased().contains("tmux") || session.terminal.lowercased().contains("tmux")) {
+                log("jumping to tmux session app=\(app.rawValue) tsid=\(tsid)")
+                jumpToTmuxSession(session: session, app: app)
+                return true
+            }
+
+            if app == .wezTerm, jumpToWezTerm(session: session) {
+                log("matched WezTerm session")
+                return true
+            }
+
+            if app == .kitty, jumpToKittyWindow(session: session) {
+                log("matched Kitty window via remote control")
                 return true
             }
 
@@ -422,9 +472,89 @@ enum TerminalJumpManager {
             end tell
             """
         default:
+            activateApp(app)
             return
         }
         runAppleScript(script)
+    }
+
+    private static func jumpToWezTerm(session: AgentSession) -> Bool {
+        guard !session.workingDirectory.isEmpty else { return false }
+        let dir = session.workingDirectory
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["wezterm", "cli", "list", "--format", "json"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                for item in json {
+                    if let cwd = item["cwd"] as? String,
+                       (cwd.hasPrefix(dir) || dir.hasPrefix(cwd)) {
+                        if let tabId = item["tab_id"] as? Int {
+                            let activate = Process()
+                            activate.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+                            activate.arguments = ["wezterm", "cli", "activate-tab", "--tab-id", String(tabId)]
+                            activate.standardOutput = FileHandle.nullDevice
+                            activate.standardError = FileHandle.nullDevice
+                            try? activate.run()
+                            return true
+                        }
+                    }
+                }
+            }
+        } catch {
+            // 回退到 AXUIElement 由调用方处理
+        }
+        return false
+    }
+
+    private static func jumpToKittyWindow(session: AgentSession) -> Bool {
+        guard !session.workingDirectory.isEmpty else { return false }
+        let dir = session.workingDirectory
+        let folderName = (dir as NSString).lastPathComponent
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["kitty", "@", "ls"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                for tab in json {
+                    if let windows = tab["windows"] as? [[String: Any]] {
+                        for window in windows {
+                            if let title = window["title"] as? String,
+                               title.localizedCaseInsensitiveContains(folderName) {
+                                if let id = window["id"] as? Int {
+                                    let focus = Process()
+                                    focus.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+                                    focus.arguments = ["kitty", "@", "focus-window", "--match", "id:\(id)"]
+                                    focus.standardOutput = FileHandle.nullDevice
+                                    focus.standardError = FileHandle.nullDevice
+                                    try? focus.run()
+                                    return true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {
+            // 回退到 AXUIElement 由调用方处理
+        }
+        return false
     }
 
     static func captureFrontWindowNumber(for agentType: AgentType, terminal: String) -> Int? {
