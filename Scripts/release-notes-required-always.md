@@ -5,7 +5,7 @@
 If macOS blocks the app after installing from the DMG, run:
 
 ```bash
-xattr -cr /Applications/Tower\ Island.app
+xattr -cr /Applications/X\ Island.app
 ```
 
 Alternatively: **System Settings → Privacy & Security** → scroll to the message about X Island → **Open Anyway**.
