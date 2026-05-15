@@ -63,7 +63,7 @@ X Island sits at the top of your screen as a compact pill. When your AI agents a
 
 ### Option 1: Download DMG (Recommended)
 
-1. Go to [Releases](https://github.com/user/xisland/releases) and download the latest `.dmg` file
+1. Go to [Releases](https://github.com/Meteorkid/XIsland/releases) and download the latest `.dmg` file
 2. Open the DMG and drag **X Island** to your Applications folder
 3. Launch X Island
 
@@ -102,7 +102,7 @@ export PATH="$HOME/.xisland/bin:$PATH"
 **Prerequisites:** macOS 14.0+, Swift 5.9+
 
 ```bash
-git clone https://github.com/user/xisland.git
+git clone https://github.com/Meteorkid/XIsland.git
 cd xisland
 bash Scripts/build.sh
 open ".build/X Island.app"
