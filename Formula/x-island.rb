@@ -1,12 +1,12 @@
 cask "x-island" do
-  version "1.0.0"
+  version "1.3.5"
   sha256 :no_check
 
-  url "https://github.com/user/xisland/releases/download/v#{version}/X-Island-#{version}.dmg",
-      verified: "github.com/user/xisland/"
+  url "https://github.com/Meteorkid/XIsland/releases/download/v#{version}/XIsland-#{version}.dmg",
+      verified: "github.com/Meteorkid/XIsland/"
   name "X Island"
   desc "Dynamic Island-style AI coding agent control panel"
-  homepage "https://github.com/user/xisland"
+  homepage "https://github.com/Meteorkid/XIsland"
 
   livecheck do
     url :url
