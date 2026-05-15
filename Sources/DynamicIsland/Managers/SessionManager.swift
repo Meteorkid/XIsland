@@ -222,6 +222,8 @@ final class SessionManager {
             handleSubagentEnd(message)
         case .contextCompact:
             handleContextCompact(message)
+        case .recap:
+            handleRecap(message)
         default:
             break
         }
@@ -353,7 +355,7 @@ final class SessionManager {
             respond: respond
         )
         selectedSessionId = session.id
-        audioEngine?.play(.permissionRequest)
+        audioEngine?.play(.permissionRequest, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
     }
 
@@ -395,7 +397,7 @@ final class SessionManager {
             cancel: cancel
         )
         selectedSessionId = session.id
-        audioEngine?.play(.question)
+        audioEngine?.play(.question, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
     }
 
@@ -409,7 +411,7 @@ final class SessionManager {
             respond: respond
         )
         selectedSessionId = session.id
-        audioEngine?.play(.planReview)
+        audioEngine?.play(.planReview, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
     }
 
@@ -417,7 +419,7 @@ final class SessionManager {
         session.pendingPermission?.respond(true)
         session.pendingPermission = nil
         session.status = .active
-        audioEngine?.play(.approved)
+        audioEngine?.play(.approved, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
     }
 
@@ -425,7 +427,7 @@ final class SessionManager {
         session.pendingPermission?.respond(false)
         session.pendingPermission = nil
         session.status = .active
-        audioEngine?.play(.denied)
+        audioEngine?.play(.denied, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
     }
 
@@ -442,7 +444,7 @@ final class SessionManager {
         session.pendingQuestion?.respond(answer)
         session.pendingQuestion = nil
         session.status = .active
-        audioEngine?.play(.answered)
+        audioEngine?.play(.answered, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
     }
 
@@ -450,7 +452,7 @@ final class SessionManager {
         session.pendingPlanReview?.respond(approved, feedback)
         session.pendingPlanReview = nil
         session.status = .active
-        audioEngine?.play(approved ? .approved : .denied)
+        audioEngine?.play(approved ? .approved : .denied, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
     }
 
@@ -477,7 +479,7 @@ final class SessionManager {
             if let p = message.prompt, !p.isEmpty {
                 existing.prompt = p
                 existing.chatHistory.append(ChatMessage(timestamp: Date(), role: .user, content: p))
-                audioEngine?.play(.sessionStart)
+                audioEngine?.play(.sessionStart, session: existing)
             }
             if let ts = message.termSessionId, !ts.isEmpty { existing.termSessionId = ts }
             if existing.windowNumber == nil {
@@ -499,7 +501,7 @@ final class SessionManager {
             if let p = message.prompt, !p.isEmpty {
                 twin.prompt = p
                 twin.chatHistory.append(ChatMessage(timestamp: Date(), role: .user, content: p))
-                audioEngine?.play(.sessionStart)
+                audioEngine?.play(.sessionStart, session: twin)
             }
             if let ts = message.termSessionId, !ts.isEmpty { twin.termSessionId = ts }
             if twin.windowNumber == nil {
@@ -527,7 +529,7 @@ final class SessionManager {
         }
         updateTokenUsage(session: session, message: message)
         selectedSessionId = session.id
-        audioEngine?.play(.sessionStart)
+        audioEngine?.play(.sessionStart, session: session)
     }
 
     private func endSession(_ message: DIMessage) {
@@ -607,7 +609,7 @@ final class SessionManager {
         let event = ToolEvent(tool: message.tool ?? "unknown", input: message.toolInput)
         session.events.append(event)
         session.currentTool = message.tool
-        audioEngine?.play(.toolStart)
+        audioEngine?.play(.toolStart, session: session)
     }
 
     private func handleToolComplete(_ message: DIMessage) {
@@ -644,10 +646,10 @@ final class SessionManager {
 
         let lower = text.lowercased()
         if lower.contains("compact") || lower.contains("context window") {
-            audioEngine?.play(.contextCompacting)
+            audioEngine?.play(.contextCompacting, session: session)
         } else if lower.contains("error") || lower.contains("failed") || lower.contains("fatal") {
             session.status = .error
-            audioEngine?.play(.error)
+            audioEngine?.play(.error, session: session)
         } else if !text.isEmpty {
             // Assistant reply via Notification / progress — same chime as session end (user preference: "Session complete").
             playAssistantReplySoundDebounced(sessionId: session.id)
@@ -711,13 +713,18 @@ final class SessionManager {
         let session = findOrCreateSession(message)
         session.status = .compacting
         session.statusText = message.status ?? "Context compacting..."
-        audioEngine?.play(.contextCompacting)
+        audioEngine?.play(.contextCompacting, session: session)
         updateTokenUsage(session: session, message: message)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             if session.status == .compacting {
                 session.status = .active
             }
         }
+    }
+
+    private func handleRecap(_ message: DIMessage) {
+        let session = findOrCreateSession(message)
+        session.recapText = message.recapText
     }
 
     /// If the agent sent new activity while we were still showing a pending interaction,

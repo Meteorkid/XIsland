@@ -90,6 +90,8 @@ final class AgentSession: Identifiable {
     var parentSessionId: String?
     var checkpoints: [GitCheckpoint] = []
 
+    var recapText: String?
+
     var completedAt: Date?
     var windowNumber: Int?
     var termSessionId: String?

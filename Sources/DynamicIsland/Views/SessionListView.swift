@@ -24,6 +24,7 @@ struct SessionCardView: View {
     let session: AgentSession
     var onJump: (() -> Void)?
     @State private var isHovered = false
+    @State private var recapExpanded = false
     @AppStorage("compactBadgesInExpandedView") private var compactBadges = true
     @AppStorage("displayTimestamp") private var displayTimestamp = true
 
@@ -77,6 +78,15 @@ struct SessionCardView: View {
                         .background(.white.opacity(0.06))
                         .padding(.horizontal, 12)
                     toolActivity
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                }
+
+                if session.status == .completed, let recap = session.recapText, !recap.isEmpty {
+                    Divider()
+                        .background(.white.opacity(0.06))
+                        .padding(.horizontal, 12)
+                    recapSection(recap)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
                 }
@@ -220,6 +230,35 @@ struct SessionCardView: View {
                 .lineLimit(nil)
                 .multilineTextAlignment(.leading)
                 .animation(.easeInOut(duration: 0.3), value: session.agentResponse)
+        }
+    }
+
+    private func recapSection(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    recapExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: recapExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.blue.opacity(0.5))
+                    Text(recapExpanded ? "Hide recap" : "Show recap")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.blue.opacity(0.5))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if recapExpanded {
+                Text(text)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .lineLimit(5)
+                    .multilineTextAlignment(.leading)
+                    .padding(.top, 2)
+            }
         }
     }
 

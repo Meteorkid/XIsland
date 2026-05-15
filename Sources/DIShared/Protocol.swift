@@ -27,6 +27,7 @@ public enum DIMessageType: String, Codable, Sendable {
     case subagentStart = "subagent_start"
     case subagentEnd = "subagent_end"
     case contextCompact = "context_compact"
+    case recap = "recap"
 }
 
 public struct DIMessage: Codable, Sendable {
@@ -67,6 +68,9 @@ public struct DIMessage: Codable, Sendable {
     public var totalTokens: Int?
     public var costUSD: Double?
     public var model: String?
+
+    // Session recap
+    public var recapText: String?
 
     // Subagent tracking
     public var parentSessionId: String?

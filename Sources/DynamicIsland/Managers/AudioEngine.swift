@@ -60,8 +60,33 @@ enum SoundEvent: String, CaseIterable, Identifiable {
 
 @Observable
 final class AudioEngine {
-    var isMuted = false {
-        didSet { UserDefaults.standard.set(isMuted, forKey: "audio.isMuted") }
+    private var _manualMute = false
+    var isMuted: Bool {
+        get { _manualMute || isQuietHoursActive }
+        set {
+            _manualMute = newValue
+            UserDefaults.standard.set(newValue, forKey: "audio.isMuted")
+        }
+    }
+    var isQuietHoursActive: Bool {
+        guard UserDefaults.standard.bool(forKey: "audio.quietHoursEnabled") else { return false }
+        guard let start = UserDefaults.standard.string(forKey: "audio.quietHoursStart"),
+              let end = UserDefaults.standard.string(forKey: "audio.quietHoursEnd") else { return false }
+        let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
+        guard let startDate = fmt.date(from: start), let endDate = fmt.date(from: end) else { return false }
+        let now = Date()
+        let cal = Calendar.current
+        let nowComp = cal.dateComponents([.hour, .minute], from: now)
+        let startComp = cal.dateComponents([.hour, .minute], from: startDate)
+        let endComp = cal.dateComponents([.hour, .minute], from: endDate)
+        guard let nowMin = cal.date(from: nowComp),
+              let startMin = cal.date(from: startComp),
+              let endMin = cal.date(from: endComp) else { return false }
+        if startMin <= endMin {
+            return nowMin >= startMin && nowMin < endMin
+        } else {
+            return nowMin >= startMin || nowMin < endMin
+        }
     }
     var volume: Float = 0.5 {
         didSet { UserDefaults.standard.set(volume, forKey: "audio.volume") }
@@ -73,7 +98,7 @@ final class AudioEngine {
     private let queue = DispatchQueue(label: "dev.towerisland.audio")
 
     init() {
-        isMuted = UserDefaults.standard.bool(forKey: "audio.isMuted")
+        _manualMute = UserDefaults.standard.bool(forKey: "audio.isMuted")
         let savedVol = UserDefaults.standard.float(forKey: "audio.volume")
         volume = savedVol > 0 ? savedVol : 0.5
 
@@ -100,8 +125,23 @@ final class AudioEngine {
         UserDefaults.standard.set(enabled, forKey: "audio.event.\(event.rawValue)")
     }
 
-    func play(_ event: SoundEvent) {
+    var muteRules: [MuteRule] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: "audio.muteRules") else { return [] }
+            return (try? JSONDecoder().decode([MuteRule].self, from: data)) ?? []
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                UserDefaults.standard.set(data, forKey: "audio.muteRules")
+            }
+        }
+    }
+
+    func play(_ event: SoundEvent, session: AgentSession? = nil) {
         guard !isMuted, isEnabled(event) else { return }
+        if let session, muteRules.contains(where: { $0.matches(session: session, event: event) }) {
+            return
+        }
         queue.async { [weak self] in
             guard let self else { return }
             if let customURL = self.customSounds[event] {

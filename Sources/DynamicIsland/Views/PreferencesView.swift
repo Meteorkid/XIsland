@@ -54,6 +54,13 @@ struct PreferencesView: View {
     @AppStorage("displayTimestamp") private var displayTimestamp = true
     @AppStorage("reduceMotion") private var reduceMotion = false
     @AppStorage("completedLingerDuration") private var completedLingerDuration = 120.0
+    @AppStorage("panelWidth") private var panelWidth = 420.0
+    @AppStorage("panelMaxHeight") private var panelMaxHeight = 480.0
+    @AppStorage("quietHoursEnabled") private var quietHoursEnabled = false
+    @AppStorage("quietHoursStart") private var quietHoursStart = "22:00"
+    @AppStorage("quietHoursEnd") private var quietHoursEnd = "07:00"
+    @State private var newRulePattern = ""
+    @State private var newRuleField: MatchField = .agentType
     @AppStorage(QuotaTracker.anthropicEnabledKey) private var anthropicEnabled = false
     @AppStorage(QuotaTracker.openAIEnabledKey) private var openAIEnabled = false
     @AppStorage(QuotaTracker.kimiEnabledKey) private var kimiEnabled = false
@@ -213,6 +220,16 @@ struct PreferencesView: View {
 
             section("Display") {
                 card {
+                    row("Panel width", subtitle: "\(Int(panelWidth))px") {
+                        Slider(value: $panelWidth, in: 320...600, step: 20)
+                            .frame(width: 140)
+                    }
+                    dividerLine
+                    row("Panel max height", subtitle: "\(Int(panelMaxHeight))px") {
+                        Slider(value: $panelMaxHeight, in: 320...700, step: 20)
+                            .frame(width: 140)
+                    }
+                    dividerLine
                     row("Compact badges") {
                         Toggle("", isOn: $compactBadgesInExpandedView).labelsHidden()
                     }
@@ -454,6 +471,100 @@ struct PreferencesView: View {
                             set: { engine.volume = Float($0) }
                         ), in: 0...1)
                         .frame(width: 140)
+                    }
+                }
+            }
+
+            section("Quiet Hours") {
+                card {
+                    row("Enable quiet hours") {
+                        Toggle("", isOn: $quietHoursEnabled).labelsHidden()
+                    }
+                    if quietHoursEnabled {
+                        dividerLine
+                        row("From") {
+                            timePicker(selection: $quietHoursStart)
+                        }
+                        dividerLine
+                        row("To") {
+                            timePicker(selection: $quietHoursEnd)
+                        }
+                        row("Status", subtitle: quietHoursStatusText) {
+                            Circle()
+                                .fill(engine.isQuietHoursActive ? Color.orange : Color.green.opacity(0.5))
+                                .frame(width: 8, height: 8)
+                        }
+                    }
+                }
+            }
+
+            section("Mute Rules") {
+                card {
+                    let rules = audioEngine.muteRules
+                    if rules.isEmpty {
+                        Text("No rules configured")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.tertiary)
+                            .padding(.vertical, 8)
+                    } else {
+                        ForEach(rules) { rule in
+                            HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("/\(rule.pattern)/")
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    Text(rule.matchField.displayName)
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(.tertiary)
+                                }
+                                Spacer()
+                                Toggle("", isOn: Binding(
+                                    get: { rule.isEnabled },
+                                    set: { newValue in
+                                        var updated = audioEngine.muteRules
+                                        if let idx = updated.firstIndex(where: { $0.id == rule.id }) {
+                                            updated[idx].isEnabled = newValue
+                                            audioEngine.muteRules = updated
+                                        }
+                                    }
+                                )).labelsHidden()
+                                Button {
+                                    var updated = audioEngine.muteRules
+                                    updated.removeAll { $0.id == rule.id }
+                                    audioEngine.muteRules = updated
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.red.opacity(0.5))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    dividerLine
+                    HStack(spacing: 8) {
+                        TextField("Regex pattern", text: $newRulePattern)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11))
+                            .frame(width: 140)
+                        Picker("", selection: $newRuleField) {
+                            ForEach(MatchField.allCases, id: \.rawValue) { field in
+                                Text(field.displayName).tag(field)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 120)
+                        Spacer()
+                        Button("Add") {
+                            guard !newRulePattern.isEmpty else { return }
+                            var updated = audioEngine.muteRules
+                            updated.append(MuteRule(pattern: newRulePattern, matchField: newRuleField))
+                            audioEngine.muteRules = updated
+                            newRulePattern = ""
+                        }
+                        .controlSize(.small)
+                        .disabled(newRulePattern.isEmpty)
                     }
                 }
             }
@@ -902,6 +1013,22 @@ struct PreferencesView: View {
         }
 
         return false
+    }
+
+    private func timePicker(selection: Binding<String>) -> some View {
+        let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
+        let date = Binding<Date>(
+            get: { fmt.date(from: selection.wrappedValue) ?? Date() },
+            set: { selection.wrappedValue = fmt.string(from: $0) }
+        )
+        return DatePicker("", selection: date, displayedComponents: .hourAndMinute)
+            .labelsHidden()
+            .frame(width: 120)
+    }
+
+    private var quietHoursStatusText: String {
+        guard quietHoursEnabled else { return "Disabled" }
+        return audioEngine.isQuietHoursActive ? "Active — sounds muted" : "Outside quiet hours"
     }
 
     private func toggleLaunchAtLogin(_ enabled: Bool) {

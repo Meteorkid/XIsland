@@ -35,6 +35,8 @@ struct NotchContentView: View {
     @AppStorage("autoCollapseDelay") private var autoCollapseDelay = 3.0
     @AppStorage("smartSuppression") private var smartSuppression = true
     @AppStorage("autoHideWhenNoActiveSessions") private var autoHideWhenNoActiveSessions = false
+    @AppStorage("panelWidth") private var panelWidth = 420.0
+    @AppStorage("panelMaxHeight") private var panelMaxHeight = 480.0
     var onSizeChange: ((CGFloat, CGFloat, Bool) -> Void)?
 
     private var isExpanded: Bool { state != .collapsed }
@@ -53,9 +55,9 @@ struct NotchContentView: View {
     private var expandedWidth: CGFloat {
         switch state {
         case .collapsed: return 0
-        case .expanded: return 420
-        case .permission, .question: return 440
-        case .planReview: return 500
+        case .expanded: return panelWidth
+        case .permission, .question: return panelWidth + 20
+        case .planReview: return panelWidth + 80
         }
     }
 
@@ -64,7 +66,7 @@ struct NotchContentView: View {
         case .collapsed: return 0
         case .expanded:
             let count = manager.visibleSessions.count
-            let listH = min(CGFloat(count) * 80 + 30, 480)
+            let listH = min(CGFloat(count) * 80 + 30, panelMaxHeight)
             let logH: CGFloat = activityLogExpanded ? 140 : 0
             return Self.expandedPanelHeaderHeight + listH + logH + Self.expandedPanelBottomInset
         case .permission(let id):
@@ -218,7 +220,7 @@ struct NotchContentView: View {
             .frame(width: shapeWidth, height: shapeHeight)
 
             expandedContent
-                .frame(width: expandedWidth > 0 ? expandedWidth : 420,
+                .frame(width: expandedWidth > 0 ? expandedWidth : panelWidth,
                        height: isExpanded ? nil : 0, alignment: .top)
                 .clipped()
                 .opacity(showContent ? 1 : 0)
@@ -236,6 +238,29 @@ struct NotchContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .clipped()
         .contentShape(Rectangle())
+        .contextMenu {
+            Button {
+                audio.isMuted.toggle()
+            } label: {
+                Text(audio.isMuted ? "Unmute" : "Mute")
+            }
+            Divider()
+            Button("Preferences...") {
+                openSettingsWindow()
+            }
+            if isExpanded {
+                Divider()
+                Button("Dismiss All Sessions") {
+                    for s in manager.visibleSessions {
+                        manager.dismissSession(s)
+                    }
+                }
+            }
+            Divider()
+            Button("Quit X Island") {
+                NSApp.terminate(nil)
+            }
+        }
         .accessibilityIdentifier(TestAccessibility.islandRoot)
         .onChange(of: expandedHeight) { _, _ in
             if case .expanded = state {
@@ -328,7 +353,7 @@ struct NotchContentView: View {
         let target = targetSize(for: newState)
         if case .expanded = newState {
             let count = manager.visibleSessions.count
-            let listH = min(CGFloat(count) * 80 + 30, 480)
+            let listH = min(CGFloat(count) * 80 + 30, panelMaxHeight)
             cachedExpandedShapeHeight = Self.expandedPanelHeaderHeight + listH + Self.expandedPanelBottomInset
         }
         onSizeChange?(target.width, target.height, true)
@@ -411,19 +436,19 @@ struct NotchContentView: View {
             h = collapsedOuterHeight
         case .expanded:
             let count = manager.visibleSessions.count
-            let listH = min(CGFloat(count) * 80 + 30, 480)
-            w = 420
+            let listH = min(CGFloat(count) * 80 + 30, panelMaxHeight)
+            w = panelWidth
             h = Self.expandedPanelHeaderHeight + listH + Self.expandedPanelBottomInset
         case .permission(let id):
             // Must not use `expandedHeight` here: `expand(to:)` runs before `state` updates, so
             // `expandedHeight` would still reflect `.collapsed` (0) and resize the window to ~8pt tall.
-            w = 440
+            w = panelWidth + 20
             h = permissionExpandedTotalHeight(sessionId: id) + 8
         case .question(let id):
-            w = 440
+            w = panelWidth + 20
             h = questionExpandedTotalHeight(sessionId: id) + 8
         case .planReview:
-            w = 500; h = 480
+            w = panelWidth + 80; h = panelMaxHeight
         }
         return (w, h)
     }

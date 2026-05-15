@@ -3,6 +3,7 @@ import SwiftUI
 
 struct CollapsedPillView: View {
     @Environment(SessionManager.self) private var manager
+    @Environment(AudioEngine.self) private var audio
     /// Obscured: left = expanded-list session that last received a message; right = active count.
     /// Unobscured: same session count/order as the expanded list (`visibleSessions`).
     let obscuredByNotch: Bool
@@ -31,6 +32,12 @@ struct CollapsedPillView: View {
             obscuredLeadingIcon
             Spacer(minLength: 6)
             activeCountLabel
+            if audio.isQuietHoursActive {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange.opacity(0.6))
+                    .padding(.leading, 8)
+            }
         }
         .padding(.leading, 10)
         .padding(.trailing, 4)
@@ -47,6 +54,12 @@ struct CollapsedPillView: View {
                         AgentIcon(agentType: session.agentType, size: 22, status: session.status)
                     }
                 }
+            }
+            if audio.isQuietHoursActive {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange.opacity(0.6))
+                    .padding(.leading, 8)
             }
             Spacer(minLength: 0)
         }
