@@ -10,6 +10,10 @@ final class SessionManager {
     var selectedSessionId: String?
     var audioEngine: AudioEngine?
     var currentIslandState: IslandState = .collapsed
+    var bypassMode: Bool {
+        get { UserDefaults.standard.bool(forKey: "bypassMode") }
+        set { UserDefaults.standard.set(newValue, forKey: "bypassMode") }
+    }
     /// Incremented to force SwiftUI to re-evaluate `visibleSessions` after linger expires.
     var visibleSessionsVersion: Int = 0
     private var cleanupTimer: Timer?
@@ -325,6 +329,11 @@ final class SessionManager {
     }
 
     func handlePermissionRequest(_ message: DIMessage, respond: @escaping @Sendable (Bool) -> Void) {
+        if bypassMode {
+            respond(true)
+            return
+        }
+
         let realAgent = resolvedAgentType(for: message)
 
         if realAgent == .openCode {
@@ -360,6 +369,11 @@ final class SessionManager {
     }
 
     func handleQuestionRequest(_ message: DIMessage, respond: @escaping @Sendable (String) -> Void, cancel: (@Sendable () -> Void)? = nil) {
+        if bypassMode, let firstOption = message.options?.first {
+            respond(firstOption)
+            return
+        }
+
         let realAgent = resolvedAgentType(for: message)
         let text = message.questionText ?? ""
         let options = message.options ?? []
@@ -402,6 +416,11 @@ final class SessionManager {
     }
 
     func handlePlanReview(_ message: DIMessage, respond: @escaping @Sendable (Bool, String?) -> Void) {
+        if bypassMode {
+            respond(true, nil)
+            return
+        }
+
         let realAgent = resolvedAgentType(for: message)
         let session = findOrCreateSessionForInteraction(message)
         session.status = .waitingPlanReview

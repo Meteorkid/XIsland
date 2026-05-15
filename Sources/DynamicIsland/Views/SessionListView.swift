@@ -25,6 +25,7 @@ struct SessionCardView: View {
     var onJump: (() -> Void)?
     @State private var isHovered = false
     @State private var recapExpanded = false
+    @State private var childrenExpanded = false
     @AppStorage("compactBadgesInExpandedView") private var compactBadges = true
     @AppStorage("displayTimestamp") private var displayTimestamp = true
 
@@ -90,17 +91,39 @@ struct SessionCardView: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
                 }
+
+                if !session.subagentIds.isEmpty {
+                    let children = manager.sessions.filter { session.subagentIds.contains($0.id) }
+                    if !children.isEmpty {
+                        Divider()
+                            .background(.white.opacity(0.06))
+                            .padding(.horizontal, 12)
+                        childrenSection(children)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                    }
+                }
             }
+            .padding(.leading, session.isSubagent ? 24 : 0)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isHovered ? IslandStyle.cardHover : IslandStyle.cardRest)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(
-                                .white.opacity(isHovered ? IslandStyle.cardStrokeHover : IslandStyle.cardStrokeRest),
-                                lineWidth: 0.5
-                            )
-                    )
+                ZStack(alignment: .leading) {
+                    if session.isSubagent {
+                        RoundedRectangle(cornerRadius: 1, style: .continuous)
+                            .fill(Color.purple.opacity(0.4))
+                            .frame(width: 2)
+                            .padding(.leading, 10)
+                    }
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(isHovered ? IslandStyle.cardHover : IslandStyle.cardRest)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(
+                                    .white.opacity(isHovered ? IslandStyle.cardStrokeHover : IslandStyle.cardStrokeRest),
+                                    lineWidth: 0.5
+                                )
+                        )
+                }
+                .padding(.leading, session.isSubagent ? 24 : 0)
             )
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
@@ -194,16 +217,6 @@ struct SessionCardView: View {
                 }
             }
 
-            if !session.subagentIds.isEmpty {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.triangle.branch")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.purple.opacity(0.6))
-                    Text("\(session.subagentIds.count) subagent\(session.subagentIds.count > 1 ? "s" : "") running")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.purple.opacity(0.5))
-                }
-            }
         }
     }
 
@@ -230,6 +243,38 @@ struct SessionCardView: View {
                 .lineLimit(nil)
                 .multilineTextAlignment(.leading)
                 .animation(.easeInOut(duration: 0.3), value: session.agentResponse)
+        }
+    }
+
+    private func childrenSection(_ children: [AgentSession]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    childrenExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.purple.opacity(0.6))
+                    Text("\(children.count) subagent\(children.count > 1 ? "s" : "")")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.purple.opacity(0.5))
+                    Image(systemName: childrenExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(.purple.opacity(0.4))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if childrenExpanded {
+                VStack(spacing: 6) {
+                    ForEach(children) { child in
+                        SessionCardView(session: child, onJump: onJump)
+                    }
+                }
+                .padding(.top, 4)
+            }
         }
     }
 

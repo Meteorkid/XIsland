@@ -179,6 +179,13 @@ struct PreferencesView: View {
 
             section("Behavior") {
                 card {
+                    row("Bypass mode", subtitle: "Auto-approve all permissions, questions, and plan reviews") {
+                        Toggle("", isOn: Binding(
+                            get: { sessionManager.bypassMode },
+                            set: { sessionManager.bypassMode = $0 }
+                        )).labelsHidden()
+                    }
+                    dividerLine
                     row("Auto-collapse delay", subtitle: "How long the panel stays open after a task completes") {
                         Picker("", selection: $autoCollapseDelay) {
                             Text("1.5s").tag(1.5)

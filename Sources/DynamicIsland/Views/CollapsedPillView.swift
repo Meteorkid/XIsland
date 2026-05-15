@@ -38,6 +38,12 @@ struct CollapsedPillView: View {
                     .foregroundStyle(.orange.opacity(0.6))
                     .padding(.leading, 8)
             }
+            if manager.bypassMode {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.green.opacity(0.7))
+                    .padding(.leading, 6)
+            }
         }
         .padding(.leading, 10)
         .padding(.trailing, 4)
@@ -60,6 +66,12 @@ struct CollapsedPillView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.orange.opacity(0.6))
                     .padding(.leading, 8)
+            }
+            if manager.bypassMode {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.green.opacity(0.7))
+                    .padding(.leading, 6)
             }
             Spacer(minLength: 0)
         }
