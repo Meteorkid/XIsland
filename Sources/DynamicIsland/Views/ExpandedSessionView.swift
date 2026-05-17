@@ -37,7 +37,7 @@ struct ExpandedSessionView: View {
             statusBadge
 
             Button {
-                _ = TerminalJumpManager.jump(to: session)
+                Task { await TerminalJumpManager.jump(to: session) }
                 onDismiss?()
             } label: {
                 HStack(spacing: 3) {

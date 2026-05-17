@@ -33,6 +33,10 @@ struct NotchContentView: View {
     @State private var notificationTokens: [NSObjectProtocol] = []
     @AppStorage("disableAnimations") private var disableAnimations = false
     @AppStorage("autoCollapseDelay") private var autoCollapseDelay = 3.0
+    /// Seconds after last interaction while expanded before auto-collapsing; 0 disables.
+    @AppStorage("expandedInactivityAutoHideDelay") private var expandedInactivityAutoHideDelay = 10.0
+    /// Seconds pointer must stay outside before collapse (hover-expand or empty panel).
+    @AppStorage("hoverExitCollapseDelay") private var hoverExitCollapseDelay = 0.5
     @AppStorage("smartSuppression") private var smartSuppression = true
     @AppStorage("autoHideWhenNoActiveSessions") private var autoHideWhenNoActiveSessions = false
     @AppStorage("panelWidth") private var panelWidth = 420.0
@@ -112,7 +116,6 @@ struct NotchContentView: View {
     private static let expandSpring = Animation.spring(response: 0.4, dampingFraction: 0.82)
     private static let collapseSpring = Animation.spring(response: 0.35, dampingFraction: 0.8)
     private static let contentFade = Animation.easeInOut(duration: 0.2)
-    private static let expandedInactivityAutoHideDelay: TimeInterval = 10
 
     struct TransitionTiming: Equatable {
         let expandStartDelay: TimeInterval
@@ -250,6 +253,11 @@ struct NotchContentView: View {
                 markExpandedInteraction()
             }
         }
+        .onChange(of: expandedInactivityAutoHideDelay) { _, _ in
+            if isExpanded {
+                markExpandedInteraction()
+            }
+        }
         .onChange(of: manager.activeSessions.count) { _, _ in
             reportSize()
         }
@@ -294,6 +302,7 @@ struct NotchContentView: View {
             notificationTokens = [collapseToken, toggleToken]
         }
         .onDisappear {
+            stopHoverPolling()
             cancelExpandedAutoHide()
             for token in notificationTokens {
                 NotificationCenter.default.removeObserver(token)
@@ -687,11 +696,13 @@ struct NotchContentView: View {
     private func scheduleExpandedAutoHide() {
         cancelExpandedAutoHide()
         guard isExpanded else { return }
+        let delay = expandedInactivityAutoHideDelay
+        guard delay > 0 else { return }
 
         let workItem = DispatchWorkItem {
             guard self.isExpanded else { return }
             let elapsed = Date().timeIntervalSince(self.lastExpandedInteractionAt)
-            guard elapsed >= Self.expandedInactivityAutoHideDelay else {
+            guard elapsed >= delay else {
                 self.scheduleExpandedAutoHide()
                 return
             }
@@ -699,12 +710,12 @@ struct NotchContentView: View {
             self.collapse()
         }
         expandedAutoHideWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.expandedInactivityAutoHideDelay, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
     private func startHoverPolling() {
         stopHoverPolling()
-        hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+        hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { _ in
             Task { @MainActor in
                 pollMousePosition()
             }
@@ -766,6 +777,7 @@ struct NotchContentView: View {
             state: state,
             expandedByHover: expandedByHover,
             visibleSessionCount: manager.visibleSessions.count,
+            hoverExitDelay: hoverExitCollapseDelay,
             elapsedSinceExpand: Date().timeIntervalSince(expandedAt)
         ) {
             collapse()
@@ -783,13 +795,16 @@ struct NotchContentView: View {
         }
     }
 
-    private var activityLogContent: some View {
-        let allEvents = manager.sessions
+    private var sortedActivityEvents: [(session: AgentSession, event: ToolEvent)] {
+        manager.sessions
             .flatMap { session in
                 session.events.map { (session: session, event: $0) }
             }
             .sorted { $0.event.timestamp > $1.event.timestamp }
-            .prefix(30)
+    }
+
+    private var activityLogContent: some View {
+        let allEvents = sortedActivityEvents.prefix(30)
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack {

@@ -75,7 +75,7 @@ final class UpdateManager {
         return decoder
     }()
 
-    private static let latestReleaseURL = URL(string: "https://github.com/user/xisland/releases/latest")!
+    private static let latestReleaseURL = URL(string: "https://github.com/Meteorkid/XIsland/releases/latest")!
     init(
         fetchReleaseData: @escaping ReleaseFetcher = UpdateManager.fetchLatestReleaseData,
         updater: AppUpdater = AppUpdater()
@@ -261,8 +261,8 @@ final class UpdateManager {
     nonisolated static func releaseDataFromLatestRedirectURL(_ finalURL: URL, checkedAt: Date) throws -> Data {
         let pathComponents = finalURL.pathComponents
         guard pathComponents.count >= 6,
-              pathComponents[1] == "g535879",
-              pathComponents[2] == "xisland",
+              pathComponents[1].lowercased() == "meteorkid",
+              pathComponents[2].lowercased() == "xisland",
               pathComponents[3] == "releases",
               pathComponents[4] == "tag"
         else {
@@ -274,7 +274,7 @@ final class UpdateManager {
             throw URLError(.badServerResponse)
         }
 
-        let dmgURL = URL(string: "https://github.com/user/xisland/releases/download")!
+        let dmgURL = URL(string: "https://github.com/Meteorkid/XIsland/releases/download")!
             .appendingPathComponent(tag)
             .appendingPathComponent("XIsland.dmg")
 

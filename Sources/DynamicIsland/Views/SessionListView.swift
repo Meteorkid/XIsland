@@ -31,7 +31,7 @@ struct SessionCardView: View {
 
     var body: some View {
         Button {
-            _ = TerminalJumpManager.jump(to: session)
+            Task { await TerminalJumpManager.jump(to: session) }
             onJump?()
         } label: {
             VStack(alignment: .leading, spacing: 0) {

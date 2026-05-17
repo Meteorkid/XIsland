@@ -25,8 +25,8 @@ struct SSHRemoteServer: Identifiable, Codable, Sendable {
         self.identityFile = identityFile
         self.remoteBridgePath = remoteBridgePath
 
-        // Local socket is named so multiple tunnels don't collide
-        let sockName = "di-remote-\(label.replacingOccurrences(of: " ", with: "_")).sock"
+        let safeLabel = label.replacingOccurrences(of: " ", with: "_")
+        let sockName = "di-remote-\(id.uuidString.prefix(8))-\(safeLabel).sock"
         self.localTunnelSocket = "\(DISocketConfig.socketDir)/\(sockName)"
 
         self.connected = false

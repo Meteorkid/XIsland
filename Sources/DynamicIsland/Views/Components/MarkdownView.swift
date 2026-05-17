@@ -3,9 +3,11 @@ import SwiftUI
 struct MarkdownView: View {
     let markdown: String
 
+    private var blocks: [Block] { parseBlocks() }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(parseBlocks().enumerated()), id: \.offset) { _, block in
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 renderBlock(block)
             }
         }

@@ -94,26 +94,41 @@ struct ToolEvent: Identifiable, Sendable {
         self.testResults = testResults
     }
 
-    /// Parse test result patterns from tool output (e.g. "3 passed, 1 failed, 0 skipped").
+    /// Parse test result patterns from tool output (e.g. pytest / jest / go test summary lines).
     static func parseTestResults(from output: String?) -> TestResults? {
         guard let output = output else { return nil }
 
-        // Python/unittest style: "3 passed, 1 failed, 0 skipped"
-        if let passed = firstInt(matching: #"(\d+)\s*passed"#, in: output),
-           let failed = firstInt(matching: #"(\d+)\s*failed"#, in: output) {
+        // Python / pytest: allow missing "failed" when zero failures
+        if let passed = firstInt(matching: #"(\d+)\s*passed"#, in: output) {
+            let failed = firstInt(matching: #"(\d+)\s*failed"#, in: output) ?? 0
             let skipped = firstInt(matching: #"(\d+)\s*skipped"#, in: output) ?? 0
             let total = passed + failed + skipped
             if total > 0 { return TestResults(passed: passed, failed: failed, skipped: skipped, total: total) }
         }
 
-        // jest/vitest style: "Tests: 5 passed, 6 total"
-        if let passed = firstInt(matching: #"(\d+)\s+passed"#, in: output),
+        // jest / vitest: prefer explicit failed + skipped when present
+        if output.localizedCaseInsensitiveContains("tests:"),
+           let passed = firstInt(matching: #"(\d+)\s+passed"#, in: output),
            let total = firstInt(matching: #"(\d+)\s+total"#, in: output) {
-            let failed = total - passed
-            return TestResults(passed: passed, failed: failed, skipped: 0, total: total)
+            let failed = firstInt(matching: #"(\d+)\s+failed"#, in: output)
+                ?? max(0, total - passed - (firstInt(matching: #"(\d+)\s+skipped"#, in: output) ?? 0))
+            let skipped = firstInt(matching: #"(\d+)\s+skipped"#, in: output) ?? 0
+            return TestResults(passed: passed, failed: failed, skipped: skipped, total: total)
         }
 
-        // go test style: "--- PASS:" / "--- FAIL:"
+        // go test package summary: `ok   pkg 0.1s` or `FAIL\tpkg`
+        if let match = firstMatch(
+            pattern: #"^(ok|FAIL)\s+(\S+)"#,
+            options: [.anchorsMatchLines],
+            in: output
+        ), !match.isEmpty {
+            let statusToken = match[0].uppercased()
+            let passed = statusToken == "OK" ? 1 : 0
+            let failed = statusToken == "FAIL" ? 1 : 0
+            return TestResults(passed: passed, failed: failed, skipped: 0, total: 1)
+        }
+
+        // Legacy: "--- PASS:" / "--- FAIL:" line counts
         let passCount = countOccurrences(of: "--- PASS:", in: output)
         let failCount = countOccurrences(of: "--- FAIL:", in: output)
         if passCount > 0 || failCount > 0 {
@@ -126,11 +141,24 @@ struct ToolEvent: Identifiable, Sendable {
     /// Estimate lines read from output content.
     static func estimateLinesRead(from output: String?) -> Int? {
         guard let output = output, !output.isEmpty else { return nil }
-        let lines = output.split(separator: "\n", omittingEmptySubsequences: false)
-        return lines.count > 0 ? lines.count : nil
+        let lines = output.split(separator: "\n", omittingEmptySubsequences: false).count
+        let bounded = min(max(lines, 1), 50_000)
+        return bounded
     }
 
     // MARK: - Regex helpers
+
+    private static func firstMatch(pattern: String, options: NSRegularExpression.Options, in text: String) -> [String]? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range) else { return nil }
+        var caps: [String] = []
+        for i in 1..<match.numberOfRanges {
+            guard let r = Range(match.range(at: i), in: text) else { return nil }
+            caps.append(String(text[r]))
+        }
+        return caps
+    }
 
     private static func firstInt(matching pattern: String, in text: String) -> Int? {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {

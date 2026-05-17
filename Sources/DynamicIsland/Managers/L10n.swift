@@ -539,6 +539,48 @@ enum L10n {
             en: "About")
     }
 
+    static var sectionMacPrivacy: String {
+        localized("sectionMacPrivacy",
+            zh: "macOS 隐私与授权",
+            ko: "macOS 개인정보 보호 및 권한",
+            ja: "macOSのプライバシーとアクセス",
+            fr: "Confidentialité et accès macOS",
+            en: "macOS Privacy & Access")
+    }
+
+    static var macPrivacyIntro: String {
+        localized("macPrivacyIntro",
+            zh: "首次使用可在系统设置中授予所需权限：「自动化」用于跳转终端标签；辅助功能仅在部分场景需要。",
+            ko: "첫 실행 시 시스템에서 권한을 허용하세요. 터미널 탭 이동에는 「자동화」가 필요합니다.",
+            ja: "初回はシステム設定で許可してください。ターミナルタブへのジャンプには「自動化」が必要です。",
+            fr: "Lors de la première utilisation, accordez les accès requis dans Réglages. « Automatisation » sert à aller à l’onglet du terminal.",
+            en: "On first launch, grant access in System Settings. Automation is needed for jumping to terminal tabs (Apple Events).")
+    }
+
+    static var openPrivacySecurityButton: String {
+        localized("openPrivacySecurityButton",
+            zh: "隐私与安全性…", ko: "개인정보 보호 및 보안…", ja: "プライバシーとセキュリティ…", fr: "Confidentialité et sécurité…",
+            en: "Privacy & Security…")
+    }
+
+    static var openAccessibilityButton: String {
+        localized("openAccessibilityButton",
+            zh: "辅助功能…", ko: "손쉬운 사용…", ja: "アクセシビリティ…", fr: "Accessibilité…",
+            en: "Accessibility…")
+    }
+
+    static var openAutomationButton: String {
+        localized("openAutomationButton",
+            zh: "自动化（Apple 事件）…", ko: "자동화(Apple 이벤트)…", ja: "自動化（Apple イベント）…", fr: "Automatisation (Événements Apple)…",
+            en: "Automation (Apple Events)…")
+    }
+
+    static var openLoginItemsButton: String {
+        localized("openLoginItemsButton",
+            zh: "登录项与扩展…", ko: "로그인 항목 및 확장…", ja: "ログイン項目と拡張機能…", fr: "Ouverture et extensions…",
+            en: "Login Items & Extensions…")
+    }
+
     // MARK: - Preferences pane titles
 
     static var paneGeneral: String {
@@ -640,6 +682,48 @@ enum L10n {
             ja: "タスク完了後にパネルが開いたままになる時間",
             fr: "Durée pendant laquelle le panneau reste ouvert après une tâche",
             en: "How long the panel stays open after a task completes")
+    }
+
+    static var expandedInactivityAutoHide: String {
+        localized("expandedInactivityAutoHide",
+            zh: "展开后无操作收起",
+            ko: "펼침 후 유휴 시 접기",
+            ja: "展開後の無操作で折りたたむ",
+            fr: "Réduire si inactif",
+            en: "Collapse when idle while expanded")
+    }
+
+    static var expandedInactivityAutoHideDesc: String {
+        localized("expandedInactivityAutoHideDesc",
+            zh: "展开状态下无任何操作后自动收起的等待时间；选「永不」则关闭",
+            ko: "펼친 뒤 상호작용이 없을 때 접히기까지의 시간입니다. 「안 함」이면 비활성화됩니다.",
+            ja: "展開中に操作がないとき、自動で折りたたむまでの時間。「なし」で無効化。",
+            fr: "Délai sans interaction avant réduction ; « Jamais » désactive.",
+            en: "Delay with no activity before the expanded panel collapses; “Never” turns this off.")
+    }
+
+    static var hoverExitCollapse: String {
+        localized("hoverExitCollapse",
+            zh: "鼠标离开后收起",
+            ko: "포인터가 벗어난 뒤 접기",
+            ja: "ポインター退避後に折りたたむ",
+            fr: "Réduire après sortie du pointeur",
+            en: "Collapse after pointer leaves")
+    }
+
+    static var hoverExitCollapseDesc: String {
+        localized("hoverExitCollapseDesc",
+            zh: "悬停展开或无会话时，指针离开岛区域后过多久收起",
+            ko: "호버로 펼쳤거나 세션이 없을 때, 포인터가 영역을 벗어난 뒤 접히기까지의 지연",
+            ja: "ホバー展開、またはセゼロ件のとき、ポインターが離れてから折りたたむまでの遅延",
+            fr: "Délai après la sortie du pointeur (ouverture au survol ou panneau vide).",
+            en: "After hover-expand or with no sessions, how long to wait once the pointer leaves before collapsing.")
+    }
+
+    static var neverOption: String {
+        localized("neverOption",
+            zh: "永不", ko: "안 함", ja: "なし", fr: "Jamais",
+            en: "Never")
     }
 
     static var smartSuppressionDesc: String {

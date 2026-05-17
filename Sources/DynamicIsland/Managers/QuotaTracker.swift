@@ -17,17 +17,40 @@ final class QuotaTracker {
 
     func fetchAll() {
         let defaults = UserDefaults.standard
-        if defaults.bool(forKey: Self.anthropicEnabledKey) { fetchAnthropic() }
-        if defaults.bool(forKey: Self.openAIEnabledKey) { fetchOpenAI() }
-        if defaults.bool(forKey: Self.kimiEnabledKey) { fetchKimi() }
-        if defaults.bool(forKey: Self.deepseekEnabledKey) { fetchDeepSeek() }
-        if defaults.bool(forKey: Self.glmEnabledKey) { fetchGLM() }
+        let providers: [(String, String)] = [
+            (Self.anthropicEnabledKey, "anthropic"),
+            (Self.openAIEnabledKey, "openai"),
+            (Self.kimiEnabledKey, "kimi"),
+            (Self.deepseekEnabledKey, "deepseek"),
+            (Self.glmEnabledKey, "glm"),
+        ].filter { defaults.bool(forKey: $0.0) }
+
+        guard !providers.isEmpty else { return }
+
+        // Keychain reads are synchronous I/O; batch them once off the main actor.
+        let keys = providers.map { $0.1 }
+        Task.detached(priority: .utility) {
+            let apiKeyMap = keys.reduce(into: [String: String]()) { dict, provider in
+                dict[provider] = Self.loadAPIKey(for: provider)
+            }
+            await MainActor.run { [weak self] in
+                self?.fetchAllWithKeys(apiKeyMap)
+            }
+        }
+    }
+
+    private func fetchAllWithKeys(_ apiKeyMap: [String: String]) {
+        if let key = apiKeyMap["anthropic"] { fetchAnthropic(apiKey: key) }
+        fetchOpenAI()
+        if let key = apiKeyMap["kimi"] { fetchKimi(apiKey: key) }
+        if let key = apiKeyMap["deepseek"] { fetchDeepSeek(apiKey: key) }
+        if let key = apiKeyMap["glm"] { fetchGLM(apiKey: key) }
     }
 
     // MARK: - Anthropic
 
-    func fetchAnthropic() {
-        guard let apiKey = Self.loadAPIKey(for: "anthropic"), !apiKey.isEmpty else {
+    func fetchAnthropic(apiKey: String? = nil) {
+        guard let apiKey, !apiKey.isEmpty else {
             updateQuota(QuotaInfo(provider: "Anthropic", requestsRemaining: nil, requestsLimit: nil,
                                   tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date()))
             return
@@ -96,8 +119,8 @@ final class QuotaTracker {
 
     // MARK: - Kimi (Moonshot)
 
-    func fetchKimi() {
-        guard let apiKey = Self.loadAPIKey(for: "kimi"), !apiKey.isEmpty else {
+    func fetchKimi(apiKey: String? = nil) {
+        guard let apiKey, !apiKey.isEmpty else {
             updateQuota(QuotaInfo(provider: "Kimi", requestsRemaining: nil, requestsLimit: nil,
                                   tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date()))
             return
@@ -131,8 +154,8 @@ final class QuotaTracker {
 
     // MARK: - DeepSeek
 
-    func fetchDeepSeek() {
-        guard let apiKey = Self.loadAPIKey(for: "deepseek"), !apiKey.isEmpty else {
+    func fetchDeepSeek(apiKey: String? = nil) {
+        guard let apiKey, !apiKey.isEmpty else {
             updateQuota(QuotaInfo(provider: "DeepSeek", requestsRemaining: nil, requestsLimit: nil,
                                   tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date()))
             return
@@ -169,8 +192,8 @@ final class QuotaTracker {
 
     // MARK: - GLM (Zhipu)
 
-    func fetchGLM() {
-        guard let apiKey = Self.loadAPIKey(for: "glm"), !apiKey.isEmpty else {
+    func fetchGLM(apiKey: String? = nil) {
+        guard let apiKey, !apiKey.isEmpty else {
             updateQuota(QuotaInfo(provider: "GLM", requestsRemaining: nil, requestsLimit: nil,
                                   tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date()))
             return
@@ -226,7 +249,7 @@ final class QuotaTracker {
         return status == errSecSuccess
     }
 
-    static func loadAPIKey(for provider: String) -> String? {
+    nonisolated static func loadAPIKey(for provider: String) -> String? {
         let service = "com.xisland.apikeys"
         let account = provider
         let query: [String: Any] = [

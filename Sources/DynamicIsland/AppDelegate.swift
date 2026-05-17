@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let updateManager = UpdateManager()
     let quotaTracker = QuotaTracker()
     private var socketServer: SocketServer?
+    private var hookRepairTimer: Timer?
     private var notchWindow: NotchWindow?
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
@@ -84,6 +85,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.register(defaults: [
             "showOnAllSpaces": true,
             "autoCollapseDelay": 3.0,
+            "expandedInactivityAutoHideDelay": 10.0,
+            "hoverExitCollapseDelay": 0.5,
             "smartSuppression": true,
             "autoHideWhenNoActiveSessions": false,
             "compactBadgesInExpandedView": true,
@@ -273,7 +276,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startSocketServer()
         ZeroConfigManager.configureAllAgents()
 
-        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in
+        hookRepairTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in
             ZeroConfigManager.repairHooksIfNeeded()
         }
     }

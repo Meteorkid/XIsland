@@ -179,6 +179,7 @@ final class SessionManager {
         }
         reSelectIfCurrentCompleted()
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+        purgeOrphanedCacheEntries()
     }
 
     var selectedSession: AgentSession? {
@@ -477,6 +478,8 @@ final class SessionManager {
 
     func dismissSession(_ session: AgentSession) {
         sessions.removeAll { $0.id == session.id }
+        lastAssistantReplySoundAt.removeValue(forKey: session.id)
+        recentAnswers.removeValue(forKey: session.id)
         if selectedSessionId == session.id {
             selectedSessionId = activeSessions.first?.id
         }
@@ -579,6 +582,14 @@ final class SessionManager {
             self.selectedSessionId = activeSessions.first?.id
         }
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+        purgeOrphanedCacheEntries()
+    }
+
+    /// 移除已不存在于 sessions 中的缓存条目，防止内存泄漏。
+    private func purgeOrphanedCacheEntries() {
+        let activeIds = Set(sessions.map(\.id))
+        lastAssistantReplySoundAt = lastAssistantReplySoundAt.filter { activeIds.contains($0.key) }
+        recentAnswers = recentAnswers.filter { activeIds.contains($0.key) }
     }
 
     private func handleToolStart(_ message: DIMessage) {
@@ -653,12 +664,8 @@ final class SessionManager {
 
     private func handleSubagentStart(_ message: DIMessage) {
         let parentId = message.parentSessionId ?? message.sessionId
-        let resolvedAgent = resolvedAgentType(for: message)
-        let matchAgent: (AgentSession) -> Bool = { session in
-            session.agentType == resolvedAgent
-        }
         guard let parent = sessions.first(where: { $0.id == parentId && $0.status != .completed })
-                ?? activeSessions.first(where: matchAgent) else { return }
+        else { return }
         let subId = message.subagentId ?? UUID().uuidString
         if !parent.subagentIds.contains(subId) {
             parent.subagentIds.append(subId)
@@ -670,12 +677,8 @@ final class SessionManager {
 
     private func handleSubagentEnd(_ message: DIMessage) {
         let parentId = message.parentSessionId ?? message.sessionId
-        let resolvedAgent = resolvedAgentType(for: message)
-        let matchAgent: (AgentSession) -> Bool = { session in
-            session.agentType == resolvedAgent
-        }
         guard let parent = sessions.first(where: { $0.id == parentId && $0.status != .completed })
-                ?? activeSessions.first(where: matchAgent) else { return }
+        else { return }
         if let subId = message.subagentId {
             parent.subagentIds.removeAll { $0 == subId }
         }

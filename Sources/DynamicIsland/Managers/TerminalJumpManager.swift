@@ -145,94 +145,95 @@ enum TerminalApp: String, CaseIterable {
 }
 
 enum TerminalJumpManager {
-    static func jump(to session: AgentSession) -> Bool {
-        let targetApp = resolveTargetApp(for: session)
-        log("click session=\(session.id) agent=\(session.agentType.rawValue) terminal=\(session.terminal) cwd=\(session.workingDirectory) target=\(targetApp?.rawValue ?? "nil")")
+    static func jump(to session: AgentSession) async {
+        await Task.detached(priority: .utility) {
+            let targetApp = resolveTargetApp(for: session)
+            log("click session=\(session.id) agent=\(session.agentType.rawValue) terminal=\(session.terminal) cwd=\(session.workingDirectory) target=\(targetApp?.rawValue ?? "nil")")
 
-        if session.agentType == .cursor {
-            let preferredApp = (targetApp == .windsurf) ? TerminalApp.windsurf : TerminalApp.cursor
-            if raiseMatchingWindow(session: session, app: preferredApp, allowFallbackActivate: false) {
-                log("cursor matched existing window app=\(preferredApp.rawValue)")
-                return true
-            }
-            if raiseAllCursorWindows(preferredBundleId: preferredApp.bundleId) {
-                log("cursor raised all cursor-family windows")
-                return true
-            }
-            if !session.workingDirectory.isEmpty,
-               openWorkspaceWindow(app: preferredApp, workingDirectory: session.workingDirectory) {
-                log("cursor opened workspace app=\(preferredApp.rawValue)")
-                return true
-            }
-            log("cursor fallback activate app=\(preferredApp.rawValue)")
-            activateApp(preferredApp)
-            return true
-        }
-
-        if let app = targetApp {
-            if let tsid = session.termSessionId, !tsid.isEmpty, app == .iterm2 {
-                log("jumping to iTerm session id=\(tsid)")
-                jumpToITermSession(termSessionId: tsid)
-                return true
-            }
-
-            if app == .terminal, jumpToTerminalWindow(session: session) {
-                log("matched Terminal window")
-                return true
-            }
-
-            if let tsid = session.termSessionId, !tsid.isEmpty,
-               (tsid.lowercased().contains("tmux") || session.terminal.lowercased().contains("tmux")) {
-                log("jumping to tmux session app=\(app.rawValue) tsid=\(tsid)")
-                jumpToTmuxSession(session: session, app: app)
-                return true
-            }
-
-            if app == .wezTerm, jumpToWezTerm(session: session) {
-                log("matched WezTerm session")
-                return true
-            }
-
-            if app == .kitty, jumpToKittyWindow(session: session) {
-                log("matched Kitty window via remote control")
-                return true
-            }
-
-            if app.isVSCodeFamily && !session.workingDirectory.isEmpty {
-                if raiseMatchingWindow(session: session, app: app, allowFallbackActivate: false) {
-                    log("matched VSCode-family window app=\(app.rawValue)")
-                    return true
+            if session.agentType == .cursor {
+                let preferredApp = (targetApp == .windsurf) ? TerminalApp.windsurf : TerminalApp.cursor
+                if raiseMatchingWindow(session: session, app: preferredApp, allowFallbackActivate: false) {
+                    log("cursor matched existing window app=\(preferredApp.rawValue)")
+                    return
                 }
-                if app == .cursor, raiseAllWindows(bundleId: app.bundleId) {
-                    log("raised all windows for app=\(app.rawValue)")
-                    return true
+                if raiseAllCursorWindows(preferredBundleId: preferredApp.bundleId) {
+                    log("cursor raised all cursor-family windows")
+                    return
                 }
-                if openWorkspaceWindow(app: app, workingDirectory: session.workingDirectory) {
-                    log("opened workspace window app=\(app.rawValue)")
-                    return true
+                if !session.workingDirectory.isEmpty,
+                   openWorkspaceWindow(app: preferredApp, workingDirectory: session.workingDirectory) {
+                    log("cursor opened workspace app=\(preferredApp.rawValue)")
+                    return
                 }
-                log("activating app fallback app=\(app.rawValue)")
-                activateApp(app)
-                return true
-            } else {
-                if raiseMatchingWindow(session: session, app: app) {
-                    log("matched window app=\(app.rawValue)")
-                    return true
-                }
-                log("activating app fallback app=\(app.rawValue)")
-                activateApp(app)
-                return app != .warp
+                log("cursor fallback activate app=\(preferredApp.rawValue)")
+                activateApp(preferredApp)
+                return
             }
-        }
 
-        if session.agentType == .openCode {
-            log("openCode has no resolvable target app; skip jump")
-            return false
-        }
+            if let app = targetApp {
+                if let tsid = session.termSessionId, !tsid.isEmpty, app == .iterm2 {
+                    log("jumping to iTerm session id=\(tsid)")
+                    jumpToITermSession(termSessionId: tsid)
+                    return
+                }
 
-        log("fallback activate by agent name agent=\(session.agentType.rawValue)")
-        activateByAgentName(session.agentType)
-        return true
+                if app == .terminal, jumpToTerminalWindow(session: session) {
+                    log("matched Terminal window")
+                    return
+                }
+
+                if let tsid = session.termSessionId, !tsid.isEmpty,
+                   (tsid.lowercased().contains("tmux") || session.terminal.lowercased().contains("tmux")) {
+                    log("jumping to tmux session app=\(app.rawValue) tsid=\(tsid)")
+                    jumpToTmuxSession(session: session, app: app)
+                    return
+                }
+
+                if app == .wezTerm, jumpToWezTerm(session: session) {
+                    log("matched WezTerm session")
+                    return
+                }
+
+                if app == .kitty, jumpToKittyWindow(session: session) {
+                    log("matched Kitty window via remote control")
+                    return
+                }
+
+                if app.isVSCodeFamily && !session.workingDirectory.isEmpty {
+                    if raiseMatchingWindow(session: session, app: app, allowFallbackActivate: false) {
+                        log("matched VSCode-family window app=\(app.rawValue)")
+                        return
+                    }
+                    if app == .cursor, raiseAllWindows(bundleId: app.bundleId) {
+                        log("raised all windows for app=\(app.rawValue)")
+                        return
+                    }
+                    if openWorkspaceWindow(app: app, workingDirectory: session.workingDirectory) {
+                        log("opened workspace window app=\(app.rawValue)")
+                        return
+                    }
+                    log("activating app fallback app=\(app.rawValue)")
+                    activateApp(app)
+                    return
+                } else {
+                    if raiseMatchingWindow(session: session, app: app) {
+                        log("matched window app=\(app.rawValue)")
+                        return
+                    }
+                    log("activating app fallback app=\(app.rawValue)")
+                    activateApp(app)
+                    return
+                }
+            }
+
+            if session.agentType == .openCode {
+                log("openCode has no resolvable target app; skip jump")
+                return
+            }
+
+            log("fallback activate by agent name agent=\(session.agentType.rawValue)")
+            activateByAgentName(session.agentType)
+        }.value
     }
 
     static func resolveTargetApp(for session: AgentSession) -> TerminalApp? {

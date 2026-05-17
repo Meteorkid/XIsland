@@ -133,10 +133,18 @@ final class NotchWindow: NSPanel {
             if !isVisible { orderFrontRegardless() }
             return
         }
-        if let screen = NSScreen.main, isScreenInFullscreen(screen) {
-            orderOut(nil)
-        } else {
-            orderFrontRegardless()
+        // CGWindowListCopyWindowInfo can be slow; move it off the main thread.
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            let screen = NSScreen.main
+            let inFullscreen = screen.map { self.isScreenInFullscreen($0) } ?? false
+            await MainActor.run {
+                if inFullscreen {
+                    self.orderOut(nil)
+                } else {
+                    self.orderFrontRegardless()
+                }
+            }
         }
     }
 
@@ -394,6 +402,12 @@ final class NotchWindow: NSPanel {
             screen: screen
         )
         super.setFrame(pinned, display: displayFlag, animate: animateFlag)
+    }
+
+    deinit {
+        mouseTrackingTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
     override var canBecomeKey: Bool { true }

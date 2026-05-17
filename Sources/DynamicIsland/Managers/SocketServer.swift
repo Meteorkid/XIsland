@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import DIShared
 
@@ -16,6 +17,9 @@ private func diLog(_ msg: String) {
 }
 
 final class SocketServer: @unchecked Sendable {
+    /// Pause after a failed `accept(2)` while still running (avoid tight spin).
+    static let acceptFailureBackoffMicroseconds: UInt32 = 50_000
+
     private let sessionManager: SessionManager
     private var serverFD: Int32 = -1
     private let queue = DispatchQueue(label: "dev.towerisland.socket", qos: .userInitiated)
@@ -81,6 +85,9 @@ final class SocketServer: @unchecked Sendable {
         while isRunning {
             let clientFD = accept(serverFD, nil, nil)
             guard clientFD >= 0 else {
+                if isRunning {
+                    usleep(Self.acceptFailureBackoffMicroseconds)
+                }
                 continue
             }
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in

@@ -47,6 +47,8 @@ struct PreferencesView: View {
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("showOnAllSpaces") private var showOnAllSpaces = true
     @AppStorage("autoCollapseDelay") private var autoCollapseDelay = 3.0
+    @AppStorage("expandedInactivityAutoHideDelay") private var expandedInactivityAutoHideDelay = 10.0
+    @AppStorage("hoverExitCollapseDelay") private var hoverExitCollapseDelay = 0.5
     @AppStorage("hideInFullscreen") private var hideInFullscreen = false
     @AppStorage("autoHideWhenNoActiveSessions") private var autoHideWhenNoActiveSessions = false
     @AppStorage("smartSuppression") private var smartSuppression = true
@@ -190,6 +192,34 @@ struct PreferencesView: View {
                 }
             }
 
+            section(L10n.sectionMacPrivacy) {
+                card {
+                    Text(L10n.macPrivacyIntro)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            macPrivacyButton(title: L10n.openPrivacySecurityButton) {
+                                SystemPrivacySettings.openPrivacySecurity()
+                            }
+                            macPrivacyButton(title: L10n.openAutomationButton) {
+                                SystemPrivacySettings.openAutomation()
+                            }
+                        }
+                        HStack(spacing: 8) {
+                            macPrivacyButton(title: L10n.openAccessibilityButton) {
+                                SystemPrivacySettings.openAccessibility()
+                            }
+                            macPrivacyButton(title: L10n.openLoginItemsButton) {
+                                SystemPrivacySettings.openLoginItems()
+                            }
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+            }
+
             section(L10n.sectionBehavior) {
                 card {
                     row(L10n.bypassMode, subtitle: L10n.bypassDesc) {
@@ -206,6 +236,33 @@ struct PreferencesView: View {
                             Text("5s").tag(5.0)
                             Text("10s").tag(10.0)
                             Text("Never").tag(0.0)
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 100)
+                    }
+                    dividerLine
+                    row(L10n.expandedInactivityAutoHide, subtitle: L10n.expandedInactivityAutoHideDesc) {
+                        Picker("", selection: $expandedInactivityAutoHideDelay) {
+                            Text(L10n.neverOption).tag(0.0)
+                            Text("5s").tag(5.0)
+                            Text("10s").tag(10.0)
+                            Text("15s").tag(15.0)
+                            Text("30s").tag(30.0)
+                            Text("60s").tag(60.0)
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 100)
+                    }
+                    dividerLine
+                    row(L10n.hoverExitCollapse, subtitle: L10n.hoverExitCollapseDesc) {
+                        Picker("", selection: $hoverExitCollapseDelay) {
+                            Text("0.2s").tag(0.2)
+                            Text("0.3s").tag(0.3)
+                            Text("0.5s").tag(0.5)
+                            Text("0.75s").tag(0.75)
+                            Text("1s").tag(1.0)
+                            Text("1.5s").tag(1.5)
+                            Text("2s").tag(2.0)
                         }
                         .pickerStyle(.menu)
                         .frame(width: 100)
@@ -895,6 +952,17 @@ struct PreferencesView: View {
 
     private var dividerLine: some View {
         Divider().overlay(.quaternary.opacity(0.4))
+    }
+
+    private func macPrivacyButton(title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: 30)
+        }
+        .buttonStyle(.bordered)
     }
 
     private func providerRow(_ name: String, enabled: Binding<Bool>, key: Binding<String>,

@@ -13,6 +13,7 @@ final class AudioEngineTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "audio.quietHoursEnabled")
         UserDefaults.standard.removeObject(forKey: "audio.quietHoursStart")
         UserDefaults.standard.removeObject(forKey: "audio.quietHoursEnd")
+        UserDefaults.standard.removeObject(forKey: "audio.muteRules")
         engine = AudioEngine()
     }
 
@@ -22,6 +23,7 @@ final class AudioEngineTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "audio.quietHoursEnabled")
         UserDefaults.standard.removeObject(forKey: "audio.quietHoursStart")
         UserDefaults.standard.removeObject(forKey: "audio.quietHoursEnd")
+        UserDefaults.standard.removeObject(forKey: "audio.muteRules")
         engine = nil
         super.tearDown()
     }
