@@ -1,22 +1,55 @@
 # Changelog
 
-## v1.5.0 (2026-05-17)
+## v1.5.1 (2026-05-17)
 
-### 代码质量优化
+本版为**相对上一正式发布 [v1.4.0](https://github.com/Meteorkid/XIsland/releases/tag/v1.4.0) 的汇总更新**：在 v1.4.0 的 Agent 扩展、面板与勿扰、Bypass、子 Agent 可视化等能力之上，补上**长时间运行稳定性**、**可配置的展开/收起节奏**，并做了一轮**结构重构与测试补强**。
 
-- **SessionManager 重构**: 消除 `startSession`/`findOrCreateSession`/`findOrCreateSessionForInteraction` 三处重复的 session 查找/创建级联逻辑，提取统一的 optional chaining 模式
-- **NotchContentView 拆分**: 提取 `IslandSizeCalculator` 统一高度/宽度计算逻辑（消除 3 处重复计算）
-- **AudioEngine 非阻塞化**: `playFile` 和 `playToneSequence` 从 `Thread.sleep` 阻塞改为 `AVAudioPlayerNode` 回调，新音效事件不再被长音效阻塞
-- **NotchWindow 性能优化**: `setFrame`/`setFrameDirect` 中缓存 `bestScreen()` 结果，仅在鼠标跨越屏幕边界时刷新
+### 与 v1.4.0 对比（高层）
 
-### 测试覆盖提升
+| 维度 | v1.4.0 | v1.5.1 |
+|------|--------|--------|
+| 长时间挂机 / 多会话 | 偶发主线程卡死、CPU 飙高 | 终端跳转、Keychain、窗口枚举等迁至后台；Hover 轮询降频并在视图消失时停止；窗口释放 Timer/观察者 |
+| 展开后无操作收起 | 固定约 **10s** | **偏好可调**（秒），可选 **永不** |
+| 鼠标离开岛后收起 | 固定 **0.5s** | **偏好可调**（多档），可 **关闭** 该规则 |
+||| `IslandSizeCalculator` 统一尺寸计算；`SessionManager` 去重 session 查找链 |
+| 测试 | 约 **125** 条 | **212+** 条（含 L10n/MuteRule/AgentSession/AudioEngine/AgentType 等） |
+| 仓库授权 | — | 默认分支含 **MIT LICENSE**（提交 `4eb70c3`，与功能同周期合入） |
 
-- 新增 **L10n 测试** (10 个): 语言切换、availableLanguages、静态字符串完整性、参数化字符串
-- 新增 **MuteRule 测试** (10 个): 正则匹配、禁用规则、空模式、无效正则、大小写不敏感、Codable 序列化
-- 新增 **AgentSession 测试** (15 个): workspaceName、displayTitle、formattedDuration、isSubagent、TokenUsage 格式化
-- 新增 **AudioEngine 测试** (12 个): 静音状态、音量持久化、事件开关、定时勿扰、静音规则 JSON 持久化
-- 新增 **AgentType 测试** (10 个): from() 解析、fromBundleId、Meta 属性完整性、Registry 完整性、Codable
-- 测试总数: 125 → 192 (+67)
+### 性能、响应性与资源（相对 v1.4.0）
+
+- **TerminalJumpManager**：`jump` 改为异步；AppleScript、`Process`、`CGWindowListCopyWindowInfo` 等在 `Task.detached` 中执行，避免阻塞 UI 主线程（此前多会话 / 频繁跳转时易出现「应用无响应」）。
+- **Hover 轮询**：定时器间隔由 **0.1s 调整为 0.3s**；`onDisappear` **停止轮询**，避免窗口不可见时仍持续占用 CPU。
+- **NotchWindow**：补充 **`deinit`**，清理鼠标跟踪 Timer 与 `NotificationCenter` 观察者，减少泄漏与后台活动。
+- **屏幕选择**：`bestScreen()` **缓存**结果，仅在鼠标跨屏时刷新；减轻 `setFrame` 路径上的全屏遍历。
+- **空格 / 全屏检测**：`activeSpaceDidChange` 内 `CGWindowListCopyWindowInfo` 移至后台线程。
+- **QuotaTracker**：Keychain 读取批处理移到后台线程后再回主线程，避免首屏或刷新配额时卡顿。
+- **会话缓存**：`purgeOrphanedCacheEntries()` 等清理已完成会话相关缓存，避免字典长期增长。
+- **AudioEngine**：长音效路径使用 **`scheduleFile` / `scheduleBuffer` 回调** 替代 `Thread.sleep`，减少串行队列被长时间占用。
+- **SwiftUI**：`MarkdownView` 解析与活动日志排序改为缓存计算属性，降低 body 重复重算成本。
+
+### 行为与偏好（相对 v1.4.0）
+
+- **展开后无操作自动收起**：`UserDefaults` 键 `expandedInactivityAutoHideDelay`（默认 **10** 秒）；**0** 表示关闭该项自动收起。偏好界面位于 **设置 → 行为**。
+- **指针离开后再收起**：键 `hoverExitCollapseDelay`（默认 **0.5** 秒）；适用于**悬停展开**或**无可见会话**时的离开延迟；**0** 表示不按「离开」触发收起。同样可在 **行为** 分区调节。
+- **实现要点**：`ExpandedAutoCollapsePolicy.shouldCollapseOnMouseExit` 增加 `hoverExitDelay`；`NotchContentView` 使用 `@AppStorage` 并在偏好变更时刷新无操作计时；`AppDelegate.register(defaults:)` 注册默认值。
+
+### 代码质量与结构（相对 v1.4.0）
+
+- **SessionManager**：合并 `startSession` / `findOrCreateSession` / `findOrCreateSessionForInteraction` 中重复的 session 解析与创建路径，统一 optional chaining 流程。
+- **NotchContentView**：高度/宽度等委托 **`IslandSizeCalculator`**，减少重复计算；引入 **`IslandHoverManager`** 文件（为未来集中管理 hover 状态占位）。
+- **NotchWindow**：与尺寸、屏幕相关的逻辑与 v1.4.0 相比更贴合「高频路径不重复做重活」的原则（见上节缓存）。
+
+### 测试与质量门（相对 v1.4.0）
+
+- 新增/强化覆盖：**L10n**、**MuteRule**、**AgentSession**、**AudioEngine**、**AgentType** 等专用测试文件。
+- **ExpandedAutoCollapsePolicy**：为可配置 `hoverExitDelay` 补充参数化用例及「delay 为 0 不收起」分支。
+- 规模：**约 125** → **212+** XCTest（以当前 `swift test` 为准）。
+
+### 其它
+
+- **本地化**：新增行为相关文案走 **L10n** 五语；日文说明有一处措辞修正（`hoverExitCollapseDesc`）。
+
+---
 
 ## v1.4.0 (2026-05-16)
 

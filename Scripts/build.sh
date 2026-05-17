@@ -70,9 +70,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
     <key>CFBundleIdentifier</key>
     <string>dev.xisland.app</string>
     <key>CFBundleVersion</key>
-    <string>1.0.0</string>
+    <string>1.5.1</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>1.5.1</string>
     <key>CFBundleExecutable</key>
     <string>XIsland</string>
     <key>CFBundlePackageType</key>
