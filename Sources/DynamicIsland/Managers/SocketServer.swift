@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import os
 import DIShared
 
 private func diLog(_ msg: String) {
@@ -21,9 +22,15 @@ final class SocketServer: @unchecked Sendable {
     static let acceptFailureBackoffMicroseconds: UInt32 = 50_000
 
     private let sessionManager: SessionManager
-    private var serverFD: Int32 = -1
     private let queue = DispatchQueue(label: "dev.towerisland.socket", qos: .userInitiated)
-    private var isRunning = false
+
+    /// Shared mutable state protected by `stateLock`.
+    private let stateLock = OSAllocatedUnfairLock(initialState: ServerState())
+
+    private struct ServerState {
+        var serverFD: Int32 = -1
+        var isRunning = false
+    }
 
     init(sessionManager: SessionManager) {
         self.sessionManager = sessionManager
@@ -32,10 +39,12 @@ final class SocketServer: @unchecked Sendable {
     func start() {
         let dir = DISocketConfig.socketDir
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        // Restrict directory to owner-only access
+        chmod(dir, 0o700)
         unlink(DISocketConfig.socketPath)
 
-        serverFD = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard serverFD >= 0 else {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else {
             return
         }
 
@@ -52,20 +61,26 @@ final class SocketServer: @unchecked Sendable {
         let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
         let bindResult = withUnsafePointer(to: &addr) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-                bind(serverFD, sockPtr, addrLen)
+                bind(fd, sockPtr, addrLen)
             }
         }
         guard bindResult == 0 else {
-            close(serverFD)
+            close(fd)
             return
         }
 
-        guard listen(serverFD, 16) == 0 else {
-            close(serverFD)
+        // Restrict socket to owner-only access
+        fchmod(fd, 0o600)
+
+        guard listen(fd, 16) == 0 else {
+            close(fd)
             return
         }
 
-        isRunning = true
+        stateLock.withLock { state in
+            state.serverFD = fd
+            state.isRunning = true
+        }
 
         queue.async { [weak self] in
             self?.acceptLoop()
@@ -73,19 +88,28 @@ final class SocketServer: @unchecked Sendable {
     }
 
     func stop() {
-        isRunning = false
-        if serverFD >= 0 {
-            close(serverFD)
-            serverFD = -1
+        let fd = stateLock.withLock { state -> Int32 in
+            state.isRunning = false
+            let fd = state.serverFD
+            state.serverFD = -1
+            return fd
+        }
+        if fd >= 0 {
+            close(fd)
         }
         unlink(DISocketConfig.socketPath)
     }
 
     private func acceptLoop() {
-        while isRunning {
-            let clientFD = accept(serverFD, nil, nil)
+        while true {
+            let (running, fd) = stateLock.withLock { state in
+                (state.isRunning, state.serverFD)
+            }
+            guard running else { break }
+
+            let clientFD = accept(fd, nil, nil)
             guard clientFD >= 0 else {
-                if isRunning {
+                if running {
                     usleep(Self.acceptFailureBackoffMicroseconds)
                 }
                 continue

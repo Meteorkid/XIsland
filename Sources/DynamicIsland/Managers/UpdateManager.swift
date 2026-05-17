@@ -1,6 +1,7 @@
 import Observation
 import AppKit
 import Foundation
+import os.log
 
 @MainActor
 @Observable
@@ -22,12 +23,14 @@ final class UpdateManager {
         let htmlURL: URL
         let publishedAt: Date
         let assets: [Asset]
+        let body: String?
 
-        init(tagName: String, htmlURL: URL, publishedAt: Date, assets: [Asset] = []) {
+        init(tagName: String, htmlURL: URL, publishedAt: Date, assets: [Asset] = [], body: String? = nil) {
             self.tagName = tagName
             self.htmlURL = htmlURL
             self.publishedAt = publishedAt
             self.assets = assets
+            self.body = body
         }
 
         var normalizedVersion: String {
@@ -43,6 +46,7 @@ final class UpdateManager {
             case htmlURL = "html_url"
             case publishedAt = "published_at"
             case assets
+            case body
         }
 
         init(from decoder: any Decoder) throws {
@@ -51,6 +55,7 @@ final class UpdateManager {
             htmlURL = try container.decode(URL.self, forKey: .htmlURL)
             publishedAt = try container.decode(Date.self, forKey: .publishedAt)
             assets = try container.decodeIfPresent([Asset].self, forKey: .assets) ?? []
+            body = try container.decodeIfPresent(String.self, forKey: .body)
         }
     }
 
@@ -198,6 +203,17 @@ final class UpdateManager {
             return
         }
 
+        let expectedSHA256: String?
+        if let body = release.body {
+            let dmgFilename = AppUpdater.dmgFilename(for: release.normalizedVersion)
+            expectedSHA256 = Self.extractSHA256(from: body, for: dmgFilename)
+            if expectedSHA256 == nil {
+                os_log(.info, "SHA256 not found in release notes for %{public}@", dmgFilename)
+            }
+        } else {
+            expectedSHA256 = nil
+        }
+
         let stageHandler: @MainActor (AppUpdaterStage) -> Void = { [weak self] stage in
             self?.state = .installing(stage: Self.installStageDescription(for: stage))
         }
@@ -207,12 +223,27 @@ final class UpdateManager {
                 version: release.normalizedVersion,
                 releaseURL: dmgURL,
                 appPath: installedAppPath,
+                expectedSHA256: expectedSHA256,
                 onStage: stageHandler
             )
             state = .idle
         } catch {
             state = .failed(message: "Unable to install the update.")
         }
+    }
+
+    nonisolated private static func extractSHA256(from releaseBody: String, for filename: String) -> String? {
+        let escapedFilename = NSRegularExpression.escapedPattern(for: filename)
+        let pattern = "\(escapedFilename).*?([a-fA-F0-9]{64})"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+            return nil
+        }
+        let range = NSRange(releaseBody.startIndex..., in: releaseBody)
+        guard let match = regex.firstMatch(in: releaseBody, options: [], range: range),
+              let hashRange = Range(match.range(at: 1), in: releaseBody) else {
+            return nil
+        }
+        return String(releaseBody[hashRange])
     }
 
     func applyFixture(_ fixture: AppTestFixture.UpdateFixture?) {
@@ -258,7 +289,7 @@ final class UpdateManager {
         }
     }
 
-    nonisolated static func releaseDataFromLatestRedirectURL(_ finalURL: URL, checkedAt: Date) throws -> Data {
+    nonisolated static func releaseDataFromLatestRedirectURL(_ finalURL: URL, checkedAt: Date, body: String? = nil) throws -> Data {
         let pathComponents = finalURL.pathComponents
         guard pathComponents.count >= 6,
               pathComponents[1].lowercased() == "meteorkid",
@@ -278,7 +309,7 @@ final class UpdateManager {
             .appendingPathComponent(tag)
             .appendingPathComponent("XIsland.dmg")
 
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "tag_name": tag,
             "html_url": finalURL.absoluteString,
             "published_at": ISO8601DateFormatter().string(from: checkedAt),
@@ -289,22 +320,49 @@ final class UpdateManager {
                 ]
             ]
         ]
+        if let body {
+            payload["body"] = body
+        }
 
         return try JSONSerialization.data(withJSONObject: payload)
     }
 
     private static func fetchLatestReleaseData() async throws -> Data {
-        var request = URLRequest(url: latestReleaseURL)
-        request.httpMethod = "HEAD"
-        request.setValue("XIsland", forHTTPHeaderField: "User-Agent")
+        // 获取重定向 URL 以确定最新版本 tag
+        var headRequest = URLRequest(url: latestReleaseURL)
+        headRequest.httpMethod = "HEAD"
+        headRequest.setValue("XIsland", forHTTPHeaderField: "User-Agent")
 
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
+        let (_, headResponse) = try await URLSession.shared.data(for: headRequest)
+        guard let httpResponse = headResponse as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
             throw URLError(.badServerResponse)
         }
-        guard let finalURL = response.url else {
+        guard let finalURL = headResponse.url else {
             throw URLError(.badServerResponse)
         }
-        return try releaseDataFromLatestRedirectURL(finalURL, checkedAt: Date())
+
+        // 从 GitHub API 获取 release body（包含 SHA256 校验和）
+        let pathComponents = finalURL.pathComponents
+        guard pathComponents.count >= 6,
+              pathComponents[3] == "releases",
+              pathComponents[4] == "tag"
+        else {
+            return try releaseDataFromLatestRedirectURL(finalURL, checkedAt: Date())
+        }
+        let tag = pathComponents[5]
+        let apiURL = URL(string: "https://api.github.com/repos/Meteorkid/XIsland/releases/tags/\(tag)")!
+        var apiRequest = URLRequest(url: apiURL)
+        apiRequest.setValue("XIsland", forHTTPHeaderField: "User-Agent")
+        apiRequest.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+
+        var body: String? = nil
+        if let (apiData, apiResponse) = try? await URLSession.shared.data(for: apiRequest),
+           let apiHTTPResponse = apiResponse as? HTTPURLResponse,
+           (200..<300).contains(apiHTTPResponse.statusCode),
+           let json = try? JSONSerialization.jsonObject(with: apiData) as? [String: Any] {
+            body = json["body"] as? String
+        }
+
+        return try releaseDataFromLatestRedirectURL(finalURL, checkedAt: Date(), body: body)
     }
 }

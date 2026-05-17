@@ -13,6 +13,6 @@ let package = Package(
             dependencies: [],
             path: "Sources/XIslandUITestDriver"
         ),
-        .testTarget(name: "XIslandTests", dependencies: ["XIsland", "DIBridge", "XIslandUITestDriver"]),
+        .testTarget(name: "XIslandTests", dependencies: ["XIsland", "DIBridge", "XIslandUITestDriver"], path: "Tests/TowerIslandTests"),
     ]
 )

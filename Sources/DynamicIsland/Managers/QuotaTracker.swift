@@ -11,8 +11,13 @@ final class QuotaTracker {
     private let updateInterval: TimeInterval = 60
 
     init() {
+        Self.migrateKeychainAccessibility()
         fetchAll()
         startTimer()
+    }
+
+    deinit {
+        timer?.invalidate()
     }
 
     func fetchAll() {
@@ -242,7 +247,8 @@ final class QuotaTracker {
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service,
                 kSecAttrAccount as String: account,
-                kSecValueData as String: data
+                kSecValueData as String: data,
+                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             ]
             return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
         }
@@ -263,6 +269,16 @@ final class QuotaTracker {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    static func migrateKeychainAccessibility() {
+        let providers = ["anthropic", "openai", "kimi", "deepseek", "glm"]
+        for provider in providers {
+            if let key = loadAPIKey(for: provider) {
+                _ = deleteAPIKey(for: provider)
+                _ = saveAPIKey(key, for: provider)
+            }
+        }
     }
 
     static func deleteAPIKey(for provider: String) -> Bool {

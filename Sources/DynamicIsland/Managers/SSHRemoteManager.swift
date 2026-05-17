@@ -1,6 +1,61 @@
 import Foundation
 import DIShared
 
+// MARK: - Input Validation
+
+enum SSHValidationError: LocalizedError {
+    case invalidHost(String)
+    case invalidUser(String)
+    case invalidPath(String, String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidHost(let host):
+            return "Invalid SSH host: \(host). Only alphanumeric, dots, hyphens, and underscores allowed."
+        case .invalidUser(let user):
+            return "Invalid SSH user: \(user). Only alphanumeric, dots, hyphens, and underscores allowed."
+        case .invalidPath(let label, let path):
+            return "Invalid \(label): \(path). Only alphanumeric, dots, slashes, hyphens, underscores, tildes, and colons allowed."
+        }
+    }
+}
+
+private enum SSHInputValidator {
+    private static let hostPattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9._-]+$")
+    private static let userPattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9._-]+$")
+    private static let pathPattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9._/~:-]+$")
+
+    private static func matches(_ string: String, regex: NSRegularExpression) -> Bool {
+        let range = NSRange(string.startIndex..., in: string)
+        return regex.firstMatch(in: string, range: range) != nil
+    }
+
+    static func validateHost(_ host: String) throws -> String {
+        guard matches(host, regex: hostPattern) else {
+            throw SSHValidationError.invalidHost(host)
+        }
+        return host
+    }
+
+    static func validateUser(_ user: String) throws -> String {
+        guard matches(user, regex: userPattern) else {
+            throw SSHValidationError.invalidUser(user)
+        }
+        return user
+    }
+
+    static func validatePort(_ port: UInt16) -> UInt16 { port }
+
+    static func validatePath(_ path: String, label: String) throws -> String {
+        let expanded = (path as NSString).expandingTildeInPath
+            .replacingOccurrences(of: "$HOME", with: NSHomeDirectory())
+        guard matches(expanded, regex: pathPattern) else {
+            throw SSHValidationError.invalidPath(label, expanded)
+        }
+        return expanded
+    }
+}
+
 /// Represents one remote server where AI agents may run.
 struct SSHRemoteServer: Identifiable, Codable, Sendable {
     let id: UUID
@@ -82,60 +137,45 @@ final class SSHRemoteManager {
         isDeploying = true
         defer { isDeploying = false }
 
+        let validatedHost = try SSHInputValidator.validateHost(server.host)
+        let validatedUser = try SSHInputValidator.validateUser(server.user)
+        let validatedPath = try SSHInputValidator.validatePath(server.remoteBridgePath, label: "remote bridge path")
+        let remoteDir = (validatedPath as NSString).deletingLastPathComponent
+
         let localBridge = Bundle.main.bundlePath + "/Contents/MacOS/di-bridge"
 
-        let identityArg: String
+        // SSH base args (shared by mkdir and chmod)
+        var sshBaseArgs = ["-p", "\(server.port)"]
         if let idFile = server.identityFile {
-            identityArg = "-i \"\(idFile)\""
-        } else {
-            identityArg = ""
+            sshBaseArgs += ["-i", idFile]
         }
+        let sshDest = "\(validatedUser)@\(validatedHost)"
 
-        let remoteDir = (server.remoteBridgePath as NSString).deletingLastPathComponent
+        // Step 1: mkdir -p on remote
+        try await runRemoteCommand(
+            executable: "/usr/bin/ssh",
+            args: sshBaseArgs + [sshDest, "mkdir -p \(remoteDir)"],
+            label: "mkdir"
+        )
 
-        // Create remote directory and copy bridge
-        let mkdirCmd = """
-        ssh -p \(server.port) \(identityArg) \(server.user)@\(server.host) \
-        "mkdir -p \(remoteDir)"
-        """
-        let scpCmd = """
-        scp -P \(server.port) \(identityArg) "\(localBridge)" \
-        \(server.user)@\(server.host):\(server.remoteBridgePath)
-        """
-        let chmodCmd = """
-        ssh -p \(server.port) \(identityArg) \(server.user)@\(server.host) \
-        "chmod +x \(server.remoteBridgePath)"
-        """
-
-        // Execute sequentially
-        let process = Process()
-        let pipe = Pipe()
-
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-c", "\(mkdirCmd) && \(scpCmd) && \(chmodCmd)"]
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            process.terminationHandler = { proc in
-                if proc.terminationStatus == 0 {
-                    continuation.resume()
-                } else {
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(data: data, encoding: .utf8) ?? "Unknown error"
-                    continuation.resume(throwing: NSError(
-                        domain: "SSHRemote",
-                        code: Int(proc.terminationStatus),
-                        userInfo: [NSLocalizedDescriptionKey: output]
-                    ))
-                }
-            }
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(throwing: error)
-            }
+        // Step 2: scp bridge binary
+        var scpArgs = ["-P", "\(server.port)"]
+        if let idFile = server.identityFile {
+            scpArgs += ["-i", idFile]
         }
+        scpArgs += [localBridge, "\(sshDest):\(validatedPath)"]
+        try await runRemoteCommand(
+            executable: "/usr/bin/scp",
+            args: scpArgs,
+            label: "scp"
+        )
+
+        // Step 3: chmod +x
+        try await runRemoteCommand(
+            executable: "/usr/bin/ssh",
+            args: sshBaseArgs + [sshDest, "chmod +x \(validatedPath)"],
+            label: "chmod"
+        )
 
         // Mark as connected
         if let idx = servers.firstIndex(where: { $0.id == server.id }) {
@@ -152,27 +192,25 @@ final class SSHRemoteManager {
     /// When an agent runs on the remote server and the hook fires:
     ///   remote di-bridge → remote unix socket → SSH tunnel → local unix socket → SocketServer
     func startTunnel(for server: SSHRemoteServer) throws -> Process {
-        let identityArg: String
-        if let idFile = server.identityFile {
-            identityArg = "-i \"\(idFile)\""
-        } else {
-            identityArg = ""
-        }
+        let validatedHost = try SSHInputValidator.validateHost(server.host)
+        let validatedUser = try SSHInputValidator.validateUser(server.user)
 
         // Remove stale socket
         try? FileManager.default.removeItem(atPath: server.localTunnelSocket)
 
         // SSH remote port forwarding: remote socket → local socket
-        // We use socat on the remote to relay the bridge socket to local via SSH forward
-        let cmd = """
-        ssh -N -p \(server.port) \(identityArg) \
-        -L "\(server.localTunnelSocket):\(DISocketConfig.socketPath)" \
-        \(server.user)@\(server.host) &
-        """
+        var args = ["-N", "-p", "\(server.port)"]
+        if let idFile = server.identityFile {
+            args += ["-i", idFile]
+        }
+        args += [
+            "-L", "\(server.localTunnelSocket):\(DISocketConfig.socketPath)",
+            "\(validatedUser)@\(validatedHost)"
+        ]
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-c", cmd]
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+        process.arguments = args
         try process.run()
 
         // Ensure the local socket directory exists and listen on the tunnel port
@@ -185,8 +223,11 @@ final class SSHRemoteManager {
     }
 
     func stopTunnel(for server: SSHRemoteServer) {
+        // Validate host before using in pkill pattern to prevent injection
+        guard let validatedHost = try? SSHInputValidator.validateHost(server.host) else { return }
+
         // Find and kill the SSH process for this server
-        let marker = "\(DISocketConfig.socketPath):\(server.host)"
+        let marker = "\(DISocketConfig.socketPath):\(validatedHost)"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
         process.arguments = ["-f", marker]
@@ -204,23 +245,24 @@ final class SSHRemoteManager {
 
     /// Verify the SSH connection works and the bridge binary exists on the remote.
     func verifyConnection(for server: SSHRemoteServer) async throws -> String {
-        let identityArg: String
-        if let idFile = server.identityFile {
-            identityArg = "-i \"\(idFile)\""
-        } else {
-            identityArg = ""
-        }
+        let validatedHost = try SSHInputValidator.validateHost(server.host)
+        let validatedUser = try SSHInputValidator.validateUser(server.user)
+        let validatedPath = try SSHInputValidator.validatePath(server.remoteBridgePath, label: "remote bridge path")
 
-        let cmd = """
-        ssh -p \(server.port) \(identityArg) \(server.user)@\(server.host) \
-        "test -x \(server.remoteBridgePath) && echo OK || echo BRIDGE_NOT_FOUND"
-        """
+        var args = ["-p", "\(server.port)"]
+        if let idFile = server.identityFile {
+            args += ["-i", idFile]
+        }
+        args += [
+            "\(validatedUser)@\(validatedHost)",
+            "test -x \(validatedPath) && echo OK || echo BRIDGE_NOT_FOUND"
+        ]
 
         return try await withCheckedThrowingContinuation { continuation in
             let process = Process()
             let pipe = Pipe()
-            process.executableURL = URL(fileURLWithPath: "/bin/bash")
-            process.arguments = ["-c", cmd]
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+            process.arguments = args
             process.standardOutput = pipe
 
             process.terminationHandler = { proc in
@@ -260,13 +302,48 @@ final class SSHRemoteManager {
     /// Create the remote hook configuration on a server to point at the tunneled socket.
     /// This generates a one-liner that the user should add to their remote agent config.
     func remoteHookSetupCommand(for server: SSHRemoteServer) -> String {
+        let validatedPath = (try? SSHInputValidator.validatePath(server.remoteBridgePath, label: "remote bridge path"))
+            ?? server.remoteBridgePath
         let socketEnv = "export DI_SOCKET_PATH=\(DISocketConfig.socketPath)"
-        let bridgeCmd = "\(server.remoteBridgePath) --agent claude_code --hook"
+        let bridgeCmd = "\(validatedPath) --agent claude_code --hook"
         return """
         # On the remote server, add this to your ~/.profile or ~/.zshrc:
         \(socketEnv)
         # Then configure your agent hooks as usual; di-bridge will connect through the tunnel.
         # Example: \(bridgeCmd) session_start || true
         """
+    }
+
+    // MARK: - Private helpers
+
+    /// Run a remote command via Process with direct arguments (no shell interpolation).
+    private func runRemoteCommand(executable: String, args: [String], label: String) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let process = Process()
+            let pipe = Pipe()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = args
+            process.standardOutput = pipe
+            process.standardError = pipe
+
+            process.terminationHandler = { proc in
+                if proc.terminationStatus == 0 {
+                    continuation.resume()
+                } else {
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    let output = String(data: data, encoding: .utf8) ?? "Unknown error"
+                    continuation.resume(throwing: NSError(
+                        domain: "SSHRemote",
+                        code: Int(proc.terminationStatus),
+                        userInfo: [NSLocalizedDescriptionKey: "\(label) failed: \(output)"]
+                    ))
+                }
+            }
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
     }
 }

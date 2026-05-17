@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import Dispatch
 import Foundation
 
@@ -15,6 +16,8 @@ enum AppUpdaterError: LocalizedError, Equatable {
     case appNotFound
     case installFailed
     case relaunchFailed
+    case integrityCheckFailed
+    case codeSigningFailed
 
     var errorDescription: String? {
         switch self {
@@ -28,6 +31,10 @@ enum AppUpdaterError: LocalizedError, Equatable {
             return "Unable to replace the installed app."
         case .relaunchFailed:
             return "The update installed, but the app could not relaunch."
+        case .integrityCheckFailed:
+            return "The downloaded update failed integrity verification."
+        case .codeSigningFailed:
+            return "The installed app failed code signing verification."
         }
     }
 }
@@ -44,6 +51,7 @@ struct AppUpdater {
         _ version: String,
         _ releaseURL: URL,
         _ appPath: String,
+        _ expectedSHA256: String?,
         _ onStage: @escaping @MainActor (AppUpdaterStage) -> Void
     ) async throws -> Void
 
@@ -237,10 +245,11 @@ extension AppUpdater {
         version: String,
         releaseURL: URL,
         appPath: String,
+        expectedSHA256: String? = nil,
         onStage: @escaping @MainActor (AppUpdaterStage) -> Void
     ) async throws {
         if let installImpl {
-            try await installImpl(version, releaseURL, appPath, onStage)
+            try await installImpl(version, releaseURL, appPath, expectedSHA256, onStage)
             return
         }
 
@@ -252,6 +261,14 @@ extension AppUpdater {
             try await downloadFile(releaseURL, dmgURL)
         } catch {
             throw AppUpdaterError.downloadFailed
+        }
+
+        // SHA256 完整性校验
+        if let expectedHash = expectedSHA256 {
+            guard let actualHash = Self.computeSHA256(of: dmgURL), actualHash == expectedHash else {
+                try? FileManager.default.removeItem(at: dmgURL)
+                throw AppUpdaterError.integrityCheckFailed
+            }
         }
 
         await MainActor.run { onStage(.mounting) }
@@ -271,6 +288,13 @@ extension AppUpdater {
             .path
         guard fileExists(mountedAppPath) else {
             throw AppUpdaterError.appNotFound
+        }
+
+        // 验证挂载应用的代码签名
+        do {
+            _ = try runCommand("/usr/bin/codesign", ["--verify", "--deep", "--strict", mountedAppPath])
+        } catch {
+            throw AppUpdaterError.codeSigningFailed
         }
 
         await MainActor.run { onStage(.installing) }
@@ -296,6 +320,21 @@ extension AppUpdater {
         }
 
         terminateApp()
+    }
+
+    static func computeSHA256(of url: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { handle.closeFile() }
+
+        var hasher = SHA256()
+        while autoreleasepool(invoking: {
+            let data = handle.readData(ofLength: 65536)
+            guard !data.isEmpty else { return false }
+            hasher.update(data: data)
+            return true
+        }) {}
+        let digest = hasher.finalize()
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 }
 

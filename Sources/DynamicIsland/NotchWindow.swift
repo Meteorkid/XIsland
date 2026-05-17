@@ -133,11 +133,18 @@ final class NotchWindow: NSPanel {
             if !isVisible { orderFrontRegardless() }
             return
         }
-        // CGWindowListCopyWindowInfo can be slow; move it off the main thread.
+        // Phase 1: snapshot MainActor-isolated state before leaving the main thread
+        let screen = NSScreen.main
+        let windowSnapshots: [(screen: NSScreen?, styleMask: NSWindow.StyleMask)] =
+            NSApplication.shared.windows.map { ($0.screen, $0.styleMask) }
+        let frontApp = NSWorkspace.shared.frontmostApplication
+
+        // Phase 2: slow CGWindowList work off the main thread
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
-            let screen = NSScreen.main
-            let inFullscreen = screen.map { self.isScreenInFullscreen($0) } ?? false
+            let inFullscreen = screen.map {
+                Self.isScreenInFullscreenOffMain($0, windowSnapshots: windowSnapshots, frontApp: frontApp)
+            } ?? false
             await MainActor.run {
                 if inFullscreen {
                     self.orderOut(nil)
@@ -148,13 +155,19 @@ final class NotchWindow: NSPanel {
         }
     }
 
-    private func isScreenInFullscreen(_ screen: NSScreen) -> Bool {
-        for window in NSApplication.shared.windows where window !== self {
-            if window.styleMask.contains(.fullScreen) && window.screen == screen {
+    private nonisolated static func isScreenInFullscreenOffMain(
+        _ screen: NSScreen,
+        windowSnapshots: [(screen: NSScreen?, styleMask: NSWindow.StyleMask)],
+        frontApp: NSRunningApplication?
+    ) -> Bool {
+        // Check AppKit windows using snapshots (no MainActor access needed)
+        for (winScreen, styleMask) in windowSnapshots {
+            if styleMask.contains(.fullScreen) && winScreen == screen {
                 return true
             }
         }
-        if let frontApp = NSWorkspace.shared.frontmostApplication,
+        // Slow CGWindowList check for third-party fullscreen windows
+        if let frontApp,
            frontApp.bundleIdentifier != Bundle.main.bundleIdentifier {
             let opts = CGWindowListOption([.optionOnScreenOnly, .excludeDesktopElements])
             guard let list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] else {
