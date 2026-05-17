@@ -715,7 +715,7 @@ enum L10n {
         localized("hoverExitCollapseDesc",
             zh: "悬停展开或无会话时，指针离开岛区域后过多久收起",
             ko: "호버로 펼쳤거나 세션이 없을 때, 포인터가 영역을 벗어난 뒤 접히기까지의 지연",
-            ja: "ホバー展開、またはセゼロ件のとき、ポインターが離れてから折りたたむまでの遅延",
+            ja: "ホバー展開、またはセッションがないとき、ポインターが離れてから折りたたむまでの遅延",
             fr: "Délai après la sortie du pointeur (ouverture au survol ou panneau vide).",
             en: "After hover-expand or with no sessions, how long to wait once the pointer leaves before collapsing.")
     }
