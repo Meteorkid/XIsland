@@ -11,7 +11,7 @@
 | 长时间挂机 / 多会话 | 偶发主线程卡死、CPU 飙高 | 终端跳转、Keychain、窗口枚举等迁至后台；Hover 轮询降频并在视图消失时停止；窗口释放 Timer/观察者 |
 | 展开后无操作收起 | 固定约 **10s** | **偏好可调**（秒），可选 **永不** |
 | 鼠标离开岛后收起 | 固定 **0.5s** | **偏好可调**（多档），可 **关闭** 该规则 |
-||| `IslandSizeCalculator` 统一尺寸计算；`SessionManager` 去重 session 查找链 |
+| 代码组织 | — | `IslandSizeCalculator` 统一尺寸；`SessionManager` 合并重复 session 查找/创建路径 |
 | 测试 | 约 **125** 条 | **212+** 条（含 L10n/MuteRule/AgentSession/AudioEngine/AgentType 等） |
 | 仓库授权 | — | 默认分支含 **MIT LICENSE**（提交 `4eb70c3`，与功能同周期合入） |
 
