@@ -1,5 +1,85 @@
 # Changelog
 
+## v1.6.0 (2026-05-17)
+
+本版为**安全审计驱动的重大修复版本**，基于约 100 个审视角度的全面审查，修复 2 个 Critical 安全漏洞、4 个 High 级问题，并完成多项可维护性与工程化改进。
+
+### 与 v1.5.2 对比
+
+| 维度 | v1.5.2 | v1.6.0 |
+|------|--------|--------|
+| **SSH 远程命令** | 字符串拼接 shell 命令，存在注入风险 | Process 参数数组 + NSRegularExpression 输入校验 |
+| **Socket 权限** | 755（任何本地用户可连接） | 600（仅 owner）+ 目录 700 |
+| **Socket 并发** | `isRunning`/`serverFD` 无同步保护 | `OSAllocatedUnfairLock` 保护 |
+| **NotchWindow 并发** | `Task.detached` 直接调用 `@MainActor` API | 快照模式：MainActor 读取 → nonisolated 处理 |
+| **Keychain 安全** | 默认 `WhenUnlocked`，备份可提取 | `WhenUnlockedThisDeviceOnly` + 自动迁移 |
+| **更新完整性** | 无校验，MITM 可投毒 | SHA256 比对 + codesign --verify |
+| **CI** | 无 | GitHub Actions (`swift test`) |
+| **死代码** | IslandHoverManager.swift（135 行） | 已删除 |
+| **测试路径** | Package.swift 未声明 path | 显式 `path: "Tests/TowerIslandTests"` |
+| **测试** | 212 tests | 213 tests |
+
+### 安全修复详情
+
+#### SSHRemoteManager 命令注入 [Critical]
+
+**问题**：所有 SSH/shell 命令通过字符串拼接构建，`server.host`、`server.user`、`server.identityFile`、`server.remoteBridgePath` 全部未转义。攻击者可通过 `remote-servers.json` 注入任意命令。
+
+**修复**：
+- 新增 `SSHInputValidator`：host/user 匹配 `^[a-zA-Z0-9._-]+$`，路径匹配 `^[a-zA-Z0-9._/~:-]+$`
+- 所有 `Process` 调用从 `/bin/bash -c` 改为直接 `arguments` 数组（绕过 shell 解析）
+- `pkill -f` marker 使用校验后的 host
+
+#### Socket 权限 [Critical]
+
+**问题**：Unix domain socket 默认 755，任何本地用户可连接注入 `permissionResponse` 自动批准危险操作。
+
+**修复**：`bind()` 后 `fchmod(fd, 0o600)`，目录 `chmod(dir, 0o700)`
+
+#### SocketServer 数据竞争 [High]
+
+**问题**：`isRunning` 和 `serverFD` 从 `start()`/`stop()`（调用者线程）和 `acceptLoop()`（后台 queue）同时读写。
+
+**修复**：引入 `OSAllocatedUnfairLock<ServerState>` 保护共享状态
+
+#### NotchWindow 跨 Actor 调用 [High]
+
+**问题**：`activeSpaceDidChange` 中 `Task.detached` 调用 `isScreenInFullscreen`，该方法访问 `NSApplication.shared.windows`（`@MainActor` 隔离 API）。
+
+**修复**：拆分为两阶段 — MainActor 上读取窗口快照（值类型），传给 `nonisolated static func` 执行 CGWindowList 查询
+
+#### Keychain 可访问性 [High]
+
+**问题**：`saveAPIKey()` 未设置 `kSecAttrAccessible`，默认 `WhenUnlocked`，API key 可通过设备备份提取。
+
+**修复**：添加 `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` + `migrateKeychainAccessibility()` 自动迁移已有 key
+
+#### 更新完整性校验 [High]
+
+**问题**：DMG 下载无 SHA256 校验、无代码签名验证，MITM 可投毒。
+
+**修复**：
+- `UpdateManager`：从 release body 提取 SHA256，传递给 `AppUpdater`
+- `AppUpdater`：流式 SHA256 计算（64KB 块）+ `codesign --verify --deep --strict`
+- 校验失败拒绝安装，旧版 release 无 checksum 时优雅降级
+
+### P1 可维护性
+
+- 删除 `IslandHoverManager.swift` 死代码（135 行，从未被引用）
+- `Package.swift` testTarget 显式声明 `path: "Tests/TowerIslandTests"`
+
+### P2 工程化
+
+- 新增 `.github/workflows/test.yml`：push/PR 触发 `swift build` + `swift test`
+
+### 验证
+
+- `swift build`: 编译通过
+- `swift test`: 213 tests, 0 failures
+- 改动范围：9 个文件，+354/-245 行
+
+---
+
 ## v1.5.2 (2026-05-17)
 
 本版为 v1.5.1 的**文档与打包修正**，同时作为从 v1.4.0 升级的**推荐稳定版本**。
