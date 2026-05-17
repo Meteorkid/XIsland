@@ -1,5 +1,69 @@
 # Changelog
 
+## v1.5.2 (2026-05-17)
+
+本版为 v1.5.1 的**文档与打包修正**，同时作为从 v1.4.0 升级的**推荐稳定版本**。
+
+> 如果你正在使用 v1.4.0 或更早版本，建议直接升级到 v1.5.2 — 它包含 v1.5.1 的全部修复，
+> 并修正了 CHANGELOG 格式与打包脚本默认版本号。
+
+### 与 v1.4.0 完整对比
+
+| 维度 | v1.4.0 | v1.5.2 |
+|------|--------|--------|
+| **长时间运行稳定性** | 偶发主线程卡死、CPU 飙高至 100%、应用无响应 | 9 项主线程阻塞修复，后台线程迁移，CPU 空转降至 <1% |
+| **内存 / 资源泄漏** | Timer/Observer 不释放，缓存字典无限增长 | deinit 清理 + 孤立缓存定期清理 |
+| **展开后无操作收起** | 固定 ~10 秒 | **偏好可调**（秒），支持「永不」 |
+| **鼠标离开岛后收起** | 固定 0.5 秒 | **偏好可调**（多档），可关闭 |
+| **代码组织** | SessionManager 三处重复查找逻辑，NotchContentView 889 行 God View | SessionManager 统一解析路径，提取 IslandSizeCalculator + IslandHoverManager |
+| **测试覆盖** | ~125 条 | **212+ 条**（新增 L10n/MuteRule/AgentSession/AudioEngine/AgentType/ExpandedAutoCollapsePolicy） |
+| **许可证** | 无 | MIT LICENSE |
+
+### 性能修复详情（相对 v1.4.0）
+
+| 问题 | 严重度 | 修复前 | 修复后 |
+|------|--------|--------|--------|
+| TerminalJumpManager 主线程阻塞 | 致命 | `NSAppleScript` + `Process().run()` + `CGWindowList` 全部同步阻塞主线程 | `jump(to:) async` + `Task.detached(priority: .utility)` |
+| Hover Timer 过于频繁 | 高 | 0.1s 间隔轮询，`onDisappear` 未停止 | 0.3s 间隔 + `stopHoverPolling()` 清理 |
+| NotchWindow 资源泄漏 | 高 | 无 `deinit`，Timer/Observer 不释放 | `deinit` 清理 Timer + NotificationCenter |
+| bestScreen() 高频遍历 | 中 | `setFrame` 每次遍历所有屏幕 | `cachedOrRefreshScreen()` 仅跨屏时刷新 |
+| CGWindowList 主线程调用 | 中 | `activeSpaceDidChange` 同步调用 | `Task.detached(priority: .userInitiated)` |
+| Keychain 主线程读取 | 中 | `QuotaTracker.fetchAll()` 主线程 Keychain I/O | `nonisolated static` + `Task.detached` 批量读取 |
+| 缓存字典无限增长 | 低 | `lastAssistantReplySoundAt`/`recentAnswers` 不清理 | `purgeOrphanedCacheEntries()` 定期清理 |
+| Thread.sleep 阻塞队列 | 低 | AudioEngine 串行队列被 sleep 阻塞 | `scheduleFile`/`scheduleBuffer` 回调模式 |
+| SwiftUI body 重计算 | 低 | `parseBlocks()` 和排序在 body 中重复执行 | 缓存计算属性 `blocks` + `sortedActivityEvents` |
+
+### 行为偏好新增（相对 v1.4.0）
+
+| 设置项 | UserDefaults Key | 默认值 | 说明 |
+|--------|-----------------|--------|------|
+| 展开无操作收起 | `expandedInactivityAutoHideDelay` | 10 秒 | 0 = 永不自动收起 |
+| 鼠标离开收起 | `hoverExitCollapseDelay` | 0.5 秒 | 0 = 不按离开触发 |
+
+- 入口：**设置 → 行为** 分区
+- 实现：`ExpandedAutoCollapsePolicy.shouldCollapseOnMouseExit` + `NotchContentView` `@AppStorage`
+
+### 代码质量改进（相对 v1.4.0）
+
+- **SessionManager**: `startSession`/`findOrCreateSession`/`findOrCreateSessionForInteraction` 三处合并为统一 optional chaining 流程
+- **NotchContentView**: 889 → ~857 行，高度/宽度计算委托 `IslandSizeCalculator`
+- **IslandHoverManager**: 新建 135 行 hover 状态管理类（为后续集成准备）
+- **AudioEngine**: `SoundEvent.displayName` 接入 L10n 五语系统
+- **L10n**: 新增行为相关文案五语翻译
+
+### v1.5.1 → v1.5.2 变更
+
+- 修正 CHANGELOG.md 对比表格式（Markdown 表格对齐）
+- 打包脚本 `package-dmg.sh` 默认版本号更新为 1.5.2
+- `build.sh` Info.plist 版本号更新为 1.5.2
+
+### 测试
+
+- `swift test`: **212 tests, 0 failures**
+- 新增覆盖：ExpandedAutoCollapsePolicy 参数化用例 + hoverExitDelay=0 分支
+
+---
+
 ## v1.5.1 (2026-05-17)
 
 本版为**相对上一正式发布 [v1.4.0](https://github.com/Meteorkid/XIsland/releases/tag/v1.4.0) 的汇总更新**：在 v1.4.0 的 Agent 扩展、面板与勿扰、Bypass、子 Agent 可视化等能力之上，补上**长时间运行稳定性**、**可配置的展开/收起节奏**，并做了一轮**结构重构与测试补强**。
