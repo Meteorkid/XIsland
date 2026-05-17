@@ -245,11 +245,11 @@ final class AudioEngine {
             return false
         }
 
-        player.scheduleFile(file, at: nil, completionHandler: nil)
+        player.scheduleFile(file, at: nil) { [weak self, weak player] in
+            // completionHandler fires on an internal thread; bounce back to the serial audio queue.
+            self?.queue.async { player?.stop() }
+        }
         player.play()
-        let duration = Double(file.length) / file.processingFormat.sampleRate
-        Thread.sleep(forTimeInterval: duration + 0.15)
-        player.stop()
         return true
     }
 
@@ -328,9 +328,9 @@ final class AudioEngine {
             return
         }
 
-        player.scheduleBuffer(buffer, completionHandler: nil)
+        player.scheduleBuffer(buffer) { [weak self, weak player] in
+            self?.queue.async { player?.stop() }
+        }
         player.play()
-        Thread.sleep(forTimeInterval: tones.reduce(0) { $0 + $1.duration } + 0.15)
-        player.stop()
     }
 }

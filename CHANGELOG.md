@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.5.0 (2026-05-17)
+
+### 代码质量优化
+
+- **SessionManager 重构**: 消除 `startSession`/`findOrCreateSession`/`findOrCreateSessionForInteraction` 三处重复的 session 查找/创建级联逻辑，提取统一的 optional chaining 模式
+- **NotchContentView 拆分**: 提取 `IslandSizeCalculator` 统一高度/宽度计算逻辑（消除 3 处重复计算）
+- **AudioEngine 非阻塞化**: `playFile` 和 `playToneSequence` 从 `Thread.sleep` 阻塞改为 `AVAudioPlayerNode` 回调，新音效事件不再被长音效阻塞
+- **NotchWindow 性能优化**: `setFrame`/`setFrameDirect` 中缓存 `bestScreen()` 结果，仅在鼠标跨越屏幕边界时刷新
+
+### 测试覆盖提升
+
+- 新增 **L10n 测试** (10 个): 语言切换、availableLanguages、静态字符串完整性、参数化字符串
+- 新增 **MuteRule 测试** (10 个): 正则匹配、禁用规则、空模式、无效正则、大小写不敏感、Codable 序列化
+- 新增 **AgentSession 测试** (15 个): workspaceName、displayTitle、formattedDuration、isSubagent、TokenUsage 格式化
+- 新增 **AudioEngine 测试** (12 个): 静音状态、音量持久化、事件开关、定时勿扰、静音规则 JSON 持久化
+- 新增 **AgentType 测试** (10 个): from() 解析、fromBundleId、Meta 属性完整性、Registry 完整性、Codable
+- 测试总数: 125 → 192 (+67)
+
 ## v1.4.0 (2026-05-16)
 
 ### 新增 Agent 支持

@@ -486,69 +486,28 @@ final class SessionManager {
     // MARK: - Private
 
     private func startSession(_ message: DIMessage) {
-        let agentType = resolvedAgentType(for: message)
+        let session = sessionById(message.sessionId)
+            ?? sessionMatchingMirroredSuffix(of: message.sessionId)
+            ?? createNewSession(from: message)
 
-        if let existing = sessions.first(where: { $0.id == message.sessionId }) {
-            existing.lastActivityTime = Date()
-            existing.status = .active
-            existing.statusText = ""
-            clearStaleInteraction(existing)
-            if let t = message.terminal, !t.isEmpty { existing.terminal = t }
-            if let w = message.workingDir, !w.isEmpty { existing.workingDirectory = w }
-            if let p = message.prompt, !p.isEmpty {
-                existing.prompt = p
-                existing.chatHistory.append(ChatMessage(timestamp: Date(), role: .user, content: p))
-                audioEngine?.play(.sessionStart, session: existing)
-            }
-            if let ts = message.termSessionId, !ts.isEmpty { existing.termSessionId = ts }
-            if existing.windowNumber == nil {
-                existing.windowNumber = TerminalJumpManager.captureFrontWindowNumber(
-                    for: existing.agentType, terminal: existing.terminal)
-            }
-            updateTokenUsage(session: existing, message: message)
-            selectedSessionId = existing.id
-            return
+        session.lastActivityTime = Date()
+        session.status = .active
+        session.statusText = ""
+        clearStaleInteraction(session)
+        if let t = message.terminal, !t.isEmpty { session.terminal = t }
+        if let w = message.workingDir, !w.isEmpty { session.workingDirectory = w }
+        if let p = message.prompt, !p.isEmpty {
+            session.prompt = p
+            session.chatHistory.append(ChatMessage(timestamp: Date(), role: .user, content: p))
+            audioEngine?.play(.sessionStart, session: session)
         }
-
-        if let twin = sessionMatchingMirroredSuffix(of: message.sessionId) {
-            twin.lastActivityTime = Date()
-            twin.status = .active
-            twin.statusText = ""
-            clearStaleInteraction(twin)
-            if let t = message.terminal, !t.isEmpty { twin.terminal = t }
-            if let w = message.workingDir, !w.isEmpty { twin.workingDirectory = w }
-            if let p = message.prompt, !p.isEmpty {
-                twin.prompt = p
-                twin.chatHistory.append(ChatMessage(timestamp: Date(), role: .user, content: p))
-                audioEngine?.play(.sessionStart, session: twin)
-            }
-            if let ts = message.termSessionId, !ts.isEmpty { twin.termSessionId = ts }
-            if twin.windowNumber == nil {
-                twin.windowNumber = TerminalJumpManager.captureFrontWindowNumber(
-                    for: twin.agentType, terminal: twin.terminal)
-            }
-            updateTokenUsage(session: twin, message: message)
-            selectedSessionId = twin.id
-            return
-        }
-
-        let session = AgentSession(
-            id: message.sessionId,
-            agentType: agentType,
-            terminal: message.terminal ?? "",
-            workingDirectory: message.workingDir ?? "",
-            prompt: message.prompt ?? ""
-        )
-        session.termSessionId = message.termSessionId
-        session.windowNumber = TerminalJumpManager.captureFrontWindowNumber(
-            for: agentType, terminal: session.terminal)
-        sessions.append(session)
-        if !session.prompt.isEmpty {
-            session.chatHistory.append(ChatMessage(timestamp: Date(), role: .user, content: session.prompt))
+        if let ts = message.termSessionId, !ts.isEmpty { session.termSessionId = ts }
+        if session.windowNumber == nil {
+            session.windowNumber = TerminalJumpManager.captureFrontWindowNumber(
+                for: session.agentType, terminal: session.terminal)
         }
         updateTokenUsage(session: session, message: message)
         selectedSessionId = session.id
-        audioEngine?.play(.sessionStart, session: session)
     }
 
     private func endSession(_ message: DIMessage) {
@@ -775,74 +734,27 @@ final class SessionManager {
     /// Interactive requests fold mirrored hook ids (`cursor-*` / `claude_code-*` same suffix) like `findOrCreateSession`.
     private func findOrCreateSessionForInteraction(_ message: DIMessage) -> AgentSession {
         let agentType = resolvedAgentType(for: message)
+        let session = activeSessionById(message.sessionId)
+            ?? mirroredCursorSession(for: message.sessionId)
+            ?? sessionMatchingMirroredSuffix(of: message.sessionId)
+            ?? activeSessions.first(where: { $0.agentType == agentType })
+            ?? sessionById(message.sessionId)
+            ?? createNewSession(from: message)
 
-        if let existing = sessions.first(where: { $0.id == message.sessionId && $0.status != .completed }) {
-            existing.lastActivityTime = Date()
-            return existing
-        }
-        if let mirrored = mirroredCursorSession(for: message.sessionId) {
-            mirrored.lastActivityTime = Date()
-            return mirrored
-        }
-
-        if let twin = sessionMatchingMirroredSuffix(of: message.sessionId) {
-            twin.lastActivityTime = Date()
-            return twin
-        }
-        if let sameAgent = activeSessions.first(where: { $0.agentType == agentType }) {
-            sameAgent.lastActivityTime = Date()
-            return sameAgent
-        }
-        if let completed = sessions.first(where: { $0.id == message.sessionId }) {
-            completed.lastActivityTime = Date()
-            completed.status = .active
-            return completed
-        }
-        let session = AgentSession(
-            id: message.sessionId,
-            agentType: agentType,
-            terminal: message.terminal ?? "",
-            workingDirectory: message.workingDir ?? "",
-            prompt: message.prompt ?? ""
-        )
-        sessions.append(session)
+        session.lastActivityTime = Date()
+        if session.status == .completed { session.status = .active }
         return session
     }
 
     private func findOrCreateSession(_ message: DIMessage, reactivate: Bool = true) -> AgentSession {
-        let agentType = resolvedAgentType(for: message)
+        let session = activeSessionById(message.sessionId)
+            ?? mirroredCursorSession(for: message.sessionId)
+            ?? sessionById(message.sessionId)
+            ?? sessionMatchingMirroredSuffix(of: message.sessionId)
+            ?? createNewSession(from: message)
 
-        if let existing = sessions.first(where: { $0.id == message.sessionId && $0.status != .completed }) {
-            existing.lastActivityTime = Date()
-            return existing
-        }
-
-        if let mirrored = mirroredCursorSession(for: message.sessionId) {
-            mirrored.lastActivityTime = Date()
-            if reactivate { mirrored.status = .active }
-            return mirrored
-        }
-
-        if let completed = sessions.first(where: { $0.id == message.sessionId }) {
-            completed.lastActivityTime = Date()
-            if reactivate { completed.status = .active }
-            return completed
-        }
-
-        if let twin = sessionMatchingMirroredSuffix(of: message.sessionId) {
-            twin.lastActivityTime = Date()
-            if twin.status == .completed, reactivate { twin.status = .active }
-            return twin
-        }
-
-        let session = AgentSession(
-            id: message.sessionId,
-            agentType: agentType,
-            terminal: message.terminal ?? "",
-            workingDirectory: message.workingDir ?? "",
-            prompt: message.prompt ?? ""
-        )
-        sessions.append(session)
+        session.lastActivityTime = Date()
+        if reactivate, session.status == .completed { session.status = .active }
         return session
     }
 
@@ -851,5 +763,28 @@ final class SessionManager {
         return sessions.first(where: {
             isCursorFamily($0.agentType) && $0.status != .completed && mirroredSessionSuffix(from: $0.id) == suffix
         })
+    }
+
+    // MARK: - Session resolution helpers
+
+    private func sessionById(_ sessionId: String) -> AgentSession? {
+        sessions.first(where: { $0.id == sessionId })
+    }
+
+    private func activeSessionById(_ sessionId: String) -> AgentSession? {
+        sessions.first(where: { $0.id == sessionId && $0.status != .completed })
+    }
+
+    private func createNewSession(from message: DIMessage) -> AgentSession {
+        let agentType = resolvedAgentType(for: message)
+        let session = AgentSession(
+            id: message.sessionId,
+            agentType: agentType,
+            terminal: message.terminal ?? "",
+            workingDirectory: message.workingDir ?? "",
+            prompt: message.prompt ?? ""
+        )
+        sessions.append(session)
+        return session
     }
 }

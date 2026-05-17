@@ -39,70 +39,46 @@ struct NotchContentView: View {
     @AppStorage("panelMaxHeight") private var panelMaxHeight = 480.0
     var onSizeChange: ((CGFloat, CGFloat, Bool) -> Void)?
 
+    // MARK: - IslandSizeCalculator delegates
+
+    private var collapsedShapeHeight: CGFloat { IslandSizeCalculator.collapsedShapeHeight }
+    private var collapsedOuterHeight: CGFloat { collapsedShapeHeight }
+
     private var isExpanded: Bool { state != .collapsed }
 
     private var contentWidth: CGFloat {
         isExpanded ? expandedWidth : pillWidth
     }
 
-    private var collapsedShapeHeight: CGFloat { 32 }
-    private var collapsedOuterHeight: CGFloat { collapsedShapeHeight }
-
     private var contentHeight: CGFloat {
         isExpanded ? expandedHeight : collapsedOuterHeight
     }
 
     private var expandedWidth: CGFloat {
-        switch state {
-        case .collapsed: return 0
-        case .expanded: return panelWidth
-        case .permission, .question: return panelWidth + 20
-        case .planReview: return panelWidth + 80
-        }
+        IslandSizeCalculator.expandedWidth(for: state, panelWidth: panelWidth)
     }
 
     private var expandedHeight: CGFloat {
-        switch state {
-        case .collapsed: return 0
-        case .expanded:
-            let count = manager.visibleSessions.count
-            let listH = min(CGFloat(count) * 80 + 30, panelMaxHeight)
-            let logH: CGFloat = activityLogExpanded ? 140 : 0
-            return Self.expandedPanelHeaderHeight + listH + logH + Self.expandedPanelBottomInset
-        case .permission(let id):
-            return permissionExpandedTotalHeight(sessionId: id)
-        case .question(let id):
-            return questionExpandedTotalHeight(sessionId: id)
-        case .planReview: return 480
-        }
-    }
-
-    /// Permission card body only (matches `PermissionApprovalView` layout estimate).
-    private func permissionCardInnerHeight(sessionId: String) -> CGFloat {
-        let perm = manager.sessions.first(where: { $0.id == sessionId })?.pendingPermission
-        var h: CGFloat = 42 + 1 + 30
-        let hasDesc = perm != nil && !perm!.description.isEmpty
-        let hasPath = perm?.filePath.map { !$0.isEmpty } ?? false
-        let hasDiff = perm?.diff.map { !$0.isEmpty } ?? false
-        h += hasDesc ? 52 : (hasPath ? 52 : 0)
-        if hasDesc && hasPath { h += 22 }
-        if hasDiff { h += 130 }
-        h += 52
-        return min(h, 480)
-    }
-
-    /// Full expanded height for permission mode: island toolbar + card + bottom inset (same as session list layout).
-    private func permissionExpandedTotalHeight(sessionId: String) -> CGFloat {
-        let inner = permissionCardInnerHeight(sessionId: sessionId)
-        return inner + Self.expandedPanelHeaderHeight + Self.expandedPanelBottomInset
-    }
-
-    /// Full expanded height for question mode: island toolbar + question card + bottom inset.
-    private func questionExpandedTotalHeight(sessionId: String) -> CGFloat {
-        let optionCount = manager.sessions.first(where: { $0.id == sessionId })?.pendingQuestion?.options.count ?? 0
-        let questionInnerHeight: CGFloat = min(120 + CGFloat(max(optionCount, 2)) * 42, 480)
-        let total = questionInnerHeight + Self.expandedPanelHeaderHeight + Self.expandedPanelBottomInset
-        return min(total, 480)
+        let perm: PendingPermission? = {
+            if case .permission(let id) = state {
+                return manager.sessions.first(where: { $0.id == id })?.pendingPermission
+            }
+            return nil
+        }()
+        let question: PendingQuestion? = {
+            if case .question(let id) = state {
+                return manager.sessions.first(where: { $0.id == id })?.pendingQuestion
+            }
+            return nil
+        }()
+        return IslandSizeCalculator.expandedHeight(
+            for: state,
+            visibleSessionCount: manager.visibleSessions.count,
+            panelMaxHeight: panelMaxHeight,
+            activityLogExpanded: activityLogExpanded,
+            pendingPermission: perm,
+            pendingQuestion: question
+        )
     }
 
     private var shapeWidth: CGFloat {
@@ -352,9 +328,10 @@ struct NotchContentView: View {
         let timing = transitionTiming
         let target = targetSize(for: newState)
         if case .expanded = newState {
-            let count = manager.visibleSessions.count
-            let listH = min(CGFloat(count) * 80 + 30, panelMaxHeight)
-            cachedExpandedShapeHeight = Self.expandedPanelHeaderHeight + listH + Self.expandedPanelBottomInset
+            cachedExpandedShapeHeight = IslandSizeCalculator.expandedPanelShapeHeight(
+                visibleSessionCount: manager.visibleSessions.count,
+                panelMaxHeight: panelMaxHeight
+            )
         }
         onSizeChange?(target.width, target.height, true)
         let runExpansion = {
@@ -428,49 +405,40 @@ struct NotchContentView: View {
     }
 
     private func targetSize(for state: IslandState) -> (width: CGFloat, height: CGFloat) {
-        let w: CGFloat
-        let h: CGFloat
-        switch state {
-        case .collapsed:
-            w = pillWidth
-            h = collapsedOuterHeight
-        case .expanded:
-            let count = manager.visibleSessions.count
-            let listH = min(CGFloat(count) * 80 + 30, panelMaxHeight)
-            w = panelWidth
-            h = Self.expandedPanelHeaderHeight + listH + Self.expandedPanelBottomInset
-        case .permission(let id):
-            // Must not use `expandedHeight` here: `expand(to:)` runs before `state` updates, so
-            // `expandedHeight` would still reflect `.collapsed` (0) and resize the window to ~8pt tall.
-            w = panelWidth + 20
-            h = permissionExpandedTotalHeight(sessionId: id) + 8
-        case .question(let id):
-            w = panelWidth + 20
-            h = questionExpandedTotalHeight(sessionId: id) + 8
-        case .planReview:
-            w = panelWidth + 80; h = panelMaxHeight
-        }
-        return (w, h)
+        let perm: PendingPermission? = {
+            if case .permission(let id) = state {
+                return manager.sessions.first(where: { $0.id == id })?.pendingPermission
+            }
+            return nil
+        }()
+        let question: PendingQuestion? = {
+            if case .question(let id) = state {
+                return manager.sessions.first(where: { $0.id == id })?.pendingQuestion
+            }
+            return nil
+        }()
+        return IslandSizeCalculator.targetSize(
+            for: state,
+            visibleSessionCount: manager.visibleSessions.count,
+            panelWidth: panelWidth,
+            panelMaxHeight: panelMaxHeight,
+            pendingPermission: perm,
+            pendingQuestion: question
+        )
     }
 
     /// Toolbar row in `expandedHeader` (~10+10 vertical padding + ~28 controls).
-    private static let expandedPanelHeaderHeight: CGFloat = 48
+    private static let expandedPanelHeaderHeight: CGFloat = IslandSizeCalculator.expandedPanelHeaderHeight
     /// Space between session list / cards and the bottom rounded edge of the expanded panel.
-    private static let expandedPanelBottomInset: CGFloat = 16
+    private static let expandedPanelBottomInset: CGFloat = IslandSizeCalculator.expandedPanelBottomInset
     /// Spans slightly past the camera housing; kept compact (competitor-style bar).
     private static let collapsedPillWidthNotched: CGFloat = 276
     /// Bottom-only rounding when docked under the notch (top edge flush with screen).
     private var pillWidth: CGFloat {
-        if islandObscuredByNotch {
-            return Self.collapsedPillWidthNotched
-        }
-        let n = manager.visibleSessions.count
-        if n == 0 { return 180 }
-        let icon: CGFloat = 22
-        let gap: CGFloat = 8
-        let horizontalPadding: CGFloat = 40
-        let w = horizontalPadding + CGFloat(n) * icon + CGFloat(max(0, n - 1)) * gap
-        return min(max(w, 160), 420)
+        IslandSizeCalculator.pillWidth(
+            islandObscuredByNotch: islandObscuredByNotch,
+            visibleSessionCount: manager.visibleSessions.count
+        )
     }
 
     @ViewBuilder
@@ -520,7 +488,7 @@ struct NotchContentView: View {
                 quotaPills
             }
         }
-        .padding(.bottom, Self.expandedPanelBottomInset)
+        .padding(.bottom, IslandSizeCalculator.expandedPanelBottomInset)
         .simultaneousGesture(TapGesture().onEnded {
             markExpandedInteraction()
         })

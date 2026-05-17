@@ -34,6 +34,8 @@ final class NotchWindow: NSPanel {
     private var dragStartMouseX: CGFloat = 0
     private var mouseTrackingTimer: Timer?
     private var lastActiveScreenID: CGDirectDisplayID?
+    /// 缓存 bestScreen() 结果，避免 setFrame 高频调用时重复遍历所有屏幕。
+    private var cachedBestScreen: NSScreen?
 
     init() {
         let screen = Self.bestScreen()
@@ -250,6 +252,24 @@ final class NotchWindow: NSPanel {
         return NSScreen.screens.first ?? NSScreen()
     }
 
+    /// 返回缓存的 bestScreen，仅在鼠标跨越屏幕边界时刷新。
+    /// 用于 setFrame/setFrameDirect 中避免高频遍历。
+    private func cachedOrRefreshScreen() -> NSScreen {
+        let mouseLocation = NSEvent.mouseLocation
+        let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) })
+        if let mouseScreen {
+            let screenID = mouseScreen.deviceDescription[NSDeviceDescriptionKey(rawValue: "NSScreenNumber")] as? CGDirectDisplayID
+            if screenID == lastActiveScreenID, let cached = cachedBestScreen {
+                return cached
+            }
+            lastActiveScreenID = screenID
+            cachedBestScreen = mouseScreen
+            return mouseScreen
+        }
+        // Mouse not on any screen (rare); fallback
+        return cachedBestScreen ?? Self.bestScreen()
+    }
+
     /// True when this screen has a physical notch (camera housing).
     static func screenHasPhysicalNotch(_ screen: NSScreen) -> Bool {
         if #available(macOS 14.0, *) {
@@ -294,7 +314,7 @@ final class NotchWindow: NSPanel {
                 isDragging = true
             }
             if isDragging {
-                let screen = Self.bestScreen()
+                let screen = cachedOrRefreshScreen()
                 let newX = max(screen.frame.origin.x,
                                min(dragStartWindowX + dx,
                                    screen.frame.origin.x + screen.frame.width - frame.width))
@@ -319,7 +339,7 @@ final class NotchWindow: NSPanel {
     }
 
     func setFrameDirect(_ rect: NSRect, display: Bool = true) {
-        let screen = Self.bestScreen()
+        let screen = cachedOrRefreshScreen()
         let normalized = Self.safeFrame(
             NSRect(
                 x: rect.origin.x,
@@ -335,7 +355,7 @@ final class NotchWindow: NSPanel {
     override func setFrame(_ frameRect: NSRect, display flag: Bool) {
         guard frameRect.width.isFinite, frameRect.height.isFinite else { return }
         let clampedHeight = max(frameRect.height, Self.collapsedHitHeight)
-        let screen = Self.bestScreen()
+        let screen = cachedOrRefreshScreen()
         let topY = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen) - clampedHeight
         let x: CGFloat
         if isDragging || dragTracking {
@@ -357,7 +377,7 @@ final class NotchWindow: NSPanel {
     override func setFrame(_ frameRect: NSRect, display displayFlag: Bool, animate animateFlag: Bool) {
         guard frameRect.width.isFinite, frameRect.height.isFinite else { return }
         let clampedHeight = max(frameRect.height, Self.collapsedHitHeight)
-        let screen = Self.bestScreen()
+        let screen = cachedOrRefreshScreen()
         let topY = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen) - clampedHeight
         let x: CGFloat
         if isDragging || dragTracking {
