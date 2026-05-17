@@ -1,5 +1,71 @@
 # Changelog
 
+## v1.6.1 (2026-05-17)
+
+本版为 **性能优化与 UX 打磨** 版本，在 v1.6.0 安全审计修复基础上，针对主线程阻塞、重复计算、CPU 空转等问题进行 6 项手术式优化。
+
+### 与 v1.6.0 对比
+
+| 维度 | v1.6.0 | v1.6.1 |
+|------|--------|--------|
+| **Socket 日志** | `diLog()` 同步文件 I/O（每次分配 ISO8601DateFormatter + 打开/关闭文件），4 个调用点在 MainActor | `os.Logger` 异步系统日志，零文件 I/O |
+| **MarkdownView** | `parseBlocks()` 计算属性，每次 SwiftUI body 重算都重新解析；ForEach 用 offset 做 id | 解析结果缓存为 `let`，init 时一次性计算；`Block: Hashable` + `ForEach(\.self)` |
+| **NotchWindow Timer** | 鼠标跟踪 Timer 在 `init()` 创建后永不停止（即使窗口隐藏） | `pauseMouseTracking()` / `resumeMouseTracking()` 按可见性开关；`followMouseIfScreenChanged` 更新共享屏幕缓存 |
+| **SessionManager 查找** | 12+ 个方法做 `sessions.first(where:)` O(n) 线性扫描 | `[String: Int]` 字典索引 O(1) 查找 + `suffixCache` 缓存 mirrored 后缀 |
+| **QuotaTracker SQLite** | `fetchOpenAI()` 在 MainActor 同步执行 `sqlite3_open_v2` / `sqlite3_step` | `nonisolated static` + `Task.detached(priority: .utility)` 后台执行 |
+| **无障碍** | 展开头部 3 个按钮无 `accessibilityLabel` | 静音/设置/关闭按钮添加标签 |
+| **AppUpdater** | 安装脚本无 codesign 校验，临时目录手动清理 | `codesign --verify --deep --strict` + `trap` 自动清理 |
+
+### 优化详情
+
+#### SocketServer diLog → os.Logger
+
+**问题**：`diLog()` 每次调用创建 `ISO8601DateFormatter`、打开/写入/关闭 `~/.xisland/debug.log`。8 个调用点中 4 个在 `Task { @MainActor in }` 块内，阻塞主线程。
+
+**修复**：删除 `diLog` 函数，替换为 `Logger(subsystem: "dev.xisland", category: "socket")`。`os.Logger` 底层使用 `os_log`，异步且系统管理。
+
+#### MarkdownView parseBlocks() 缓存
+
+**问题**：`blocks` 是计算属性，每次 SwiftUI 重绘都重新解析 markdown。ForEach 用 `\.offset` 做 id，块插入/删除时全量重建。
+
+**修复**：
+- `Block` 枚举添加 `: Hashable`（关联值全是 String/Int，自动合成）
+- `blocks` 改为 `let` 存储属性，在 `init` 中一次性计算
+- `parseBlocks` 改为 `static func`
+- ForEach 改用 `ForEach(blocks, id: \.self)`
+
+#### NotchWindow Timer 生命周期
+
+**问题**：`Timer.scheduledTimer(withTimeInterval: 0.5)` 在 `init()` 创建后永不停止。`followMouseIfScreenChanged()` 独立遍历 `NSScreen.screens`，未使用已有的 `cachedOrRefreshScreen()` 缓存。
+
+**修复**：
+- 添加 `pauseMouseTracking()` / `resumeMouseTracking()`
+- `activeSpaceDidChange` 中 `orderOut` 时暂停、`orderFrontRegardless` 时恢复
+- `followMouseIfScreenChanged` 检测到屏幕切换时更新 `cachedBestScreen`
+
+#### SessionManager 字典索引
+
+**问题**：`sessions` 是数组，12+ 个方法做 `sessions.first(where:)` O(n) 查找。`findOrCreateSession` 链式 3-4 次线性扫描。`mirroredSessionSuffix` 字符串解析重复执行。
+
+**修复**：
+- 新增 `sessionIndex: [String: Int]`（ID → 下标）+ `suffixCache: [String: String]`
+- 3 个变更点（`createNewSession`、`dismissSession`、`cleanupLingeredSessions`）维护索引
+- `sessionById` / `activeSessionById` 改为 O(1) 字典查找，带 stale 检测自动重建
+
+#### QuotaTracker SQLite 后台化
+
+**问题**：`fetchOpenAI()` 在 MainActor 执行 SQLite I/O。
+
+**修复**：提取 `nonisolated static func fetchOpenAITokenCount()`，`fetchOpenAI()` 用 `Task.detached(priority: .utility)` 调用。
+
+### 验证
+
+- `swift build`: 编译通过
+- `swift test`: 213 tests, 0 failures
+- 改动范围：9 个文件，+110/-51 行
+
+---
+
 ## v1.6.0 (2026-05-17)
 
 本版为**安全审计驱动的重大修复版本**，基于约 100 个审视角度的全面审查，修复 2 个 Critical 安全漏洞、4 个 High 级问题，并完成多项可维护性与工程化改进。
