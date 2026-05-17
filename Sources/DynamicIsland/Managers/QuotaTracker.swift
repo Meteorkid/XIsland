@@ -94,32 +94,33 @@ final class QuotaTracker {
     // MARK: - OpenAI (Codex local SQLite)
 
     func fetchOpenAI() {
-        let dbPath = (NSHomeDirectory() as NSString).appendingPathComponent(".codex/state_5.sqlite")
-        guard FileManager.default.fileExists(atPath: dbPath) else {
-            updateQuota(QuotaInfo(provider: "OpenAI", requestsRemaining: nil, requestsLimit: nil,
-                                  tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date()))
-            return
+        Task.detached(priority: .utility) { [weak self] in
+            let totalTokens = Self.fetchOpenAITokenCount()
+            let info = QuotaInfo(provider: "OpenAI", requestsRemaining: nil, requestsLimit: nil,
+                                 tokensRemaining: totalTokens, tokensLimit: nil, resetTime: nil, lastChecked: Date())
+            await MainActor.run { [weak self] in self?.updateQuota(info) }
         }
+    }
+
+    nonisolated private static func fetchOpenAITokenCount() -> Int? {
+        let dbPath = (NSHomeDirectory() as NSString).appendingPathComponent(".codex/state_5.sqlite")
+        guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
 
         var db: OpaquePointer?
         guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let database = db else {
-            sqlite3_close(db); return
+            sqlite3_close(db); return nil
         }
         defer { sqlite3_close(database) }
 
         let query = "SELECT SUM(tokens_used) FROM threads;"
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, query, -1, &statement, nil) == SQLITE_OK, let stmt = statement else {
-            sqlite3_finalize(statement); return
+            sqlite3_finalize(statement); return nil
         }
         defer { sqlite3_finalize(stmt) }
 
-        var totalTokens: Int?
-        if sqlite3_step(stmt) == SQLITE_ROW { totalTokens = Int(sqlite3_column_int64(stmt, 0)) }
-
-        let info = QuotaInfo(provider: "OpenAI", requestsRemaining: nil, requestsLimit: nil,
-                             tokensRemaining: totalTokens, tokensLimit: nil, resetTime: nil, lastChecked: Date())
-        updateQuota(info)
+        if sqlite3_step(stmt) == SQLITE_ROW { return Int(sqlite3_column_int64(stmt, 0)) }
+        return nil
     }
 
     // MARK: - Kimi (Moonshot)

@@ -590,6 +590,7 @@ struct NotchContentView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(audio.isMuted ? L10n.unmute : L10n.soundMute)
 
             Button {
                 markExpandedInteraction()
@@ -602,6 +603,7 @@ struct NotchContentView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(L10n.prefsEllipsis)
             }
 
             Spacer()
@@ -631,6 +633,7 @@ struct NotchContentView: View {
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(L10n.dismissAll)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

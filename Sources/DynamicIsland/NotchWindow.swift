@@ -96,9 +96,22 @@ final class NotchWindow: NSPanel {
 
         if screenID != lastActiveScreenID {
             lastActiveScreenID = screenID
+            cachedBestScreen = mouseScreen
             // Only reposition if not being dragged
             guard !dragTracking else { return }
             repositionOnScreen(mouseScreen)
+        }
+    }
+
+    private func pauseMouseTracking() {
+        mouseTrackingTimer?.invalidate()
+        mouseTrackingTimer = nil
+    }
+
+    private func resumeMouseTracking() {
+        guard mouseTrackingTimer == nil else { return }
+        mouseTrackingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.followMouseIfScreenChanged()
         }
     }
 
@@ -130,7 +143,10 @@ final class NotchWindow: NSPanel {
     @objc private func activeSpaceDidChange(_ note: Notification) {
         let hideInFullscreen = UserDefaults.standard.bool(forKey: "hideInFullscreen")
         guard hideInFullscreen else {
-            if !isVisible { orderFrontRegardless() }
+            if !isVisible {
+                resumeMouseTracking()
+                orderFrontRegardless()
+            }
             return
         }
         // Phase 1: snapshot MainActor-isolated state before leaving the main thread
@@ -147,8 +163,10 @@ final class NotchWindow: NSPanel {
             } ?? false
             await MainActor.run {
                 if inFullscreen {
+                    self.pauseMouseTracking()
                     self.orderOut(nil)
                 } else {
+                    self.resumeMouseTracking()
                     self.orderFrontRegardless()
                 }
             }

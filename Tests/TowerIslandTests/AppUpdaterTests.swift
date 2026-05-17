@@ -96,7 +96,7 @@ final class AppUpdaterTests: XCTestCase {
             relaunchApp: { _ in },
             launchInstallerHelper: { _ in },
             terminateApp: { },
-            installImpl: { _, _, _, onStage in
+            installImpl: { _, _, _, _, onStage in
                 await MainActor.run { onStage(.downloading) }
                 await MainActor.run { onStage(.mounting) }
                 await MainActor.run { onStage(.installing) }
@@ -180,7 +180,9 @@ final class AppUpdaterTests: XCTestCase {
             (.mountFailed, "Unable to mount the downloaded update."),
             (.appNotFound, "The downloaded update did not contain X Island.app."),
             (.installFailed, "Unable to replace the installed app."),
-            (.relaunchFailed, "The update installed, but the app could not relaunch.")
+            (.relaunchFailed, "The update installed, but the app could not relaunch."),
+            (.integrityCheckFailed, "The downloaded update failed integrity verification."),
+            (.codeSigningFailed, "The installed app failed code signing verification.")
         ]
 
         for (error, description) in cases {

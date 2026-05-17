@@ -185,7 +185,7 @@ final class UpdateManagerTests: XCTestCase {
             runCommand: { _, _ in "" },
             downloadFile: { _, _ in },
             relaunchApp: { _ in },
-            installImpl: { _, releaseURL, _, onStage in
+            installImpl: { _, releaseURL, _, _, onStage in
                 await capturedReleaseURL.store(releaseURL)
                 await MainActor.run { onStage(.downloading) }
                 await gate.wait()

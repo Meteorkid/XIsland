@@ -2,18 +2,22 @@ import SwiftUI
 
 struct MarkdownView: View {
     let markdown: String
+    private let blocks: [Block]
 
-    private var blocks: [Block] { parseBlocks() }
+    init(markdown: String) {
+        self.markdown = markdown
+        self.blocks = Self.parseBlocks(markdown)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+            ForEach(blocks, id: \.self) { block in
                 renderBlock(block)
             }
         }
     }
 
-    private enum Block {
+    private enum Block: Hashable {
         case heading(Int, String)
         case paragraph(String)
         case code(String)
@@ -21,7 +25,7 @@ struct MarkdownView: View {
         case divider
     }
 
-    private func parseBlocks() -> [Block] {
+    private static func parseBlocks(_ markdown: String) -> [Block] {
         var blocks: [Block] = []
         var inCodeBlock = false
         var codeLines: [String] = []

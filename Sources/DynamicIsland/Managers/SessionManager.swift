@@ -8,6 +8,10 @@ import DIShared
 final class SessionManager {
     var sessions: [AgentSession] = []
     var selectedSessionId: String?
+    /// O(1) 查找索引：session ID → sessions 数组下标
+    private var sessionIndex: [String: Int] = [:]
+    /// 缓存 mirrored session 后缀，避免重复字符串解析
+    private var suffixCache: [String: String] = [:]
     var audioEngine: AudioEngine?
     var currentIslandState: IslandState = .collapsed
     var bypassMode: Bool {
@@ -246,7 +250,7 @@ final class SessionManager {
         }
 
         return sessions.contains { session in
-            isCursorFamily(session.agentType) && mirroredSessionSuffix(from: session.id) == sessionSuffix
+            isCursorFamily(session.agentType) && suffixCache[session.id] == sessionSuffix
         }
     }
 
@@ -304,7 +308,7 @@ final class SessionManager {
             return nil
         }
         return sessions.first(where: {
-            isCursorFamily($0.agentType) && mirroredSessionSuffix(from: $0.id) == sessionSuffix
+            isCursorFamily($0.agentType) && suffixCache[$0.id] == sessionSuffix
         })?.agentType
     }
 
@@ -313,7 +317,7 @@ final class SessionManager {
             return false
         }
         return sessions.contains { session in
-            isCursorFamily(session.agentType) && mirroredSessionSuffix(from: session.id) == sessionSuffix
+            isCursorFamily(session.agentType) && suffixCache[session.id] == sessionSuffix
         }
     }
 
@@ -326,7 +330,7 @@ final class SessionManager {
     /// Returns another session whose id shares the same mirrored suffix (paired hooks).
     private func sessionMatchingMirroredSuffix(of sessionId: String) -> AgentSession? {
         guard let suffix = mirroredSessionSuffix(from: sessionId) else { return nil }
-        return sessions.first { mirroredSessionSuffix(from: $0.id) == suffix && $0.id != sessionId }
+        return sessions.first { suffixCache[$0.id] == suffix && $0.id != sessionId }
     }
 
     func handlePermissionRequest(_ message: DIMessage, respond: @escaping @Sendable (Bool) -> Void) {
@@ -478,6 +482,7 @@ final class SessionManager {
 
     func dismissSession(_ session: AgentSession) {
         sessions.removeAll { $0.id == session.id }
+        rebuildSessionIndex()
         lastAssistantReplySoundAt.removeValue(forKey: session.id)
         recentAnswers.removeValue(forKey: session.id)
         if selectedSessionId == session.id {
@@ -578,6 +583,7 @@ final class SessionManager {
             guard session.status == .completed, let completedAt = session.completedAt else { return false }
             return now.timeIntervalSince(completedAt) > completedLingerDuration + 5
         }
+        rebuildSessionIndex()
         if let selectedSessionId, !sessions.contains(where: { $0.id == selectedSessionId }) {
             self.selectedSessionId = activeSessions.first?.id
         }
@@ -764,18 +770,49 @@ final class SessionManager {
     private func mirroredCursorSession(for sessionId: String) -> AgentSession? {
         guard let suffix = mirroredSessionSuffix(from: sessionId) else { return nil }
         return sessions.first(where: {
-            isCursorFamily($0.agentType) && $0.status != .completed && mirroredSessionSuffix(from: $0.id) == suffix
+            isCursorFamily($0.agentType) && $0.status != .completed && suffixCache[$0.id] == suffix
         })
     }
 
     // MARK: - Session resolution helpers
 
+    private func rebuildSessionIndex() {
+        sessionIndex.removeAll()
+        suffixCache.removeAll()
+        for (i, session) in sessions.enumerated() {
+            sessionIndex[session.id] = i
+            if let suffix = mirroredSessionSuffix(from: session.id) {
+                suffixCache[session.id] = suffix
+            }
+        }
+    }
+
+    private func updateIndexForAppend(_ session: AgentSession, at index: Int) {
+        sessionIndex[session.id] = index
+        if let suffix = mirroredSessionSuffix(from: session.id) {
+            suffixCache[session.id] = suffix
+        }
+    }
+
+    private func removeIndexForSession(_ sessionId: String) {
+        sessionIndex.removeValue(forKey: sessionId)
+        suffixCache.removeValue(forKey: sessionId)
+    }
+
     private func sessionById(_ sessionId: String) -> AgentSession? {
-        sessions.first(where: { $0.id == sessionId })
+        if sessionIndex.isEmpty && !sessions.isEmpty { rebuildSessionIndex() }
+        guard let index = sessionIndex[sessionId] else { return nil }
+        guard index < sessions.count, sessions[index].id == sessionId else {
+            rebuildSessionIndex()
+            guard let freshIndex = sessionIndex[sessionId] else { return nil }
+            return sessions[freshIndex]
+        }
+        return sessions[index]
     }
 
     private func activeSessionById(_ sessionId: String) -> AgentSession? {
-        sessions.first(where: { $0.id == sessionId && $0.status != .completed })
+        guard let session = sessionById(sessionId), session.status != .completed else { return nil }
+        return session
     }
 
     private func createNewSession(from message: DIMessage) -> AgentSession {
@@ -787,7 +824,9 @@ final class SessionManager {
             workingDirectory: message.workingDir ?? "",
             prompt: message.prompt ?? ""
         )
+        let index = sessions.count
         sessions.append(session)
+        updateIndexForAppend(session, at: index)
         return session
     }
 }

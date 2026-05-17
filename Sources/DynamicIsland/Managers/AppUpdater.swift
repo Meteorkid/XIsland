@@ -351,6 +351,9 @@ private extension AppUpdater {
         #!/bin/sh
         set -eu
 
+        TEMP_DIR=\(shellQuoted(tempDirectory))
+        trap 'rm -rf "$TEMP_DIR"' EXIT
+
         while kill -0 \(currentPID) 2>/dev/null; do
           sleep 0.2
         done
@@ -358,9 +361,11 @@ private extension AppUpdater {
         rm -rf \(shellQuoted(appPath))
         cp -R \(shellQuoted(mountedAppPath)) \(shellQuoted(appPath))
         xattr -cr \(shellQuoted(appPath)) || true
+
+        codesign --verify --deep --strict \(shellQuoted(appPath))
+
         hdiutil detach \(shellQuoted(mountDirectory)) -quiet >/dev/null 2>&1 || true
         open \(shellQuoted(appPath))
-        rm -rf \(shellQuoted(tempDirectory))
         """
 
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
