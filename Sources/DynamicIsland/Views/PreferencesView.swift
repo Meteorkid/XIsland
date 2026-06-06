@@ -7,6 +7,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
     case agents
     case sound
     case history
+    case statistics
     case about
 
     var id: String { rawValue }
@@ -17,6 +18,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
         case .agents: L10n.paneAgents
         case .sound: L10n.sectionSound
         case .history: L10n.sectionHistory
+        case .statistics: L10n.paneStatistics
         case .about: L10n.sectionAbout
         }
     }
@@ -27,6 +29,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
         case .agents: "terminal.fill"
         case .sound: "speaker.wave.2.fill"
         case .history: "clock.arrow.circlepath"
+        case .statistics: "chart.bar.fill"
         case .about: "info.circle.fill"
         }
     }
@@ -165,6 +168,7 @@ struct PreferencesView: View {
         case .agents: agentsPane
         case .sound: soundPane
         case .history: historyPane
+        case .statistics: StatisticsView()
         case .about: aboutPane
         }
     }
