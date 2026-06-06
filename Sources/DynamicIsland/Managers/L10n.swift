@@ -983,4 +983,116 @@ enum L10n {
             zh: "压缩中", ko: "압축 중", ja: "圧縮中", fr: "Compactage",
             en: "Compacting")
     }
+
+    // MARK: - Statistics
+
+    static var paneStatistics: String {
+        localized("paneStatistics",
+            zh: "统计", ko: "통계", ja: "統計", fr: "Statistiques",
+            en: "Statistics")
+    }
+
+    static var sectionStatistics: String {
+        localized("sectionStatistics",
+            zh: "统计分析", ko: "통계 분석", ja: "統計分析", fr: "Analyse statistique",
+            en: "Statistics")
+    }
+
+    static var timeRangeWeek: String {
+        localized("timeRangeWeek",
+            zh: "本周", ko: "이번 주", ja: "今週", fr: "Cette semaine",
+            en: "Week")
+    }
+
+    static var timeRangeMonth: String {
+        localized("timeRangeMonth",
+            zh: "本月", ko: "이번 달", ja: "今月", fr: "Ce mois",
+            en: "Month")
+    }
+
+    static var timeRangeAll: String {
+        localized("timeRangeAll",
+            zh: "全部", ko: "전체", ja: "すべて", fr: "Tout",
+            en: "All")
+    }
+
+    static var statTotalSessions: String {
+        localized("statTotalSessions",
+            zh: "总会话数", ko: "총 세션", ja: "総セッション数", fr: "Total sessions",
+            en: "Sessions")
+    }
+
+    static var statTotalDuration: String {
+        localized("statTotalDuration",
+            zh: "总时长", ko: "총 시간", ja: "合計時間", fr: "Durée totale",
+            en: "Duration")
+    }
+
+    static var statTotalCost: String {
+        localized("statTotalCost",
+            zh: "总费用", ko: "총 비용", ja: "合計コスト", fr: "Coût total",
+            en: "Cost")
+    }
+
+    static var statTotalTokens: String {
+        localized("statTotalTokens",
+            zh: "总 Token", ko: "총 토큰", ja: "合計トークン", fr: "Tokens totaux",
+            en: "Tokens")
+    }
+
+    static var statDailyUsage: String {
+        localized("statDailyUsage",
+            zh: "每日使用量", ko: "일별 사용량", ja: "日別使用量", fr: "Utilisation quotidienne",
+            en: "Daily Usage")
+    }
+
+    static var statAgentDistribution: String {
+        localized("statAgentDistribution",
+            zh: "代理分布", ko: "에이전트 분포", ja: "エージェント分布", fr: "Répartition par agent",
+            en: "Agent Distribution")
+    }
+
+    static var statTopTools: String {
+        localized("statTopTools",
+            zh: "常用工具 (Top 10)", ko: "자주 사용하는 도구 (Top 10)", ja: "よく使うツール (Top 10)", fr: "Outils les plus utilisés (Top 10)",
+            en: "Top Tools")
+    }
+
+    static var statTokenTrend: String {
+        localized("statTokenTrend",
+            zh: "Token 趋势", ko: "토큰 추세", ja: "トークントレンド", fr: "Tendance des tokens",
+            en: "Token Trend")
+    }
+
+    // MARK: - Keyboard Shortcuts
+
+    static var shortcutExport: String {
+        localized("shortcutExport",
+            zh: "导出会话", ko: "세션 내보내기", ja: "セッション書き出し", fr: "Exporter la session",
+            en: "Export Session")
+    }
+
+    static var shortcutSearch: String {
+        localized("shortcutSearch",
+            zh: "搜索会话", ko: "세션 검색", ja: "セッション検索", fr: "Rechercher",
+            en: "Search Sessions")
+    }
+
+    static var shortcutPrevious: String {
+        localized("shortcutPrevious",
+            zh: "上一个会话", ko: "이전 세션", ja: "前のセッション", fr: "Session précédente",
+            en: "Previous Session")
+    }
+
+    static var shortcutNext: String {
+        localized("shortcutNext",
+            zh: "下一个会话", ko: "다음 세션", ja: "次のセッション", fr: "Session suivante",
+            en: "Next Session")
+    }
+
+    static var shortcutToggleTheme: String {
+        localized("shortcutToggleTheme",
+            zh: "切换主题", ko: "테마 전환", ja: "テーマ切替", fr: "Changer de thème",
+            en: "Toggle Theme")
+    }
 }
