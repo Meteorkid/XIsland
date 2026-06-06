@@ -453,6 +453,38 @@ enum L10n {
             en: "Expand/Collapse")
     }
 
+    // MARK: - Appearance / Theme
+
+    static var appearanceDark: String {
+        localized("appearanceDark",
+            zh: "深色", ko: "다크", ja: "ダーク", fr: "Sombre",
+            en: "Dark")
+    }
+
+    static var appearanceLight: String {
+        localized("appearanceLight",
+            zh: "浅色", ko: "라이트", ja: "ライト", fr: "Clair",
+            en: "Light")
+    }
+
+    static var appearanceSystem: String {
+        localized("appearanceSystem",
+            zh: "跟随系统", ko: "시스템", ja: "システム", fr: "Système",
+            en: "System")
+    }
+
+    static var appearanceSection: String {
+        localized("appearanceSection",
+            zh: "外观", ko: "외관", ja: "外観", fr: "Apparence",
+            en: "Appearance")
+    }
+
+    static var themeShortcut: String {
+        localized("themeShortcut",
+            zh: "切换主题", ko: "테마 전환", ja: "テーマ切替", fr: "Changer de thème",
+            en: "Toggle theme")
+    }
+
     // MARK: - Preferences section titles
 
     static var sectionSystem: String {
