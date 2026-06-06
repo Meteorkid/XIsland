@@ -33,6 +33,7 @@ struct NotchContentView: View {
     @State var activityLogExpanded = false
     @State private var notificationTokens: [NSObjectProtocol] = []
     @AppStorage("disableAnimations") private var disableAnimations = false
+    @AppStorage("reduceMotion") private var reduceMotion = false
     @AppStorage("autoCollapseDelay") private var autoCollapseDelay = 3.0
     /// Seconds after last interaction while expanded before auto-collapsing; 0 disables.
     @AppStorage("expandedInactivityAutoHideDelay") private var expandedInactivityAutoHideDelay = 10.0
