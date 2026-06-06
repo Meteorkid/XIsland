@@ -172,6 +172,12 @@ struct PreferencesView: View {
 
     private var generalPane: some View {
         VStack(alignment: .leading, spacing: 20) {
+            section(L10n.appearanceSection) {
+                card {
+                    ThemePickerView()
+                }
+            }
+
             section(L10n.sectionSystem) {
                 card {
                     row(L10n.language) {

@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let updateManager = UpdateManager()
     let quotaTracker = QuotaTracker()
     let persistenceManager = SessionPersistenceManager()
+    let themeManager = ThemeManager()
     private var socketServer: SocketServer?
     private var hookRepairTimer: Timer?
     private var notchWindow: NotchWindow?
@@ -149,6 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .environment(updateManager)
             .environment(quotaTracker)
             .environment(persistenceManager)
+            .environment(themeManager)
         )
         hostView.frame = window.contentView!.bounds
         hostView.autoresizingMask = [.width, .height]
@@ -156,8 +158,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hostView.sizingOptions = []
         }
         window.contentView?.addSubview(hostView)
+        updateWindowAppearance(window)
         window.orderFrontRegardless()
         notchWindow = window
+        themeManager.startObservingSystemAppearance()
 
         window.keyEquivalentHandler = { [weak self] event in
             guard let self = self else { return false }
@@ -396,6 +400,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .environment(updateManager)
                 .environment(quotaTracker)
                 .environment(persistenceManager)
+                .environment(themeManager)
         )
 
         settingsWindow = w
@@ -417,6 +422,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+
+    /// Apply the resolved color scheme to the notch window.
+    func updateWindowAppearance(_ window: NSWindow) {
+        let scheme = themeManager.resolvedScheme
+        window.appearance = scheme == .dark
+            ? NSAppearance(named: .darkAqua)
+            : NSAppearance(named: .aqua)
     }
 
     /// Returns false if another instance is already running (exclusive lock held).
