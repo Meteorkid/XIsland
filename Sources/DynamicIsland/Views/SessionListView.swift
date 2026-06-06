@@ -73,6 +73,7 @@ struct SessionCardView: View {
     @State private var isHovered = false
     @State private var recapExpanded = false
     @State private var childrenExpanded = false
+    @State private var showExportSheet = false
     @AppStorage("compactBadgesInExpandedView") private var compactBadges = true
     @AppStorage("displayTimestamp") private var displayTimestamp = true
 
@@ -184,6 +185,16 @@ struct SessionCardView: View {
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovered = hovering
             }
+        }
+        .contextMenu {
+            Button {
+                showExportSheet = true
+            } label: {
+                Label(L10n.exportSession, systemImage: "square.and.arrow.up")
+            }
+        }
+        .sheet(isPresented: $showExportSheet) {
+            ExportView(session: session)
         }
     }
 

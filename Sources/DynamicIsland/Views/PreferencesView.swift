@@ -40,6 +40,7 @@ struct PreferencesView: View {
     @State private var sshManager = SSHRemoteManager()
     @State private var selection: PreferencesPane = .general
     @State private var historySessions: [StoredSession] = []
+    @State private var showBatchExporter = false
     @AppStorage("historyRetentionDays") private var historyRetentionDays = 30
     @State private var isShowingInstallConfirmation = false
     @State private var showAddServerSheet = false
@@ -769,13 +770,22 @@ struct PreferencesView: View {
 
                     if !historySessions.isEmpty {
                         dividerLine
-                        Button(L10n.clearHistory) {
-                            persistenceManager.cleanup(olderThanDays: 0)
-                            historySessions = persistenceManager.fetchHistory()
+                        HStack(spacing: 16) {
+                            Button(L10n.batchExport) {
+                                batchExportHistory()
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.blue)
+
+                            Button(L10n.clearHistory) {
+                                persistenceManager.cleanup(olderThanDays: 0)
+                                historySessions = persistenceManager.fetchHistory()
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.red)
                         }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.red)
                     }
                 }
             }
@@ -1078,6 +1088,47 @@ struct PreferencesView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Batch Export
+
+    private func batchExportHistory() {
+        let sessions = persistenceManager.fetchHistory(limit: 1000)
+        guard !sessions.isEmpty else { return }
+
+        // 将 StoredSession 转换为导出用的字典数组
+        let exportData: [[String: Any]] = sessions.map { session in
+            [
+                "sessionId": session.sessionId,
+                "agentType": session.agentTypeRaw,
+                "startTime": ISO8601DateFormatter().string(from: session.startTime),
+                "completedAt": session.completedAt.map { ISO8601DateFormatter().string(from: $0) } as Any,
+                "prompt": session.prompt,
+                "workspaceName": session.workspaceName,
+                "terminal": session.terminal,
+                "status": session.statusRaw,
+                "inputTokens": session.inputTokens,
+                "outputTokens": session.outputTokens,
+                "totalTokens": session.totalTokens,
+                "estimatedCostUSD": session.estimatedCostUSD,
+                "model": session.model,
+                "recapText": session.recapText as Any,
+                "toolEventsCount": session.toolEvents.count,
+                "chatMessagesCount": session.chatMessages.count,
+            ]
+        }
+
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: exportData, options: [.prettyPrinted, .sortedKeys]) else {
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "xisland_history_\(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .none)).json"
+        panel.title = L10n.batchExport
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try? jsonData.write(to: url)
     }
 
     // MARK: - Helpers
