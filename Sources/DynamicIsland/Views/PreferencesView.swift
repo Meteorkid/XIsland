@@ -6,6 +6,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
     case general
     case agents
     case sound
+    case history
     case about
 
     var id: String { rawValue }
@@ -15,6 +16,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
         case .general: L10n.paneGeneral
         case .agents: L10n.paneAgents
         case .sound: L10n.sectionSound
+        case .history: L10n.sectionHistory
         case .about: L10n.sectionAbout
         }
     }
@@ -24,6 +26,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
         case .general: "gearshape.fill"
         case .agents: "terminal.fill"
         case .sound: "speaker.wave.2.fill"
+        case .history: "clock.arrow.circlepath"
         case .about: "info.circle.fill"
         }
     }
@@ -33,8 +36,11 @@ struct PreferencesView: View {
     @Environment(AudioEngine.self) private var audioEngine
     @Environment(SessionManager.self) private var sessionManager
     @Environment(UpdateManager.self) private var updateManager
+    @Environment(SessionPersistenceManager.self) private var persistenceManager
     @State private var sshManager = SSHRemoteManager()
     @State private var selection: PreferencesPane = .general
+    @State private var historySessions: [StoredSession] = []
+    @AppStorage("historyRetentionDays") private var historyRetentionDays = 30
     @State private var isShowingInstallConfirmation = false
     @State private var showAddServerSheet = false
     @State private var serverLabel = ""
@@ -157,6 +163,7 @@ struct PreferencesView: View {
         case .general: generalPane
         case .agents: agentsPane
         case .sound: soundPane
+        case .history: historyPane
         case .about: aboutPane
         }
     }
@@ -687,6 +694,89 @@ struct PreferencesView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - History
+
+    private var historyPane: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            section(L10n.historyRetentionDays) {
+                card {
+                    row(L10n.historyRetentionDays) {
+                        Picker("", selection: $historyRetentionDays) {
+                            Text("7 days").tag(7)
+                            Text("14 days").tag(14)
+                            Text("30 days").tag(30)
+                            Text("90 days").tag(90)
+                            Text(L10n.neverOption).tag(Int.max)
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 100)
+                    }
+                }
+            }
+
+            section(L10n.sectionHistory) {
+                card {
+                    if historySessions.isEmpty {
+                        Text(L10n.noHistory)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.tertiary)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    } else {
+                        ForEach(historySessions, id: \.sessionId) { session in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(session.displayTitle)
+                                        .font(.system(size: 13, weight: .medium))
+                                        .lineLimit(1)
+                                    HStack(spacing: 8) {
+                                        Text(session.agentType.shortName)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.secondary)
+                                        Text(session.formattedDuration)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.secondary)
+                                        if let completed = session.completedAt {
+                                            Text(completed.formatted(date: .abbreviated, time: .shortened))
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(.tertiary)
+                                        }
+                                    }
+                                }
+                                Spacer()
+                                Button {
+                                    persistenceManager.deleteSession(session)
+                                    historySessions = persistenceManager.fetchHistory()
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.red.opacity(0.5))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+
+                    if !historySessions.isEmpty {
+                        dividerLine
+                        Button(L10n.clearHistory) {
+                            persistenceManager.cleanup(olderThanDays: 0)
+                            historySessions = persistenceManager.fetchHistory()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
+                    }
+                }
+            }
+        }
+        .task {
+            historySessions = persistenceManager.fetchHistory()
+            persistenceManager.cleanup(olderThanDays: historyRetentionDays)
         }
     }
 
