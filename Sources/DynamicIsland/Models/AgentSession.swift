@@ -23,6 +23,20 @@ enum SessionStatus: String, Codable, Sendable {
         case .compacting: "yellow"
         }
     }
+
+    var displayName: String {
+        switch self {
+        case .active: return L10n.statusActive
+        case .idle: return L10n.statusIdle
+        case .thinking: return L10n.statusThinking
+        case .waitingPermission: return L10n.statusWaitingPermission
+        case .waitingAnswer: return L10n.statusWaitingAnswer
+        case .waitingPlanReview: return L10n.statusWaitingPlanReview
+        case .completed: return L10n.statusCompleted
+        case .error: return L10n.statusError
+        case .compacting: return L10n.statusCompacting
+        }
+    }
 }
 
 struct ChatMessage: Identifiable, Sendable {

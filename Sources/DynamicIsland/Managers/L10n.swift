@@ -837,4 +837,150 @@ enum L10n {
             zh: "你", ko: "당신", ja: "あなた", fr: "Vous",
             en: "You")
     }
+
+    // MARK: - Session Grouping
+
+    static var groupNone: String {
+        localized("groupNone",
+            zh: "不分组", ko: "그룹 없음", ja: "グループなし", fr: "Aucun groupement",
+            en: "None")
+    }
+
+    static var groupAgentType: String {
+        localized("groupAgentType",
+            zh: "按代理类型", ko: "에이전트 유형별", ja: "エージェント種別別", fr: "Par type d'agent",
+            en: "Agent Type")
+    }
+
+    static var groupWorkspace: String {
+        localized("groupWorkspace",
+            zh: "按工作区", ko: "작업 공간별", ja: "ワークスペース別", fr: "Par espace de travail",
+            en: "Workspace")
+    }
+
+    static var groupStatus: String {
+        localized("groupStatus",
+            zh: "按状态", ko: "상태별", ja: "状態別", fr: "Par statut",
+            en: "Status")
+    }
+
+    static var groupDate: String {
+        localized("groupDate",
+            zh: "按日期", ko: "날짜별", ja: "日付別", fr: "Par date",
+            en: "Date")
+    }
+
+    static var dateGroupToday: String {
+        localized("dateGroupToday",
+            zh: "今天", ko: "오늘", ja: "今日", fr: "Aujourd'hui",
+            en: "Today")
+    }
+
+    static var dateGroupYesterday: String {
+        localized("dateGroupYesterday",
+            zh: "昨天", ko: "어제", ja: "昨日", fr: "Hier",
+            en: "Yesterday")
+    }
+
+    static var dateGroupThisWeek: String {
+        localized("dateGroupThisWeek",
+            zh: "本周", ko: "이번 주", ja: "今週", fr: "Cette semaine",
+            en: "This Week")
+    }
+
+    static var dateGroupOlder: String {
+        localized("dateGroupOlder",
+            zh: "更早", ko: "이전", ja: "それ以前", fr: "Plus ancien",
+            en: "Older")
+    }
+
+    // MARK: - Export
+
+    static var exportSession: String {
+        localized("exportSession",
+            zh: "导出会话", ko: "세션 내보내기", ja: "セッション書き出し", fr: "Exporter la session",
+            en: "Export Session")
+    }
+
+    static var exportFormat: String {
+        localized("exportFormat",
+            zh: "导出格式", ko: "내보내기 형식", ja: "書き出し形式", fr: "Format d'export",
+            en: "Export Format")
+    }
+
+    static var batchExport: String {
+        localized("batchExport",
+            zh: "批量导出", ko: "일괄 내보내기", ja: "一括書き出し", fr: "Export groupé",
+            en: "Batch Export")
+    }
+
+    static var searchSessions: String {
+        localized("searchSessions",
+            zh: "搜索会话...", ko: "세션 검색...", ja: "セッション検索...", fr: "Rechercher des sessions...",
+            en: "Search sessions...")
+    }
+
+    // MARK: - Filter chips
+
+    static var filterAll: String {
+        localized("filterAll",
+            zh: "全部", ko: "전체", ja: "すべて", fr: "Tout",
+            en: "All")
+    }
+
+    // MARK: - Status display names
+
+    static var statusActive: String {
+        localized("statusActive",
+            zh: "活跃", ko: "활성", ja: "アクティブ", fr: "Actif",
+            en: "Active")
+    }
+
+    static var statusIdle: String {
+        localized("statusIdle",
+            zh: "空闲", ko: "대기", ja: "アイドル", fr: "Inactif",
+            en: "Idle")
+    }
+
+    static var statusThinking: String {
+        localized("statusThinking",
+            zh: "思考中", ko: "생각 중", ja: "思考中", fr: "Réflexion",
+            en: "Thinking")
+    }
+
+    static var statusWaitingPermission: String {
+        localized("statusWaitingPermission",
+            zh: "等待权限", ko: "권한 대기", ja: "権限待ち", fr: "Attente d'autorisation",
+            en: "Waiting Permission")
+    }
+
+    static var statusWaitingAnswer: String {
+        localized("statusWaitingAnswer",
+            zh: "等待回答", ko: "답변 대기", ja: "回答待ち", fr: "Attente de réponse",
+            en: "Waiting Answer")
+    }
+
+    static var statusWaitingPlanReview: String {
+        localized("statusWaitingPlanReview",
+            zh: "等待计划审查", ko: "계획 검토 대기", ja: "計画レビュー待ち", fr: "Révision en attente",
+            en: "Waiting Plan Review")
+    }
+
+    static var statusCompleted: String {
+        localized("statusCompleted",
+            zh: "已完成", ko: "완료", ja: "完了", fr: "Terminé",
+            en: "Completed")
+    }
+
+    static var statusError: String {
+        localized("statusError",
+            zh: "错误", ko: "오류", ja: "エラー", fr: "Erreur",
+            en: "Error")
+    }
+
+    static var statusCompacting: String {
+        localized("statusCompacting",
+            zh: "压缩中", ko: "압축 중", ja: "圧縮中", fr: "Compactage",
+            en: "Compacting")
+    }
 }

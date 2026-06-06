@@ -3,6 +3,53 @@ import Observation
 import AppKit
 import DIShared
 
+// MARK: - Session Grouping & Filtering
+
+enum SessionGrouping: String, CaseIterable, Identifiable {
+    case none
+    case agentType
+    case workspace
+    case status
+    case date
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .none: return L10n.groupNone
+        case .agentType: return L10n.groupAgentType
+        case .workspace: return L10n.groupWorkspace
+        case .status: return L10n.groupStatus
+        case .date: return L10n.groupDate
+        }
+    }
+}
+
+enum SessionFilter: Equatable {
+    case all
+    case agentType(AgentType)
+    case status(SessionStatus)
+    case text(String)
+
+    static func == (lhs: SessionFilter, rhs: SessionFilter) -> Bool {
+        switch (lhs, rhs) {
+        case (.all, .all): return true
+        case (.agentType(let a), .agentType(let b)): return a == b
+        case (.status(let a), .status(let b)): return a == b
+        case (.text(let a), .text(let b)): return a == b
+        default: return false
+        }
+    }
+}
+
+struct SessionGroup: Identifiable {
+    let id: String
+    let title: String
+    let sessions: [AgentSession]
+}
+
+// MARK: - SessionManager
+
 @Observable
 @MainActor
 final class SessionManager {
@@ -15,6 +62,18 @@ final class SessionManager {
     var audioEngine: AudioEngine?
     var persistenceManager: SessionPersistenceManager?
     var currentIslandState: IslandState = .collapsed
+    /// 会话分组模式，持久化到 UserDefaults
+    var grouping: SessionGrouping {
+        get {
+            SessionGrouping(rawValue: UserDefaults.standard.string(forKey: "sessionGrouping") ?? "") ?? .none
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: "sessionGrouping")
+        }
+    }
+    var activeFilter: SessionFilter = .all
+    var searchText: String = ""
+
     var bypassMode: Bool {
         get { UserDefaults.standard.bool(forKey: "bypassMode") }
         set { UserDefaults.standard.set(newValue, forKey: "bypassMode") }
@@ -65,6 +124,105 @@ final class SessionManager {
             if session.status != .completed { return true }
             guard let completedAt = session.completedAt else { return false }
             return now.timeIntervalSince(completedAt) < completedLingerDuration
+        }
+    }
+
+    /// 过滤后的会话列表：基于 activeFilter 和 searchText
+    var filteredSessions: [AgentSession] {
+        var result = visibleSessions
+
+        // 应用 activeFilter
+        switch activeFilter {
+        case .all:
+            break
+        case .agentType(let type):
+            result = result.filter { $0.agentType == type }
+        case .status(let status):
+            result = result.filter { $0.status == status }
+        case .text(let text):
+            let lower = text.lowercased()
+            result = result.filter { session in
+                session.prompt.lowercased().contains(lower)
+                    || session.workspaceName.lowercased().contains(lower)
+                    || session.terminal.lowercased().contains(lower)
+            }
+        }
+
+        // 应用搜索文本（与 filter 交叉）
+        if !searchText.isEmpty {
+            let lower = searchText.lowercased()
+            result = result.filter { session in
+                session.prompt.lowercased().contains(lower)
+                    || session.workspaceName.lowercased().contains(lower)
+                    || session.terminal.lowercased().contains(lower)
+            }
+        }
+
+        return result
+    }
+
+    /// 按当前 grouping 分组后的会话
+    var groupedSessions: [SessionGroup] {
+        let sessions = filteredSessions
+        switch grouping {
+        case .none:
+            return [SessionGroup(id: "__all__", title: "", sessions: sessions)]
+        case .agentType:
+            let grouped = Dictionary(grouping: sessions) { $0.agentType.rawValue }
+            return grouped
+                .sorted { $0.key < $1.key }
+                .map { SessionGroup(id: $0.key, title: AgentType(rawValue: $0.key)?.shortName ?? $0.key, sessions: $0.value) }
+        case .workspace:
+            let grouped = Dictionary(grouping: sessions) { $0.workspaceName }
+            return grouped
+                .sorted { $0.key < $1.key }
+                .map { SessionGroup(id: $0.key, title: $0.key, sessions: $0.value) }
+        case .status:
+            let grouped = Dictionary(grouping: sessions) { $0.status.rawValue }
+            let order: [SessionStatus] = [.active, .thinking, .compacting, .waitingPermission, .waitingAnswer, .waitingPlanReview, .idle, .completed, .error]
+            return order.compactMap { status in
+                guard let items = grouped[status.rawValue], !items.isEmpty else { return nil }
+                return SessionGroup(id: status.rawValue, title: status.displayName, sessions: items)
+            }
+        case .date:
+            let calendar = Calendar.current
+            let now = Date()
+            let today = calendar.startOfDay(for: now)
+            let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
+            let weekAgo = calendar.date(byAdding: .day, value: -7, to: today)!
+
+            var todaySessions: [AgentSession] = []
+            var yesterdaySessions: [AgentSession] = []
+            var weekSessions: [AgentSession] = []
+            var olderSessions: [AgentSession] = []
+
+            for session in sessions {
+                let start = calendar.startOfDay(for: session.startTime)
+                if calendar.compare(start, to: today, toGranularity: .day) == .orderedSame {
+                    todaySessions.append(session)
+                } else if calendar.compare(start, to: yesterday, toGranularity: .day) == .orderedSame {
+                    yesterdaySessions.append(session)
+                } else if start >= weekAgo {
+                    weekSessions.append(session)
+                } else {
+                    olderSessions.append(session)
+                }
+            }
+
+            var groups: [SessionGroup] = []
+            if !todaySessions.isEmpty {
+                groups.append(SessionGroup(id: "today", title: L10n.dateGroupToday, sessions: todaySessions))
+            }
+            if !yesterdaySessions.isEmpty {
+                groups.append(SessionGroup(id: "yesterday", title: L10n.dateGroupYesterday, sessions: yesterdaySessions))
+            }
+            if !weekSessions.isEmpty {
+                groups.append(SessionGroup(id: "thisWeek", title: L10n.dateGroupThisWeek, sessions: weekSessions))
+            }
+            if !olderSessions.isEmpty {
+                groups.append(SessionGroup(id: "older", title: L10n.dateGroupOlder, sessions: olderSessions))
+            }
+            return groups
         }
     }
 

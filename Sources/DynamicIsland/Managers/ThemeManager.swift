@@ -89,7 +89,10 @@ final class ThemeManager {
         case .light:
             resolvedScheme = .light
         case .system:
-            let appearance = NSApp.effectiveAppearance
+            guard let appearance = NSApp.effectiveAppearance as NSAppearance? else {
+                resolvedScheme = .dark
+                return
+            }
             let match = appearance.bestMatch(from: [.darkAqua, .aqua])
             resolvedScheme = match == .darkAqua ? .dark : .light
         }
