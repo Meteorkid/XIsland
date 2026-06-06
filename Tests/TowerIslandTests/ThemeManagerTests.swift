@@ -7,8 +7,13 @@ final class ThemeManagerTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        // 使用独立 suite 避免污染 UserDefaults
-        UserDefaults(suiteName: "ThemeManagerTests")?.removePersistentDomain(forName: "ThemeManagerTests")
+        // 清除标准 UserDefaults 中的外观设置，确保测试隔离
+        UserDefaults.standard.removeObject(forKey: "appearanceMode")
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: "appearanceMode")
+        super.tearDown()
     }
 
     // MARK: - ThemeManager tests
