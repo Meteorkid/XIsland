@@ -841,10 +841,6 @@ struct NotchContentView: View {
                                 Circle()
                                     .fill(item.session.agentType.color.opacity(0.6))
                                     .frame(width: 4, height: 4)
-                                Image(systemName: item.event.isComplete ? "checkmark.circle.fill" : "circle.dashed")
-                                    .font(.system(size: 8))
-                                    .foregroundStyle(item.event.isComplete ? .green.opacity(0.5) : .white.opacity(0.25))
-                                    .symbolEffect(.bounce, value: item.event.isComplete)
                                 Text(item.session.agentType.shortName)
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundStyle(item.session.agentType.color.opacity(0.7))
@@ -860,15 +856,6 @@ struct NotchContentView: View {
                                     .font(.system(size: 8, design: .monospaced))
                                     .foregroundStyle(.white.opacity(0.2))
                             }
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .background(
-                                item.event.isComplete
-                                    ? Color.accentColor.opacity(0.15)
-                                    : Color.clear
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                            .animation(reduceMotion ? nil : .easeOut(duration: 1.0), value: item.event.isComplete)
                         }
                     }
                     .padding(.vertical, 2)
