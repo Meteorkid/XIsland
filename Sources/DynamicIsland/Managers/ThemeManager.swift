@@ -70,6 +70,7 @@ final class ThemeManager {
 
     func startObservingSystemAppearance() {
         guard effectiveAppearanceObservation == nil else { return }
+        guard NSApp != nil else { return }
         effectiveAppearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
             Task { @MainActor [weak self] in
                 self?.updateResolvedScheme()
@@ -89,10 +90,12 @@ final class ThemeManager {
         case .light:
             resolvedScheme = .light
         case .system:
-            guard let appearance = NSApp.effectiveAppearance as NSAppearance? else {
+            // NSApp.effectiveAppearance may crash in test environments without a running app.
+            guard NSApp != nil else {
                 resolvedScheme = .dark
                 return
             }
+            let appearance = NSApp.effectiveAppearance
             let match = appearance.bestMatch(from: [.darkAqua, .aqua])
             resolvedScheme = match == .darkAqua ? .dark : .light
         }

@@ -3,17 +3,63 @@ import SwiftUI
 struct SessionListView: View {
     @Environment(SessionManager.self) private var manager
     var onJump: (() -> Void)?
+    @State private var showFilterBar = false
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 10) {
-                ForEach(manager.visibleSessions) { session in
-                    SessionCardView(session: session, onJump: onJump)
+        VStack(spacing: 0) {
+            // 过滤栏头部
+            HStack {
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showFilterBar.toggle()
+                    }
+                } label: {
+                    Image(systemName: showFilterBar ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(showFilterBar ? .cyan : .white.opacity(0.5))
                 }
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
+            .padding(.horizontal, 14)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
+
+            // 过滤栏
+            if showFilterBar {
+                SessionFilterBar()
+                    .padding(.bottom, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    if manager.grouping == .none {
+                        ForEach(manager.filteredSessions) { session in
+                            SessionCardView(session: session, onJump: onJump)
+                        }
+                    } else {
+                        ForEach(manager.groupedSessions) { group in
+                            Section(header:
+                                Text(group.title)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.45))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 14)
+                                    .padding(.top, 8)
+                            ) {
+                                ForEach(group.sessions) { session in
+                                    SessionCardView(session: session, onJump: onJump)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
+            }
+            .animation(.easeInOut(duration: 0.2), value: manager.grouping)
         }
         .accessibilityIdentifier(TestAccessibility.sessionList)
     }
