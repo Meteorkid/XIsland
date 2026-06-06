@@ -159,10 +159,10 @@ final class AgentSession: Identifiable {
 
     var isSubagent: Bool { parentSessionId != nil }
 
-    init(id: String, agentType: AgentType, terminal: String = "", workingDirectory: String = "", prompt: String = "") {
+    init(id: String, agentType: AgentType, terminal: String = "", workingDirectory: String = "", prompt: String = "", startTime: Date = Date()) {
         self.id = id
         self.agentType = agentType
-        self.startTime = Date()
+        self.startTime = startTime
         self.terminal = terminal
         self.workingDirectory = workingDirectory
         self.prompt = prompt

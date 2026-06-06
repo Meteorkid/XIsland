@@ -4,6 +4,12 @@ struct SessionListView: View {
     @Environment(SessionManager.self) private var manager
     var onJump: (() -> Void)?
     @State private var showFilterBar = false
+    @AppStorage("reduceMotion") private var reduceMotion = false
+
+    private let cardTransition = AnyTransition.asymmetric(
+        insertion: .move(edge: .trailing).combined(with: .opacity),
+        removal: .move(edge: .leading).combined(with: .opacity)
+    )
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,6 +43,7 @@ struct SessionListView: View {
                     if manager.grouping == .none {
                         ForEach(manager.filteredSessions) { session in
                             SessionCardView(session: session, onJump: onJump)
+                                .transition(reduceMotion ? .identity : cardTransition)
                         }
                     } else {
                         ForEach(manager.groupedSessions) { group in
@@ -50,6 +57,7 @@ struct SessionListView: View {
                             ) {
                                 ForEach(group.sessions) { session in
                                     SessionCardView(session: session, onJump: onJump)
+                                        .transition(reduceMotion ? .identity : cardTransition)
                                 }
                             }
                         }
@@ -59,6 +67,7 @@ struct SessionListView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 12)
             }
+            .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: manager.visibleSessions.map(\.id))
             .animation(.easeInOut(duration: 0.2), value: manager.grouping)
         }
         .accessibilityIdentifier(TestAccessibility.sessionList)
@@ -76,6 +85,7 @@ struct SessionCardView: View {
     @State private var showExportSheet = false
     @AppStorage("compactBadgesInExpandedView") private var compactBadges = true
     @AppStorage("displayTimestamp") private var displayTimestamp = true
+    @AppStorage("reduceMotion") private var reduceMotion = false
 
     var body: some View {
         Button {
@@ -224,7 +234,15 @@ struct SessionCardView: View {
                 TagBadge(text: sourceBadgeText, color: .white.opacity(0.58))
 
                 if displayTimestamp {
-                    TagBadge(text: session.formattedDuration, color: .white.opacity(0.3))
+                    Text(session.formattedDuration)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.3))
+                        .contentTransition(.numericText())
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: session.formattedDuration)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 }
 
                 if isHovered {
