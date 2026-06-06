@@ -21,6 +21,7 @@ struct SessionListView: View {
 
 struct SessionCardView: View {
     @Environment(SessionManager.self) private var manager
+    @Environment(ThemeManager.self) private var themeManager
     let session: AgentSession
     var onJump: (() -> Void)?
     @State private var isHovered = false
@@ -114,11 +115,15 @@ struct SessionCardView: View {
                             .padding(.leading, 10)
                     }
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(isHovered ? IslandStyle.cardHover : IslandStyle.cardRest)
+                        .fill(isHovered
+                              ? IslandStyle.cardHover(for: themeManager.resolvedScheme)
+                              : IslandStyle.cardRest(for: themeManager.resolvedScheme))
                         .overlay(
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .strokeBorder(
-                                    .white.opacity(isHovered ? IslandStyle.cardStrokeHover : IslandStyle.cardStrokeRest),
+                                    IslandStyle.primaryText(for: themeManager.resolvedScheme)
+                                        .opacity(isHovered ? IslandStyle.cardStrokeHover(for: themeManager.resolvedScheme)
+                                                           : IslandStyle.cardStrokeRest(for: themeManager.resolvedScheme)),
                                     lineWidth: 0.5
                                 )
                         )

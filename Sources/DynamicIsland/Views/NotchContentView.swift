@@ -12,6 +12,7 @@ struct NotchContentView: View {
     @Environment(SessionManager.self) private var manager
     @Environment(AudioEngine.self) private var audio
     @Environment(QuotaTracker.self) private var quotaTracker
+    @Environment(ThemeManager.self) private var themeManager
     @State private var islandObscuredByNotch = false
     @State private var state: IslandState = .collapsed
     @State private var isHovering = false
@@ -93,9 +94,9 @@ struct NotchContentView: View {
         isExpanded ? expandedHeight : collapsedShapeHeight
     }
 
-    private var pillFillColor: Color { IslandStyle.surface }
+    private var pillFillColor: Color { IslandStyle.surface(for: themeManager.resolvedScheme) }
 
-    private var pillStrokeOpacity: CGFloat { IslandStyle.strokeOpacity }
+    private var pillStrokeOpacity: CGFloat { IslandStyle.strokeOpacity(for: themeManager.resolvedScheme) }
 
     /// 0 = collapsed strip (flat top), 1 = full expanded card — follows `shapeHeight` during spring so corners don’t snap before size.
     private var notchShapeOpenProgress: CGFloat {
@@ -241,6 +242,7 @@ struct NotchContentView: View {
             }
         }
         .accessibilityIdentifier(TestAccessibility.islandRoot)
+        .preferredColorScheme(themeManager.resolvedScheme)
         .onChange(of: expandedHeight) { _, _ in
             if case .expanded = state {
                 cachedExpandedShapeHeight = max(collapsedShapeHeight + 1, expandedHeight)
@@ -862,7 +864,7 @@ struct NotchContentView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(IslandStyle.insetFill)
+        .background(IslandStyle.insetFill(for: themeManager.resolvedScheme))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .padding(.horizontal, 16)
         .padding(.top, 8)
