@@ -71,6 +71,11 @@ struct SessionListView: View {
             .animation(.easeInOut(duration: 0.2), value: manager.grouping)
         }
         .accessibilityIdentifier(TestAccessibility.sessionList)
+        .onReceive(NotificationCenter.default.publisher(for: .xislandToggleSearch)) { _ in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showFilterBar.toggle()
+            }
+        }
     }
 }
 

@@ -7,6 +7,8 @@ extension Notification.Name {
     static let xislandShowAboutPane = Notification.Name("XIslandShowAboutPane")
     static let xislandCollapse = Notification.Name("xislandCollapse")
     static let xislandToggleActivityLog = Notification.Name("xislandToggleActivityLog")
+    static let xislandExportSession = Notification.Name("xislandExportSession")
+    static let xislandToggleSearch = Notification.Name("xislandToggleSearch")
 }
 
 enum PreferencesRouting {
@@ -219,12 +221,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case "o":
                     NotificationCenter.default.post(name: .xislandToggleActivityLog, object: nil)
                     return true
+                case "e" where flags.contains(.shift):
+                    NotificationCenter.default.post(name: .xislandExportSession, object: nil)
+                    return true
+                case "f":
+                    NotificationCenter.default.post(name: .xislandToggleSearch, object: nil)
+                    return true
+                case "t":
+                    self.themeManager.toggleMode()
+                    return true
+                case "[":
+                    self.navigateSession(direction: -1)
+                    return true
+                case "]":
+                    self.navigateSession(direction: 1)
+                    return true
                 default:
                     break
                 }
             }
 
+            // Escape 收起展开的面板
+            if chars == "\u{1b}" && self.sessionManager.currentIslandState == .expanded {
+                NotificationCenter.default.post(name: .xislandCollapse, object: nil)
+                return true
+            }
+
             return false
+        }
+    }
+
+    /// 在可见会话列表中按方向导航（direction: -1 = 上一个, +1 = 下一个），支持循环。
+    private func navigateSession(direction: Int) {
+        let visible = sessionManager.visibleSessions
+        guard !visible.isEmpty else { return }
+
+        if let currentId = sessionManager.selectedSessionId,
+           let idx = visible.firstIndex(where: { $0.id == currentId }) {
+            let next = (idx + direction + visible.count) % visible.count
+            sessionManager.selectedSessionId = visible[next].id
+        } else {
+            sessionManager.selectedSessionId = visible[direction > 0 ? 0 : visible.count - 1].id
         }
     }
 
@@ -326,6 +363,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         checkForUpdatesItem.target = self
         appSubmenu.insertItem(checkForUpdatesItem, at: settingsIndex)
         appSubmenu.insertItem(NSMenuItem.separator(), at: settingsIndex + 1)
+
+        // 快捷键菜单项
+        let shortcuts = [
+            (title: L10n.shortcutToggleTheme, key: "t", modifiers: NSEvent.ModifierFlags.command),
+            (title: L10n.shortcutSearch, key: "f", modifiers: NSEvent.ModifierFlags.command),
+            (title: L10n.shortcutExport, key: "e", modifiers: [.command, .shift]),
+            (title: L10n.shortcutPrevious, key: "[", modifiers: NSEvent.ModifierFlags.command),
+            (title: L10n.shortcutNext, key: "]", modifiers: NSEvent.ModifierFlags.command),
+        ]
+        for shortcut in shortcuts {
+            let item = NSMenuItem(title: shortcut.title, action: nil, keyEquivalent: shortcut.key)
+            item.keyEquivalentModifierMask = shortcut.modifiers
+            appSubmenu.insertItem(item, at: appSubmenu.items.count)
+        }
     }
 
     @objc private func toggleNotch() {
