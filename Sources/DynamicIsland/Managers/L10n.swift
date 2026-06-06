@@ -539,6 +539,32 @@ enum L10n {
             en: "About")
     }
 
+    // MARK: - History
+
+    static var sectionHistory: String {
+        localized("sectionHistory",
+            zh: "历史", ko: "기록", ja: "履歴", fr: "Historique",
+            en: "History")
+    }
+
+    static var historyRetentionDays: String {
+        localized("historyRetentionDays",
+            zh: "历史保留天数", ko: "기록 보존 기간", ja: "履歴保持日数", fr: "Durée de rétention",
+            en: "Retention days")
+    }
+
+    static var clearHistory: String {
+        localized("clearHistory",
+            zh: "清除历史", ko: "기록 삭제", ja: "履歴をクリア", fr: "Effacer l'historique",
+            en: "Clear History")
+    }
+
+    static var noHistory: String {
+        localized("noHistory",
+            zh: "暂无历史记录", ko: "기록 없음", ja: "履歴なし", fr: "Aucun historique",
+            en: "No history yet")
+    }
+
     static var sectionMacPrivacy: String {
         localized("sectionMacPrivacy",
             zh: "macOS 隐私与授权",
