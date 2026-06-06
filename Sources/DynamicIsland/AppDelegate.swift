@@ -41,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let audioEngine = AudioEngine()
     let updateManager = UpdateManager()
     let quotaTracker = QuotaTracker()
+    let persistenceManager = SessionPersistenceManager()
     private var socketServer: SocketServer?
     private var hookRepairTimer: Timer?
     private var notchWindow: NotchWindow?
@@ -147,6 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .environment(audioEngine)
             .environment(updateManager)
             .environment(quotaTracker)
+            .environment(persistenceManager)
         )
         hostView.frame = window.contentView!.bounds
         hostView.autoresizingMask = [.width, .height]
@@ -263,6 +265,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func performInitialStartup() {
         sessionManager.audioEngine = audioEngine
+        persistenceManager.setupContainer()
+        sessionManager.persistenceManager = persistenceManager
         setupNotchWindow()
         setupMenuBarItem()
         DispatchQueue.main.async { [weak self] in
@@ -391,6 +395,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .environment(audioEngine)
                 .environment(updateManager)
                 .environment(quotaTracker)
+                .environment(persistenceManager)
         )
 
         settingsWindow = w

@@ -13,6 +13,7 @@ final class SessionManager {
     /// 缓存 mirrored session 后缀，避免重复字符串解析
     private var suffixCache: [String: String] = [:]
     var audioEngine: AudioEngine?
+    var persistenceManager: SessionPersistenceManager?
     var currentIslandState: IslandState = .collapsed
     var bypassMode: Bool {
         get { UserDefaults.standard.bool(forKey: "bypassMode") }
@@ -481,6 +482,10 @@ final class SessionManager {
     }
 
     func dismissSession(_ session: AgentSession) {
+        // 如果会话已完成但尚未持久化（非 markCompleted 路径），保存一次
+        if session.status == .completed, session.completedAt != nil {
+            persistenceManager?.save(session: session)
+        }
         sessions.removeAll { $0.id == session.id }
         rebuildSessionIndex()
         lastAssistantReplySoundAt.removeValue(forKey: session.id)
@@ -565,6 +570,7 @@ final class SessionManager {
         session.status = .completed
         session.currentTool = nil
         session.completedAt = Date()
+        persistenceManager?.save(session: session)
         scheduleLingerCleanup()
     }
 
