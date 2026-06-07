@@ -100,12 +100,7 @@ struct ExpandedSessionView: View {
     private var statusBadge: some View {
         switch session.status {
         case .active:
-            HStack(spacing: 3) {
-                Circle().fill(.blue).frame(width: 5, height: 5)
-                Text(L10n.running)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.blue)
-            }
+            badgeLabel(L10n.running, color: .blue)
         case .thinking:
             badgeLabel(L10n.thinking, color: .blue)
         case .compacting:
@@ -117,7 +112,7 @@ struct ExpandedSessionView: View {
         case .waitingPlanReview:
             badgeLabel(L10n.review, color: .purple)
         case .idle:
-            badgeLabel(L10n.done, color: .green)
+            badgeLabel(L10n.idle, color: .green)
         case .completed:
             badgeLabel(L10n.done, color: .green)
         case .error:

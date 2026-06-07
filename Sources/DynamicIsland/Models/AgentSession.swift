@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 enum SessionStatus: String, Codable, Sendable {
     case active
@@ -21,6 +22,19 @@ enum SessionStatus: String, Codable, Sendable {
         case .completed: "gray"
         case .error: "red"
         case .compacting: "yellow"
+        }
+    }
+
+    /// SwiftUI Color for animation effects
+    var uiColor: Color {
+        switch self {
+        case .active: .cyan
+        case .idle: .green
+        case .thinking: .purple
+        case .waitingPermission, .waitingAnswer, .waitingPlanReview: .orange
+        case .completed: .gray
+        case .error: .red
+        case .compacting: .yellow
         }
     }
 

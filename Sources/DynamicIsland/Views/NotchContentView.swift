@@ -868,7 +868,14 @@ struct NotchContentView: View {
                                     : Color.clear
                             )
                             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                            .animation(reduceMotion ? nil : .easeOut(duration: 1.0), value: item.event.isComplete)
+                            .modifier(ToolCompletionEffect(
+                                isComplete: item.event.isComplete,
+                                reduceMotion: reduceMotion
+                            ))
+                            .modifier(ActivityLogGlowTrail(
+                                isActive: !item.event.isComplete,
+                                reduceMotion: reduceMotion
+                            ))
                         }
                     }
                     .padding(.vertical, 2)

@@ -112,6 +112,12 @@ enum L10n {
             en: "Done")
     }
 
+    static var idle: String {
+        localized("idle",
+            zh: "空闲", ko: "대기", ja: "待機中", fr: "Inactif",
+            en: "Idle")
+    }
+
     static var error: String {
         localized("error",
             zh: "错误", ko: "오류", ja: "エラー", fr: "Erreur",
@@ -329,16 +335,22 @@ enum L10n {
 
     // MARK: - Recap
 
-    static var showRecap: String {
-        localized("showRecap",
-            zh: "展开回顾", ko: "요약 보기", ja: "サマリーを表示", fr: "Afficher le résumé",
-            en: "Show recap")
+    static var recap: String {
+        localized("recap",
+            zh: "回顾", ko: "요약", ja: "サマリー", fr: "Résumé",
+            en: "Recap")
     }
 
-    static var hideRecap: String {
-        localized("hideRecap",
-            zh: "收起回顾", ko: "요약 숨기기", ja: "サマリーを隠す", fr: "Masquer le résumé",
-            en: "Hide recap")
+    static var showMore: String {
+        localized("showMore",
+            zh: "展开更多", ko: "더 보기", ja: "もっと見る", fr: "Voir plus",
+            en: "Show more")
+    }
+
+    static var showLess: String {
+        localized("showLess",
+            zh: "收起", ko: "접기", ja: "閉じる", fr: "Voir moins",
+            en: "Show less")
     }
 
     // MARK: - Subagent

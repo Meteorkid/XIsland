@@ -88,6 +88,8 @@ struct SessionCardView: View {
     @State private var recapExpanded = false
     @State private var childrenExpanded = false
     @State private var showExportSheet = false
+    @State private var previousStatus: SessionStatus?
+    @State private var statusChangeTrigger = 0
     @AppStorage("compactBadgesInExpandedView") private var compactBadges = true
     @AppStorage("displayTimestamp") private var displayTimestamp = true
     @AppStorage("reduceMotion") private var reduceMotion = false
@@ -211,12 +213,32 @@ struct SessionCardView: View {
         .sheet(isPresented: $showExportSheet) {
             ExportView(session: session)
         }
+        .modifier(ActiveSessionGlow(
+            isRunning: session.status == .active || session.status == .thinking,
+            color: session.agentType.color,
+            reduceMotion: reduceMotion
+        ))
+        .modifier(StatusChangeSweep(
+            statusColor: session.status.uiColor,
+            trigger: statusChangeTrigger,
+            reduceMotion: reduceMotion
+        ))
+        .onAppear {
+            previousStatus = session.status
+        }
+        .onChange(of: session.status) { _, newStatus in
+            guard let prev = previousStatus, prev != newStatus else {
+                previousStatus = newStatus
+                return
+            }
+            previousStatus = newStatus
+            statusChangeTrigger += 1
+        }
     }
 
     private var cardHeader: some View {
         HStack(spacing: 8) {
             AgentIcon(agentType: session.agentType, size: 24, status: session.status)
-            StatusDot(status: session.status)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(session.displayTitle)
@@ -365,31 +387,47 @@ struct SessionCardView: View {
 
     private func recapSection(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    recapExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: recapExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.blue.opacity(0.5))
-                    Text(recapExpanded ? L10n.hideRecap : L10n.showRecap)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.blue.opacity(0.5))
-                }
+            // Recap 标题
+            HStack(spacing: 4) {
+                Image(systemName: "text.document")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.cyan.opacity(0.6))
+                Text(L10n.recap)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.cyan.opacity(0.6))
             }
-            .buttonStyle(.plain)
 
-            if recapExpanded {
-                Text(text)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.4))
-                    .lineLimit(5)
-                    .multilineTextAlignment(.leading)
-                    .padding(.top, 2)
+            // 直接显示摘要内容
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.5))
+                .lineLimit(recapExpanded ? nil : 3)
+                .multilineTextAlignment(.leading)
+                .padding(.top, 2)
+
+            // 展开/收起按钮（仅在内容超过3行时显示）
+            if text.components(separatedBy: "\n").count > 3 || text.count > 120 {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        recapExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 2) {
+                        Text(recapExpanded ? L10n.showLess : L10n.showMore)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.cyan.opacity(0.4))
+                        Image(systemName: recapExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(.cyan.opacity(0.4))
+                    }
+                }
+                .buttonStyle(.plain)
             }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(.cyan.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
     private var sourceBadgeText: String {
@@ -454,76 +492,6 @@ struct SessionCardView: View {
         return lower
     }
 
-}
-
-struct StatusDot: View {
-    let status: SessionStatus
-    @AppStorage("reduceMotion") private var reduceMotion = false
-
-    private var color: Color {
-        switch status {
-        case .active, .thinking: .blue
-        case .idle: .green
-        case .waitingPermission, .waitingAnswer, .waitingPlanReview: .orange
-        case .completed: .green
-        case .error: .red
-        case .compacting: .yellow
-        }
-    }
-
-    private var shouldBounce: Bool {
-        switch status {
-        case .active, .thinking, .compacting: true
-        case .waitingPermission, .waitingAnswer, .waitingPlanReview: true
-        default: false
-        }
-    }
-
-    var body: some View {
-        ZStack {
-            if shouldBounce && !reduceMotion {
-                Circle()
-                    .fill(color.opacity(0.25))
-                    .frame(width: 10, height: 10)
-                    .phaseAnimator([false, true]) { content, phase in
-                        content.scaleEffect(phase ? 1.8 : 1.0)
-                              .opacity(phase ? 0.0 : 0.5)
-                    } animation: { _ in .easeOut(duration: 1.2) }
-            }
-
-            Circle()
-                .fill(color)
-                .frame(width: 6, height: 6)
-                .shadow(color: color.opacity(0.6), radius: 3)
-                .modifier(BounceModifier(shouldBounce: shouldBounce && !reduceMotion, isWaiting: isWaiting))
-        }
-        .frame(width: 10, height: 10)
-    }
-
-    private var isWaiting: Bool {
-        status == .waitingPermission || status == .waitingAnswer || status == .waitingPlanReview
-    }
-}
-
-private struct BounceModifier: ViewModifier {
-    let shouldBounce: Bool
-    let isWaiting: Bool
-
-    func body(content: Content) -> some View {
-        if isWaiting {
-            content.phaseAnimator([false, true]) { view, phase in
-                view.offset(y: phase ? -3 : 1)
-            } animation: { phase in
-                phase ? .easeOut(duration: 0.3) : .easeIn(duration: 0.3).delay(0.15)
-            }
-        } else if shouldBounce {
-            content.phaseAnimator([false, true]) { view, phase in
-                view.scaleEffect(phase ? 1.2 : 0.85)
-            } animation: { _ in .easeInOut(duration: 0.8) }
-        } else {
-            content
-        }
-    }
 }
 
 struct TagBadge: View {

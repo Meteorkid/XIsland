@@ -53,11 +53,19 @@ struct CollapsedPillView: View {
         HStack(spacing: 0) {
             Spacer(minLength: 0)
             if visible.isEmpty {
-                idleContent
+                idleContent.transition(.opacity)
             } else {
-                HStack(spacing: 8) {
-                    ForEach(visible) { session in
+                let maxIcons = 5
+                let shown = Array(visible.prefix(maxIcons))
+                let overflow = visible.count - maxIcons
+                HStack(spacing: 6) {
+                    ForEach(shown) { session in
                         AgentIcon(agentType: session.agentType, size: 22, status: session.status)
+                    }
+                    if overflow > 0 {
+                        Text("+\(overflow)")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.5))
                     }
                 }
             }
