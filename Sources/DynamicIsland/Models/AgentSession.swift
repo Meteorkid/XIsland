@@ -25,6 +25,21 @@ enum SessionStatus: String, Codable, Sendable {
         }
     }
 
+    /// 排序优先级：数值越小越靠前
+    var statusPriority: Int {
+        switch self {
+        case .error:             return 0  // 出错需要关注
+        case .waitingPermission: return 1  // 等待用户授权
+        case .waitingAnswer:     return 2  // 等待用户回答
+        case .waitingPlanReview: return 3  // 等待计划审核
+        case .active:            return 4  // 正在运行
+        case .thinking:          return 5  // 思考中
+        case .compacting:        return 6  // 压缩中
+        case .idle:              return 7  // 空闲
+        case .completed:         return 8  // 已完成
+        }
+    }
+
     /// SwiftUI Color for animation effects
     var uiColor: Color {
         switch self {

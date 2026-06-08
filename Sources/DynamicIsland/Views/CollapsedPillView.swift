@@ -86,63 +86,96 @@ struct CollapsedPillView: View {
         .padding(.horizontal, 14)
     }
 
-    private var needsAttention: Bool {
-        visible.contains { $0.status == .waitingPermission || $0.status == .waitingAnswer || $0.status == .waitingPlanReview }
+    private func sessionNeedsAttention(_ session: AgentSession) -> Bool {
+        session.status == .waitingPermission || session.status == .waitingAnswer || session.status == .waitingPlanReview
     }
 
     @ViewBuilder
     private var obscuredLeadingIcon: some View {
-        if let session = manager.latestMessagedVisibleSession {
-            ZStack(alignment: .topTrailing) {
-                AgentIcon(agentType: session.agentType, size: 20, status: session.status)
-                if needsAttention {
-                    Circle()
-                        .fill(Color.orange)
-                        .frame(width: 6, height: 6)
-                        .offset(x: 4, y: -2)
-                }
-            }
-            .accessibilityLabel("Session that last received a message")
+        let sessions = visible
+        if sessions.isEmpty {
+            appIconFallback
+        } else if sessions.count == 1 || reduceMotion {
+            sessionIcon(for: sessions[0])
         } else {
-            ZStack(alignment: .topTrailing) {
-                Group {
-                    if let img = NSImage(named: NSImage.applicationIconName) {
-                        Image(nsImage: img)
-                            .resizable()
-                            .interpolation(.high)
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 20, height: 20)
-                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-                    } else {
-                        Image(systemName: "sparkles.rectangle.stack.fill")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.green.opacity(0.85))
-                            .frame(width: 20, height: 20)
-                    }
-                }
-                if needsAttention {
-                    Circle()
-                        .fill(Color.orange)
-                        .frame(width: 6, height: 6)
-                        .offset(x: 2, y: -1)
-                }
-            }
-            .accessibilityLabel("X Island")
+            RotatingSessionIcon(sessions: sessions)
         }
     }
 
+    private func sessionIcon(for session: AgentSession) -> some View {
+        ZStack(alignment: .topTrailing) {
+            AgentIcon(agentType: session.agentType, size: 20, status: session.status)
+            if sessionNeedsAttention(session) {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                    .offset(x: 4, y: -2)
+            }
+        }
+        .accessibilityLabel("Session: \(session.displayTitle)")
+    }
+
+    private var appIconFallback: some View {
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if let img = NSImage(named: NSImage.applicationIconName) {
+                    Image(nsImage: img)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 20, height: 20)
+                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                } else {
+                    Image(systemName: "sparkles.rectangle.stack.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.green.opacity(0.85))
+                        .frame(width: 20, height: 20)
+                }
+            }
+            if visible.contains(where: sessionNeedsAttention) {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                    .offset(x: 2, y: -1)
+            }
+        }
+        .accessibilityLabel("X Island")
+    }
+
+    @AppStorage("reduceMotion") private var reduceMotion = false
+
+    @ViewBuilder
     private var activeCountLabel: some View {
-        let n = manager.activeSessions.count
-        return HStack(spacing: 3) {
-            Text("\(n)")
+        let activeCount = manager.activeSessions.count
+        let totalCount = manager.sessions.count
+        if reduceMotion {
+            countPair(count: activeCount, label: L10n.active,
+                      accessibility: "\(activeCount) active agents")
+        } else {
+            TimelineView(.periodic(from: .now, by: 3.0)) { timeline in
+                let tick = Int(timeline.date.timeIntervalSince1970)
+                let showTotal = tick % 2 == 1
+                let displayCount = showTotal ? totalCount : activeCount
+                let displayLabel = showTotal ? L10n.total : L10n.active
+                let a11y = showTotal
+                    ? "\(totalCount) total agents"
+                    : "\(activeCount) active agents"
+                countPair(count: displayCount, label: displayLabel, accessibility: a11y)
+            }
+        }
+    }
+
+    private func countPair(count: Int, label: String, accessibility: String) -> some View {
+        HStack(spacing: 3) {
+            Text("\(count)")
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.92))
                 .monospacedDigit()
-            Text(L10n.active)
+            Text(label)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.white.opacity(0.38))
         }
-        .accessibilityLabel("\(n) active agents")
+        .accessibilityLabel(accessibility)
     }
 
     private var idleContent: some View {
@@ -154,5 +187,61 @@ struct CollapsedPillView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.white.opacity(0.6))
         }
+    }
+}
+
+/// 轮换显示多个会话的吉祥物图标，带淡入淡出效果
+private struct RotatingSessionIcon: View {
+    let sessions: [AgentSession]
+    @State private var currentIndex = 0
+    @State private var outgoingOpacity: Double = 1  // 正在淡出的 icon
+    @State private var incomingOpacity: Double = 0  // 正在淡入的 icon
+    @State private var timer: Timer?
+
+    var body: some View {
+        let count = sessions.count
+        ZStack {
+            // Slot 0: 当前 icon — crossfade 时从 1→0 淡出
+            sessionIcon(for: sessions[currentIndex])
+                .opacity(outgoingOpacity)
+            // Slot 1: 下一个 icon — crossfade 时从 0→1 淡入
+            let nextIndex = (currentIndex + 1) % count
+            sessionIcon(for: sessions[nextIndex])
+                .opacity(incomingOpacity)
+        }
+        .onAppear { startTimer(count: count) }
+        .onDisappear { timer?.invalidate(); timer = nil }
+    }
+
+    private func startTimer(count: Int) {
+        guard count > 1 else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            // Phase 1: 交叉淡入淡出（currentIndex 不变，只变 opacity）
+            withAnimation(.easeInOut(duration: 0.35)) {
+                outgoingOpacity = 0
+                incomingOpacity = 1
+            }
+            // Phase 2: 动画结束后无动画重置（currentIndex 前进，opacity 复位）
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                currentIndex = (currentIndex + 1) % count
+                outgoingOpacity = 1
+                incomingOpacity = 0
+            }
+        }
+    }
+
+    private func sessionIcon(for session: AgentSession) -> some View {
+        ZStack(alignment: .topTrailing) {
+            AgentIcon(agentType: session.agentType, size: 20, status: session.status)
+            if session.status == .waitingPermission
+                || session.status == .waitingAnswer
+                || session.status == .waitingPlanReview {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                    .offset(x: 4, y: -2)
+            }
+        }
+        .accessibilityLabel("Session: \(session.displayTitle)")
     }
 }

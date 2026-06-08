@@ -196,6 +196,12 @@ enum L10n {
             en: "active")
     }
 
+    static var total: String {
+        localized("total",
+            zh: "总计", ko: "총", ja: "合計", fr: "total",
+            en: "total")
+    }
+
     // MARK: - Preferences
 
     static var language: String {

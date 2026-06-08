@@ -158,6 +158,14 @@ final class SessionManager {
             }
         }
 
+        // 按状态优先级排序，同优先级按最近活动时间降序
+        result.sort { a, b in
+            if a.status.statusPriority != b.status.statusPriority {
+                return a.status.statusPriority < b.status.statusPriority
+            }
+            return a.lastActivityTime > b.lastActivityTime
+        }
+
         return result
     }
 
