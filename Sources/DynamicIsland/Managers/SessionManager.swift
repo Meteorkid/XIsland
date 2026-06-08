@@ -292,11 +292,17 @@ final class SessionManager {
     @MainActor
     func checkProcessesAlive(processStatus: @escaping @Sendable ([String]) -> Bool) {
         let checks = cliProcessChecks()
-        let deadAgents = checks.compactMap { check -> AgentType? in
-            let (agentType, names) = check
-            return processStatus(names) ? nil : agentType
+        // 在后台执行进程检测，避免主线程同步阻塞
+        Task.detached(priority: .utility) {
+            let deadAgents = checks.compactMap { check -> AgentType? in
+                let (agentType, names) = check
+                return processStatus(names) ? nil : agentType
+            }
+            guard !deadAgents.isEmpty else { return }
+            await MainActor.run {
+                self.handleDeadAgents(deadAgents)
+            }
         }
-        handleDeadAgents(deadAgents)
     }
 
     private func cliProcessChecks() -> [(AgentType, [String])] {

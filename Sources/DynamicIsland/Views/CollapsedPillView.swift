@@ -193,7 +193,6 @@ struct CollapsedPillView: View {
 /// 轮换显示多个会话的吉祥物图标，带淡入淡出效果
 private struct RotatingSessionIcon: View {
     let sessions: [AgentSession]
-    @State private var currentIndex = 0
 
     var body: some View {
         let count = sessions.count
@@ -203,12 +202,11 @@ private struct RotatingSessionIcon: View {
                 sessionIcon(for: sessions[0])
             } else {
                 // 纯 TimelineView 时间戳驱动，无 Task 竞态
-                TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
+                TimelineView(.periodic(from: .now, by: 0.15)) { timeline in
                     let elapsed = timeline.date.timeIntervalSince1970
                     let cyclePosition = elapsed.truncatingRemainder(dividingBy: 3.0)
                     // 0~0.35s: 淡入下一个, 0.35~0.4s: 重置, 0.4~3.0s: 显示当前
                     let isCrossfading = cyclePosition < 0.35
-                    let isResetting = cyclePosition >= 0.35 && cyclePosition < 0.4
 
                     let outgoingIndex = Int(elapsed / 3.0) % count
                     let incomingIndex = (outgoingIndex + 1) % count
@@ -218,11 +216,6 @@ private struct RotatingSessionIcon: View {
                             .opacity(isCrossfading ? 1 - (cyclePosition / 0.35) : 1)
                         sessionIcon(for: sessions[incomingIndex])
                             .opacity(isCrossfading ? cyclePosition / 0.35 : 0)
-                    }
-                    .onChange(of: isResetting) { _, resetting in
-                        if resetting {
-                            currentIndex = (currentIndex + 1) % count
-                        }
                     }
                 }
             }

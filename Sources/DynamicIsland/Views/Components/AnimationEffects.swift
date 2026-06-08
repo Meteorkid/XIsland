@@ -71,7 +71,7 @@ struct ActivityLogGlowTrail: ViewModifier {
                 }
             )
             .scaleEffect(entryScale)
-            .onAppear {
+            .task {
                 guard !reduceMotion else {
                     entryScale = 1.0
                     return
@@ -83,9 +83,8 @@ struct ActivityLogGlowTrail: ViewModifier {
                 withAnimation(.easeInOut(duration: 0.7)) {
                     sweepProgress = 1.0
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                    sweepProgress = 0
-                }
+                try? await Task.sleep(for: .milliseconds(700))
+                sweepProgress = 0
             }
     }
 }

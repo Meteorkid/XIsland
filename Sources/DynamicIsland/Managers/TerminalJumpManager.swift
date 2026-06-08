@@ -320,12 +320,15 @@ enum TerminalJumpManager {
             matchValue = termSessionId
         }
 
+        // 转义 AppleScript 字符串中的双引号和反斜杠
+        let escapedValue = matchValue.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
         let script = """
         tell application "iTerm2"
             repeat with aWindow in windows
                 repeat with aTab in tabs of aWindow
                     repeat with aSession in sessions of aTab
-                        if \(matchProp) of aSession is "\(matchValue)" then
+                        if \(matchProp) of aSession is "\(escapedValue)" then
                             select aTab
                             set index of aWindow to 1
                             activate
