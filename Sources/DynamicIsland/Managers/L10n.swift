@@ -725,6 +725,12 @@ enum L10n {
             en: "Hover to expand panel")
     }
 
+    static var permanent: String {
+        localized("permanent",
+            zh: "永久", ko: "영구", ja: "永続", fr: "Permanent",
+            en: "Permanent")
+    }
+
     static var noRemoteServers: String {
         localized("noRemoteServers",
             zh: "未配置远程服务器", ko: "원격 서버 구성 안 됨", ja: "リモートサーバー未設定",

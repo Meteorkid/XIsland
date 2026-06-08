@@ -214,7 +214,7 @@ struct SessionCardView: View {
             ExportView(session: session)
         }
         .modifier(ActiveSessionGlow(
-            isRunning: session.status == .active || session.status == .thinking,
+            isRunning: session.status == .active || session.status == .thinking || session.status == .compacting,
             color: session.agentType.color,
             reduceMotion: reduceMotion
         ))

@@ -208,7 +208,7 @@ struct NotchContentView: View {
                 .allowsHitTesting(showContent)
                 .zIndex(1)
 
-            CollapsedPillView(obscuredByNotch: islandObscuredByNotch) {
+            CollapsedPillView(obscuredByNotch: islandObscuredByNotch, isExpanded: isExpanded) {
                 expand(to: .expanded)
             }
             .frame(width: shapeWidth, height: collapsedShapeHeight)
@@ -749,11 +749,26 @@ struct NotchContentView: View {
 
         let mouse = NSEvent.mouseLocation
         var hitFrame = window.frame
-        hitFrame.size.height += 2
+        // 展开时用更大的命中区域覆盖整个面板，防止鼠标移到面板内容时误触发收起
+        if isExpanded {
+            hitFrame.size.width = expandedWidth + 40
+            hitFrame.size.height = expandedHeight + 40
+            hitFrame.origin.x -= 20
+            hitFrame.origin.y -= 20
+            // 限制命中区域不超过屏幕可见范围，避免覆盖菜单栏
+            if let screen = window.screen?.visibleFrame {
+                hitFrame.origin.x = max(hitFrame.origin.x, screen.minX)
+                hitFrame.origin.y = max(hitFrame.origin.y, screen.minY)
+                hitFrame.size.width = min(hitFrame.maxX, screen.maxX) - hitFrame.origin.x
+                hitFrame.size.height = min(hitFrame.maxY, screen.maxY) - hitFrame.origin.y
+            }
+        } else {
+            hitFrame.size.height += 20
+        }
         let inside = hitFrame.contains(mouse)
 
         if inside && !isExpanded {
-            guard Date().timeIntervalSince(lastCollapseAt) > 1.2 else { return }
+            guard Date().timeIntervalSince(lastCollapseAt) > 0.5 else { return }
             if let savedPos = jumpMouseLocation {
                 let dx = mouse.x - savedPos.x
                 let dy = mouse.y - savedPos.y

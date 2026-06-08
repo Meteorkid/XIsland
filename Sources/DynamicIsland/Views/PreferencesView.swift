@@ -306,7 +306,7 @@ struct PreferencesView: View {
                             Text("1min").tag(60.0)
                             Text("2min").tag(120.0)
                             Text("5min").tag(300.0)
-                            Text("Never").tag(-1.0)
+                            Text(L10n.permanent).tag(0.0)
                         }
                         .pickerStyle(.menu)
                         .frame(width: 100)

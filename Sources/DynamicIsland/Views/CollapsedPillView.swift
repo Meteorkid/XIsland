@@ -7,6 +7,7 @@ struct CollapsedPillView: View {
     /// Obscured: left = expanded-list session that last received a message; right = active count.
     /// Unobscured: same session count/order as the expanded list (`visibleSessions`).
     let obscuredByNotch: Bool
+    let isExpanded: Bool
     let onTap: () -> Void
 
     private var visible: [AgentSession] { manager.visibleSessions }
@@ -148,10 +149,15 @@ struct CollapsedPillView: View {
     private var activeCountLabel: some View {
         let trulyActiveCount = manager.trulyActiveSessions.count
         let totalCount = manager.sessions.count
-        if reduceMotion {
+        if isExpanded {
+            // 展开面板时显示总会话数
+            countPair(count: totalCount, label: L10n.total,
+                      accessibility: "\(totalCount) total agents")
+        } else if reduceMotion {
             countPair(count: trulyActiveCount, label: L10n.active,
                       accessibility: "\(trulyActiveCount) active agents")
         } else {
+            // 折叠时交替显示活跃/总计
             TimelineView(.periodic(from: .now, by: 5.0)) { timeline in
                 let tick = Int(timeline.date.timeIntervalSince1970)
                 let showTotal = tick % 2 == 1
@@ -191,31 +197,78 @@ struct CollapsedPillView: View {
 }
 
 /// 轮换显示多个会话的吉祥物图标，带淡入淡出效果
+/// 等待处理的会话（error/waiting*）轮换慢，运行中的会话轮换快
 private struct RotatingSessionIcon: View {
     let sessions: [AgentSession]
 
+    /// 按状态优先级排序的会话列表（数值越小越优先）
+    private var sortedSessions: [AgentSession] {
+        sessions.sorted { a, b in
+            if a.status.statusPriority != b.status.statusPriority {
+                return a.status.statusPriority < b.status.statusPriority
+            }
+            return a.lastActivityTime > b.lastActivityTime
+        }
+    }
+
+    /// 根据会话状态决定轮换周期（秒）
+    /// 等待处理：5s（让用户有时间看到），运行中：0.8s（快速轮换突出等待）
+    private func cycleDuration(for status: SessionStatus) -> Double {
+        switch status {
+        case .error, .waitingPermission, .waitingAnswer, .waitingPlanReview:
+            return 5.0
+        case .active, .thinking, .compacting:
+            return 0.8
+        case .idle, .completed:
+            return 0.6
+        }
+    }
+
+    /// 根据 elapsed 时间计算当前应显示的会话索引和淡入淡出进度
+    private func rotationState(elapsed: Double, count: Int, sorted: [AgentSession]) -> (outIdx: Int, inIdx: Int, progress: Double) {
+        let totalCycle = sorted.reduce(0) { $0 + cycleDuration(for: $1.status) }
+        let posInCycle = elapsed.truncatingRemainder(dividingBy: totalCycle)
+
+        var cumTime: Double = 0
+        var outIdx = 0
+        var outDur: Double = 1.5
+        for (i, session) in sorted.enumerated() {
+            let dur = cycleDuration(for: session.status)
+            if posInCycle >= cumTime && posInCycle < cumTime + dur {
+                outIdx = i
+                outDur = dur
+                break
+            }
+            cumTime += dur
+        }
+        let inIdx = (outIdx + 1) % count
+        let cyclePos = posInCycle - cumTime
+        let crossfadeZone = min(0.35, outDur * 0.1)
+        let progress: Double
+        if cyclePos >= (outDur - crossfadeZone) {
+            progress = (cyclePos - (outDur - crossfadeZone)) / crossfadeZone
+        } else {
+            progress = 0
+        }
+        return (outIdx, inIdx, progress)
+    }
+
     var body: some View {
-        let count = sessions.count
+        let sorted = sortedSessions
+        let count = sorted.count
         ZStack {
             if count <= 1 {
-                // 单个会话，无需轮换
-                sessionIcon(for: sessions[0])
+                sessionIcon(for: sorted[0])
             } else {
-                // 纯 TimelineView 时间戳驱动，无 Task 竞态
                 TimelineView(.periodic(from: .now, by: 0.15)) { timeline in
                     let elapsed = timeline.date.timeIntervalSince1970
-                    let cyclePosition = elapsed.truncatingRemainder(dividingBy: 3.0)
-                    // 0~0.35s: 淡入下一个, 0.35~0.4s: 重置, 0.4~3.0s: 显示当前
-                    let isCrossfading = cyclePosition < 0.35
-
-                    let outgoingIndex = Int(elapsed / 3.0) % count
-                    let incomingIndex = (outgoingIndex + 1) % count
+                    let state = rotationState(elapsed: elapsed, count: count, sorted: sorted)
 
                     ZStack {
-                        sessionIcon(for: sessions[outgoingIndex])
-                            .opacity(isCrossfading ? 1 - (cyclePosition / 0.35) : 1)
-                        sessionIcon(for: sessions[incomingIndex])
-                            .opacity(isCrossfading ? cyclePosition / 0.35 : 0)
+                        sessionIcon(for: sorted[state.outIdx])
+                            .opacity(1 - state.progress)
+                        sessionIcon(for: sorted[state.inIdx])
+                            .opacity(state.progress)
                     }
                 }
             }

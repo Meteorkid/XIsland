@@ -105,8 +105,8 @@ final class SessionManager {
 
     var completedLingerDuration: TimeInterval {
         let val = UserDefaults.standard.double(forKey: "completedLingerDuration")
-        if val < 0 { return .infinity }
-        return val > 0 ? val : 120
+        if val == 0 || val < 0 { return .infinity }  // 「永久」选项（兼容旧版 -1.0）
+        return val
     }
 
     var activeSessions: [AgentSession] {
@@ -764,6 +764,11 @@ final class SessionManager {
     }
 
     func cleanupLingeredSessions() {
+        // 永久模式（.infinity）不清理任何已完成会话
+        guard completedLingerDuration != .infinity else {
+            rebuildSessionIndex()
+            return
+        }
         // 保留最近的已完成会话，超出上限的按时间淘汰
         let completedSessions = sessions
             .filter { $0.status == .completed }
