@@ -145,111 +145,135 @@ enum TerminalApp: String, CaseIterable {
 }
 
 enum TerminalJumpManager {
-    static func jump(to session: AgentSession) async {
-        await Task.detached(priority: .utility) {
-            let targetApp = resolveTargetApp(for: session)
-            log("click session=\(session.id) agent=\(session.agentType.rawValue) terminal=\(session.terminal) cwd=\(session.workingDirectory) target=\(targetApp?.rawValue ?? "nil")")
-
-            if session.agentType == .cursor {
-                let preferredApp = (targetApp == .windsurf) ? TerminalApp.windsurf : TerminalApp.cursor
-                if raiseMatchingWindow(session: session, app: preferredApp, allowFallbackActivate: false) {
-                    log("cursor matched existing window app=\(preferredApp.rawValue)")
-                    return
-                }
-                if raiseAllCursorWindows(preferredBundleId: preferredApp.bundleId) {
-                    log("cursor raised all cursor-family windows")
-                    return
-                }
-                if !session.workingDirectory.isEmpty,
-                   openWorkspaceWindow(app: preferredApp, workingDirectory: session.workingDirectory) {
-                    log("cursor opened workspace app=\(preferredApp.rawValue)")
-                    return
-                }
-                log("cursor fallback activate app=\(preferredApp.rawValue)")
-                activateApp(preferredApp)
-                return
-            }
-
-            if let app = targetApp {
-                if let tsid = session.termSessionId, !tsid.isEmpty, app == .iterm2 {
-                    log("jumping to iTerm session id=\(tsid)")
-                    jumpToITermSession(termSessionId: tsid)
-                    return
-                }
-
-                if app == .terminal, jumpToTerminalWindow(session: session) {
-                    log("matched Terminal window")
-                    return
-                }
-
-                if let tsid = session.termSessionId, !tsid.isEmpty,
-                   (tsid.lowercased().contains("tmux") || session.terminal.lowercased().contains("tmux")) {
-                    log("jumping to tmux session app=\(app.rawValue) tsid=\(tsid)")
-                    jumpToTmuxSession(session: session, app: app)
-                    return
-                }
-
-                if app == .wezTerm, jumpToWezTerm(session: session) {
-                    log("matched WezTerm session")
-                    return
-                }
-
-                if app == .kitty, jumpToKittyWindow(session: session) {
-                    log("matched Kitty window via remote control")
-                    return
-                }
-
-                if app.isVSCodeFamily && !session.workingDirectory.isEmpty {
-                    if raiseMatchingWindow(session: session, app: app, allowFallbackActivate: false) {
-                        log("matched VSCode-family window app=\(app.rawValue)")
-                        return
-                    }
-                    if app == .cursor, raiseAllWindows(bundleId: app.bundleId) {
-                        log("raised all windows for app=\(app.rawValue)")
-                        return
-                    }
-                    if openWorkspaceWindow(app: app, workingDirectory: session.workingDirectory) {
-                        log("opened workspace window app=\(app.rawValue)")
-                        return
-                    }
-                    log("activating app fallback app=\(app.rawValue)")
-                    activateApp(app)
-                    return
-                } else {
-                    if raiseMatchingWindow(session: session, app: app) {
-                        log("matched window app=\(app.rawValue)")
-                        return
-                    }
-                    log("activating app fallback app=\(app.rawValue)")
-                    activateApp(app)
-                    return
-                }
-            }
-
-            if session.agentType == .openCode {
-                log("openCode has no resolvable target app; skip jump")
-                return
-            }
-
-            log("fallback activate by agent name agent=\(session.agentType.rawValue)")
-            activateByAgentName(session.agentType)
-        }.value
+    /// 主线程快照，避免后台线程读取 @Observable 对象产生数据竞争
+    private struct SessionSnapshot {
+        let id: String
+        let agentType: AgentType
+        let terminal: String
+        let workingDirectory: String
+        let termSessionId: String?
+        let windowNumber: Int?
     }
 
-    static func resolveTargetApp(for session: AgentSession) -> TerminalApp? {
-        let appFromTerminal: TerminalApp? = session.terminal.isEmpty ? nil : TerminalApp.detect(from: session.terminal)
-        let appFromAgent = TerminalApp.forAgent(session.agentType)
+    /// 点击跳转：主线程快照数据，阻塞操作放到 userInitiated 后台线程
+    static func jump(to session: AgentSession) {
+        // 在主线程快照所有需要的属性
+        let snap = SessionSnapshot(
+            id: session.id,
+            agentType: session.agentType,
+            terminal: session.terminal,
+            workingDirectory: session.workingDirectory,
+            termSessionId: session.termSessionId,
+            windowNumber: session.windowNumber
+        )
+        DispatchQueue.global(qos: .userInitiated).async {
+            performJump(snap: snap)
+        }
+    }
 
-        if session.agentType == .cursor {
+    private static func performJump(snap: SessionSnapshot) {
+        let targetApp = resolveTargetApp(snap: snap)
+        log("click session=\(snap.id) agent=\(snap.agentType.rawValue) terminal=\(snap.terminal) cwd=\(snap.workingDirectory) target=\(targetApp?.rawValue ?? "nil")")
+
+        if snap.agentType == .cursor {
+            let preferredApp = (targetApp == .windsurf) ? TerminalApp.windsurf : TerminalApp.cursor
+            if raiseMatchingWindow(snap: snap, app: preferredApp, allowFallbackActivate: false) {
+                log("cursor matched existing window app=\(preferredApp.rawValue)")
+                return
+            }
+            if raiseAllCursorWindows(preferredBundleId: preferredApp.bundleId) {
+                log("cursor raised all cursor-family windows")
+                return
+            }
+            if !snap.workingDirectory.isEmpty,
+               openWorkspaceWindow(app: preferredApp, workingDirectory: snap.workingDirectory) {
+                log("cursor opened workspace app=\(preferredApp.rawValue)")
+                return
+            }
+            log("cursor fallback activate app=\(preferredApp.rawValue)")
+            activateApp(preferredApp)
+            return
+        }
+
+        if let app = targetApp {
+            if let tsid = snap.termSessionId, !tsid.isEmpty, app == .iterm2 {
+                log("jumping to iTerm session id=\(tsid)")
+                jumpToITermSession(termSessionId: tsid)
+                return
+            }
+
+            if app == .terminal, jumpToTerminalWindow(snap: snap) {
+                log("matched Terminal window")
+                return
+            }
+
+            if let tsid = snap.termSessionId, !tsid.isEmpty,
+               (tsid.lowercased().contains("tmux") || snap.terminal.lowercased().contains("tmux")) {
+                log("jumping to tmux session app=\(app.rawValue) tsid=\(tsid)")
+                jumpToTmuxSession(snap: snap, app: app)
+                return
+            }
+
+            if app == .wezTerm, jumpToWezTerm(snap: snap) {
+                log("matched WezTerm session")
+                return
+            }
+
+            if app == .kitty, jumpToKittyWindow(snap: snap) {
+                log("matched Kitty window via remote control")
+                return
+            }
+
+            if app.isVSCodeFamily && !snap.workingDirectory.isEmpty {
+                if raiseMatchingWindow(snap: snap, app: app, allowFallbackActivate: false) {
+                    log("matched VSCode-family window app=\(app.rawValue)")
+                    return
+                }
+                if app == .cursor, raiseAllWindows(bundleId: app.bundleId) {
+                    log("raised all windows for app=\(app.rawValue)")
+                    return
+                }
+                if openWorkspaceWindow(app: app, workingDirectory: snap.workingDirectory) {
+                    log("opened workspace window app=\(app.rawValue)")
+                    return
+                }
+                log("activating app fallback app=\(app.rawValue)")
+                activateApp(app)
+                return
+            } else {
+                if raiseMatchingWindow(snap: snap, app: app) {
+                    log("matched window app=\(app.rawValue)")
+                    return
+                }
+                log("activating app fallback app=\(app.rawValue)")
+                activateApp(app)
+                return
+            }
+        }
+
+        if snap.agentType == .openCode {
+            log("openCode has no resolvable target app; skip jump")
+            return
+        }
+
+        log("fallback activate by agent name agent=\(snap.agentType.rawValue)")
+        activateByAgentName(snap.agentType)
+    }
+
+    private static func resolveTargetApp(snap: SessionSnapshot) -> TerminalApp? {
+        let appFromTerminal: TerminalApp? = snap.terminal.isEmpty ? nil : TerminalApp.detect(from: snap.terminal)
+        let appFromAgent = TerminalApp.forAgent(snap.agentType)
+
+        if snap.agentType == .cursor {
             if let appFromTerminal {
                 if appFromTerminal == .cursor || appFromTerminal == .windsurf {
                     return appFromTerminal
                 }
                 if appFromTerminal == .terminal {
-                    if let termSessionId = session.termSessionId, !termSessionId.isEmpty {
+                    if let termSessionId = snap.termSessionId, !termSessionId.isEmpty {
                         return .terminal
                     }
-                    if session.windowNumber != nil {
+                    if snap.windowNumber != nil {
                         return .terminal
                     }
                     return .cursor
@@ -262,7 +286,7 @@ enum TerminalJumpManager {
             return .cursor
         }
 
-        if session.agentType == .trae {
+        if snap.agentType == .trae {
             if let appFromTerminal, appFromTerminal == .trae || appFromTerminal == .traeCn {
                 return appFromTerminal
             }
@@ -316,14 +340,14 @@ enum TerminalJumpManager {
         runAppleScript(script)
     }
 
-    private static func jumpToTerminalWindow(session: AgentSession) -> Bool {
-        let folderName = (session.workingDirectory as NSString).lastPathComponent
+    private static func jumpToTerminalWindow(snap: SessionSnapshot) -> Bool {
+        let folderName = (snap.workingDirectory as NSString).lastPathComponent
         let escapedFolder = folderName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        let hasWindowId = session.windowNumber != nil
+        let hasWindowId = snap.windowNumber != nil
         guard hasWindowId || !folderName.isEmpty else { return false }
 
         let commands: [String] = {
-            if let wid = session.windowNumber {
+            if let wid = snap.windowNumber {
                 return [
                     "repeat with w in windows",
                     "if id of w is \(wid) then",
@@ -361,7 +385,7 @@ enum TerminalJumpManager {
         return runAppleScriptBool(script)
     }
 
-    private static func raiseMatchingWindow(session: AgentSession, app: TerminalApp, allowFallbackActivate: Bool = true) -> Bool {
+    private static func raiseMatchingWindow(snap: SessionSnapshot, app: TerminalApp, allowFallbackActivate: Bool = true) -> Bool {
         let runningApps = app.bundleIds
             .flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
         guard let runningApp = runningApps.first else {
@@ -379,7 +403,7 @@ enum TerminalJumpManager {
             return false
         }
 
-        if let targetWid = session.windowNumber {
+        if let targetWid = snap.windowNumber {
             if let matchedWindow = matchAXWindowByWindowNumber(windows: windows, windowNumber: targetWid)
                 ?? matchAXWindowByWindowTitle(windows: windows, title: windowTitle(for: targetWid)) {
                 AXUIElementPerformAction(matchedWindow, "AXRaise" as CFString)
@@ -388,7 +412,7 @@ enum TerminalJumpManager {
             }
         }
 
-        let folderName = (session.workingDirectory as NSString).lastPathComponent
+        let folderName = (snap.workingDirectory as NSString).lastPathComponent
         if !folderName.isEmpty {
             for window in windows {
                 var titleRef: CFTypeRef?
@@ -449,8 +473,8 @@ enum TerminalJumpManager {
 
     // MARK: - tmux
 
-    private static func jumpToTmuxSession(session: AgentSession, app: TerminalApp) {
-        let dir = session.workingDirectory
+    private static func jumpToTmuxSession(snap: SessionSnapshot, app: TerminalApp) {
+        let dir = snap.workingDirectory
         guard !dir.isEmpty else { return }
 
         let script: String
@@ -479,9 +503,9 @@ enum TerminalJumpManager {
         runAppleScript(script)
     }
 
-    private static func jumpToWezTerm(session: AgentSession) -> Bool {
-        guard !session.workingDirectory.isEmpty else { return false }
-        let dir = session.workingDirectory
+    private static func jumpToWezTerm(snap: SessionSnapshot) -> Bool {
+        guard !snap.workingDirectory.isEmpty else { return false }
+        let dir = snap.workingDirectory
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
@@ -516,9 +540,9 @@ enum TerminalJumpManager {
         return false
     }
 
-    private static func jumpToKittyWindow(session: AgentSession) -> Bool {
-        guard !session.workingDirectory.isEmpty else { return false }
-        let dir = session.workingDirectory
+    private static func jumpToKittyWindow(snap: SessionSnapshot) -> Bool {
+        guard !snap.workingDirectory.isEmpty else { return false }
+        let dir = snap.workingDirectory
         let folderName = (dir as NSString).lastPathComponent
 
         let process = Process()

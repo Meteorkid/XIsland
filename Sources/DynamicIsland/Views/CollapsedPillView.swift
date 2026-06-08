@@ -146,20 +146,20 @@ struct CollapsedPillView: View {
 
     @ViewBuilder
     private var activeCountLabel: some View {
-        let activeCount = manager.activeSessions.count
+        let trulyActiveCount = manager.trulyActiveSessions.count
         let totalCount = manager.sessions.count
         if reduceMotion {
-            countPair(count: activeCount, label: L10n.active,
-                      accessibility: "\(activeCount) active agents")
+            countPair(count: trulyActiveCount, label: L10n.active,
+                      accessibility: "\(trulyActiveCount) active agents")
         } else {
-            TimelineView(.periodic(from: .now, by: 3.0)) { timeline in
+            TimelineView(.periodic(from: .now, by: 5.0)) { timeline in
                 let tick = Int(timeline.date.timeIntervalSince1970)
                 let showTotal = tick % 2 == 1
-                let displayCount = showTotal ? totalCount : activeCount
+                let displayCount = showTotal ? totalCount : trulyActiveCount
                 let displayLabel = showTotal ? L10n.total : L10n.active
                 let a11y = showTotal
                     ? "\(totalCount) total agents"
-                    : "\(activeCount) active agents"
+                    : "\(trulyActiveCount) active agents"
                 countPair(count: displayCount, label: displayLabel, accessibility: a11y)
             }
         }
@@ -194,38 +194,40 @@ struct CollapsedPillView: View {
 private struct RotatingSessionIcon: View {
     let sessions: [AgentSession]
     @State private var currentIndex = 0
-    @State private var outgoingOpacity: Double = 1  // 正在淡出的 icon
-    @State private var incomingOpacity: Double = 0  // 正在淡入的 icon
-    @State private var timer: Timer?
+    @State private var showingNext = false  // 控制交叉淡入淡出
 
     var body: some View {
         let count = sessions.count
         ZStack {
-            // Slot 0: 当前 icon — crossfade 时从 1→0 淡出
+            // 当前 icon
             sessionIcon(for: sessions[currentIndex])
-                .opacity(outgoingOpacity)
-            // Slot 1: 下一个 icon — crossfade 时从 0→1 淡入
-            let nextIndex = (currentIndex + 1) % count
-            sessionIcon(for: sessions[nextIndex])
-                .opacity(incomingOpacity)
-        }
-        .onAppear { startTimer(count: count) }
-        .onDisappear { timer?.invalidate(); timer = nil }
-    }
-
-    private func startTimer(count: Int) {
-        guard count > 1 else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
-            // Phase 1: 交叉淡入淡出（currentIndex 不变，只变 opacity）
-            withAnimation(.easeInOut(duration: 0.35)) {
-                outgoingOpacity = 0
-                incomingOpacity = 1
+                .opacity(showingNext ? 0 : 1)
+                .animation(.easeInOut(duration: 0.35), value: showingNext)
+            // 下一个 icon
+            if count > 1 {
+                let nextIndex = (currentIndex + 1) % count
+                sessionIcon(for: sessions[nextIndex])
+                    .opacity(showingNext ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.35), value: showingNext)
             }
-            // Phase 2: 动画结束后无动画重置（currentIndex 前进，opacity 复位）
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                currentIndex = (currentIndex + 1) % count
-                outgoingOpacity = 1
-                incomingOpacity = 0
+        }
+        .onAppear {
+            guard count > 1 else { return }
+            // 用 TimelineView 驱动旋转，避免手动 Timer 生命周期问题
+        }
+        .background {
+            if sessions.count > 1 {
+                TimelineView(.periodic(from: .now, by: 3.0)) { _ in
+                    Color.clear
+                        .task(id: currentIndex) {
+                            // 每 3 秒触发一次旋转
+                            try? await Task.sleep(for: .milliseconds(350))
+                            showingNext = true
+                            try? await Task.sleep(for: .milliseconds(400))
+                            currentIndex = (currentIndex + 1) % sessions.count
+                            showingNext = false
+                        }
+                }
             }
         }
     }

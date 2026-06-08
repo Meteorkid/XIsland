@@ -59,6 +59,8 @@ final class SessionManager {
     private var sessionIndex: [String: Int] = [:]
     /// 缓存 mirrored session 后缀，避免重复字符串解析
     private var suffixCache: [String: String] = [:]
+    /// 预计算 subagent 关系：parentId → [childSession]
+    private var subagentMap: [String: [AgentSession]] = [:]
     var audioEngine: AudioEngine?
     var persistenceManager: SessionPersistenceManager?
     var currentIslandState: IslandState = .collapsed
@@ -109,6 +111,16 @@ final class SessionManager {
 
     var activeSessions: [AgentSession] {
         sessions.filter { $0.status != .completed }
+    }
+
+    /// 真正运行中的会话（active、thinking、compacting）
+    var trulyActiveSessions: [AgentSession] {
+        sessions.filter { $0.status == .active || $0.status == .thinking || $0.status == .compacting }
+    }
+
+    /// 获取指定会话的 subagent 列表（O(1) 查询）
+    func subagents(of session: AgentSession) -> [AgentSession] {
+        subagentMap[session.id] ?? []
     }
 
     /// Among sessions shown in the expanded list (`visibleSessions`), the one that most recently received a message/activity (notch-obscured island leading icon).
@@ -236,10 +248,9 @@ final class SessionManager {
 
     func startCleanupTimer() {
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.cleanupStaleSessions()
-                self?.checkProcessesAlive()
-            }
+            // Timer 已在主线程 RunLoop 创建，回调直接在主线程执行，无需 Task 包装
+            self?.cleanupStaleSessions()
+            self?.checkProcessesAlive()
         }
         observeAppTermination()
     }
@@ -648,10 +659,7 @@ final class SessionManager {
     }
 
     func dismissSession(_ session: AgentSession) {
-        // 如果会话已完成但尚未持久化（非 markCompleted 路径），保存一次
-        if session.status == .completed, session.completedAt != nil {
-            persistenceManager?.save(session: session)
-        }
+        // markCompleted 已负责持久化，这里不再重复 save
         sessions.removeAll { $0.id == session.id }
         rebuildSessionIndex()
         lastAssistantReplySoundAt.removeValue(forKey: session.id)
@@ -740,10 +748,15 @@ final class SessionManager {
         scheduleLingerCleanup()
     }
 
+    private var hasPendingLingerCleanup = false
+
     private func scheduleLingerCleanup() {
+        guard !hasPendingLingerCleanup else { return }
+        hasPendingLingerCleanup = true
         let linger = completedLingerDuration
         DispatchQueue.main.asyncAfter(deadline: .now() + linger + 0.1) { [weak self] in
             guard let self else { return }
+            self.hasPendingLingerCleanup = false
             self.visibleSessionsVersion += 1
             self.cleanupLingeredSessions()
         }
@@ -874,10 +887,12 @@ final class SessionManager {
         session.statusText = message.status ?? "Context compacting..."
         audioEngine?.play(.contextCompacting, session: session)
         updateTokenUsage(session: session, message: message)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            if session.status == .compacting {
-                session.status = .active
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            // 只在仍处于 compacting 且未被其他逻辑标记为 error/completed 时恢复
+            guard session.status == .compacting,
+                  session.status != .error,
+                  session.status != .completed else { return }
+            session.status = .active
         }
     }
 
@@ -951,10 +966,17 @@ final class SessionManager {
     private func rebuildSessionIndex() {
         sessionIndex.removeAll()
         suffixCache.removeAll()
+        subagentMap.removeAll()
         for (i, session) in sessions.enumerated() {
             sessionIndex[session.id] = i
             if let suffix = mirroredSessionSuffix(from: session.id) {
                 suffixCache[session.id] = suffix
+            }
+            // 构建 subagent 关系
+            for childId in session.subagentIds {
+                if let child = sessions.first(where: { $0.id == childId }) {
+                    subagentMap[session.id, default: []].append(child)
+                }
             }
         }
     }

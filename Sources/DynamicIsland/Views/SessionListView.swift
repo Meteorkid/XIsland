@@ -67,7 +67,7 @@ struct SessionListView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 12)
             }
-            .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: manager.visibleSessions.map(\.id))
+            .animation(.easeInOut(duration: 0.2), value: manager.filteredSessions.count)
             .animation(.easeInOut(duration: 0.2), value: manager.grouping)
         }
         .accessibilityIdentifier(TestAccessibility.sessionList)
@@ -96,7 +96,7 @@ struct SessionCardView: View {
 
     var body: some View {
         Button {
-            Task { await TerminalJumpManager.jump(to: session) }
+            TerminalJumpManager.jump(to: session)
             onJump?()
         } label: {
             VStack(alignment: .leading, spacing: 0) {
@@ -158,7 +158,7 @@ struct SessionCardView: View {
                 }
 
                 if !session.subagentIds.isEmpty {
-                    let children = manager.sessions.filter { session.subagentIds.contains($0.id) }
+                    let children = manager.subagents(of: session)
                     if !children.isEmpty {
                         Divider()
                             .background(.white.opacity(0.06))

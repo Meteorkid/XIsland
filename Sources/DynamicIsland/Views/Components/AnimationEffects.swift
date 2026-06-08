@@ -23,10 +23,12 @@ struct ToolCompletionEffect: ViewModifier {
             .onChange(of: isComplete) { _, newValue in
                 guard newValue, !reduceMotion else { return }
                 showFlash = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        showFlash = false
-                    }
+            }
+            .task(id: showFlash) {
+                guard showFlash else { return }
+                try? await Task.sleep(for: .milliseconds(500))
+                withAnimation(.easeOut(duration: 0.3)) {
+                    showFlash = false
                 }
             }
     }
