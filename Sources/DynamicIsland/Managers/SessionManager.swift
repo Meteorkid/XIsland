@@ -128,15 +128,10 @@ final class SessionManager {
         visibleSessions.max(by: { $0.lastActivityTime < $1.lastActivityTime })
     }
 
-    /// Active sessions + recently completed sessions that should still be visible in the pill.
+    /// 展开列表显示所有会话（含已完成），提供全局视角
     var visibleSessions: [AgentSession] {
         _ = visibleSessionsVersion
-        let now = Date()
-        return sessions.filter { session in
-            if session.status != .completed { return true }
-            guard let completedAt = session.completedAt else { return false }
-            return now.timeIntervalSince(completedAt) < completedLingerDuration
-        }
+        return sessions
     }
 
     /// 过滤后的会话列表：基于 activeFilter 和 searchText
@@ -763,10 +758,13 @@ final class SessionManager {
     }
 
     func cleanupLingeredSessions() {
-        let now = Date()
-        sessions.removeAll { session in
-            guard session.status == .completed, let completedAt = session.completedAt else { return false }
-            return now.timeIntervalSince(completedAt) > completedLingerDuration + 5
+        // 保留最近的已完成会话，超出上限的按时间淘汰
+        let completedSessions = sessions
+            .filter { $0.status == .completed }
+            .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+        if completedSessions.count > 20 {
+            let toRemove = Set(completedSessions[20...].map(\.id))
+            sessions.removeAll { toRemove.contains($0.id) }
         }
         rebuildSessionIndex()
         if let selectedSessionId, !sessions.contains(where: { $0.id == selectedSessionId }) {
@@ -887,11 +885,9 @@ final class SessionManager {
         session.statusText = message.status ?? "Context compacting..."
         audioEngine?.play(.contextCompacting, session: session)
         updateTokenUsage(session: session, message: message)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-            // 只在仍处于 compacting 且未被其他逻辑标记为 error/completed 时恢复
-            guard session.status == .compacting,
-                  session.status != .error,
-                  session.status != .completed else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self, weak session] in
+            // 只在 session 仍存在且仍处于 compacting 时恢复
+            guard let session, session.status == .compacting else { return }
             session.status = .active
         }
     }

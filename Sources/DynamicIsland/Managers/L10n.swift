@@ -719,6 +719,12 @@ enum L10n {
             en: "Reduce motion")
     }
 
+    static var hoverToExpandPanel: String {
+        localized("hoverToExpandPanel",
+            zh: "悬停展开面板", ko: "호버 확장 패널", ja: "ホバーでパネルを展開", fr: "Développer le panneau au survol",
+            en: "Hover to expand panel")
+    }
+
     static var noRemoteServers: String {
         localized("noRemoteServers",
             zh: "未配置远程服务器", ko: "원격 서버 구성 안 됨", ja: "リモートサーバー未設定",

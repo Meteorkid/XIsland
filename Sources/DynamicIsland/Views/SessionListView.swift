@@ -148,7 +148,7 @@ struct SessionCardView: View {
                         .padding(.vertical, 8)
                 }
 
-                if session.status == .completed, let recap = session.recapText, !recap.isEmpty {
+                if let recap = session.recapText, !recap.isEmpty {
                     Divider()
                         .background(.white.opacity(0.06))
                         .padding(.horizontal, 12)

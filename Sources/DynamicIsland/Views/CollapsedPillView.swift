@@ -194,39 +194,36 @@ struct CollapsedPillView: View {
 private struct RotatingSessionIcon: View {
     let sessions: [AgentSession]
     @State private var currentIndex = 0
-    @State private var showingNext = false  // 控制交叉淡入淡出
 
     var body: some View {
         let count = sessions.count
         ZStack {
-            // 当前 icon
-            sessionIcon(for: sessions[currentIndex])
-                .opacity(showingNext ? 0 : 1)
-                .animation(.easeInOut(duration: 0.35), value: showingNext)
-            // 下一个 icon
-            if count > 1 {
-                let nextIndex = (currentIndex + 1) % count
-                sessionIcon(for: sessions[nextIndex])
-                    .opacity(showingNext ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.35), value: showingNext)
-            }
-        }
-        .onAppear {
-            guard count > 1 else { return }
-            // 用 TimelineView 驱动旋转，避免手动 Timer 生命周期问题
-        }
-        .background {
-            if sessions.count > 1 {
-                TimelineView(.periodic(from: .now, by: 3.0)) { _ in
-                    Color.clear
-                        .task(id: currentIndex) {
-                            // 每 3 秒触发一次旋转
-                            try? await Task.sleep(for: .milliseconds(350))
-                            showingNext = true
-                            try? await Task.sleep(for: .milliseconds(400))
-                            currentIndex = (currentIndex + 1) % sessions.count
-                            showingNext = false
+            if count <= 1 {
+                // 单个会话，无需轮换
+                sessionIcon(for: sessions[0])
+            } else {
+                // 纯 TimelineView 时间戳驱动，无 Task 竞态
+                TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
+                    let elapsed = timeline.date.timeIntervalSince1970
+                    let cyclePosition = elapsed.truncatingRemainder(dividingBy: 3.0)
+                    // 0~0.35s: 淡入下一个, 0.35~0.4s: 重置, 0.4~3.0s: 显示当前
+                    let isCrossfading = cyclePosition < 0.35
+                    let isResetting = cyclePosition >= 0.35 && cyclePosition < 0.4
+
+                    let outgoingIndex = Int(elapsed / 3.0) % count
+                    let incomingIndex = (outgoingIndex + 1) % count
+
+                    ZStack {
+                        sessionIcon(for: sessions[outgoingIndex])
+                            .opacity(isCrossfading ? 1 - (cyclePosition / 0.35) : 1)
+                        sessionIcon(for: sessions[incomingIndex])
+                            .opacity(isCrossfading ? cyclePosition / 0.35 : 0)
+                    }
+                    .onChange(of: isResetting) { _, resetting in
+                        if resetting {
+                            currentIndex = (currentIndex + 1) % count
                         }
+                    }
                 }
             }
         }

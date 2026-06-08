@@ -16,8 +16,8 @@ struct MascotView: View {
             if reduceMotion {
                 staticFace
             } else {
-                TimelineView(.periodic(from: .now, by: 0.033)) { timeline in
-                    let tick = Int(timeline.date.timeIntervalSince1970 * 4.17)
+                TimelineView(.periodic(from: .now, by: 0.08)) { timeline in
+                    let tick = Int(timeline.date.timeIntervalSince1970 * 1.67)
                     ZStack {
                         eyesView(tick: tick)
                             .offset(y: -size * 0.07)

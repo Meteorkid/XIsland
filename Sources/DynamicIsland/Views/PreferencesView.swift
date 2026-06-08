@@ -65,6 +65,7 @@ struct PreferencesView: View {
     @AppStorage("compactBadgesInExpandedView") private var compactBadgesInExpandedView = true
     @AppStorage("displayTimestamp") private var displayTimestamp = true
     @AppStorage("reduceMotion") private var reduceMotion = false
+    @AppStorage("hoverToExpandPanel") private var hoverToExpandPanel = false
     @AppStorage("completedLingerDuration") private var completedLingerDuration = 120.0
     @AppStorage("panelWidth") private var panelWidth = 420.0
     @AppStorage("panelMaxHeight") private var panelMaxHeight = 480.0
@@ -335,6 +336,10 @@ struct PreferencesView: View {
                     dividerLine
                     row(L10n.reduceMotion) {
                         Toggle("", isOn: $reduceMotion).labelsHidden()
+                    }
+                    dividerLine
+                    row(L10n.hoverToExpandPanel) {
+                        Toggle("", isOn: $hoverToExpandPanel).labelsHidden()
                     }
                 }
             }
