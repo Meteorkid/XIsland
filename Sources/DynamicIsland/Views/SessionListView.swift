@@ -95,108 +95,113 @@ struct SessionCardView: View {
     @AppStorage("reduceMotion") private var reduceMotion = false
 
     var body: some View {
-        Button {
-            TerminalJumpManager.jump(to: session)
-            onJump?()
-        } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                cardHeader
-                    .padding(.horizontal, 14)
-                    .padding(.top, 12)
-                    .padding(.bottom, 6)
-
-                if !session.prompt.isEmpty && !session.hasPromptTitle {
-                    HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 8))
-                            .foregroundStyle(session.agentType.color.opacity(0.5))
-                            .padding(.top, 2)
-                        Text("\(L10n.youPrefix): \(session.prompt)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.6))
-                            .lineLimit(2)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 4)
-                }
-
-                if !session.agentResponse.isEmpty {
-                    streamingThoughtView(for: session)
+        VStack(alignment: .leading, spacing: 0) {
+            // 可跳转的卡片内容
+            Button {
+                TerminalJumpManager.jump(to: session)
+                onJump?()
+            } label: {
+                VStack(alignment: .leading, spacing: 0) {
+                    cardHeader
                         .padding(.horizontal, 14)
+                        .padding(.top, 12)
                         .padding(.bottom, 6)
-                }
 
-                if session.currentTool != nil {
-                    HStack(spacing: 5) {
-                        ProgressView()
-                            .scaleEffect(0.4)
-                            .frame(width: 10, height: 10)
-                        Text(session.currentTool ?? "")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.blue.opacity(0.7))
+                    if !session.prompt.isEmpty && !session.hasPromptTitle {
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 8))
+                                .foregroundStyle(session.agentType.color.opacity(0.5))
+                                .padding(.top, 2)
+                            Text("\(L10n.youPrefix): \(session.prompt)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .lineLimit(2)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 4)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 8)
-                }
 
-                if !session.events.isEmpty {
-                    Divider()
-                        .background(.white.opacity(0.06))
-                        .padding(.horizontal, 12)
-                    toolActivity
+                    if !session.agentResponse.isEmpty {
+                        streamingThoughtView(for: session)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 6)
+                    }
+
+                    if session.currentTool != nil {
+                        HStack(spacing: 5) {
+                            ProgressView()
+                                .scaleEffect(0.4)
+                                .frame(width: 10, height: 10)
+                            Text(session.currentTool ?? "")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.blue.opacity(0.7))
+                        }
                         .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                }
+                        .padding(.bottom, 8)
+                    }
 
-                if let recap = session.recapText, !recap.isEmpty {
-                    Divider()
-                        .background(.white.opacity(0.06))
-                        .padding(.horizontal, 12)
-                    recapSection(recap)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                }
-
-                if !session.subagentIds.isEmpty {
-                    let children = manager.subagents(of: session)
-                    if !children.isEmpty {
+                    if !session.events.isEmpty {
                         Divider()
                             .background(.white.opacity(0.06))
                             .padding(.horizontal, 12)
-                        childrenSection(children)
+                        toolActivity
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
                     }
                 }
             }
-            .padding(.leading, session.isSubagent ? 24 : 0)
-            .background(
-                ZStack(alignment: .leading) {
-                    if session.isSubagent {
-                        RoundedRectangle(cornerRadius: 1, style: .continuous)
-                            .fill(Color.purple.opacity(0.4))
-                            .frame(width: 2)
-                            .padding(.leading, 10)
-                    }
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(isHovered
-                              ? IslandStyle.cardHover(for: themeManager.resolvedScheme)
-                              : IslandStyle.cardRest(for: themeManager.resolvedScheme))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(
-                                    IslandStyle.primaryText(for: themeManager.resolvedScheme)
-                                        .opacity(isHovered ? IslandStyle.cardStrokeHover(for: themeManager.resolvedScheme)
-                                                           : IslandStyle.cardStrokeRest(for: themeManager.resolvedScheme)),
-                                    lineWidth: 0.5
-                                )
-                        )
+            .buttonStyle(.plain)
+
+            // 摘要区（独立于跳转 Button）
+            if let recap = session.recapText, !recap.isEmpty {
+                Divider()
+                    .background(.white.opacity(0.06))
+                    .padding(.horizontal, 12)
+                recapSection(recap)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+            }
+
+            // 子代理区（独立于跳转 Button）
+            if !session.subagentIds.isEmpty {
+                let children = manager.subagents(of: session)
+                if !children.isEmpty {
+                    Divider()
+                        .background(.white.opacity(0.06))
+                        .padding(.horizontal, 12)
+                    childrenSection(children)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
                 }
-                .padding(.leading, session.isSubagent ? 24 : 0)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.leading, session.isSubagent ? 24 : 0)
+        .background(
+            ZStack(alignment: .leading) {
+                if session.isSubagent {
+                    RoundedRectangle(cornerRadius: 1, style: .continuous)
+                        .fill(Color.purple.opacity(0.4))
+                        .frame(width: 2)
+                        .padding(.leading, 10)
+                }
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isHovered
+                          ? IslandStyle.cardHover(for: themeManager.resolvedScheme)
+                          : IslandStyle.cardRest(for: themeManager.resolvedScheme))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(
+                                IslandStyle.primaryText(for: themeManager.resolvedScheme)
+                                    .opacity(isHovered ? IslandStyle.cardStrokeHover(for: themeManager.resolvedScheme)
+                                                       : IslandStyle.cardStrokeRest(for: themeManager.resolvedScheme)),
+                                lineWidth: 0.5
+                            )
+                    )
+            }
+            .padding(.leading, session.isSubagent ? 24 : 0)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityIdentifier(TestAccessibility.sessionCard(id: session.id))
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
@@ -355,24 +360,22 @@ struct SessionCardView: View {
 
     private func childrenSection(_ children: [AgentSession]) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Button {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.purple.opacity(0.6))
+                Text(L10n.subagentCount(children.count))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.purple.opacity(0.5))
+                Image(systemName: childrenExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(.purple.opacity(0.4))
+            }
+            .onTapGesture {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     childrenExpanded.toggle()
                 }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.triangle.branch")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.purple.opacity(0.6))
-                    Text(L10n.subagentCount(children.count))
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.purple.opacity(0.5))
-                    Image(systemName: childrenExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(.purple.opacity(0.4))
-                }
             }
-            .buttonStyle(.plain)
 
             if childrenExpanded {
                 VStack(spacing: 6) {
@@ -405,23 +408,21 @@ struct SessionCardView: View {
                 .multilineTextAlignment(.leading)
                 .padding(.top, 2)
 
-            // 展开/收起按钮（仅在内容超过3行时显示）
+            // 展开/收起（仅在内容超过3行时显示）
             if text.components(separatedBy: "\n").count > 3 || text.count > 120 {
-                Button {
+                HStack(spacing: 2) {
+                    Text(recapExpanded ? L10n.showLess : L10n.showMore)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.cyan.opacity(0.4))
+                    Image(systemName: recapExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(.cyan.opacity(0.4))
+                }
+                .onTapGesture {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         recapExpanded.toggle()
                     }
-                } label: {
-                    HStack(spacing: 2) {
-                        Text(recapExpanded ? L10n.showLess : L10n.showMore)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(.cyan.opacity(0.4))
-                        Image(systemName: recapExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 7, weight: .bold))
-                            .foregroundStyle(.cyan.opacity(0.4))
-                    }
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 8)

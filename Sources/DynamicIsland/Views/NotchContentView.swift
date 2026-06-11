@@ -202,7 +202,7 @@ struct NotchContentView: View {
 
             expandedContent
                 .frame(width: expandedWidth > 0 ? expandedWidth : panelWidth,
-                       height: isExpanded ? nil : 0, alignment: .top)
+                       height: isExpanded ? expandedHeight : 0, alignment: .top)
                 .clipped()
                 .opacity(showContent ? 1 : 0)
                 .allowsHitTesting(showContent)
@@ -399,6 +399,7 @@ struct NotchContentView: View {
                     window.resizeToFitCollapse(contentWidth: w, contentHeight: h)
                 }
                 self.collapseAnimating = false
+                self.cachedExpandedShapeHeight = 0
             }
         }
 
@@ -501,9 +502,6 @@ struct NotchContentView: View {
             }
         }
         .padding(.bottom, IslandSizeCalculator.expandedPanelBottomInset)
-        .simultaneousGesture(TapGesture().onEnded {
-            markExpandedInteraction()
-        })
         .simultaneousGesture(DragGesture(minimumDistance: 1).onChanged { _ in
             markExpandedInteraction(throttled: true)
         })
@@ -763,7 +761,25 @@ struct NotchContentView: View {
                 hitFrame.size.height = min(hitFrame.maxY, screen.maxY) - hitFrame.origin.y
             }
         } else {
-            hitFrame.size.height += 20
+            // 收起后窗口上移缩小，但鼠标可能还停留在展开面板的区域。
+            // 向下扩展 hit frame，覆盖从药丸到展开内容底部的范围，
+            // 避免收起后鼠标「悬空」导致无法重新触发展开。
+            //
+            // 注意：collapse() 先设 state=.collapsed 再延迟 resize 窗口，
+            // 此期间 expandedHeight 因 state==.collapsed 返回 0。
+            // 使用 cachedExpandedShapeHeight（状态变更前缓存的展开高度）替代。
+            let collapsedBottom = hitFrame.minY
+            let effectiveExpandedHeight = max(expandedHeight, cachedExpandedShapeHeight)
+            let expandedBottom = collapsedBottom - (effectiveExpandedHeight - collapsedOuterHeight)
+            let extraDown = max(0, collapsedBottom - expandedBottom + 20)
+            hitFrame.origin.y -= extraDown
+            hitFrame.size.height += extraDown
+            if let screen = window.screen?.visibleFrame {
+                hitFrame.origin.x = max(hitFrame.origin.x, screen.minX)
+                hitFrame.origin.y = max(hitFrame.origin.y, screen.minY)
+                hitFrame.size.width = min(hitFrame.maxX, screen.maxX) - hitFrame.origin.x
+                hitFrame.size.height = min(hitFrame.maxY, screen.maxY) - hitFrame.origin.y
+            }
         }
         let inside = hitFrame.contains(mouse)
 
