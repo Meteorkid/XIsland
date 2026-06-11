@@ -399,7 +399,6 @@ struct NotchContentView: View {
                     window.resizeToFitCollapse(contentWidth: w, contentHeight: h)
                 }
                 self.collapseAnimating = false
-                self.cachedExpandedShapeHeight = 0
             }
         }
 
