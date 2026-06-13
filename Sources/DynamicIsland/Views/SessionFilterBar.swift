@@ -2,6 +2,9 @@ import SwiftUI
 
 struct SessionFilterBar: View {
     @Environment(SessionManager.self) private var manager
+    @Environment(ThemeManager.self) private var themeManager
+
+    private var scheme: ColorScheme { themeManager.resolvedScheme }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -10,7 +13,7 @@ struct SessionFilterBar: View {
                 HStack(spacing: 4) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
                     TextField(L10n.searchSessions, text: Binding(
                         get: { manager.searchText },
                         set: { manager.searchText = $0 }
@@ -25,7 +28,7 @@ struct SessionFilterBar: View {
                 .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(.white.opacity(0.08))
+                        .fill(IslandStyle.insetFill(for: scheme))
                 )
 
                 // 分组选择器
@@ -47,7 +50,7 @@ struct SessionFilterBar: View {
                 } label: {
                     Image(systemName: "line.3.horizontal.decrease.circle\(manager.grouping == .none ? "" : ".fill")")
                         .font(.system(size: 12))
-                        .foregroundStyle(manager.grouping == .none ? .white.opacity(0.5) : .cyan)
+                        .foregroundStyle(manager.grouping == .none ? IslandStyle.tertiaryText(for: scheme) : .cyan)
                 }
                 .menuStyle(.borderlessButton)
                 .frame(width: 20, height: 20)
@@ -60,6 +63,7 @@ struct SessionFilterBar: View {
                     FilterChip(
                         title: L10n.filterAll,
                         isSelected: manager.activeFilter == .all,
+                        scheme: scheme,
                         action: { manager.activeFilter = .all }
                     )
                     ForEach(agentTypeFilters, id: \.rawValue) { type in
@@ -67,6 +71,7 @@ struct SessionFilterBar: View {
                             title: type.shortName,
                             isSelected: manager.activeFilter == .agentType(type),
                             color: type.color,
+                            scheme: scheme,
                             action: { manager.activeFilter = .agentType(type) }
                         )
                     }
@@ -74,6 +79,7 @@ struct SessionFilterBar: View {
                         FilterChip(
                             title: status.displayName,
                             isSelected: manager.activeFilter == .status(status),
+                            scheme: scheme,
                             action: { manager.activeFilter = .status(status) }
                         )
                     }
@@ -84,10 +90,10 @@ struct SessionFilterBar: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(IslandStyle.cardRest)
+                .fill(IslandStyle.cardRest(for: scheme))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(.white.opacity(0.06), lineWidth: 0.5)
+                        .strokeBorder(IslandStyle.strokeColor(for: scheme).opacity(IslandStyle.strokeOpacity(for: scheme)), lineWidth: 0.5)
                 )
         )
         .padding(.horizontal, 12)
@@ -114,19 +120,20 @@ struct SessionFilterBar: View {
 private struct FilterChip: View {
     let title: String
     let isSelected: Bool
-    var color: Color = .white
+    var color: Color = .primary
+    let scheme: ColorScheme
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(isSelected ? .white.opacity(0.9) : color.opacity(0.5))
+                .foregroundStyle(isSelected ? .white : IslandStyle.secondaryText)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isSelected ? color.opacity(0.25) : .white.opacity(0.05))
+                        .fill(isSelected ? color.opacity(0.25) : IslandStyle.insetFill(for: scheme))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)

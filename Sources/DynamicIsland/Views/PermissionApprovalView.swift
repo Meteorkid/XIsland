@@ -4,11 +4,14 @@ struct PermissionApprovalView: View {
     let session: AgentSession
     let onComplete: () -> Void
     @Environment(SessionManager.self) private var manager
+    @Environment(ThemeManager.self) private var themeManager
+
+    private var scheme: ColorScheme { themeManager.resolvedScheme }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Divider().background(.white.opacity(0.08))
+            Divider().background(IslandStyle.divider(for: scheme).opacity(IslandStyle.dividerOpacity(for: scheme)))
 
             if let perm = session.pendingPermission {
                 permissionContent(perm)
@@ -19,7 +22,7 @@ struct PermissionApprovalView: View {
                         .foregroundStyle(.green.opacity(0.6))
                     Text("Permission was handled externally")
                         .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(IslandStyle.secondaryText)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onAppear { onComplete() }
@@ -37,7 +40,7 @@ struct PermissionApprovalView: View {
             AgentIcon(agentType: displayAgent, size: 20)
             Text(displayAgent.shortName)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(IslandStyle.primaryText)
             Spacer()
             Text("Permission Request")
                 .font(.system(size: 10, weight: .bold))
@@ -60,7 +63,7 @@ struct PermissionApprovalView: View {
                     .padding(.top, 1)
                 Text(perm.tool)
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(IslandStyle.primaryText)
             }
 
             if !perm.description.isEmpty {
@@ -71,18 +74,18 @@ struct PermissionApprovalView: View {
                             .foregroundStyle(.orange.opacity(0.6))
                         Text(perm.description)
                             .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.85))
+                            .foregroundStyle(IslandStyle.primaryText)
                             .lineLimit(3)
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(IslandStyle.insetFill)
+                    .background(IslandStyle.insetFill(for: scheme))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
                     if let path = perm.filePath, !path.isEmpty {
                         Text(path)
                             .font(.system(size: 10))
-                            .foregroundStyle(.white.opacity(0.35))
+                            .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
                             .lineLimit(1)
                             .padding(.top, 4)
                     }
@@ -91,12 +94,12 @@ struct PermissionApprovalView: View {
                 HStack(spacing: 0) {
                     Text(path)
                         .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(IslandStyle.secondaryText)
                         .lineLimit(2)
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(IslandStyle.insetFill)
+                .background(IslandStyle.insetFill(for: scheme))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
@@ -175,14 +178,14 @@ struct PermissionApprovalView: View {
             }
         }
         .frame(maxHeight: 120)
-        .background(IslandStyle.codeWell)
+        .background(IslandStyle.codeWell(for: scheme))
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     private func diffColor(for line: String) -> Color {
         if line.hasPrefix("+") { return .green.opacity(0.9) }
         if line.hasPrefix("-") { return .red.opacity(0.9) }
-        return .white.opacity(0.5)
+        return IslandStyle.secondaryText
     }
 
     private func diffBackground(for line: String) -> Color {

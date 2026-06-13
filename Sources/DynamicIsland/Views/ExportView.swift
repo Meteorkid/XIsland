@@ -101,6 +101,9 @@ struct ExportView: View {
     @State private var selectedFormat: ExportFormat = .json
     @State private var showExporter = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(ThemeManager.self) private var themeManager
+
+    private var scheme: ColorScheme { themeManager.resolvedScheme }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -128,7 +131,7 @@ struct ExportView: View {
                                 .padding(.vertical, 6)
                                 .background(
                                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .fill(selectedFormat == format ? Color.accentColor.opacity(0.2) : .white.opacity(0.05))
+                                        .fill(selectedFormat == format ? Color.accentColor.opacity(0.2) : IslandStyle.insetFill(for: scheme))
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 6, style: .continuous)

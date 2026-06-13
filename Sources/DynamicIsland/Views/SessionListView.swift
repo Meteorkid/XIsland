@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SessionListView: View {
     @Environment(SessionManager.self) private var manager
+    @Environment(ThemeManager.self) private var themeManager
     var onJump: (() -> Void)?
     @State private var showFilterBar = false
     @AppStorage("reduceMotion") private var reduceMotion = false
@@ -23,7 +24,7 @@ struct SessionListView: View {
                 } label: {
                     Image(systemName: showFilterBar ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                         .font(.system(size: 12))
-                        .foregroundStyle(showFilterBar ? .cyan : .white.opacity(0.5))
+                        .foregroundStyle(showFilterBar ? .cyan : IslandStyle.secondaryText)
                 }
                 .buttonStyle(.plain)
             }
@@ -40,6 +41,12 @@ struct SessionListView: View {
 
             ScrollView {
                 LazyVStack(spacing: 10) {
+                    // 待处理任务置顶区域
+                    ForEach(pendingSessions) { session in
+                        PendingTaskCardView(session: session)
+                            .transition(reduceMotion ? .identity : .move(edge: .top).combined(with: .opacity))
+                    }
+
                     if manager.grouping == .none {
                         ForEach(manager.filteredSessions) { session in
                             SessionCardView(session: session, onJump: onJump)
@@ -50,7 +57,7 @@ struct SessionListView: View {
                             Section(header:
                                 Text(group.title)
                                     .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(.white.opacity(0.45))
+                                    .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 14)
                                     .padding(.top, 8)
@@ -74,6 +81,194 @@ struct SessionListView: View {
         .onReceive(NotificationCenter.default.publisher(for: .xislandToggleSearch)) { _ in
             withAnimation(.easeInOut(duration: 0.2)) {
                 showFilterBar.toggle()
+            }
+        }
+    }
+
+    /// 有待处理交互的会话（问题/权限/计划审查），置顶显示
+    private var pendingSessions: [AgentSession] {
+        manager.sessions.filter { s in
+            s.pendingQuestion != nil || s.pendingPermission != nil || s.pendingPlanReview != nil
+        }
+    }
+}
+
+// MARK: - PendingTaskCardView
+
+/// 展开面板顶部的待处理任务卡片，内联显示选项，无需跳转窗口
+struct PendingTaskCardView: View {
+    let session: AgentSession
+    @Environment(SessionManager.self) private var manager
+    @Environment(ThemeManager.self) private var themeManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // 会话标识头
+            HStack(spacing: 6) {
+                AgentIcon(agentType: session.agentType, size: 14)
+                Text(session.agentType.shortName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(IslandStyle.secondaryText)
+                Spacer()
+                if session.pendingPermission != nil {
+                    Text(L10n.permission)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.orange.opacity(0.15))
+                        .clipShape(Capsule())
+                } else if session.pendingQuestion != nil {
+                    Text(L10n.question)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.blue)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.blue.opacity(0.15))
+                        .clipShape(Capsule())
+                } else if session.pendingPlanReview != nil {
+                    Text(L10n.review)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.purple)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.purple.opacity(0.15))
+                        .clipShape(Capsule())
+                }
+            }
+
+            // 内容：根据 pending 类型渲染
+            if let perm = session.pendingPermission {
+                permissionContent(perm)
+            } else if let question = session.pendingQuestion {
+                questionContent(question)
+            } else if let plan = session.pendingPlanReview {
+                planContent(plan)
+            }
+        }
+        .padding(12)
+        .background(IslandStyle.cardRest(for: themeManager.resolvedScheme))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(
+                    IslandStyle.cardStrokeColor(for: themeManager.resolvedScheme)
+                        .opacity(IslandStyle.cardStrokeRest(for: themeManager.resolvedScheme)),
+                    lineWidth: 0.5
+                )
+        )
+    }
+
+    // MARK: - Permission
+
+    private func permissionContent(_ perm: PendingPermission) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.system(size: 10))
+                Text(perm.tool)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(IslandStyle.primaryText)
+            }
+            if !perm.description.isEmpty {
+                Text(perm.description)
+                    .font(.system(size: 10))
+                    .foregroundStyle(IslandStyle.secondaryText)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 6) {
+                Button {
+                    manager.denyPermission(session: session)
+                } label: {
+                    Text("Deny")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(.red.opacity(0.3))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                Button {
+                    manager.approvePermission(session: session)
+                } label: {
+                    Text("Allow")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(.green.opacity(0.3))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Question
+
+    private func questionContent(_ q: PendingQuestion) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(q.text)
+                .font(.system(size: 11))
+                .foregroundStyle(IslandStyle.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 4) {
+                ForEach(q.options, id: \.self) { option in
+                    Button {
+                        manager.answerQuestion(session: session, answer: option)
+                    } label: {
+                        Text(option)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(IslandStyle.primaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(IslandStyle.insetFill(for: themeManager.resolvedScheme))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    // MARK: - Plan Review
+
+    private func planContent(_ plan: PendingPlanReview) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(plan.markdown)
+                .font(.system(size: 10))
+                .foregroundStyle(IslandStyle.secondaryText)
+                .lineLimit(5)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                Button {
+                    manager.respondToPlan(session: session, approved: false, feedback: nil)
+                } label: {
+                    Text("Reject")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(.red.opacity(0.3))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                Button {
+                    manager.respondToPlan(session: session, approved: true, feedback: nil)
+                } label: {
+                    Text("Approve")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(.green.opacity(0.3))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -115,7 +310,7 @@ struct SessionCardView: View {
                                 .padding(.top, 2)
                             Text("\(L10n.youPrefix): \(session.prompt)")
                                 .font(.system(size: 11))
-                                .foregroundStyle(.white.opacity(0.6))
+                                .foregroundStyle(IslandStyle.secondaryText)
                                 .lineLimit(2)
                         }
                         .padding(.horizontal, 14)
@@ -143,7 +338,7 @@ struct SessionCardView: View {
 
                     if !session.events.isEmpty {
                         Divider()
-                            .background(.white.opacity(0.06))
+                            .background(IslandStyle.divider(for: themeManager.resolvedScheme).opacity(IslandStyle.dividerOpacity(for: themeManager.resolvedScheme)))
                             .padding(.horizontal, 12)
                         toolActivity
                             .padding(.horizontal, 14)
@@ -156,7 +351,7 @@ struct SessionCardView: View {
             // 摘要区（独立于跳转 Button）
             if let recap = session.recapText, !recap.isEmpty {
                 Divider()
-                    .background(.white.opacity(0.06))
+                    .background(IslandStyle.divider(for: themeManager.resolvedScheme).opacity(IslandStyle.dividerOpacity(for: themeManager.resolvedScheme)))
                     .padding(.horizontal, 12)
                 recapSection(recap)
                     .padding(.horizontal, 14)
@@ -168,7 +363,7 @@ struct SessionCardView: View {
                 let children = manager.subagents(of: session)
                 if !children.isEmpty {
                     Divider()
-                        .background(.white.opacity(0.06))
+                        .background(IslandStyle.divider(for: themeManager.resolvedScheme).opacity(IslandStyle.dividerOpacity(for: themeManager.resolvedScheme)))
                         .padding(.horizontal, 12)
                     childrenSection(children)
                         .padding(.horizontal, 14)
@@ -192,7 +387,7 @@ struct SessionCardView: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .strokeBorder(
-                                IslandStyle.primaryText(for: themeManager.resolvedScheme)
+                                IslandStyle.cardStrokeColor(for: themeManager.resolvedScheme)
                                     .opacity(isHovered ? IslandStyle.cardStrokeHover(for: themeManager.resolvedScheme)
                                                        : IslandStyle.cardStrokeRest(for: themeManager.resolvedScheme)),
                                 lineWidth: 0.5
@@ -248,13 +443,13 @@ struct SessionCardView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(session.displayTitle)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(IslandStyle.primaryText)
                     .lineLimit(1)
 
                 if session.hasPromptTitle {
                     Text(session.workspaceName)
                         .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
                         .lineLimit(1)
                 }
             }
@@ -263,17 +458,17 @@ struct SessionCardView: View {
 
             HStack(spacing: 5) {
                 TagBadge(text: session.agentType.shortName, color: session.agentType.color)
-                TagBadge(text: sourceBadgeText, color: .white.opacity(0.58))
+                TagBadge(text: sourceBadgeText, color: IslandStyle.secondaryText)
 
                 if displayTimestamp {
                     Text(session.formattedDuration)
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.3))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
                         .contentTransition(.numericText())
                         .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: session.formattedDuration)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.12))
+                        .background(IslandStyle.insetFill(for: themeManager.resolvedScheme))
                         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 }
 
@@ -285,9 +480,9 @@ struct SessionCardView: View {
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.4))
+                            .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
                             .frame(width: 18, height: 18)
-                            .background(.white.opacity(0.1))
+                            .background(IslandStyle.insetFill(for: themeManager.resolvedScheme))
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
@@ -303,16 +498,16 @@ struct SessionCardView: View {
                 HStack(spacing: 6) {
                     Image(systemName: event.isComplete ? "checkmark.square.fill" : "square")
                         .font(.system(size: 9))
-                        .foregroundStyle(event.isComplete ? .green.opacity(0.5) : .white.opacity(0.25))
+                        .foregroundStyle(event.isComplete ? .green.opacity(0.5) : IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
 
                     Text("\(event.displayName)")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(event.isComplete ? .white.opacity(0.35) : .white.opacity(0.7))
+                        .foregroundStyle(event.isComplete ? IslandStyle.tertiaryText(for: themeManager.resolvedScheme) : IslandStyle.secondaryText)
 
                     if event.isComplete {
                         Text(event.summary)
                             .font(.system(size: 9))
-                            .foregroundStyle(.white.opacity(0.25))
+                            .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
                             .lineLimit(1)
                     }
                 }
@@ -325,7 +520,7 @@ struct SessionCardView: View {
                         .frame(width: 10, height: 10)
                     Text(L10n.toolRunning(tool))
                         .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(IslandStyle.secondaryText)
                 }
             }
 
@@ -351,7 +546,7 @@ struct SessionCardView: View {
 
             Text(session.agentResponse)
                 .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(IslandStyle.secondaryText)
                 .lineLimit(nil)
                 .multilineTextAlignment(.leading)
                 .animation(.easeInOut(duration: 0.3), value: session.agentResponse)
@@ -403,7 +598,7 @@ struct SessionCardView: View {
             // 直接显示摘要内容
             Text(text)
                 .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(IslandStyle.secondaryText)
                 .lineLimit(recapExpanded ? nil : 3)
                 .multilineTextAlignment(.leading)
                 .padding(.top, 2)

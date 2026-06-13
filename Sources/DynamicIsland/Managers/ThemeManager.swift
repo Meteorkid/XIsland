@@ -20,14 +20,20 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 }
 
 /// Manages the app's color scheme with dark/light/system modes.
+/// Sets NSApp.appearance so both AppKit and SwiftUI resolve colors correctly.
 @Observable @MainActor
 final class ThemeManager {
     private static let storageKey = "appearanceMode"
+
+    /// Called after scheme changes so AppDelegate can sync window.appearance.
+    var onSchemeChange: (() -> Void)?
 
     var mode: AppearanceMode {
         didSet {
             UserDefaults.standard.set(mode.rawValue, forKey: Self.storageKey)
             updateResolvedScheme()
+            syncAppAppearance()
+            onSchemeChange?()
             if mode == .system {
                 startObservingSystemAppearance()
             } else {
@@ -52,6 +58,7 @@ final class ThemeManager {
         self.mode = initialMode
         self.resolvedScheme = initialMode == .dark ? .dark : .light
         updateResolvedScheme()
+        syncAppAppearance()
         if initialMode == .system {
             startObservingSystemAppearance()
         }
@@ -74,6 +81,8 @@ final class ThemeManager {
         effectiveAppearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
             Task { @MainActor [weak self] in
                 self?.updateResolvedScheme()
+                self?.syncAppAppearance()
+                self?.onSchemeChange?()
             }
         }
     }
@@ -90,7 +99,6 @@ final class ThemeManager {
         case .light:
             resolvedScheme = .light
         case .system:
-            // NSApp.effectiveAppearance may crash in test environments without a running app.
             guard NSApp != nil else {
                 resolvedScheme = .dark
                 return
@@ -98,6 +106,19 @@ final class ThemeManager {
             let appearance = NSApp.effectiveAppearance
             let match = appearance.bestMatch(from: [.darkAqua, .aqua])
             resolvedScheme = match == .darkAqua ? .dark : .light
+        }
+    }
+
+    /// Sync NSApp.appearance so AppKit views (NSHostingView, NSPanel) resolve
+    /// colors correctly. This also makes SwiftUI .primary/.secondary adapt.
+    private func syncAppAppearance() {
+        switch mode {
+        case .dark:
+            NSApp.appearance = NSAppearance(named: .darkAqua)
+        case .light:
+            NSApp.appearance = NSAppearance(named: .aqua)
+        case .system:
+            NSApp.appearance = nil // follow system
         }
     }
 }

@@ -830,6 +830,86 @@ enum L10n {
             en: "How long completed sessions remain visible")
     }
 
+    static var launchAtLoginDesc: String {
+        localized("launchAtLoginDesc",
+            zh: "登录 macOS 时自动启动 X Island", ko: "macOS 로그인 시 자동 시작",
+            ja: "macOS ログイン時に自動起動",
+            fr: "Lancer automatiquement au démarrage de macOS",
+            en: "Start X Island automatically when you log in to macOS")
+    }
+
+    static var showOnAllSpacesDesc: String {
+        localized("showOnAllSpacesDesc",
+            zh: "在所有桌面空间（Mission Control）中显示面板", ko: "모든 데스크톱 공간에 패널 표시",
+            ja: "すべてのスペース（ミッションコントロール）でパネルを表示",
+            fr: "Afficher le panneau sur tous les espaces Mission Control",
+            en: "Show the panel on all desktop spaces (Mission Control)")
+    }
+
+    static var hideInFullscreenDesc: String {
+        localized("hideInFullscreenDesc",
+            zh: "全屏应用运行时隐藏面板", ko: "전체 화면 앱 실행 중 패널 숨기기",
+            ja: "フルスクリーンアプリ実行中にパネルを非表示",
+            fr: "Masquer le panneau en mode plein écran",
+            en: "Hide the panel when a full-screen app is running")
+    }
+
+    static var autoHideIdleDesc: String {
+        localized("autoHideIdleDesc",
+            zh: "没有活跃会话时自动隐藏面板，有新会话时恢复显示", ko: "활성 세션이 없을 때 패널 자동 숨기기",
+            ja: "活跃セッションがないときパネルを自動非表示にし、新しいセッションで再表示",
+            fr: "Masquer automatiquement le panneau quand il n'y a aucune session active",
+            en: "Auto-hide the panel when there are no active sessions; it reappears when a new session starts")
+    }
+
+    static var panelWidthDesc: String {
+        localized("panelWidthDesc",
+            zh: "展开面板的宽度（像素），拖动滑块无极调节", ko: "展开된 패널의 너비 (픽셀)",
+            ja: "展開パネルの幅（ピクセル）、スライダーで調整",
+            fr: "Largeur du panneau déplié (pixels), ajustable avec le curseur",
+            en: "Width of the expanded panel in pixels, adjustable with the slider")
+    }
+
+    static var panelMaxHeightDesc: String {
+        localized("panelMaxHeightDesc",
+            zh: "展开面板的最大高度（像素），内容超出时可滚动", ko: "펼친 패널의 최대 높이(픽셀)",
+            ja: "展開パネルの最大高さ（ピクセル）、内容が多い場合はスクロール",
+            fr: "Hauteur maximale du panneau déplié (pixels), défilement si le contenu dépasse",
+            en: "Maximum height of the expanded panel in pixels; content scrolls when it exceeds this")
+    }
+
+    static var compactBadgesDesc: String {
+        localized("compactBadgesDesc",
+            zh: "在展开视图中使用紧凑的徽章样式，节省空间", ko: "展开된 뷰에서 компак트한 배지 스타일 사용",
+            ja: "展開ビューでコンパクトなバッジスタイルを使用し、スペースを節約",
+            fr: "Utiliser des badges compacts dans la vue dépliée pour économiser de l'espace",
+            en: "Use compact badge style in the expanded view to save space")
+    }
+
+    static var showTimestampsDesc: String {
+        localized("showTimestampsDesc",
+            zh: "在会话卡片上显示时间戳", ko: "세션 카드에 타임스탬프 표시",
+            ja: "セッションカードにタイムスタンプを表示",
+            fr: "Afficher les horodatages sur les cartes de session",
+            en: "Show timestamps on session cards")
+    }
+
+    static var reduceMotionDesc: String {
+        localized("reduceMotionDesc",
+            zh: "减少动画效果，适合对动态敏感的用户", ko: "애니메이션 효과 줄이기",
+            ja: "アニメーション効果を減らす",
+            fr: "Réduire les animations pour les sensibles au mouvement",
+            en: "Reduce animation effects, useful for motion-sensitive users")
+    }
+
+    static var hoverToExpandPanelDesc: String {
+        localized("hoverToExpandPanelDesc",
+            zh: "鼠标悬停在药丸上时自动展开面板，无需点击", ko: "알약에 마우스를 올리면 자동으로 패널 확장",
+            ja: "薬丸にマウスを乗せるとパネルが自動展開",
+            fr: "Déplier le panneau automatiquement en survolant le comprimé",
+            en: "Automatically expand the panel when hovering over the pill, no click needed")
+    }
+
     // MARK: - About pane sections
 
     static var sectionApplication: String {

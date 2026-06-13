@@ -305,6 +305,8 @@ enum TerminalJumpManager {
         let matchValue: String
 
         if termSessionId.hasPrefix("iterm:") {
+            // 格式: iterm:ITERM_SESSION_ID:UUID
+            // iTerm2 的 unique ID 是 UUID 部分（如 0B0D70D0-...）
             matchProp = "unique ID"
             let fullId = String(termSessionId.dropFirst(6))
             if let colonIdx = fullId.firstIndex(of: ":") {
@@ -320,9 +322,12 @@ enum TerminalJumpManager {
             matchValue = termSessionId
         }
 
-        // 转义 AppleScript 字符串中的双引号和反斜杠
+        // 转义 AppleScript 字符串中的双引号、反斜杠和换行符
         let escapedValue = matchValue.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+        log("iTerm jump: prop=\(matchProp) value=\(escapedValue)")
         let script = """
         tell application "iTerm2"
             repeat with aWindow in windows
@@ -340,7 +345,7 @@ enum TerminalJumpManager {
             activate
         end tell
         """
-        runAppleScript(script)
+        _ = runAppleScript(script)
     }
 
     private static func jumpToTerminalWindow(snap: SessionSnapshot) -> Bool {
@@ -503,7 +508,7 @@ enum TerminalJumpManager {
             activateApp(app)
             return
         }
-        runAppleScript(script)
+        _ = runAppleScript(script)
     }
 
     private static func jumpToWezTerm(snap: SessionSnapshot) -> Bool {
@@ -714,25 +719,51 @@ enum TerminalJumpManager {
     private static func activateByAgentName(_ agentType: AgentType) {
         let name = agentType.displayName.lowercased()
         let apps = NSWorkspace.shared.runningApplications
+
+        // 1. 尝试直接匹配应用名
         if let app = apps.first(where: {
             guard let appName = $0.localizedName?.lowercased() else { return false }
             return appName.contains(name) || name.contains(appName)
         }) {
-            app.activate()
+            app.activate(options: [.activateAllWindows])
+            return
+        }
+
+        // 2. CLI 工具没有 macOS 应用——尝试激活已知终端（排除 IDE 类）
+        for terminalApp in TerminalApp.allCases where !terminalApp.bundleId.isEmpty && !terminalApp.isVSCodeFamily {
+            if let app = NSRunningApplication.runningApplications(
+                withBundleIdentifier: terminalApp.bundleId
+            ).first {
+                app.activate(options: [.activateAllWindows])
+                return
+            }
         }
     }
 
     private static func runAppleScriptBool(_ source: String) -> Bool {
-        guard let script = NSAppleScript(source: source) else { return false }
+        guard let script = NSAppleScript(source: source) else {
+            log("AppleScript: failed to create script")
+            return false
+        }
         var error: NSDictionary?
         let output = script.executeAndReturnError(&error)
-        if error != nil { return false }
+        if let error {
+            log("AppleScript error: \(error)")
+            return false
+        }
         return output.booleanValue
     }
 
-    private static func runAppleScript(_ source: String) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            _ = runAppleScriptBool(source)
+    private static func runAppleScript(_ source: String) -> Bool {
+        // NSAppleScript 控制 GUI 应用（activate/select）需要在主线程执行
+        if Thread.isMainThread {
+            return runAppleScriptBool(source)
+        } else {
+            var result = false
+            DispatchQueue.main.sync {
+                result = runAppleScriptBool(source)
+            }
+            return result
         }
     }
 

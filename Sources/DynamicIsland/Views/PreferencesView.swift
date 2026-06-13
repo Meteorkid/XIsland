@@ -176,6 +176,15 @@ struct PreferencesView: View {
 
     // MARK: - General
 
+    /// 将秒数格式化为人类可读的时间字符串（假设输入为整数或 0.5 的倍数）
+    private func formatDuration(_ seconds: Double) -> String {
+        if seconds < 60 { return String(format: "%.1fs", seconds) }
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        if secs == 0 { return "\(mins)min" }
+        return "\(mins)min \(secs)s"
+    }
+
     private var generalPane: some View {
         VStack(alignment: .leading, spacing: 20) {
             section(L10n.appearanceSection) {
@@ -199,13 +208,13 @@ struct PreferencesView: View {
                         .frame(width: 120)
                     }
                     dividerLine
-                    row(L10n.launchAtLogin) {
+                    settingRow(L10n.launchAtLogin, id: "launchAtLogin", description: L10n.launchAtLoginDesc) {
                         Toggle("", isOn: $launchAtLogin)
                             .labelsHidden()
                             .onChange(of: launchAtLogin) { _, v in toggleLaunchAtLogin(v) }
                     }
                     dividerLine
-                    row(L10n.showOnAllSpaces) {
+                    settingRow(L10n.showOnAllSpaces, id: "showOnAllSpaces", description: L10n.showOnAllSpacesDesc) {
                         Toggle("", isOn: $showOnAllSpaces).labelsHidden()
                     }
                 }
@@ -241,104 +250,72 @@ struct PreferencesView: View {
 
             section(L10n.sectionBehavior) {
                 card {
-                    row(L10n.bypassMode, subtitle: L10n.bypassDesc) {
+                    settingRow(L10n.bypassMode, id: "bypassMode", description: L10n.bypassDesc) {
                         Toggle("", isOn: Binding(
                             get: { sessionManager.bypassMode },
                             set: { sessionManager.bypassMode = $0 }
                         )).labelsHidden()
                     }
                     dividerLine
-                    row(L10n.autoCollapse, subtitle: L10n.autoCollapseDesc) {
-                        Picker("", selection: $autoCollapseDelay) {
-                            Text("1.5s").tag(1.5)
-                            Text("3s").tag(3.0)
-                            Text("5s").tag(5.0)
-                            Text("10s").tag(10.0)
-                            Text("Never").tag(0.0)
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 100)
+                    settingRow(L10n.autoCollapse, id: "autoCollapse", description: L10n.autoCollapseDesc) {
+                        Slider(value: $autoCollapseDelay, in: 0...15, step: 0.5)
+                            .frame(width: 140)
                     }
                     dividerLine
-                    row(L10n.expandedInactivityAutoHide, subtitle: L10n.expandedInactivityAutoHideDesc) {
-                        Picker("", selection: $expandedInactivityAutoHideDelay) {
-                            Text(L10n.neverOption).tag(0.0)
-                            Text("5s").tag(5.0)
-                            Text("10s").tag(10.0)
-                            Text("15s").tag(15.0)
-                            Text("30s").tag(30.0)
-                            Text("60s").tag(60.0)
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 100)
+                    settingRow(L10n.expandedInactivityAutoHide, id: "expandedInactivity", description: L10n.expandedInactivityAutoHideDesc) {
+                        Slider(value: $expandedInactivityAutoHideDelay, in: 0...120, step: 1)
+                            .frame(width: 140)
                     }
                     dividerLine
-                    row(L10n.hoverExitCollapse, subtitle: L10n.hoverExitCollapseDesc) {
-                        Picker("", selection: $hoverExitCollapseDelay) {
-                            Text("0.2s").tag(0.2)
-                            Text("0.3s").tag(0.3)
-                            Text("0.5s").tag(0.5)
-                            Text("0.75s").tag(0.75)
-                            Text("1s").tag(1.0)
-                            Text("1.5s").tag(1.5)
-                            Text("2s").tag(2.0)
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 100)
+                    settingRow(L10n.hoverExitCollapse, id: "hoverExit", description: L10n.hoverExitCollapseDesc) {
+                        Slider(value: $hoverExitCollapseDelay, in: 0.1...3.0, step: 0.05)
+                            .frame(width: 140)
                     }
                     dividerLine
-                    row(L10n.hideInFullscreen) {
+                    settingRow(L10n.hideInFullscreen, id: "hideInFullscreen", description: L10n.hideInFullscreenDesc) {
                         Toggle("", isOn: $hideInFullscreen).labelsHidden()
                     }
                     dividerLine
-                    row(L10n.autoHideIdle) {
+                    settingRow(L10n.autoHideIdle, id: "autoHideIdle", description: L10n.autoHideIdleDesc) {
                         Toggle("", isOn: $autoHideWhenNoActiveSessions).labelsHidden()
                     }
                     dividerLine
-                    row(L10n.smartSuppression, subtitle: L10n.smartSuppressionDesc) {
+                    settingRow(L10n.smartSuppression, id: "smartSuppression", description: L10n.smartSuppressionDesc) {
                         Toggle("", isOn: $smartSuppression).labelsHidden()
                     }
                     dividerLine
-                    row(L10n.completedDisplay, subtitle: L10n.completedDisplayDesc) {
-                        Picker("", selection: $completedLingerDuration) {
-                            Text("10s").tag(10.0)
-                            Text("30s").tag(30.0)
-                            Text("1min").tag(60.0)
-                            Text("2min").tag(120.0)
-                            Text("5min").tag(300.0)
-                            Text(L10n.permanent).tag(0.0)
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 100)
+                    settingRow(L10n.completedDisplay, id: "completedDisplay", description: L10n.completedDisplayDesc) {
+                        Slider(value: $completedLingerDuration, in: 0...600, step: 5)
+                            .frame(width: 140)
                     }
                 }
             }
 
             section(L10n.sectionDisplay) {
                 card {
-                    row(L10n.panelWidth, subtitle: L10n.panelSizePx(Int(panelWidth))) {
+                    settingRow(L10n.panelWidth, id: "panelWidth", description: L10n.panelWidthDesc) {
                         Slider(value: $panelWidth, in: 320...600, step: 20)
                             .frame(width: 140)
                     }
                     dividerLine
-                    row(L10n.panelMaxHeight, subtitle: L10n.panelSizePx(Int(panelMaxHeight))) {
+                    settingRow(L10n.panelMaxHeight, id: "panelMaxHeight", description: L10n.panelMaxHeightDesc) {
                         Slider(value: $panelMaxHeight, in: 320...700, step: 20)
                             .frame(width: 140)
                     }
                     dividerLine
-                    row(L10n.compactBadges) {
+                    settingRow(L10n.compactBadges, id: "compactBadges", description: L10n.compactBadgesDesc) {
                         Toggle("", isOn: $compactBadgesInExpandedView).labelsHidden()
                     }
                     dividerLine
-                    row(L10n.showTimestamps) {
+                    settingRow(L10n.showTimestamps, id: "showTimestamps", description: L10n.showTimestampsDesc) {
                         Toggle("", isOn: $displayTimestamp).labelsHidden()
                     }
                     dividerLine
-                    row(L10n.reduceMotion) {
+                    settingRow(L10n.reduceMotion, id: "reduceMotion", description: L10n.reduceMotionDesc) {
                         Toggle("", isOn: $reduceMotion).labelsHidden()
                     }
                     dividerLine
-                    row(L10n.hoverToExpandPanel) {
+                    settingRow(L10n.hoverToExpandPanel, id: "hoverToExpand", description: L10n.hoverToExpandPanelDesc) {
                         Toggle("", isOn: $hoverToExpandPanel).labelsHidden()
                     }
                 }
@@ -1065,6 +1042,53 @@ struct PreferencesView: View {
         .padding(.vertical, 8)
     }
 
+    /// 带可展开注释的设置行：点击 ℹ️ 图标展开/收起说明文字
+    @State private var expandedDescriptions: Set<String> = []
+
+    private func settingRow<Trailing: View>(
+        _ title: String,
+        id: String,
+        description: String,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        let isExpanded = expandedDescriptions.contains(id)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(title)
+                            .font(.system(size: 13, weight: .medium))
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                if isExpanded {
+                                    expandedDescriptions.remove(id)
+                                } else {
+                                    expandedDescriptions.insert(id)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Spacer(minLength: 16)
+                trailing()
+            }
+            if isExpanded {
+                Text(description)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 2)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
     private var dividerLine: some View {
         Divider().overlay(.quaternary.opacity(0.4))
     }
@@ -1259,8 +1283,14 @@ struct PreferencesView: View {
         return false
     }
 
+    private static let timeFormatter: DateFormatter = {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "HH:mm"
+        return fmt
+    }()
+
     private func timePicker(selection: Binding<String>) -> some View {
-        let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
+        let fmt = Self.timeFormatter
         let date = Binding<Date>(
             get: { fmt.date(from: selection.wrappedValue) ?? Date() },
             set: { selection.wrappedValue = fmt.string(from: $0) }

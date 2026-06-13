@@ -3,6 +3,9 @@ import SwiftUI
 struct PillBadge: View {
     let session: AgentSession
     var compact: Bool = false
+    @Environment(ThemeManager.self) private var themeManager
+
+    private var scheme: ColorScheme { themeManager.resolvedScheme }
 
     private var statusColor: Color {
         switch session.status {
@@ -56,10 +59,10 @@ struct PillBadge: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text(session.agentType.shortName)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(IslandStyle.primaryText)
                 Text(session.lastActivity)
                     .font(.system(size: 8))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
                     .lineLimit(1)
             }
         }

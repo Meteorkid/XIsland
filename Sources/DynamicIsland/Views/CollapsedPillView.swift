@@ -4,6 +4,7 @@ import SwiftUI
 struct CollapsedPillView: View {
     @Environment(SessionManager.self) private var manager
     @Environment(AudioEngine.self) private var audio
+    @Environment(ThemeManager.self) private var themeManager
     /// Obscured: left = expanded-list session that last received a message; right = active count.
     /// Unobscured: same session count/order as the expanded list (`visibleSessions`).
     let obscuredByNotch: Bool
@@ -66,7 +67,7 @@ struct CollapsedPillView: View {
                     if overflow > 0 {
                         Text("+\(overflow)")
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.5))
+                            .foregroundStyle(IslandStyle.secondaryText)
                     }
                 }
             }
@@ -175,11 +176,11 @@ struct CollapsedPillView: View {
         HStack(spacing: 3) {
             Text("\(count)")
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.92))
+                .foregroundStyle(IslandStyle.primaryText)
                 .monospacedDigit()
             Text(label)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.38))
+                .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
         }
         .accessibilityLabel(accessibility)
     }
@@ -191,7 +192,7 @@ struct CollapsedPillView: View {
                 .frame(width: 6, height: 6)
             Text(L10n.ready)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(IslandStyle.secondaryText)
         }
     }
 }

@@ -4,13 +4,16 @@ struct PlanReviewView: View {
     let session: AgentSession
     let onComplete: () -> Void
     @Environment(SessionManager.self) private var manager
+    @Environment(ThemeManager.self) private var themeManager
+
+    private var scheme: ColorScheme { themeManager.resolvedScheme }
     @State private var feedback = ""
     @State private var showFeedback = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Divider().background(.white.opacity(0.08))
+            Divider().background(IslandStyle.divider(for: scheme).opacity(IslandStyle.dividerOpacity(for: scheme)))
 
             if let plan = session.pendingPlanReview {
                 planContent(plan)
@@ -28,7 +31,7 @@ struct PlanReviewView: View {
             AgentIcon(agentType: displayAgent, size: 20)
             Text(displayAgent.shortName)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(IslandStyle.primaryText)
             Spacer()
             Text("Plan Review")
                 .font(.system(size: 10, weight: .bold))
@@ -49,16 +52,16 @@ struct PlanReviewView: View {
                     .padding(12)
             }
             .frame(maxHeight: 300)
-            .background(IslandStyle.codeWell)
+            .background(IslandStyle.codeWell(for: scheme))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             if showFeedback {
                 TextField("Feedback...", text: $feedback, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.system(size: 11))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(IslandStyle.primaryText)
                     .padding(8)
-                    .background(IslandStyle.insetFill)
+                    .background(IslandStyle.insetFill(for: scheme))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .lineLimit(3)
                     .accessibilityIdentifier(TestAccessibility.planFeedbackField)
@@ -72,9 +75,9 @@ struct PlanReviewView: View {
                 } label: {
                     Image(systemName: "text.bubble")
                         .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(IslandStyle.secondaryText)
                         .frame(width: 32, height: 32)
-                        .background(.white.opacity(0.08))
+                        .background(IslandStyle.insetFill(for: scheme))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)

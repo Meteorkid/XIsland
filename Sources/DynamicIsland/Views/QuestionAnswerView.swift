@@ -4,6 +4,9 @@ struct QuestionAnswerView: View {
     let session: AgentSession
     let onComplete: () -> Void
     @Environment(SessionManager.self) private var manager
+    @Environment(ThemeManager.self) private var themeManager
+
+    private var scheme: ColorScheme { themeManager.resolvedScheme }
     /// Snapshot captured at init time; persists after `pendingQuestion` is cleared on answer,
     /// keeping the layout stable throughout the collapse animation.
     @State private var frozenQuestion: PendingQuestion?
@@ -18,7 +21,7 @@ struct QuestionAnswerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Divider().background(.white.opacity(0.08))
+            Divider().background(IslandStyle.divider(for: scheme).opacity(IslandStyle.dividerOpacity(for: scheme)))
 
             if let q = frozenQuestion {
                 // Render from snapshot; updated live until an answer is submitted
@@ -48,7 +51,7 @@ struct QuestionAnswerView: View {
             AgentIcon(agentType: displayAgent, size: 20)
             Text(displayAgent.shortName)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(IslandStyle.primaryText)
             Spacer()
             Text("Question")
                 .font(.system(size: 10, weight: .bold))
@@ -70,7 +73,7 @@ struct QuestionAnswerView: View {
                     .font(.system(size: 16))
                 Text(q.text)
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(IslandStyle.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -92,22 +95,28 @@ struct QuestionAnswerView: View {
                             } else {
                                 Text("⌘\(index + 1)")
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.white.opacity(submittedAnswer == nil ? 0.3 : 0.15))
+                                    .foregroundStyle(submittedAnswer == nil
+                                        ? IslandStyle.tertiaryText(for: scheme)
+                                        : IslandStyle.tertiaryText(for: scheme).opacity(0.5))
                                     .frame(width: 24)
                             }
                             Text(option)
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(isSelected ? .white : .white.opacity(submittedAnswer == nil ? 1 : 0.3))
+                                .foregroundStyle(isSelected
+                                    ? .white
+                                    : (submittedAnswer == nil
+                                        ? IslandStyle.primaryText
+                                        : IslandStyle.secondaryText))
                             Spacer()
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(isSelected ? Color.green.opacity(0.12) : IslandStyle.insetFill)
+                        .background(isSelected ? Color.green.opacity(0.12) : IslandStyle.insetFill(for: scheme))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay {
                             RoundedRectangle(cornerRadius: 8)
                                 .strokeBorder(
-                                    isSelected ? Color.green.opacity(0.3) : Color.white.opacity(0.08),
+                                    isSelected ? Color.green.opacity(0.3) : IslandStyle.strokeColor(for: scheme).opacity(IslandStyle.strokeOpacity(for: scheme)),
                                     lineWidth: 0.5
                                 )
                         }

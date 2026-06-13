@@ -65,25 +65,11 @@ struct NotchContentView: View {
     }
 
     private var expandedHeight: CGFloat {
-        let perm: PendingPermission? = {
-            if case .permission(let id) = state {
-                return manager.sessions.first(where: { $0.id == id })?.pendingPermission
-            }
-            return nil
-        }()
-        let question: PendingQuestion? = {
-            if case .question(let id) = state {
-                return manager.sessions.first(where: { $0.id == id })?.pendingQuestion
-            }
-            return nil
-        }()
-        return IslandSizeCalculator.expandedHeight(
+        IslandSizeCalculator.expandedHeight(
             for: state,
             visibleSessionCount: manager.visibleSessions.count,
             panelMaxHeight: panelMaxHeight,
-            activityLogExpanded: activityLogExpanded,
-            pendingPermission: perm,
-            pendingQuestion: question
+            activityLogExpanded: activityLogExpanded
         )
     }
 
@@ -139,12 +125,9 @@ struct NotchContentView: View {
         guard let session = manager.prioritizedInteractionSession else { return nil }
 
         switch session.status {
-        case .waitingPermission:
-            return .permission(session.id)
-        case .waitingAnswer:
-            return .question(session.id)
-        case .waitingPlanReview:
-            return .planReview(session.id)
+        case .waitingPermission, .waitingAnswer, .waitingPlanReview:
+            // 待处理任务已在 SessionListView 顶部内联显示，直接展开
+            return .expanded
         default:
             return nil
         }
@@ -184,7 +167,8 @@ struct NotchContentView: View {
             )
             .fill(pillFillColor)
             .shadow(
-                color: .white.opacity(0.04 + 0.02 * notchShapeOpenProgress),
+                color: IslandStyle.shadowColor(for: themeManager.resolvedScheme)
+                    .opacity(IslandStyle.shadowOpacity(for: themeManager.resolvedScheme) + 0.02 * notchShapeOpenProgress),
                 radius: 10 + 10 * notchShapeOpenProgress,
                 y: 3 + notchShapeOpenProgress
             )
@@ -196,7 +180,11 @@ struct NotchContentView: View {
                     topTrailingRadius: notchTopCornerRadius,
                     style: .continuous
                 )
-                .strokeBorder(.white.opacity(pillStrokeOpacity), lineWidth: 0.5)
+                .strokeBorder(
+                    IslandStyle.strokeColor(for: themeManager.resolvedScheme)
+                        .opacity(pillStrokeOpacity),
+                    lineWidth: 0.5
+                )
             }
             .frame(width: shapeWidth, height: shapeHeight)
 
@@ -223,7 +211,8 @@ struct NotchContentView: View {
             Button {
                 audio.isMuted.toggle()
             } label: {
-                Text(audio.isMuted ? L10n.unmute : L10n.soundMute)
+                Label(audio.isMuted ? L10n.unmute : L10n.soundMute,
+                      systemImage: audio.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
             }
             Divider()
             Button(L10n.prefsEllipsis) {
@@ -255,6 +244,7 @@ struct NotchContentView: View {
             } else {
                 markExpandedInteraction()
             }
+            Self.handleIslandStateChange(newState, manager: manager)
         }
         .onChange(of: expandedInactivityAutoHideDelay) { _, _ in
             if isExpanded {
@@ -277,9 +267,6 @@ struct NotchContentView: View {
                     NSApp.windows.first(where: { $0 is NotchWindow })?.orderFrontRegardless()
                 }
             }
-        }
-        .onChange(of: state) { _, newState in
-            Self.handleIslandStateChange(newState, manager: manager)
         }
         .onAppear {
             if let w = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow {
@@ -322,12 +309,6 @@ struct NotchContentView: View {
                 } else {
                     autoExpandForInteraction()
                 }
-            } else if case .permission = state {
-                collapse()
-            } else if case .question = state {
-                collapse()
-            } else if case .planReview = state {
-                collapse()
             }
         }
     }
@@ -417,25 +398,11 @@ struct NotchContentView: View {
     }
 
     private func targetSize(for state: IslandState) -> (width: CGFloat, height: CGFloat) {
-        let perm: PendingPermission? = {
-            if case .permission(let id) = state {
-                return manager.sessions.first(where: { $0.id == id })?.pendingPermission
-            }
-            return nil
-        }()
-        let question: PendingQuestion? = {
-            if case .question(let id) = state {
-                return manager.sessions.first(where: { $0.id == id })?.pendingQuestion
-            }
-            return nil
-        }()
-        return IslandSizeCalculator.targetSize(
+        IslandSizeCalculator.targetSize(
             for: state,
             visibleSessionCount: manager.visibleSessions.count,
             panelWidth: panelWidth,
-            panelMaxHeight: panelMaxHeight,
-            pendingPermission: perm,
-            pendingQuestion: question
+            panelMaxHeight: panelMaxHeight
         )
     }
 
@@ -459,37 +426,14 @@ struct NotchContentView: View {
             expandedHeader
 
             switch state {
-            case .expanded:
+            case .expanded, .permission, .question, .planReview:
+                // 待处理任务（question/permission/planReview）已在 SessionListView 顶部内联显示
                 SessionListView(onJump: {
-                    expandedByHover = false
-                    jumpMouseLocation = NSEvent.mouseLocation
-                    collapse()
+                    // 跳转后保持面板打开——鼠标仍在面板上，auto-collapse 会在鼠标移出时自然触发
                 })
 
                 if activityLogExpanded {
                     activityLogContent
-                }
-
-            case .permission(let id):
-                if let session = manager.sessions.first(where: { $0.id == id }) {
-                    PermissionApprovalView(session: session) {
-                        collapseAfterDelay()
-                    }
-                }
-
-            case .question(let id):
-                if let session = manager.sessions.first(where: { $0.id == id }) {
-                    QuestionAnswerView(session: session) {
-                        collapseAfterDelay()
-                    }
-                    .id(session.pendingQuestion?.id)
-                }
-
-            case .planReview(let id):
-                if let session = manager.sessions.first(where: { $0.id == id }) {
-                    PlanReviewView(session: session) {
-                        collapseAfterDelay()
-                    }
                 }
 
             case .collapsed:
@@ -517,7 +461,7 @@ struct NotchContentView: View {
                                 .frame(width: 5, height: 5)
                             Text(label)
                                 .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.55))
+                                .foregroundStyle(IslandStyle.secondaryText)
                             Text(value)
                                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                                 .foregroundStyle(color)
@@ -583,9 +527,11 @@ struct NotchContentView: View {
                 markExpandedInteraction()
                 audio.isMuted.toggle()
             } label: {
-                    Image(systemName: "speaker.wave.2.fill")
+                    Image(systemName: audio.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(audio.isMuted ? .white.opacity(0.25) : .white.opacity(0.72))
+                        .foregroundStyle(audio.isMuted
+                            ? IslandStyle.tertiaryText(for: themeManager.resolvedScheme)
+                            : IslandStyle.secondaryText)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
@@ -598,7 +544,7 @@ struct NotchContentView: View {
             } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.62))
+                        .foregroundStyle(IslandStyle.secondaryText)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
@@ -612,13 +558,13 @@ struct NotchContentView: View {
                 if let session = interactionSession {
                     Text(session.displayTitle)
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(IslandStyle.secondaryText)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 } else {
                     Text("\(manager.activeSessions.count)\(L10n.activeSessions)")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.3))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
                 }
             }
 
@@ -629,7 +575,7 @@ struct NotchContentView: View {
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.plain)
@@ -746,44 +692,36 @@ struct NotchContentView: View {
 
         let mouse = NSEvent.mouseLocation
         var hitFrame = window.frame
-        // 展开时用更大的命中区域覆盖整个面板，防止鼠标移到面板内容时误触发收起
+        // 展开时用更大的命中区域覆盖整个面板+药丸区域，防止鼠标在面板与药丸之间移动时误触发收起
         if isExpanded {
-            hitFrame.size.width = expandedWidth + 40
-            hitFrame.size.height = expandedHeight + 40
-            hitFrame.origin.x -= 20
+            // 从展开面板底部向下扩展 20px（给鼠标移出时留余量），向上覆盖到药丸区域。
+            // 不使用 visibleFrame 裁剪高度——药丸在菜单栏区域内（origin.y > visibleFrame.maxY），
+            // visibleFrame 裁剪会把 hitFrame 压缩到 ~1px，与收起状态的问题相同。
             hitFrame.origin.y -= 20
-            // 限制命中区域不超过屏幕可见范围，避免覆盖菜单栏
+            hitFrame.size.height = expandedHeight + 40
+            // 仅裁剪左右（不裁剪顶部/底部），确保命中区域覆盖药丸
             if let screen = window.screen?.visibleFrame {
                 hitFrame.origin.x = max(hitFrame.origin.x, screen.minX)
-                hitFrame.origin.y = max(hitFrame.origin.y, screen.minY)
                 hitFrame.size.width = min(hitFrame.maxX, screen.maxX) - hitFrame.origin.x
-                hitFrame.size.height = min(hitFrame.maxY, screen.maxY) - hitFrame.origin.y
             }
         } else {
-            // 收起后窗口上移缩小，但鼠标可能还停留在展开面板的区域。
-            // 向下扩展 hit frame，覆盖从药丸到展开内容底部的范围，
-            // 避免收起后鼠标「悬空」导致无法重新触发展开。
-            //
-            // 注意：collapse() 先设 state=.collapsed 再延迟 resize 窗口，
-            // 此期间 expandedHeight 因 state==.collapsed 返回 0。
-            // 使用 cachedExpandedShapeHeight（状态变更前缓存的展开高度）替代。
-            let collapsedBottom = hitFrame.minY
-            let effectiveExpandedHeight = max(expandedHeight, cachedExpandedShapeHeight)
-            let expandedBottom = collapsedBottom - (effectiveExpandedHeight - collapsedOuterHeight)
-            let extraDown = max(0, collapsedBottom - expandedBottom + 20)
-            hitFrame.origin.y -= extraDown
-            hitFrame.size.height += extraDown
-            if let screen = window.screen?.visibleFrame {
-                hitFrame.origin.x = max(hitFrame.origin.x, screen.minX)
-                hitFrame.origin.y = max(hitFrame.origin.y, screen.minY)
-                hitFrame.size.width = min(hitFrame.maxX, screen.maxX) - hitFrame.origin.x
-                hitFrame.size.height = min(hitFrame.maxY, screen.maxY) - hitFrame.origin.y
+            // 收起状态下 hit frame 垂直扩展到屏幕顶部，覆盖药丸区域。
+            // 药丸面板绘制在菜单栏内，鼠标移到药丸上都应能触发展开。
+            // 不使用 visibleFrame——它不含菜单栏，裁剪会将 hitFrame 压缩到 ~1px。
+            // +1 补偿 NSRect.contains 上界排他（y < maxY）：鼠标恰好在 screenTop 时不被排除。
+            if let screen = window.screen?.frame {
+                let screenTop = screen.maxY
+                hitFrame.size.height += max(0, screenTop - hitFrame.maxY) + 1
             }
         }
-        let inside = hitFrame.contains(mouse)
+        var inside = hitFrame.contains(mouse)
+
+        // collapse 动画期间（state 已是 collapsed 但 window.frame 尚未缩回），
+        // 强制 inside = false，确保 isHovering 能被及时清除，避免 0.75s 状态不一致。
+        if collapseAnimating { inside = false }
 
         if inside && !isExpanded {
-            guard Date().timeIntervalSince(lastCollapseAt) > 0.5 else { return }
+            guard Date().timeIntervalSince(lastCollapseAt) > 0.65 else { return }
             if let savedPos = jumpMouseLocation {
                 let dx = mouse.x - savedPos.x
                 let dy = mouse.y - savedPos.y
@@ -847,21 +785,21 @@ struct NotchContentView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "list.bullet.rectangle")
                         .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(IslandStyle.secondaryText)
                     Text(L10n.activityLog)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(IslandStyle.primaryText)
                 }
                 Spacer()
                 Text("⌘O")
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.3))
+                    .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
             }
 
             if allEvents.isEmpty {
                 Text(L10n.noActivity)
                     .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.2))
+                    .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
                     .padding(.top, 4)
             } else {
                 ScrollView {
@@ -873,22 +811,22 @@ struct NotchContentView: View {
                                     .frame(width: 4, height: 4)
                                 Image(systemName: item.event.isComplete ? "checkmark.circle.fill" : "circle.dashed")
                                     .font(.system(size: 8))
-                                    .foregroundStyle(item.event.isComplete ? .green.opacity(0.5) : .white.opacity(0.25))
+                                    .foregroundStyle(item.event.isComplete ? .green.opacity(0.5) : IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
                                     .symbolEffect(.bounce, value: item.event.isComplete)
                                 Text(item.session.agentType.shortName)
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundStyle(item.session.agentType.color.opacity(0.7))
                                 Text(item.event.displayName)
                                     .font(.system(size: 9))
-                                    .foregroundStyle(.white.opacity(0.5))
+                                    .foregroundStyle(IslandStyle.secondaryText)
                                 Text(item.event.summary)
                                     .font(.system(size: 9, design: .monospaced))
-                                    .foregroundStyle(.white.opacity(0.3))
+                                    .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
                                     .lineLimit(1)
                                 Spacer()
                                 Text(item.event.timestamp, style: .time)
                                     .font(.system(size: 8, design: .monospaced))
-                                    .foregroundStyle(.white.opacity(0.2))
+                                    .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
                             }
                             .padding(.horizontal, 4)
                             .padding(.vertical, 2)

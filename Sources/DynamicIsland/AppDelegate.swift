@@ -160,9 +160,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hostView.sizingOptions = []
         }
         window.contentView?.addSubview(hostView)
+        notchWindow = window
+        themeManager.onSchemeChange = { [weak self] in
+            guard let self, let w = self.notchWindow else { return }
+            self.updateWindowAppearance(w)
+        }
         updateWindowAppearance(window)
         window.orderFrontRegardless()
-        notchWindow = window
         themeManager.startObservingSystemAppearance()
 
         window.keyEquivalentHandler = { [weak self] event in

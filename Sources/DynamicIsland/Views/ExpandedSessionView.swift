@@ -1,15 +1,18 @@
 import SwiftUI
 
 struct ExpandedSessionView: View {
+    @Environment(ThemeManager.self) private var themeManager
     let session: AgentSession
     var onDismiss: (() -> Void)?
+
+    private var scheme: ColorScheme { themeManager.resolvedScheme }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             sessionHeader
-            Divider().background(.white.opacity(0.08))
+            Divider().background(IslandStyle.divider(for: scheme).opacity(IslandStyle.dividerOpacity(for: scheme)))
             promptSection
-            Divider().background(.white.opacity(0.08))
+            Divider().background(IslandStyle.divider(for: scheme).opacity(IslandStyle.dividerOpacity(for: scheme)))
             activityFeed
         }
     }
@@ -21,14 +24,14 @@ struct ExpandedSessionView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.agentType.displayName)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(IslandStyle.primaryText)
                 HStack(spacing: 6) {
                     Text(session.terminal.isEmpty ? session.agentType.shortName : session.terminal)
                         .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(IslandStyle.secondaryText)
                     Text(session.formattedDuration)
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.3))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
                 }
             }
 
@@ -46,10 +49,10 @@ struct ExpandedSessionView: View {
                     Text(L10n.jumpTitle)
                         .font(.system(size: 10, weight: .medium))
                 }
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(IslandStyle.primaryText)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(IslandStyle.insetFill)
+                .background(IslandStyle.insetFill(for: scheme))
                 .clipShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -62,10 +65,10 @@ struct ExpandedSessionView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("You:")
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.3))
+                .foregroundStyle(IslandStyle.secondaryText)
             Text(session.prompt)
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(IslandStyle.primaryText)
                 .lineLimit(3)
         }
         .padding(.horizontal, 16)
@@ -85,7 +88,7 @@ struct ExpandedSessionView: View {
                             .frame(width: 12, height: 12)
                         Text("Running \(tool)...")
                             .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.5))
+                            .foregroundStyle(IslandStyle.secondaryText)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 2)

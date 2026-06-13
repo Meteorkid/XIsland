@@ -1,7 +1,10 @@
 import SwiftUI
 
 struct AgentActivityView: View {
+    @Environment(ThemeManager.self) private var themeManager
     let event: ToolEvent
+
+    private var scheme: ColorScheme { themeManager.resolvedScheme }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -15,7 +18,7 @@ struct AgentActivityView: View {
                     HStack(spacing: 4) {
                         Text(event.displayName)
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.8))
+                            .foregroundStyle(IslandStyle.primaryText)
 
                         if event.isComplete {
                             Image(systemName: "checkmark")
@@ -26,7 +29,7 @@ struct AgentActivityView: View {
 
                     Text(event.summary)
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
                         .lineLimit(2)
                 }
 
@@ -94,7 +97,7 @@ struct AgentActivityView: View {
         case "edit", "editfile", "str_replace": return .yellow.opacity(0.7)
         case "bash", "shell", "terminal": return .green.opacity(0.7)
         case "search", "grep", "ripgrep": return .purple.opacity(0.7)
-        default: return .white.opacity(0.4)
+        default: return IslandStyle.secondaryText
         }
     }
 }

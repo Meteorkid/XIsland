@@ -2,7 +2,10 @@ import SwiftUI
 
 struct MarkdownView: View {
     let markdown: String
+    @Environment(ThemeManager.self) private var themeManager
     private let blocks: [Block]
+
+    private var scheme: ColorScheme { themeManager.resolvedScheme }
 
     init(markdown: String) {
         self.markdown = markdown
@@ -77,12 +80,12 @@ struct MarkdownView: View {
         case .heading(let level, let text):
             Text(text)
                 .font(.system(size: headingSize(level), weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(IslandStyle.primaryText)
 
         case .paragraph(let text):
             Text(inlineMarkdown(text))
                 .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(IslandStyle.secondaryText)
 
         case .code(let code):
             Text(code)
@@ -90,21 +93,21 @@ struct MarkdownView: View {
                 .foregroundStyle(.green.opacity(0.8))
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(IslandStyle.codeWell)
+                .background(IslandStyle.codeWell(for: scheme))
                 .clipShape(RoundedRectangle(cornerRadius: 4))
 
         case .listItem(let text):
             HStack(alignment: .top, spacing: 6) {
                 Text("•")
                     .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
                 Text(inlineMarkdown(text))
                     .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(IslandStyle.secondaryText)
             }
 
         case .divider:
-            Divider().background(.white.opacity(0.1))
+            Divider().background(IslandStyle.divider(for: scheme).opacity(IslandStyle.dividerOpacity(for: scheme)))
         }
     }
 

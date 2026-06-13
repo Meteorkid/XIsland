@@ -317,17 +317,22 @@ struct DIBridge {
     static func buildSessionStart(sessionId: String, agentType: String, data: [String: Any]?) -> DIMessage {
         var msg = DIMessage(type: .sessionStart, sessionId: sessionId)
         msg.agentType = agentType
-        msg.terminal = data?["terminal"] as? String ?? ProcessInfo.processInfo.environment["TERM_PROGRAM"] ?? "Terminal"
+        // 空字符串也要走 fallback，否则 ?? 链被截断，TERM_PROGRAM 不会被使用
+        let termFromData = data?["terminal"] as? String
+        msg.terminal = (termFromData?.isEmpty == false ? termFromData : nil)
+            ?? ProcessInfo.processInfo.environment["TERM_PROGRAM"]
+            ?? "Terminal"
         let tsid = currentTermSessionId
         if !tsid.isEmpty { msg.termSessionId = tsid }
-        msg.workingDir = data?["working_dir"] as? String
+        let cwdFromData = data?["working_dir"] as? String
             ?? data?["cwd"] as? String
             ?? data?["projectPath"] as? String
             ?? data?["workspace"] as? String
             ?? data?["workspaceFolder"] as? String
             ?? (data?["workspace_roots"] as? [String])?.first
+        // 不 fallback 到 FileManager.default.currentDirectoryPath——那是 DIBridge 自身的 cwd，不是用户项目
+        msg.workingDir = (cwdFromData?.isEmpty == false ? cwdFromData : nil)
             ?? ProcessInfo.processInfo.environment["PROJECT_DIR"]
-            ?? FileManager.default.currentDirectoryPath
         msg.prompt = extractUserPrompt(data)
         extractTokens(data, into: &msg)
         return msg
@@ -638,9 +643,10 @@ struct DIBridge {
             line += " stdin=(nil)"
         }
         line += "\n---\n"
-        if let handle = FileHandle(forWritingAtPath: logPath) {
+        if let handle = FileHandle(forWritingAtPath: logPath),
+           let data = line.data(using: .utf8) {
             handle.seekToEndOfFile()
-            handle.write(line.data(using: .utf8)!)
+            handle.write(data)
             handle.closeFile()
         } else {
             FileManager.default.createFile(atPath: logPath, contents: line.data(using: .utf8))
