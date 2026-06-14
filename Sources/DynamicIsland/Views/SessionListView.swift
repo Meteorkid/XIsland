@@ -293,6 +293,8 @@ struct SessionCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             // 可跳转的卡片内容
             Button {
+                print("[UI] Card clicked: session=\(session.id) agent=\(session.agentType.rawValue)")
+                fflush(stdout)
                 TerminalJumpManager.jump(to: session)
                 onJump?()
             } label: {

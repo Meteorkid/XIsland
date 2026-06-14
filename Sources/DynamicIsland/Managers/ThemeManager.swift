@@ -112,6 +112,7 @@ final class ThemeManager {
     /// Sync NSApp.appearance so AppKit views (NSHostingView, NSPanel) resolve
     /// colors correctly. This also makes SwiftUI .primary/.secondary adapt.
     private func syncAppAppearance() {
+        guard NSApp != nil else { return }
         switch mode {
         case .dark:
             NSApp.appearance = NSAppearance(named: .darkAqua)

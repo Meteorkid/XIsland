@@ -146,7 +146,7 @@ enum TerminalApp: String, CaseIterable {
 
 enum TerminalJumpManager {
     /// 主线程快照，避免后台线程读取 @Observable 对象产生数据竞争
-    private struct SessionSnapshot {
+    struct SessionSnapshot {
         let id: String
         let agentType: AgentType
         let terminal: String
@@ -166,6 +166,7 @@ enum TerminalJumpManager {
             termSessionId: session.termSessionId,
             windowNumber: session.windowNumber
         )
+        log("jump called: agent=\(snap.agentType.rawValue) terminal=\(snap.terminal) cwd=\(snap.workingDirectory)")
         DispatchQueue.global(qos: .userInitiated).async {
             performJump(snap: snap)
         }
@@ -173,7 +174,7 @@ enum TerminalJumpManager {
 
     private static func performJump(snap: SessionSnapshot) {
         let targetApp = resolveTargetApp(snap: snap)
-        log("click session=\(snap.id) agent=\(snap.agentType.rawValue) terminal=\(snap.terminal) cwd=\(snap.workingDirectory) target=\(targetApp?.rawValue ?? "nil")")
+        log("performJump: id=\(snap.id) agent=\(snap.agentType.rawValue) terminal=\(snap.terminal) cwd=\(snap.workingDirectory) tsid=\(snap.termSessionId ?? "nil") wid=\(snap.windowNumber.map(String.init) ?? "nil") target=\(targetApp?.rawValue ?? "nil")")
 
         if snap.agentType == .cursor {
             let preferredApp = (targetApp == .windsurf) ? TerminalApp.windsurf : TerminalApp.cursor
@@ -260,7 +261,7 @@ enum TerminalJumpManager {
         activateByAgentName(snap.agentType)
     }
 
-    private static func resolveTargetApp(snap: SessionSnapshot) -> TerminalApp? {
+    static func resolveTargetApp(snap: SessionSnapshot) -> TerminalApp? {
         let appFromTerminal: TerminalApp? = snap.terminal.isEmpty ? nil : TerminalApp.detect(from: snap.terminal)
         let appFromAgent = TerminalApp.forAgent(snap.agentType)
 
@@ -670,14 +671,22 @@ enum TerminalJumpManager {
     }
 
     private static func activateApp(_ app: TerminalApp) {
+        log("activateApp: \(app.rawValue) bundleIds=\(app.bundleIds)")
         let runningApps = app.bundleIds
             .flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
+        log("activateApp: found \(runningApps.count) running apps")
         if let running = runningApps.first {
+            log("activateApp: activating \(running.localizedName ?? "unknown") pid=\(running.processIdentifier)")
             running.activate(options: [.activateAllWindows])
             return
         }
 
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleId) else { return }
+        log("activateApp: no running app found, trying to open")
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleId) else {
+            log("activateApp: cannot find app URL for \(app.bundleId)")
+            return
+        }
+        log("activateApp: opening \(url.path)")
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 
@@ -725,12 +734,14 @@ enum TerminalJumpManager {
             guard let appName = $0.localizedName?.lowercased() else { return false }
             return appName.contains(name) || name.contains(appName)
         }) {
+            log("activateByAgentName: matched app name '\(app.localizedName ?? "")'")
             app.activate(options: [.activateAllWindows])
             return
         }
 
-        // 2. CLI 工具没有 macOS 应用——尝试激活已知终端（排除 IDE 类）
-        for terminalApp in TerminalApp.allCases where !terminalApp.bundleId.isEmpty && !terminalApp.isVSCodeFamily {
+        // 2. CLI 工具没有 macOS 应用——尝试找到包含该进程的终端
+        if let terminalApp = findTerminalHostingAgent(agentType) {
+            log("activateByAgentName: found terminal '\(terminalApp.rawValue)' hosting agent")
             if let app = NSRunningApplication.runningApplications(
                 withBundleIdentifier: terminalApp.bundleId
             ).first {
@@ -738,6 +749,88 @@ enum TerminalJumpManager {
                 return
             }
         }
+
+        // 3. 回退：激活最近使用的终端（排除 IDE 类）
+        for terminalApp in TerminalApp.allCases where !terminalApp.bundleId.isEmpty && !terminalApp.isVSCodeFamily {
+            if let app = NSRunningApplication.runningApplications(
+                withBundleIdentifier: terminalApp.bundleId
+            ).first {
+                log("activateByAgentName: activating terminal '\(terminalApp.rawValue)'")
+                app.activate(options: [.activateAllWindows])
+                return
+            }
+        }
+    }
+
+    /// 尝试找到运行指定 agent 进程的终端应用
+    private static func findTerminalHostingAgent(_ agentType: AgentType) -> TerminalApp? {
+        // 获取 agent 的进程名
+        let processNames: [String]
+        switch agentType {
+        case .claudeCode: processNames = ["claude"]
+        case .geminiCli: processNames = ["gemini"]
+        case .openCode: processNames = ["opencode"]
+        case .aider: processNames = ["aider"]
+        case .codex: processNames = ["codex"]
+        default: processNames = []
+        }
+
+        guard !processNames.isEmpty else { return nil }
+
+        // 查找 agent 进程的 TTY
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/ps")
+        task.arguments = ["-o", "pid,tty,comm", "-ax"]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+
+        guard (try? task.run()) != nil else { return nil }
+        task.waitUntilExit()
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return nil }
+
+        // 找到 agent 进程的 TTY
+        var agentTTYs: Set<String> = []
+        for line in output.components(separatedBy: "\n") {
+            let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard parts.count >= 3 else { continue }
+            let comm = String(parts[2]).lowercased()
+            let tty = String(parts[1])
+            if processNames.contains(where: { comm.contains($0) }) && !tty.isEmpty {
+                agentTTYs.insert(tty)
+            }
+        }
+
+        guard !agentTTYs.isEmpty else { return nil }
+        log("findTerminalHostingAgent: agent TTYs=\(agentTTYs)")
+
+        // 查找哪个终端应用拥有这些 TTY 的窗口
+        for terminalApp in TerminalApp.allCases where !terminalApp.bundleId.isEmpty {
+            let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: terminalApp.bundleId)
+            guard let app = runningApps.first else { continue }
+
+            let appElement = AXUIElementCreateApplication(app.processIdentifier)
+            var windowsRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(appElement, "AXWindows" as CFString, &windowsRef) == .success,
+                  let windows = windowsRef as? [AXUIElement] else { continue }
+
+            for window in windows {
+                var titleRef: CFTypeRef?
+                if AXUIElementCopyAttributeValue(window, "AXTitle" as CFString, &titleRef) == .success,
+                   let title = titleRef as? String {
+                    // 窗口标题通常包含 TTY 信息
+                    for tty in agentTTYs {
+                        if title.contains(tty) || title.lowercased().contains(terminalApp.rawValue.lowercased()) {
+                            return terminalApp
+                        }
+                    }
+                }
+            }
+        }
+
+        return nil
     }
 
     private static func runAppleScriptBool(_ source: String) -> Bool {
@@ -768,6 +861,6 @@ enum TerminalJumpManager {
     }
 
     private static func log(_ message: String) {
-        print("[JumpDebug] \(message)")
+        NSLog("[JumpDebug] \(message)")
     }
 }
