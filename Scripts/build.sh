@@ -91,6 +91,17 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
     <false/>
     <key>NSAppleEventsUsageDescription</key>
     <string>X Island needs Apple Events access to jump to terminal tabs.</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>dev.xisland.app</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>xisland</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>
 PLIST

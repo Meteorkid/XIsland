@@ -47,7 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let themeManager = ThemeManager()
     private var socketServer: SocketServer?
     private var hookRepairTimer: Timer?
-    private var notchWindow: NotchWindow?
+    var notchWindow: NotchWindow?
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
     private var checkForUpdatesMenuItem: NSMenuItem?
@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var diagnosticsWriter: AppDiagnosticsWriter?
     private let testConfiguration: AppTestConfiguration
     private let launchHooks: LaunchHooks
+    private var scrollMonitor: Any?
 
     override init() {
         self.testConfiguration = AppTestConfiguration.current()
@@ -135,6 +136,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         socketServer?.stop()
+        if let monitor = scrollMonitor {
+            NSEvent.removeMonitor(monitor)
+            scrollMonitor = nil
+        }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            guard url.scheme == "xisland" else { continue }
+            handleIslandCommand(url)
+        }
+    }
+
+    private func handleIslandCommand(_ url: URL) {
+        // 解析路径: xisland://island/show
+        guard url.host == "island",
+              url.pathComponents.contains("show") else { return }
+
+        // 收起内容，重新定位到鼠标屏幕，显示窗口
+        notchWindow?.showAtMouseScreen()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -269,6 +290,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func setupScrollMonitor() {
+        scrollMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            DispatchQueue.main.async {
+                self?.handleScrollEvent(event)
+            }
+        }
+    }
+
+    private func handleScrollEvent(_ event: NSEvent) {
+        guard let window = notchWindow else { return }
+
+        // 横滑切换手势（仅收起状态响应）
+        if window.islandState == .collapsed {
+            let result = window.swipeRecognizer.handleScroll(event: event)
+            if case .triggered(let direction) = result {
+                AppSwitcher.shared.switchToOtherApp(swipeDirection: direction)
+                return
+            }
+        }
+    }
+
     private func setupMenuBarItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
@@ -314,6 +356,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionManager.persistenceManager = persistenceManager
         setupNotchWindow()
         setupMenuBarItem()
+        setupScrollMonitor()
         DispatchQueue.main.async { [weak self] in
             self?.installApplicationMenuItems()
         }

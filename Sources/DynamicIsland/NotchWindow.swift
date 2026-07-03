@@ -37,6 +37,11 @@ final class NotchWindow: NSPanel {
     /// 缓存 bestScreen() 结果，避免 setFrame 高频调用时重复遍历所有屏幕。
     private var cachedBestScreen: NSScreen?
 
+    /// 横滑切换手势识别器
+    let swipeRecognizer = SwipeGestureRecognizer()
+    /// 灵动岛当前状态（由 NotchContentView 同步）
+    var islandState: IslandState = .collapsed
+
     init() {
         let screen = Self.bestScreen()
         let width: CGFloat = 220
@@ -372,9 +377,31 @@ final class NotchWindow: NSPanel {
                 super.sendEvent(event)
             }
 
+        case .scrollWheel:
+            // 横滑切换手势（仅收起状态响应）
+            if islandState == .collapsed {
+                let result = swipeRecognizer.handleScroll(event: event)
+                if case .triggered(let direction) = result {
+                    AppSwitcher.shared.switchToOtherApp(swipeDirection: direction)
+                    return
+                }
+            }
+            super.sendEvent(event)
+
         default:
             super.sendEvent(event)
         }
+    }
+
+    /// 在鼠标所在屏幕显示窗口（URL Scheme 唤醒时调用）
+    func showAtMouseScreen() {
+        let mouseLocation = NSEvent.mouseLocation
+        guard let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) else {
+            orderFrontRegardless()
+            return
+        }
+        repositionOnScreen(mouseScreen)
+        orderFrontRegardless()
     }
 
     func setFrameDirect(_ rect: NSRect, display: Bool = true) {

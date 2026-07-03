@@ -125,9 +125,12 @@ struct NotchContentView: View {
         guard let session = manager.prioritizedInteractionSession else { return nil }
 
         switch session.status {
-        case .waitingPermission, .waitingAnswer, .waitingPlanReview:
-            // 待处理任务已在 SessionListView 顶部内联显示，直接展开
-            return .expanded
+        case .waitingPermission:
+            return .permission(session.id)
+        case .waitingAnswer:
+            return .question(session.id)
+        case .waitingPlanReview:
+            return .planReview(session.id)
         default:
             return nil
         }
@@ -318,6 +321,12 @@ struct NotchContentView: View {
         collapseGeneration += 1
         collapseAnimating = false
         expandPending = true
+
+        // 同步状态到窗口层
+        if let window = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow {
+            window.islandState = newState
+        }
+
         let timing = transitionTiming
         let target = targetSize(for: newState)
         if case .expanded = newState {
@@ -378,6 +387,7 @@ struct NotchContentView: View {
                 guard generation == self.collapseGeneration, self.state == .collapsed else { return }
                 if let window = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow {
                     window.resizeToFitCollapse(contentWidth: w, contentHeight: h)
+                    window.islandState = self.state
                 }
                 self.collapseAnimating = false
             }
