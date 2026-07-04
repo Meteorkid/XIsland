@@ -3,6 +3,8 @@ import DIShared
 
 @main
 struct DIBridge {
+    static let maxMessageBytes = 16 * 1024 * 1024
+
     static func main() {
         let args = parseArgs()
         let agentType = args["agent"] ?? "unknown"
@@ -52,10 +54,12 @@ struct DIBridge {
             exit(0)
         }
 
-        encoded.withUnsafeBytes { ptr in
-            if let base = ptr.baseAddress {
-                _ = send(fd, base, ptr.count, 0)
+        guard sendAll(fd: fd, data: encoded) else {
+            close(fd)
+            if needsJsonOutput(hookType) {
+                print("{}")
             }
+            exit(1)
         }
         shutdown(fd, SHUT_WR)
 
@@ -125,13 +129,32 @@ struct DIBridge {
 
     // MARK: - Socket Communication
 
+    static func socketPath(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+        if let override = environment["DI_SOCKET_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !override.isEmpty {
+            return expandHome(in: override)
+        }
+        return DISocketConfig.socketPath
+    }
+
+    private static func expandHome(in path: String) -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        if path == "~" {
+            return home
+        }
+        if path.hasPrefix("~/") {
+            return "\(home)/\(path.dropFirst(2))"
+        }
+        return path.replacingOccurrences(of: "$HOME", with: home)
+    }
+
     static func connectSocket() -> Int32 {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return -1 }
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
-        let path = DISocketConfig.socketPath
+        let path = socketPath()
         let pathBytes = path.utf8CString
         withUnsafeMutablePointer(to: &addr.sun_path) { sunPath in
             pathBytes.withUnsafeBufferPointer { src in
@@ -154,7 +177,26 @@ struct DIBridge {
         return fd
     }
 
+    @discardableResult
+    static func sendAll(fd: Int32, data: Data) -> Bool {
+        data.withUnsafeBytes { ptr -> Bool in
+            guard let base = ptr.baseAddress else { return true }
+            var sent = 0
+            while sent < ptr.count {
+                let n = send(fd, base.advanced(by: sent), ptr.count - sent, 0)
+                guard n > 0 else { return false }
+                sent += n
+            }
+            return true
+        }
+    }
+
     static func receiveResponse(_ fd: Int32) -> DIMessage? {
+        guard let data = readFramedMessage(fd) else { return nil }
+        return try? DIProtocol.decode(data)
+    }
+
+    static func readFramedMessage(_ fd: Int32) -> Data? {
         var data = Data()
         let bufSize = 65536
         let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: bufSize)
@@ -168,14 +210,16 @@ struct DIBridge {
             let n = recv(fd, buf, bufSize, 0)
             if n > 0 {
                 data.append(buf, count: n)
-                if n < bufSize { break }
+                if data.count > maxMessageBytes { return nil }
+                if let newline = data.firstIndex(of: 0x0A) {
+                    return Data(data.prefix(through: newline))
+                }
             } else {
                 break
             }
         }
 
-        guard !data.isEmpty else { return nil }
-        return try? DIProtocol.decode(data)
+        return data.isEmpty ? nil : data
     }
 
     static func needsJsonOutput(_ hookType: String) -> Bool {
@@ -630,10 +674,33 @@ struct DIBridge {
     }
 
     static func dumpStdin(hook: String, data: [String: Any]?) {
+        guard shouldWriteDebugLog() else { return }
         let logPath = DISocketConfig.socketDir + "/bridge-stdin.log"
+        try? FileManager.default.createDirectory(
+            atPath: DISocketConfig.socketDir,
+            withIntermediateDirectories: true
+        )
+        let line = logLine(hook: hook, data: data)
+        if let handle = FileHandle(forWritingAtPath: logPath),
+           let data = line.data(using: .utf8) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            handle.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: logPath, contents: line.data(using: .utf8))
+        }
+    }
+
+    static func shouldWriteDebugLog(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        guard let raw = environment["DI_BRIDGE_DEBUG_LOG"]?.lowercased() else { return false }
+        return raw == "1" || raw == "true" || raw == "yes"
+    }
+
+    static func logLine(hook: String, data: [String: Any]?) -> String {
         var line = "[\(ISO8601DateFormatter().string(from: Date()))] hook=\(hook)"
         if let data {
-            if let json = try? JSONSerialization.data(withJSONObject: data, options: [.prettyPrinted]),
+            let redacted = redactedForLog(data) as? [String: Any] ?? [:]
+            if let json = try? JSONSerialization.data(withJSONObject: redacted, options: [.prettyPrinted]),
                let str = String(data: json, encoding: .utf8) {
                 line += "\n\(str)"
             } else {
@@ -643,13 +710,33 @@ struct DIBridge {
             line += " stdin=(nil)"
         }
         line += "\n---\n"
-        if let handle = FileHandle(forWritingAtPath: logPath),
-           let data = line.data(using: .utf8) {
-            handle.seekToEndOfFile()
-            handle.write(data)
-            handle.closeFile()
-        } else {
-            FileManager.default.createFile(atPath: logPath, contents: line.data(using: .utf8))
+        return line
+    }
+
+    static func redactedForLog(_ value: Any) -> Any {
+        if let dict = value as? [String: Any] {
+            return dict.reduce(into: [String: Any]()) { result, pair in
+                result[pair.key] = isSensitiveLogKey(pair.key) ? "[redacted]" : redactedForLog(pair.value)
+            }
         }
+        if let array = value as? [Any] {
+            return array.map(redactedForLog)
+        }
+        if let string = value as? String, string.count > 500 {
+            return "\(string.prefix(500))...[truncated \(string.count - 500) chars]"
+        }
+        return value
+    }
+
+    private static func isSensitiveLogKey(_ key: String) -> Bool {
+        let lower = key.lowercased()
+        return lower.contains("token")
+            || lower.contains("secret")
+            || lower.contains("password")
+            || lower.contains("api_key")
+            || lower.contains("apikey")
+            || lower.contains("authorization")
+            || lower.contains("cookie")
+            || lower.contains("private_key")
     }
 }

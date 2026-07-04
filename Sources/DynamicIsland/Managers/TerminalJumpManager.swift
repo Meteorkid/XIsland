@@ -257,6 +257,13 @@ enum TerminalJumpManager {
             return
         }
 
+        // terminal 数据为空时，直接激活最近使用的终端窗口
+        if snap.terminal.isEmpty {
+            log("fallback: no terminal data, activating most recent terminal")
+            activateMostRecentTerminal()
+            return
+        }
+
         log("fallback activate by agent name agent=\(snap.agentType.rawValue)")
         activateByAgentName(snap.agentType)
     }
@@ -677,7 +684,12 @@ enum TerminalJumpManager {
         log("activateApp: found \(runningApps.count) running apps")
         if let running = runningApps.first {
             log("activateApp: activating \(running.localizedName ?? "unknown") pid=\(running.processIdentifier)")
-            running.activate(options: [.activateAllWindows])
+            DispatchQueue.main.async {
+                if let appDelegate = NSApp.delegate as? AppDelegate {
+                    appDelegate.notchWindow?.orderOut(nil)
+                }
+                running.activate(options: [.activateAllWindows])
+            }
             return
         }
 
@@ -857,6 +869,41 @@ enum TerminalJumpManager {
                 result = runAppleScriptBool(source)
             }
             return result
+        }
+    }
+
+    /// 直接激活最近使用的终端窗口（跳过复杂 TTY 检测）
+    private static func activateMostRecentTerminal() {
+        // 所有 UI 操作必须在主线程执行
+        DispatchQueue.main.async {
+            // 先隐藏 XIsland 窗口
+            if let appDelegate = NSApp.delegate as? AppDelegate {
+                appDelegate.notchWindow?.orderOut(nil)
+                log("activateMostRecentTerminal: hid XIsland window")
+            }
+
+            // 排除 VSCode 系列，优先激活纯终端
+            let terminalApps: [TerminalApp] = [.iterm2, .terminal, .warp, .alacritty, .kitty, .wezTerm]
+            for termApp in terminalApps {
+                if let app = NSRunningApplication.runningApplications(
+                    withBundleIdentifier: termApp.bundleId
+                ).first {
+                    log("activateMostRecentTerminal: activating '\(termApp.rawValue)'")
+                    app.activate(options: [.activateAllWindows])
+                    return
+                }
+            }
+            // 回退：激活任何正在运行的非 IDE 终端
+            for termApp in TerminalApp.allCases where !termApp.bundleId.isEmpty && !termApp.isVSCodeFamily {
+                if let app = NSRunningApplication.runningApplications(
+                    withBundleIdentifier: termApp.bundleId
+                ).first {
+                    log("activateMostRecentTerminal: fallback activating '\(termApp.rawValue)'")
+                    app.activate(options: [.activateAllWindows])
+                    return
+                }
+            }
+            log("activateMostRecentTerminal: no terminal app found")
         }
     }
 

@@ -4,6 +4,7 @@ import SwiftUI
 struct CollapsedPillView: View {
     @Environment(SessionManager.self) private var manager
     @Environment(AudioEngine.self) private var audio
+    @Environment(QuotaTracker.self) private var quotaTracker
     @Environment(ThemeManager.self) private var themeManager
     /// Obscured: left = expanded-list session that last received a message; right = active count.
     /// Unobscured: same session count/order as the expanded list (`visibleSessions`).
@@ -12,6 +13,10 @@ struct CollapsedPillView: View {
     let onTap: () -> Void
 
     private var visible: [AgentSession] { manager.visibleSessions }
+    @AppStorage("reduceMotion") private var reduceMotion = false
+    @AppStorage("showCollapsedAgentIcon") private var showCollapsedAgentIcon = true
+    @AppStorage("showCollapsedSessionCount") private var showCollapsedSessionCount = true
+    @AppStorage("showCollapsedQuota") private var showCollapsedQuota = true
 
     var body: some View {
         Button(action: onTap) {
@@ -31,9 +36,17 @@ struct CollapsedPillView: View {
 
     private var obscuredBarContent: some View {
         HStack(spacing: 0) {
-            obscuredLeadingIcon
-            Spacer(minLength: 6)
-            activeCountLabel
+            if showCollapsedAgentIcon {
+                obscuredLeadingIcon
+            }
+            Spacer(minLength: showCollapsedAgentIcon ? 6 : 0)
+            if showCollapsedSessionCount {
+                activeCountLabel
+            }
+            if let quotaBadge = quotaBadgeContent {
+                quotaBadge
+                    .padding(.leading, showCollapsedSessionCount ? 8 : 0)
+            }
             if audio.isQuietHoursActive {
                 Image(systemName: "moon.zzz.fill")
                     .font(.system(size: 11))
@@ -52,38 +65,37 @@ struct CollapsedPillView: View {
     }
 
     private var unobscuredCenteredIcons: some View {
-        HStack(spacing: 0) {
-            Spacer(minLength: 0)
-            if visible.isEmpty {
-                idleContent.transition(.opacity)
-            } else {
-                let maxIcons = 5
-                let shown = Array(visible.prefix(maxIcons))
-                let overflow = visible.count - maxIcons
-                HStack(spacing: 6) {
-                    ForEach(shown) { session in
-                        AgentIcon(agentType: session.agentType, size: 22, status: session.status)
-                    }
-                    if overflow > 0 {
-                        Text("+\(overflow)")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(IslandStyle.secondaryText)
+        HStack(spacing: 8) {
+            if showCollapsedAgentIcon {
+                if visible.isEmpty {
+                    idleContent.transition(.opacity)
+                } else {
+                    let maxIcons = 5
+                    let shown = Array(visible.prefix(maxIcons))
+                    let overflow = visible.count - maxIcons
+                    HStack(spacing: 6) {
+                        ForEach(shown) { session in
+                            AgentIcon(agentType: session.agentType, size: 22, status: session.status)
+                        }
+                        if overflow > 0 {
+                            Text("+\(overflow)")
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(IslandStyle.secondaryText)
+                        }
                     }
                 }
             }
-            if audio.isQuietHoursActive {
-                Image(systemName: "moon.zzz.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.orange.opacity(0.6))
-                    .padding(.leading, 8)
+
+            if let compactModules = compactTrailingModules {
+                if showCollapsedAgentIcon {
+                    Spacer(minLength: 0)
+                }
+                compactModules
+            } else if showCollapsedAgentIcon {
+                Spacer(minLength: 0)
+            } else {
+                idleContent.transition(.opacity)
             }
-            if manager.bypassMode {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.green.opacity(0.7))
-                    .padding(.leading, 6)
-            }
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
     }
@@ -144,8 +156,6 @@ struct CollapsedPillView: View {
         .accessibilityLabel("X Island")
     }
 
-    @AppStorage("reduceMotion") private var reduceMotion = false
-
     @ViewBuilder
     private var activeCountLabel: some View {
         let trulyActiveCount = manager.trulyActiveSessions.count
@@ -194,6 +204,111 @@ struct CollapsedPillView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(IslandStyle.secondaryText)
         }
+    }
+
+    private var compactTrailingModules: AnyView? {
+        let hasCount = showCollapsedSessionCount
+        let hasQuota = quotaBadgeContent != nil
+        let hasQuietHours = audio.isQuietHoursActive
+        let hasBypass = manager.bypassMode
+
+        guard hasCount || hasQuota || hasQuietHours || hasBypass else { return nil }
+
+        return AnyView(HStack(spacing: 6) {
+            if hasCount {
+                compactCountBadge
+            }
+            if let quotaBadgeContent {
+                quotaBadgeContent
+            }
+            if hasQuietHours {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange.opacity(0.6))
+            }
+            if hasBypass {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.green.opacity(0.7))
+            }
+        })
+    }
+
+    private var compactCountBadge: some View {
+        let count = manager.trulyActiveSessions.count
+        return Text("\(count)")
+            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .foregroundStyle(IslandStyle.primaryText)
+            .monospacedDigit()
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(IslandStyle.insetFill(for: themeManager.resolvedScheme))
+            )
+    }
+
+    private var quotaBadgeContent: AnyView? {
+        guard showCollapsedQuota,
+              let (label, value, color) = collapsedQuotaSummary
+        else { return nil }
+
+        return AnyView(HStack(spacing: 4) {
+            Circle()
+                .fill(color)
+                .frame(width: 5, height: 5)
+            Text(label)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(IslandStyle.secondaryText)
+            Text(value)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(color)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(
+            Capsule(style: .continuous)
+                .fill(color.opacity(0.12))
+        )
+        )
+    }
+
+    private var collapsedQuotaSummary: (String, String, Color)? {
+        for quota in quotaTracker.quotas {
+            switch quota.provider {
+            case "Anthropic":
+                if let remaining = quota.tokensRemaining {
+                    return ("Claude", formatTokens(remaining), Color(red: 0.85, green: 0.45, blue: 0.25))
+                }
+            case "OpenAI":
+                if let used = quota.tokensRemaining {
+                    return ("Codex", formatTokens(used), Color(red: 0.2, green: 0.8, blue: 0.4))
+                }
+            case "Kimi":
+                if let tokens = quota.tokensRemaining, tokens > 0 {
+                    return ("Kimi", "¥\(tokens / 100)", Color(red: 0.95, green: 0.35, blue: 0.45))
+                }
+            case "DeepSeek":
+                if let tokens = quota.tokensRemaining {
+                    return tokens > 0
+                        ? ("DeepSeek", formatTokens(tokens), Color(red: 0.25, green: 0.75, blue: 0.55))
+                        : ("DeepSeek", "0", Color.red.opacity(0.7))
+                }
+            case "GLM":
+                if let remaining = quota.requestsRemaining, remaining > 0 {
+                    return ("GLM", "ON", Color(red: 0.25, green: 0.45, blue: 0.95))
+                }
+            default:
+                continue
+            }
+        }
+        return nil
+    }
+
+    private func formatTokens(_ count: Int) -> String {
+        if count < 1000 { return "\(count)" }
+        if count < 1_000_000 { return String(format: "%.1fK", Double(count) / 1000) }
+        return String(format: "%.2fM", Double(count) / 1_000_000)
     }
 }
 

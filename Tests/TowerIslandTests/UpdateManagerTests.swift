@@ -48,6 +48,18 @@ final class UpdateManagerTests: XCTestCase {
         }
     }
 
+    actor StringCapture {
+        private(set) var value: String?
+
+        func store(_ value: String?) {
+            self.value = value
+        }
+
+        func get() -> String? {
+            value
+        }
+    }
+
     actor FetchSequence {
         private var queue: [Result<Data, Error>]
 
@@ -90,6 +102,14 @@ final class UpdateManagerTests: XCTestCase {
         XCTAssertEqual(release.tagName, "v1.2.6")
         XCTAssertEqual(release.htmlURL, URL(string: "https://example.com/release"))
         XCTAssertEqual(release.publishedAt, expectedDate)
+        XCTAssertEqual(release.dmgURL, URL(string: "https://example.com/XIsland-1.2.6.dmg"))
+    }
+
+    @MainActor
+    func testReleaseInfoPrefersExactVersionedDmgAsset() throws {
+        let data = #"{"tag_name":"v1.2.6","html_url":"https://example.com/release","published_at":"2026-04-14T12:00:00Z","assets":[{"name":"XIsland-intel.dmg","browser_download_url":"https://example.com/wrong.dmg"},{"name":"XIsland-1.2.6.dmg","browser_download_url":"https://example.com/XIsland-1.2.6.dmg"}]}"#.data(using: .utf8)!
+        let release = try UpdateManager.githubReleaseDecoder.decode(UpdateManager.ReleaseInfo.self, from: data)
+
         XCTAssertEqual(release.dmgURL, URL(string: "https://example.com/XIsland-1.2.6.dmg"))
     }
 
@@ -254,6 +274,36 @@ final class UpdateManagerTests: XCTestCase {
         } else {
             XCTFail("Expected failed state when no release is available")
         }
+    }
+
+    @MainActor
+    func testInstallUpdateExtractsSHA256ForVersionedDmgAsset() async throws {
+        let expectedHash = String(repeating: "a", count: 64)
+        let capturedHash = StringCapture()
+        let release = UpdateManager.ReleaseInfo(
+            tagName: "v1.2.6",
+            htmlURL: URL(string: "https://example.com/release")!,
+            publishedAt: ISO8601DateFormatter().date(from: "2026-04-14T12:00:00Z")!,
+            assets: [
+                .init(
+                    name: "XIsland-1.2.6.dmg",
+                    browserDownloadURL: URL(string: "https://example.com/XIsland-1.2.6.dmg")!
+                )
+            ],
+            body: "XIsland-1.2.6.dmg SHA256: \(expectedHash)"
+        )
+        let updater = AppUpdater(
+            installImpl: { _, _, _, expectedSHA256, _ in
+                await capturedHash.store(expectedSHA256)
+            }
+        )
+        let manager = UpdateManager(updater: updater)
+        manager.latestRelease = release
+
+        await manager.installUpdate()
+
+        let actualHash = await capturedHash.get()
+        XCTAssertEqual(actualHash, expectedHash)
     }
 
     @MainActor

@@ -5,6 +5,7 @@ import SwiftUI
 
 extension Notification.Name {
     static let xislandShowAboutPane = Notification.Name("XIslandShowAboutPane")
+    static let xislandScrollDown = Notification.Name("xislandScrollDown")
     static let xislandCollapse = Notification.Name("xislandCollapse")
     static let xislandToggleActivityLog = Notification.Name("xislandToggleActivityLog")
     static let xislandExportSession = Notification.Name("xislandExportSession")
@@ -97,12 +98,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "autoCollapseDelay": 3.0,
             "expandedInactivityAutoHideDelay": 10.0,
             "hoverExitCollapseDelay": 0.5,
+            "scrollDownToExpandPanel": true,
             "smartSuppression": true,
             "autoHideWhenNoActiveSessions": false,
             "compactBadgesInExpandedView": true,
             "displayTimestamp": true,
             "completedLingerDuration": 120.0,
+            "showActivityTicker": true,
+            "showCollapsedAgentIcon": true,
+            "showCollapsedSessionCount": true,
+            "showCollapsedQuota": true,
+            "tickerSpeed": 25.0,
+            "tickerContentMode": CollapsedTickerContentMode.defaultValue.rawValue,
+            "animationIntensity": IslandAnimationIntensity.defaultValue.rawValue,
+            "jellyIntensity": IslandJellyIntensity.defaultValue.rawValue,
         ])
+        IslandIntegrationSettings.registerDefaults()
         testConfiguration.applyDefaults()
         do {
             try configureTesting()
@@ -238,7 +249,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.updateWindowAppearance(w)
         }
         updateWindowAppearance(window)
-        window.orderFrontRegardless()
         themeManager.startObservingSystemAppearance()
 
         window.keyEquivalentHandler = { [weak self] event in
@@ -354,7 +364,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let mouseLocation = NSEvent.mouseLocation
 
         // 横滑切换手势（仅由鼠标下最上层的收起岛响应）
-        if IslandWindowOwnership.canHandleGlobalSwipe(
+        if IslandIntegrationSettings.isSwipeSwitchEnabled,
+           IslandWindowOwnership.canHandleGlobalSwipe(
             isVisible: window.isVisible,
             isCollapsed: window.islandState == .collapsed,
             windowFrame: window.frame,
@@ -372,6 +383,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             window.swipeRecognizer.reset()
         }
+
+        guard NotchWindow.shouldTriggerScrollExpand(
+            isEnabled: UserDefaults.standard.bool(forKey: "scrollDownToExpandPanel"),
+            isVisible: window.isVisible,
+            isCollapsed: window.islandState == .collapsed,
+            isPrecise: event.hasPreciseScrollingDeltas,
+            deltaY: event.scrollingDeltaY,
+            windowFrame: window.frame,
+            screenFrame: window.screen?.frame,
+            mouseLocation: mouseLocation
+        ) else {
+            return
+        }
+
+        NotificationCenter.default.post(name: .xislandScrollDown, object: nil)
     }
 
     private func setupMenuBarItem() {
@@ -420,6 +446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupNotchWindow()
         setupMenuBarItem()
         setupScrollMonitor()
+        scheduleInitialVisibilityResolution()
         DispatchQueue.main.async { [weak self] in
             self?.installApplicationMenuItems()
         }
@@ -494,15 +521,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if w.isVisible {
                 w.orderOut(nil)
             } else {
-                w.isHiddenByIslandSwitch = false
-                w.orderFrontRegardless()
+                showIsland(preferMouseScreen: false, hidePeers: true)
             }
         }
     }
 
     @objc private func showNotch() {
-        notchWindow?.isHiddenByIslandSwitch = false
-        notchWindow?.orderFrontRegardless()
+        showIsland(preferMouseScreen: false, hidePeers: true)
+    }
+
+    private func scheduleInitialVisibilityResolution() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.resolveInitialIslandVisibility()
+        }
+    }
+
+    private func resolveInitialIslandVisibility() {
+        guard let currentIsland = AppSwitcher.shared.currentIsland else {
+            showIsland(preferMouseScreen: false, hidePeers: false)
+            return
+        }
+
+        let otherInstalled = AppSwitcher.shared.otherIslandNames.contains { AppSwitcher.shared.isIslandInstalled(named: $0) }
+        let preferredIsland = IslandIntegrationSettings.preferredStartupIsland(
+            currentApp: currentIsland,
+            otherAppInstalled: otherInstalled
+        )
+        let preferredRunning = AppSwitcher.shared.isIslandRunning(named: preferredIsland.rawValue)
+        let shouldShow = IslandIntegrationSettings.shouldShowOnLaunch(
+            currentApp: currentIsland,
+            preferredApp: preferredIsland,
+            preferredAppRunning: preferredRunning
+        )
+
+        guard shouldShow else { return }
+
+        showIsland(preferMouseScreen: false, hidePeers: preferredIsland == currentIsland)
+    }
+
+    private func showIsland(preferMouseScreen: Bool, hidePeers: Bool) {
+        guard let window = notchWindow else { return }
+
+        if preferMouseScreen {
+            window.showAtMouseScreen()
+        } else {
+            window.showWindow()
+        }
+
+        guard hidePeers else { return }
+        requestOtherIslandsToHide()
+    }
+
+    private func requestOtherIslandsToHide() {
+        for otherIslandName in AppSwitcher.shared.otherIslandNames {
+            let hideNotification = "\(hideNotificationPrefix)\(otherIslandName)"
+            postHideNotification(hideNotification)
+        }
     }
 
     @objc private func reconfigure() {
@@ -542,7 +616,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
 
         let w = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 480),
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -552,8 +626,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         w.title = "X Island Settings"
         if let screen = notchWindow?.screen ?? NSScreen.main {
             let sf = screen.visibleFrame
-            let x = sf.origin.x + (sf.width - 680) / 2
-            let y = sf.origin.y + (sf.height - 480) / 2
+            let x = sf.origin.x + (sf.width - 760) / 2
+            let y = sf.origin.y + (sf.height - 520) / 2
             w.setFrameOrigin(NSPoint(x: x, y: y))
         } else {
             w.center()

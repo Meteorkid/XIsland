@@ -8,8 +8,40 @@ final class NotchWindow: NSPanel {
 
     private static let expandedPadding: CGFloat = 8
     private static let collapsedHitHeight: CGFloat = 32
+    /// 双指下滑展开的最小滚动距离，过滤触控板惯性残余
+    static let scrollExpandMinDelta: CGFloat = 2
 
     static func islandTopOffset(for _: NSScreen) -> CGFloat { 0 }
+
+    static func scrollExpandHitFrame(windowFrame: CGRect, screenFrame: CGRect?) -> CGRect {
+        guard let screenFrame else { return windowFrame }
+
+        let screenTop = screenFrame.origin.y + screenFrame.height
+        return NSRect(
+            x: windowFrame.minX,
+            y: windowFrame.minY,
+            width: windowFrame.width,
+            height: max(windowFrame.height, screenTop - windowFrame.minY)
+        )
+    }
+
+    static func shouldTriggerScrollExpand(
+        isEnabled: Bool,
+        isVisible: Bool,
+        isCollapsed: Bool,
+        isPrecise: Bool,
+        deltaY: CGFloat,
+        windowFrame: CGRect,
+        screenFrame: CGRect?,
+        mouseLocation: CGPoint
+    ) -> Bool {
+        guard isEnabled, isVisible, isCollapsed, isPrecise, deltaY > scrollExpandMinDelta else {
+            return false
+        }
+
+        return scrollExpandHitFrame(windowFrame: windowFrame, screenFrame: screenFrame)
+            .contains(mouseLocation)
+    }
 
     /// True when the island sits in the built-in display’s top-center notch band (camera housing occludes content).
     func isObscuredByPhysicalNotch() -> Bool {
@@ -391,6 +423,21 @@ final class NotchWindow: NSPanel {
                     return
                 }
             }
+
+            if Self.shouldTriggerScrollExpand(
+                isEnabled: UserDefaults.standard.bool(forKey: "scrollDownToExpandPanel"),
+                isVisible: true,
+                isCollapsed: islandState == .collapsed,
+                isPrecise: event.hasPreciseScrollingDeltas,
+                deltaY: event.scrollingDeltaY,
+                windowFrame: frame,
+                screenFrame: screen?.frame,
+                mouseLocation: NSEvent.mouseLocation
+            ) {
+                NotificationCenter.default.post(name: .xislandScrollDown, object: nil)
+                return
+            }
+
             super.sendEvent(event)
 
         default:
@@ -401,12 +448,23 @@ final class NotchWindow: NSPanel {
     /// 在鼠标所在屏幕显示窗口（URL Scheme 唤醒时调用）
     func showAtMouseScreen() {
         isHiddenByIslandSwitch = false
+        if let currentIsland = AppSwitcher.shared.currentIsland {
+            IslandIntegrationSettings.markVisible(currentIsland)
+        }
         let mouseLocation = NSEvent.mouseLocation
         guard let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) else {
             orderFrontRegardless()
             return
         }
         repositionOnScreen(mouseScreen)
+        orderFrontRegardless()
+    }
+
+    func showWindow() {
+        isHiddenByIslandSwitch = false
+        if let currentIsland = AppSwitcher.shared.currentIsland {
+            IslandIntegrationSettings.markVisible(currentIsland)
+        }
         orderFrontRegardless()
     }
 

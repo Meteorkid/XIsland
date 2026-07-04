@@ -4,6 +4,13 @@ import AppKit
 ///
 /// 每个灵动岛使用独立 URL Scheme 进行跨应用通信。
 /// URL 格式: `{target-app-name}://island/show`
+struct IslandPeerStatus {
+    let island: IslandApp
+    let isInstalled: Bool
+    let isRunning: Bool
+    let isProtocolConfigured: Bool
+}
+
 @MainActor
 final class AppSwitcher {
     static let shared = AppSwitcher()
@@ -29,6 +36,10 @@ final class AppSwitcher {
     /// 当前应用名
     var currentAppName: String? {
         appName
+    }
+
+    var currentIsland: IslandApp? {
+        IslandApp(rawValue: appName)
     }
 
     var currentURLScheme: String? {
@@ -96,6 +107,16 @@ final class AppSwitcher {
         window.showAtMouseScreen()
     }
 
+    func isIslandInstalled(named islandName: String) -> Bool {
+        guard let bundleID = islandApps[islandName] else { return false }
+        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil
+    }
+
+    func isIslandRunning(named islandName: String) -> Bool {
+        guard let bundleID = islandApps[islandName] else { return false }
+        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty == false
+    }
+
     /// 检查另一个应用是否在运行
     func isOtherAppRunning() -> Bool {
         guard let currentName = currentAppName else { return false }
@@ -109,5 +130,33 @@ final class AppSwitcher {
     var otherIslandNames: [String] {
         guard let currentName = currentAppName else { return [] }
         return islandApps.keys.filter { $0 != currentName }.sorted()
+    }
+
+    var otherIsland: IslandApp? {
+        otherIslandNames.compactMap(IslandApp.init(rawValue:)).first
+    }
+
+    func peerStatus(for island: IslandApp) -> IslandPeerStatus {
+        let expectedBundleID = islandApps[island.rawValue]
+        let installed = isIslandInstalled(named: island.rawValue)
+        let running = isIslandRunning(named: island.rawValue)
+        let protocolConfigured = expectedBundleID == registeredHandlerBundleIdentifier(for: island)
+        return IslandPeerStatus(
+            island: island,
+            isInstalled: installed,
+            isRunning: running,
+            isProtocolConfigured: protocolConfigured
+        )
+    }
+
+    private func registeredHandlerBundleIdentifier(for island: IslandApp) -> String? {
+        guard let scheme = islandSchemes[island.rawValue],
+              let url = URL(string: "\(scheme)://island/show"),
+              let applicationURL = NSWorkspace.shared.urlForApplication(toOpen: url)
+        else {
+            return nil
+        }
+
+        return Bundle(url: applicationURL)?.bundleIdentifier
     }
 }

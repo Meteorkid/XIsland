@@ -292,17 +292,11 @@ final class SessionManager {
     @MainActor
     func checkProcessesAlive(processStatus: @escaping @Sendable ([String]) -> Bool) {
         let checks = cliProcessChecks()
-        // 在后台执行进程检测，避免主线程同步阻塞
-        Task.detached(priority: .utility) {
-            let deadAgents = checks.compactMap { check -> AgentType? in
-                let (agentType, names) = check
-                return processStatus(names) ? nil : agentType
-            }
-            guard !deadAgents.isEmpty else { return }
-            await MainActor.run {
-                self.handleDeadAgents(deadAgents)
-            }
+        let deadAgents = checks.compactMap { check -> AgentType? in
+            let (agentType, names) = check
+            return processStatus(names) ? nil : agentType
         }
+        handleDeadAgents(deadAgents)
     }
 
     private func cliProcessChecks() -> [(AgentType, [String])] {
@@ -752,6 +746,7 @@ final class SessionManager {
     private var hasPendingLingerCleanup = false
 
     private func scheduleLingerCleanup() {
+        guard completedLingerDuration != .infinity else { return }
         guard !hasPendingLingerCleanup else { return }
         hasPendingLingerCleanup = true
         let linger = completedLingerDuration
@@ -769,12 +764,20 @@ final class SessionManager {
             rebuildSessionIndex()
             return
         }
-        // 保留最近的已完成会话，超出上限的按时间淘汰
+        let now = Date()
         let completedSessions = sessions
             .filter { $0.status == .completed }
             .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+        let expiredIds = completedSessions.compactMap { session -> String? in
+            guard let completedAt = session.completedAt else { return nil }
+            return now.timeIntervalSince(completedAt) > completedLingerDuration ? session.id : nil
+        }
+        var toRemove = Set(expiredIds)
+        // 保留最近的已完成会话，超出上限的按时间淘汰
         if completedSessions.count > 20 {
-            let toRemove = Set(completedSessions[20...].map(\.id))
+            toRemove.formUnion(completedSessions[20...].map(\.id))
+        }
+        if !toRemove.isEmpty {
             sessions.removeAll { toRemove.contains($0.id) }
         }
         rebuildSessionIndex()

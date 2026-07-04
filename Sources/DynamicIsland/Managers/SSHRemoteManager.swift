@@ -24,6 +24,7 @@ private enum SSHInputValidator {
     private static let hostPattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9._-]+$")
     private static let userPattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9._-]+$")
     private static let pathPattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9._/~:-]+$")
+    private static let remotePathPattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9._/~:$-]+$")
 
     private static func matches(_ string: String, regex: NSRegularExpression) -> Bool {
         let range = NSRange(string.startIndex..., in: string)
@@ -54,6 +55,14 @@ private enum SSHInputValidator {
         }
         return expanded
     }
+
+    static func validateRemotePath(_ path: String, label: String) throws -> String {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, matches(trimmed, regex: remotePathPattern) else {
+            throw SSHValidationError.invalidPath(label, trimmed)
+        }
+        return trimmed
+    }
 }
 
 /// Represents one remote server where AI agents may run.
@@ -66,12 +75,17 @@ struct SSHRemoteServer: Identifiable, Codable, Sendable {
     var identityFile: String?
     /// Path to di-bridge on this remote (default: ~/.xisland/bin/di-bridge)
     var remoteBridgePath: String
-    /// Local socket path that tunnels to the remote bridge
+    /// Legacy local socket path kept for persisted configs and display/tests.
     var localTunnelSocket: String
+    /// Remote socket path created by SSH remote forwarding.
+    var remoteTunnelSocket: String {
+        let socketName = (localTunnelSocket as NSString).lastPathComponent
+        return "/tmp/xisland-\(Self.safeSocketLabel(user))-\(socketName)"
+    }
     var connected: Bool
 
     init(id: UUID = UUID(), label: String, host: String, port: Int = 22, user: String,
-         identityFile: String? = nil, remoteBridgePath: String = "$HOME/.xisland/bin/di-bridge") {
+         identityFile: String? = nil, remoteBridgePath: String = "~/.xisland/bin/di-bridge") {
         self.id = id
         self.label = label
         self.host = host
@@ -80,11 +94,20 @@ struct SSHRemoteServer: Identifiable, Codable, Sendable {
         self.identityFile = identityFile
         self.remoteBridgePath = remoteBridgePath
 
-        let safeLabel = label.replacingOccurrences(of: " ", with: "_")
+        let safeLabel = Self.safeSocketLabel(label)
         let sockName = "di-remote-\(id.uuidString.prefix(8))-\(safeLabel).sock"
         self.localTunnelSocket = "\(DISocketConfig.socketDir)/\(sockName)"
 
         self.connected = false
+    }
+
+    private static func safeSocketLabel(_ label: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
+        let sanitized = label.unicodeScalars
+            .map { allowed.contains($0) ? String($0) : "_" }
+            .joined()
+            .trimmingCharacters(in: CharacterSet(charactersIn: "._-"))
+        return sanitized.isEmpty ? "remote" : sanitized
     }
 }
 
@@ -139,7 +162,7 @@ final class SSHRemoteManager {
 
         let validatedHost = try SSHInputValidator.validateHost(server.host)
         let validatedUser = try SSHInputValidator.validateUser(server.user)
-        let validatedPath = try SSHInputValidator.validatePath(server.remoteBridgePath, label: "remote bridge path")
+        let validatedPath = try SSHInputValidator.validateRemotePath(server.remoteBridgePath, label: "remote bridge path")
         let remoteDir = (validatedPath as NSString).deletingLastPathComponent
 
         let localBridge = Bundle.main.bundlePath + "/Contents/MacOS/di-bridge"
@@ -195,16 +218,16 @@ final class SSHRemoteManager {
         let validatedHost = try SSHInputValidator.validateHost(server.host)
         let validatedUser = try SSHInputValidator.validateUser(server.user)
 
-        // Remove stale socket
+        // Remove stale legacy local socket
         try? FileManager.default.removeItem(atPath: server.localTunnelSocket)
 
-        // SSH remote port forwarding: remote socket → local socket
-        var args = ["-N", "-p", "\(server.port)"]
+        // SSH remote socket forwarding: remote agent socket → local X Island socket
+        var args = ["-N", "-p", "\(server.port)", "-o", "StreamLocalBindUnlink=yes"]
         if let idFile = server.identityFile {
             args += ["-i", idFile]
         }
         args += [
-            "-L", "\(server.localTunnelSocket):\(DISocketConfig.socketPath)",
+            "-R", "\(server.remoteTunnelSocket):\(DISocketConfig.socketPath)",
             "\(validatedUser)@\(validatedHost)"
         ]
 
@@ -224,10 +247,10 @@ final class SSHRemoteManager {
 
     func stopTunnel(for server: SSHRemoteServer) {
         // Validate host before using in pkill pattern to prevent injection
-        guard let validatedHost = try? SSHInputValidator.validateHost(server.host) else { return }
+        guard (try? SSHInputValidator.validateHost(server.host)) != nil else { return }
 
         // Find and kill the SSH process for this server
-        let marker = "\(DISocketConfig.socketPath):\(validatedHost)"
+        let marker = "\(server.remoteTunnelSocket):\(DISocketConfig.socketPath)"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
         process.arguments = ["-f", marker]
@@ -247,7 +270,7 @@ final class SSHRemoteManager {
     func verifyConnection(for server: SSHRemoteServer) async throws -> String {
         let validatedHost = try SSHInputValidator.validateHost(server.host)
         let validatedUser = try SSHInputValidator.validateUser(server.user)
-        let validatedPath = try SSHInputValidator.validatePath(server.remoteBridgePath, label: "remote bridge path")
+        let validatedPath = try SSHInputValidator.validateRemotePath(server.remoteBridgePath, label: "remote bridge path")
 
         var args = ["-p", "\(server.port)"]
         if let idFile = server.identityFile {
@@ -302,9 +325,9 @@ final class SSHRemoteManager {
     /// Create the remote hook configuration on a server to point at the tunneled socket.
     /// This generates a one-liner that the user should add to their remote agent config.
     func remoteHookSetupCommand(for server: SSHRemoteServer) -> String {
-        let validatedPath = (try? SSHInputValidator.validatePath(server.remoteBridgePath, label: "remote bridge path"))
+        let validatedPath = (try? SSHInputValidator.validateRemotePath(server.remoteBridgePath, label: "remote bridge path"))
             ?? server.remoteBridgePath
-        let socketEnv = "export DI_SOCKET_PATH=\(DISocketConfig.socketPath)"
+        let socketEnv = "export DI_SOCKET_PATH=\(server.remoteTunnelSocket)"
         let bridgeCmd = "\(validatedPath) --agent claude_code --hook"
         return """
         # On the remote server, add this to your ~/.profile or ~/.zshrc:

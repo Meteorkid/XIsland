@@ -666,7 +666,7 @@ test_m16() {
     # T16.1: session_start with prompt → bridge receives and forwards prompt
     mark_log
     echo '{"prompt":"Refactor the auth module","working_dir":"/tmp/m16test"}' | \
-        "$BRIDGE" --agent claude_code --hook session_start
+        DI_BRIDGE_DEBUG_LOG=1 "$BRIDGE" --agent claude_code --hook session_start
     sleep 0.3
     assert_log_contains "type=session_start" "T16.1 session_start with prompt received"
     if grep -q "Refactor the auth module" "$STDIN_LOG" 2>/dev/null; then

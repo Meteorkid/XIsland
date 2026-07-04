@@ -18,11 +18,15 @@ final class SwipeGestureRecognizer {
     // MARK: - 配置
 
     /// 横向累计位移触发阈值（pt）
-    private let threshold: CGFloat = 45
+    private var threshold: CGFloat {
+        IslandIntegrationSettings.swipeSensitivity.threshold
+    }
     /// 手势冷却时间（秒），防止连续触发
     private let cooldown: TimeInterval = 0.5
     /// 横向与纵向位移的最小比例（横向必须明显大于纵向）
-    private let axisRatio: CGFloat = 1.5
+    private var axisRatio: CGFloat {
+        IslandIntegrationSettings.swipeSensitivity.axisRatio
+    }
 
     // MARK: - 状态
 

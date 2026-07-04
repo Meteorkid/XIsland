@@ -16,7 +16,7 @@ final class UpdateManagerURLTests: XCTestCase {
         XCTAssertEqual(release.publishedAt, checkedAt)
         XCTAssertEqual(
             release.dmgURL,
-            URL(string: "https://github.com/Meteorkid/XIsland/releases/download/v1.2.8/XIsland.dmg")
+            URL(string: "https://github.com/Meteorkid/XIsland/releases/download/v1.2.8/XIsland-1.2.8.dmg")
         )
     }
 
@@ -48,7 +48,7 @@ final class UpdateManagerURLTests: XCTestCase {
         XCTAssertEqual(release.tagName, "v1.2.9")
         XCTAssertEqual(
             release.dmgURL,
-            URL(string: "https://github.com/Meteorkid/XIsland/releases/download/v1.2.9/XIsland.dmg")
+            URL(string: "https://github.com/Meteorkid/XIsland/releases/download/v1.2.9/XIsland-1.2.9.dmg")
         )
     }
 }

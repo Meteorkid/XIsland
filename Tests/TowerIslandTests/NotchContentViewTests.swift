@@ -141,4 +141,194 @@ final class NotchContentViewTests: XCTestCase {
             .init(expandStartDelay: 0, contentRevealDelay: 0, collapseCompletionDelay: 0)
         )
     }
+
+    func testTransitionTimingUsesLowerDelaysForLowAnimationIntensity() {
+        XCTAssertEqual(
+            NotchContentView.transitionTiming(disableAnimations: false, intensity: .low),
+            .init(expandStartDelay: 0.02, contentRevealDelay: 0.08, collapseCompletionDelay: 0.28)
+        )
+    }
+
+    func testTransitionTimingUsesHigherDelaysForHighAnimationIntensity() {
+        XCTAssertEqual(
+            NotchContentView.transitionTiming(disableAnimations: false, intensity: .high),
+            .init(expandStartDelay: 0.07, contentRevealDelay: 0.16, collapseCompletionDelay: 0.55)
+        )
+    }
+
+    func testResolvedAnimationIntensityFallsBackToMedium() {
+        XCTAssertEqual(
+            NotchContentView.resolvedAnimationIntensity(rawValue: "unknown", reduceMotion: false),
+            .medium
+        )
+    }
+
+    func testResolvedAnimationIntensityUsesLowWhenReduceMotionEnabled() {
+        XCTAssertEqual(
+            NotchContentView.resolvedAnimationIntensity(rawValue: IslandAnimationIntensity.high.rawValue, reduceMotion: true),
+            .low
+        )
+    }
+
+    func testResolvedJellyIntensityFallsBackToMedium() {
+        XCTAssertEqual(
+            NotchContentView.resolvedJellyIntensity(rawValue: "unknown"),
+            .medium
+        )
+    }
+
+    func testHoverJellyScaleMatchesIntensityProfile() {
+        XCTAssertEqual(
+            NotchContentView.hoverJellyScale(for: IslandJellyIntensity.low),
+            .init(xPop: 0.97, xSettle: 0.99, yPop: 1.10, ySettle: 1.03)
+        )
+        XCTAssertEqual(
+            NotchContentView.hoverJellyScale(for: IslandJellyIntensity.medium),
+            .init(xPop: 0.94, xSettle: 0.98, yPop: 1.25, ySettle: 1.08)
+        )
+        XCTAssertEqual(
+            NotchContentView.hoverJellyScale(for: IslandJellyIntensity.high),
+            .init(xPop: 0.90, xSettle: 0.96, yPop: 1.40, ySettle: 1.12)
+        )
+    }
+
+    func testShouldTriggerHoverJellyRequiresUpwardEntryIntoCollapsedPill() {
+        XCTAssertTrue(
+            NotchContentView.shouldTriggerHoverJelly(
+                isPointerInside: true,
+                isExpanded: false,
+                collapseAnimating: false,
+                previousMouseY: 120,
+                currentMouseY: 160
+            )
+        )
+
+        XCTAssertFalse(
+            NotchContentView.shouldTriggerHoverJelly(
+                isPointerInside: true,
+                isExpanded: true,
+                collapseAnimating: false,
+                previousMouseY: 120,
+                currentMouseY: 160
+            )
+        )
+
+        XCTAssertFalse(
+            NotchContentView.shouldTriggerHoverJelly(
+                isPointerInside: true,
+                isExpanded: false,
+                collapseAnimating: false,
+                previousMouseY: 160,
+                currentMouseY: 120
+            )
+        )
+    }
+
+    func testMagneticOffsetClampsTowardMouseWithinRange() {
+        let offset = NotchContentView.magneticOffset(
+            mouseLocation: CGPoint(x: 248, y: 110),
+            windowFrame: CGRect(x: 100, y: 100, width: 220, height: 40),
+            collapsedShapeHeight: 32,
+            isExpanded: false,
+            collapseAnimating: false
+        )
+
+        XCTAssertGreaterThan(offset.width, 0)
+        XCTAssertLessThanOrEqual(offset.width, 8)
+        XCTAssertEqual(offset.height, 0)
+    }
+
+    func testMagneticOffsetIsZeroWhenExpandedOrFarAway() {
+        XCTAssertEqual(
+            NotchContentView.magneticOffset(
+                mouseLocation: CGPoint(x: 600, y: 600),
+                windowFrame: CGRect(x: 100, y: 100, width: 220, height: 40),
+                collapsedShapeHeight: 32,
+                isExpanded: false,
+                collapseAnimating: false
+            ),
+            .zero
+        )
+
+        XCTAssertEqual(
+            NotchContentView.magneticOffset(
+                mouseLocation: CGPoint(x: 248, y: 110),
+                windowFrame: CGRect(x: 100, y: 100, width: 220, height: 40),
+                collapsedShapeHeight: 32,
+                isExpanded: true,
+                collapseAnimating: false
+            ),
+            .zero
+        )
+    }
+
+    func testCollapsedTickerTextFallsBackToNoActivityWithoutSession() {
+        XCTAssertEqual(
+            NotchContentView.collapsedTickerText(for: nil, mode: .activity),
+            L10n.noActivity
+        )
+    }
+
+    func testCollapsedTickerTextPrefersCurrentTool() {
+        let session = AgentSession(id: "tool-session", agentType: .codex, workingDirectory: "/tmp/tool")
+        session.currentTool = "Bash"
+
+        XCTAssertEqual(
+            NotchContentView.collapsedTickerText(for: session, mode: .activity),
+            "Codex · \(L10n.toolRunning("Bash"))"
+        )
+    }
+
+    func testCollapsedTickerTextUsesCompletedEventSummary() {
+        let session = AgentSession(id: "event-session", agentType: .claudeCode, workingDirectory: "/tmp/event")
+        session.events = [
+            ToolEvent(tool: "bash", result: "Applied patch", isComplete: true)
+        ]
+
+        XCTAssertEqual(
+            NotchContentView.collapsedTickerText(for: session, mode: .activity),
+            "Claude · Bash: Applied patch"
+        )
+    }
+
+    func testCollapsedTickerTextUsesWorkspaceNameInProjectMode() {
+        let session = AgentSession(
+            id: "project-session",
+            agentType: .codex,
+            workingDirectory: "/tmp/xisland"
+        )
+        session.prompt = "This title should not win"
+
+        XCTAssertEqual(
+            NotchContentView.collapsedTickerText(for: session, mode: .project),
+            "Codex · xisland"
+        )
+    }
+
+    func testCollapsedTickerTextAlternatesInAutomaticMode() {
+        let session = AgentSession(
+            id: "auto-session",
+            agentType: .claudeCode,
+            workingDirectory: "/tmp/xisland"
+        )
+        session.currentTool = "Edit"
+
+        XCTAssertEqual(
+            NotchContentView.collapsedTickerText(
+                for: session,
+                mode: .automatic,
+                now: Date(timeIntervalSince1970: 0)
+            ),
+            "Claude · \(L10n.toolRunning("Edit"))"
+        )
+
+        XCTAssertEqual(
+            NotchContentView.collapsedTickerText(
+                for: session,
+                mode: .automatic,
+                now: Date(timeIntervalSince1970: CollapsedTickerContentMode.rotationInterval)
+            ),
+            "Claude · xisland"
+        )
+    }
 }

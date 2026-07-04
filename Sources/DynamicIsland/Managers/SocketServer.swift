@@ -6,6 +6,7 @@ import DIShared
 final class SocketServer: @unchecked Sendable {
     /// Pause after a failed `accept(2)` while still running (avoid tight spin).
     static let acceptFailureBackoffMicroseconds: UInt32 = 50_000
+    static let maxMessageBytes = 16 * 1024 * 1024
 
     private let logger = Logger(subsystem: "dev.xisland", category: "socket")
     private let sessionManager: SessionManager
@@ -108,7 +109,7 @@ final class SocketServer: @unchecked Sendable {
     }
 
     private func handleClient(_ fd: Int32) {
-        guard let data = readAll(fd), !data.isEmpty else {
+        guard let data = Self.readMessage(from: fd), !data.isEmpty else {
             logger.debug("No data from client")
             close(fd)
             return
@@ -188,14 +189,24 @@ final class SocketServer: @unchecked Sendable {
             close(fd)
             return
         }
-        _ = data.withUnsafeBytes { ptr -> Int in
-            guard let base = ptr.baseAddress else { return -1 }
-            return send(fd, base, ptr.count, 0)
-        }
+        _ = Self.sendAll(fd: fd, data: data)
         close(fd)
     }
 
-    private func readAll(_ fd: Int32) -> Data? {
+    static func sendAll(fd: Int32, data: Data) -> Bool {
+        data.withUnsafeBytes { ptr -> Bool in
+            guard let base = ptr.baseAddress else { return true }
+            var sent = 0
+            while sent < ptr.count {
+                let n = send(fd, base.advanced(by: sent), ptr.count - sent, 0)
+                guard n > 0 else { return false }
+                sent += n
+            }
+            return true
+        }
+    }
+
+    static func readMessage(from fd: Int32) -> Data? {
         var data = Data()
         let bufSize = 65536
         let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: bufSize)
@@ -205,7 +216,10 @@ final class SocketServer: @unchecked Sendable {
             let n = recv(fd, buf, bufSize, 0)
             if n > 0 {
                 data.append(buf, count: n)
-                if n < bufSize { break }
+                if data.count > maxMessageBytes { return nil }
+                if let newline = data.firstIndex(of: 0x0A) {
+                    return Data(data.prefix(through: newline))
+                }
             } else {
                 break
             }

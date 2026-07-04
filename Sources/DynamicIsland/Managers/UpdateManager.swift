@@ -38,7 +38,9 @@ final class UpdateManager {
         }
 
         var dmgURL: URL? {
-            assets.first(where: { $0.name.localizedCaseInsensitiveContains(".dmg") })?.browserDownloadURL
+            let expectedName = AppUpdater.dmgFilename(for: normalizedVersion)
+            return assets.first(where: { $0.name.compare(expectedName, options: .caseInsensitive) == .orderedSame })?.browserDownloadURL
+                ?? assets.first(where: { $0.name.localizedCaseInsensitiveContains(".dmg") })?.browserDownloadURL
         }
 
         private enum CodingKeys: String, CodingKey {
@@ -305,9 +307,10 @@ final class UpdateManager {
             throw URLError(.badServerResponse)
         }
 
+        let dmgFilename = AppUpdater.dmgFilename(for: tag)
         let dmgURL = URL(string: "https://github.com/Meteorkid/XIsland/releases/download")!
             .appendingPathComponent(tag)
-            .appendingPathComponent("XIsland.dmg")
+            .appendingPathComponent(dmgFilename)
 
         var payload: [String: Any] = [
             "tag_name": tag,
@@ -315,7 +318,7 @@ final class UpdateManager {
             "published_at": ISO8601DateFormatter().string(from: checkedAt),
             "assets": [
                 [
-                    "name": "XIsland.dmg",
+                    "name": dmgFilename,
                     "browser_download_url": dmgURL.absoluteString
                 ]
             ]
@@ -358,9 +361,13 @@ final class UpdateManager {
         var body: String? = nil
         if let (apiData, apiResponse) = try? await URLSession.shared.data(for: apiRequest),
            let apiHTTPResponse = apiResponse as? HTTPURLResponse,
-           (200..<300).contains(apiHTTPResponse.statusCode),
-           let json = try? JSONSerialization.jsonObject(with: apiData) as? [String: Any] {
-            body = json["body"] as? String
+           (200..<300).contains(apiHTTPResponse.statusCode) {
+            if (try? githubReleaseDecoder.decode(ReleaseInfo.self, from: apiData)) != nil {
+                return apiData
+            }
+            if let json = try? JSONSerialization.jsonObject(with: apiData) as? [String: Any] {
+                body = json["body"] as? String
+            }
         }
 
         return try releaseDataFromLatestRedirectURL(finalURL, checkedAt: Date(), body: body)

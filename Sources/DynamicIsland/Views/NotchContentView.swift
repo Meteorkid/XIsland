@@ -16,6 +16,9 @@ struct NotchContentView: View {
     @State private var islandObscuredByNotch = false
     @State private var state: IslandState = .collapsed
     @State private var isHovering = false
+    @State private var isHoveringPill = false
+    @State private var jellyTrigger = false
+    @State private var jellySettled = false
     @State private var expandedByHover = false
     @State private var expandedAt: Date = .distantPast
     @State private var showContent = false
@@ -25,6 +28,10 @@ struct NotchContentView: View {
     @State private var expandPending = false
     @State private var collapseAnimating = false
     @State private var collapseGeneration = 0
+    @State private var previousMouseY: CGFloat = 0
+    @State private var jellyGeneration: UInt = 0
+    @State private var magneticOffset: CGSize = .zero
+    @State private var lastScrollExpandAt: Date = .distantPast
     @State private var expandedAutoHideWorkItem: DispatchWorkItem?
     @State private var lastExpandedInteractionAt: Date = .distantPast
     @State private var lastExpandedInteractionMarkAt: Date = .distantPast
@@ -34,21 +41,35 @@ struct NotchContentView: View {
     @State private var notificationTokens: [NSObjectProtocol] = []
     @AppStorage("disableAnimations") private var disableAnimations = false
     @AppStorage("reduceMotion") private var reduceMotion = false
+    @AppStorage("animationIntensity") private var animationIntensity = IslandAnimationIntensity.defaultValue.rawValue
+    @AppStorage("jellyIntensity") private var jellyIntensity = IslandJellyIntensity.defaultValue.rawValue
     @AppStorage("autoCollapseDelay") private var autoCollapseDelay = 3.0
     /// Seconds after last interaction while expanded before auto-collapsing; 0 disables.
     @AppStorage("expandedInactivityAutoHideDelay") private var expandedInactivityAutoHideDelay = 10.0
     /// Seconds pointer must stay outside before collapse (hover-expand or empty panel).
     @AppStorage("hoverExitCollapseDelay") private var hoverExitCollapseDelay = 0.5
+    @AppStorage("hoverToExpandPanel") private var hoverToExpandPanel = false
     @AppStorage("smartSuppression") private var smartSuppression = true
     @AppStorage("autoHideWhenNoActiveSessions") private var autoHideWhenNoActiveSessions = false
     @AppStorage("panelWidth") private var panelWidth = 420.0
     @AppStorage("panelMaxHeight") private var panelMaxHeight = 480.0
+    @AppStorage("showActivityTicker") private var showActivityTicker = true
+    @AppStorage("tickerContentMode") private var tickerContentMode = CollapsedTickerContentMode.defaultValue.rawValue
+    @AppStorage("tickerSpeed") private var tickerSpeed = 25.0
     var onSizeChange: ((CGFloat, CGFloat, Bool) -> Void)?
 
     // MARK: - IslandSizeCalculator delegates
 
+    private static let magneticMaxOffset: CGFloat = 8
+    private static let magneticRange: CGFloat = 80
+    private static let hoverPollingInterval: TimeInterval = 1.0 / 60.0
+
     private var collapsedShapeHeight: CGFloat { IslandSizeCalculator.collapsedShapeHeight }
-    private var collapsedOuterHeight: CGFloat { collapsedShapeHeight }
+    private let tickerLineHeight: CGFloat = 18
+    private var showCollapsedTicker: Bool { showActivityTicker && !isExpanded }
+    private var collapsedOuterHeight: CGFloat {
+        collapsedShapeHeight + (showCollapsedTicker ? tickerLineHeight + 4 : 0)
+    }
 
     private var isExpanded: Bool { state != .collapsed }
 
@@ -78,7 +99,7 @@ struct NotchContentView: View {
     }
 
     private var shapeHeight: CGFloat {
-        isExpanded ? expandedHeight : collapsedShapeHeight
+        isExpanded ? expandedHeight : collapsedOuterHeight
     }
 
     private var pillFillColor: Color { IslandStyle.surface(for: themeManager.resolvedScheme) }
@@ -101,9 +122,40 @@ struct NotchContentView: View {
         NotchShapeGeometry.bottomCornerRadius(openProgress: notchShapeOpenProgress)
     }
 
-    private static let expandSpring = Animation.spring(response: 0.4, dampingFraction: 0.82)
-    private static let collapseSpring = Animation.spring(response: 0.35, dampingFraction: 0.8)
-    private static let contentFade = Animation.easeInOut(duration: 0.2)
+    struct HoverJellyScale: Equatable {
+        let xPop: CGFloat
+        let xSettle: CGFloat
+        let yPop: CGFloat
+        let ySettle: CGFloat
+    }
+
+    private var resolvedAnimationIntensity: IslandAnimationIntensity {
+        Self.resolvedAnimationIntensity(rawValue: animationIntensity, reduceMotion: reduceMotion)
+    }
+
+    private var resolvedJellyIntensity: IslandJellyIntensity {
+        Self.resolvedJellyIntensity(rawValue: jellyIntensity)
+    }
+
+    private var hoverJellyScale: HoverJellyScale {
+        Self.hoverJellyScale(for: resolvedJellyIntensity)
+    }
+
+    private var expandSpring: Animation {
+        Self.expandSpring(for: resolvedAnimationIntensity)
+    }
+
+    private var collapseSpring: Animation {
+        Self.collapseSpring(for: resolvedAnimationIntensity)
+    }
+
+    private var contentFade: Animation {
+        Self.contentFade(for: resolvedAnimationIntensity)
+    }
+
+    private var resolvedTickerContentMode: CollapsedTickerContentMode {
+        Self.resolvedTickerContentMode(rawValue: tickerContentMode)
+    }
 
     struct TransitionTiming: Equatable {
         let expandStartDelay: TimeInterval
@@ -111,14 +163,117 @@ struct NotchContentView: View {
         let collapseCompletionDelay: TimeInterval
     }
 
-    static func transitionTiming(disableAnimations: Bool) -> TransitionTiming {
-        disableAnimations
-            ? TransitionTiming(expandStartDelay: 0, contentRevealDelay: 0, collapseCompletionDelay: 0)
-            : TransitionTiming(expandStartDelay: 0.05, contentRevealDelay: 0.12, collapseCompletionDelay: 0.45)
+    static func resolvedAnimationIntensity(rawValue: String, reduceMotion: Bool) -> IslandAnimationIntensity {
+        IslandAnimationIntensity.resolve(rawValue: rawValue, reduceMotion: reduceMotion)
+    }
+
+    static func resolvedJellyIntensity(rawValue: String) -> IslandJellyIntensity {
+        IslandJellyIntensity.resolve(rawValue: rawValue)
+    }
+
+    static func resolvedTickerContentMode(rawValue: String) -> CollapsedTickerContentMode {
+        CollapsedTickerContentMode.resolve(rawValue: rawValue)
+    }
+
+    static func hoverJellyScale(for intensity: IslandJellyIntensity) -> HoverJellyScale {
+        switch intensity {
+        case .low:
+            return .init(xPop: 0.97, xSettle: 0.99, yPop: 1.10, ySettle: 1.03)
+        case .medium:
+            return .init(xPop: 0.94, xSettle: 0.98, yPop: 1.25, ySettle: 1.08)
+        case .high:
+            return .init(xPop: 0.90, xSettle: 0.96, yPop: 1.40, ySettle: 1.12)
+        }
+    }
+
+    static func shouldTriggerHoverJelly(
+        isPointerInside: Bool,
+        isExpanded: Bool,
+        collapseAnimating: Bool,
+        previousMouseY: CGFloat,
+        currentMouseY: CGFloat
+    ) -> Bool {
+        isPointerInside && !isExpanded && !collapseAnimating && previousMouseY < currentMouseY
+    }
+
+    static func magneticOffset(
+        mouseLocation: CGPoint,
+        windowFrame: CGRect,
+        collapsedShapeHeight: CGFloat,
+        isExpanded: Bool,
+        collapseAnimating: Bool
+    ) -> CGSize {
+        guard !isExpanded, !collapseAnimating else { return .zero }
+
+        let pillCenterX = windowFrame.midX
+        let pillCenterY = windowFrame.minY + collapsedShapeHeight / 2
+        let dx = mouseLocation.x - pillCenterX
+        let dy = mouseLocation.y - pillCenterY
+        let distance = sqrt(dx * dx + dy * dy)
+
+        guard distance < magneticRange, distance > 1 else {
+            return .zero
+        }
+
+        let strength = 1.0 - distance / magneticRange
+        let offsetX = dx * strength * 0.15
+        let clamped = max(-magneticMaxOffset, min(magneticMaxOffset, offsetX))
+        return CGSize(width: clamped, height: 0)
+    }
+
+    static func transitionTiming(
+        disableAnimations: Bool,
+        intensity: IslandAnimationIntensity = .medium
+    ) -> TransitionTiming {
+        guard !disableAnimations else {
+            return TransitionTiming(expandStartDelay: 0, contentRevealDelay: 0, collapseCompletionDelay: 0)
+        }
+
+        switch intensity {
+        case .low:
+            return TransitionTiming(expandStartDelay: 0.02, contentRevealDelay: 0.08, collapseCompletionDelay: 0.28)
+        case .medium:
+            return TransitionTiming(expandStartDelay: 0.05, contentRevealDelay: 0.12, collapseCompletionDelay: 0.45)
+        case .high:
+            return TransitionTiming(expandStartDelay: 0.07, contentRevealDelay: 0.16, collapseCompletionDelay: 0.55)
+        }
     }
 
     private var transitionTiming: TransitionTiming {
-        Self.transitionTiming(disableAnimations: disableAnimations)
+        Self.transitionTiming(disableAnimations: disableAnimations, intensity: resolvedAnimationIntensity)
+    }
+
+    private static func expandSpring(for intensity: IslandAnimationIntensity) -> Animation {
+        switch intensity {
+        case .low:
+            return .spring(response: 0.28, dampingFraction: 0.92)
+        case .medium:
+            return .spring(response: 0.4, dampingFraction: 0.82)
+        case .high:
+            return .spring(response: 0.5, dampingFraction: 0.74)
+        }
+    }
+
+    private static func collapseSpring(for intensity: IslandAnimationIntensity) -> Animation {
+        switch intensity {
+        case .low:
+            return .spring(response: 0.24, dampingFraction: 0.9)
+        case .medium:
+            return .spring(response: 0.35, dampingFraction: 0.8)
+        case .high:
+            return .spring(response: 0.44, dampingFraction: 0.72)
+        }
+    }
+
+    private static func contentFade(for intensity: IslandAnimationIntensity) -> Animation {
+        switch intensity {
+        case .low:
+            return .easeInOut(duration: 0.14)
+        case .medium:
+            return .easeInOut(duration: 0.2)
+        case .high:
+            return .easeInOut(duration: 0.28)
+        }
     }
 
     static func initialAutoExpandedState(for manager: SessionManager) -> IslandState? {
@@ -159,6 +314,53 @@ struct NotchContentView: View {
         AppDelegate.shared?.refreshDiagnostics(islandState: manager.diagnosticsIslandState)
     }
 
+    static func activityTickerText(for session: AgentSession?) -> String {
+        guard let session else { return L10n.noActivity }
+
+        let prefix = session.agentType.shortName
+
+        if let tool = session.currentTool, !tool.isEmpty {
+            return "\(prefix) · \(L10n.toolRunning(tool))"
+        }
+
+        if let lastEvent = session.events.last {
+            if lastEvent.isComplete {
+                return "\(prefix) · \(lastEvent.displayName): \(lastEvent.summary)"
+            }
+            return "\(prefix) · \(L10n.toolRunning(lastEvent.displayName))"
+        }
+
+        if !session.statusText.isEmpty {
+            return "\(prefix) · \(session.statusText)"
+        }
+
+        return "\(prefix) · \(session.status.displayName)"
+    }
+
+    static func projectTickerText(for session: AgentSession?) -> String {
+        guard let session else { return L10n.noActivity }
+        return "\(session.agentType.shortName) · \(session.workspaceName)"
+    }
+
+    static func collapsedTickerText(
+        for session: AgentSession?,
+        mode: CollapsedTickerContentMode,
+        now: Date = Date()
+    ) -> String {
+        switch mode {
+        case .activity:
+            return activityTickerText(for: session)
+        case .project:
+            return projectTickerText(for: session)
+        case .automatic:
+            let rotationIndex = Int(now.timeIntervalSince1970 / CollapsedTickerContentMode.rotationInterval) % 2
+            if rotationIndex == 0 {
+                return activityTickerText(for: session)
+            }
+            return projectTickerText(for: session)
+        }
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             UnevenRoundedRectangle(
@@ -185,10 +387,14 @@ struct NotchContentView: View {
                 )
                 .strokeBorder(
                     IslandStyle.strokeColor(for: themeManager.resolvedScheme)
-                        .opacity(pillStrokeOpacity),
+                        .opacity(pillStrokeOpacity + (isHoveringPill ? 0.15 : 0)),
                     lineWidth: 0.5
                 )
             }
+            .scaleEffect(
+                x: jellyTrigger ? (jellySettled ? hoverJellyScale.xSettle : hoverJellyScale.xPop) : 1.0,
+                y: jellyTrigger ? (jellySettled ? hoverJellyScale.ySettle : hoverJellyScale.yPop) : 1.0
+            )
             .frame(width: shapeWidth, height: shapeHeight)
 
             expandedContent
@@ -199,10 +405,18 @@ struct NotchContentView: View {
                 .allowsHitTesting(showContent)
                 .zIndex(1)
 
-            CollapsedPillView(obscuredByNotch: islandObscuredByNotch, isExpanded: isExpanded) {
-                expand(to: .expanded)
+            ZStack(alignment: .top) {
+                CollapsedPillView(obscuredByNotch: islandObscuredByNotch, isExpanded: isExpanded) {
+                    expand(to: .expanded)
+                }
+                .frame(width: shapeWidth, height: collapsedShapeHeight)
+
+                if showCollapsedTicker {
+                    collapsedTickerView
+                }
             }
-            .frame(width: shapeWidth, height: collapsedShapeHeight)
+            .frame(width: shapeWidth, height: collapsedOuterHeight)
+            .offset(magneticOffset)
             .opacity(showContent ? 0 : 1)
             .allowsHitTesting(!showContent)
             .zIndex(0)
@@ -257,6 +471,9 @@ struct NotchContentView: View {
         .onChange(of: manager.activeSessions.count) { _, _ in
             reportSize()
         }
+        .onChange(of: showActivityTicker) { _, _ in
+            reportSize()
+        }
         .onChange(of: manager.visibleSessions.count) { oldCount, newCount in
             reportSize()
             if autoHideWhenNoActiveSessions {
@@ -297,6 +514,19 @@ struct NotchContentView: View {
             }
             notificationTokens = [collapseToken, toggleToken]
         }
+        .onReceive(NotificationCenter.default.publisher(for: .xislandScrollDown)) { _ in
+            let now = Date()
+            let cooldown: TimeInterval = 0.5
+            guard !isExpanded,
+                  !collapseAnimating,
+                  now.timeIntervalSince(lastScrollExpandAt) > cooldown
+            else {
+                return
+            }
+
+            lastScrollExpandAt = now
+            expand(to: .expanded)
+        }
         .onDisappear {
             stopHoverPolling()
             cancelExpandedAutoHide()
@@ -319,11 +549,47 @@ struct NotchContentView: View {
         }
     }
 
+    @ViewBuilder
+    private var collapsedTickerView: some View {
+        if resolvedTickerContentMode == .automatic {
+            TimelineView(.periodic(from: .now, by: CollapsedTickerContentMode.rotationInterval)) { context in
+                tickerMarquee(
+                    text: Self.collapsedTickerText(
+                        for: manager.latestMessagedVisibleSession,
+                        mode: resolvedTickerContentMode,
+                        now: context.date
+                    )
+                )
+            }
+        } else {
+            tickerMarquee(
+                text: Self.collapsedTickerText(
+                    for: manager.latestMessagedVisibleSession,
+                    mode: resolvedTickerContentMode
+                )
+            )
+        }
+    }
+
+    private func tickerMarquee(text: String) -> some View {
+        MarqueeText(
+            text: text,
+            font: .system(size: 10, weight: .medium),
+            availableWidth: shapeWidth - 28,
+            speed: tickerSpeed
+        )
+        .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+        .frame(width: shapeWidth, height: tickerLineHeight)
+        .offset(y: collapsedShapeHeight - 8)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
     private func expand(to newState: IslandState) {
         guard !expandPending else { return }
         collapseGeneration += 1
         collapseAnimating = false
         expandPending = true
+        clearHoverJellyState(animated: false)
 
         // 同步状态到窗口层
         if let window = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow {
@@ -345,11 +611,11 @@ struct NotchContentView: View {
                 self.state = newState
                 self.showContent = true
             } else {
-                withAnimation(Self.expandSpring) {
+                withAnimation(expandSpring) {
                     self.isHovering = false
                     self.state = newState
                 }
-                withAnimation(Self.contentFade.delay(timing.contentRevealDelay)) {
+                withAnimation(contentFade.delay(timing.contentRevealDelay)) {
                     self.showContent = true
                 }
             }
@@ -371,11 +637,12 @@ struct NotchContentView: View {
         let timing = transitionTiming
         lastCollapseAt = Date()
         collapseAnimating = true
+        clearHoverJellyState(animated: false)
         if disableAnimations {
             showContent = false
             state = .collapsed
         } else {
-            withAnimation(Self.collapseSpring) {
+            withAnimation(collapseSpring) {
                 showContent = false
                 state = .collapsed
             }
@@ -677,10 +944,8 @@ struct NotchContentView: View {
 
     private func startHoverPolling() {
         stopHoverPolling()
-        hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { _ in
-            Task { @MainActor in
-                pollMousePosition()
-            }
+        hoverTimer = Timer.scheduledTimer(withTimeInterval: Self.hoverPollingInterval, repeats: true) { _ in
+            pollMousePosition()
         }
     }
 
@@ -735,6 +1000,53 @@ struct NotchContentView: View {
         // 强制 inside = false，确保 isHovering 能被及时清除，避免 0.75s 状态不一致。
         if collapseAnimating { inside = false }
 
+        if Self.shouldTriggerHoverJelly(
+            isPointerInside: inside,
+            isExpanded: isExpanded,
+            collapseAnimating: collapseAnimating,
+            previousMouseY: previousMouseY,
+            currentMouseY: mouse.y
+        ) {
+            if !isHoveringPill, !disableAnimations {
+                isHoveringPill = true
+                jellySettled = false
+                jellyGeneration += 1
+                let generation = jellyGeneration
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.3)) {
+                    jellyTrigger = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [self] in
+                    guard generation == self.jellyGeneration else { return }
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.4)) {
+                        self.jellySettled = true
+                    }
+                }
+            }
+        } else if !inside || isExpanded || collapseAnimating {
+            clearHoverJellyState()
+        }
+
+        previousMouseY = mouse.y
+
+        let targetMagneticOffset = Self.magneticOffset(
+            mouseLocation: mouse,
+            windowFrame: window.frame,
+            collapsedShapeHeight: collapsedShapeHeight,
+            isExpanded: isExpanded,
+            collapseAnimating: collapseAnimating
+        )
+        if disableAnimations {
+            magneticOffset = .zero
+        } else if abs(targetMagneticOffset.width - magneticOffset.width) > 0.5 {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                magneticOffset = targetMagneticOffset
+            }
+        } else if targetMagneticOffset == .zero && magneticOffset != .zero {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) {
+                magneticOffset = .zero
+            }
+        }
+
         if inside && !isExpanded {
             guard Date().timeIntervalSince(lastCollapseAt) > 0.65 else { return }
             if let savedPos = jumpMouseLocation {
@@ -744,6 +1056,7 @@ struct NotchContentView: View {
                 jumpMouseLocation = nil
             }
             if !manager.visibleSessions.isEmpty {
+                if !hoverToExpandPanel { return }
                 if smartSuppression && isAgentTerminalFocused() { return }
                 expandedByHover = true
                 expandedAt = Date()
@@ -771,6 +1084,26 @@ struct NotchContentView: View {
         ) {
             collapse()
             expandedByHover = false
+        }
+    }
+
+    private func clearHoverJellyState(animated: Bool = true) {
+        guard isHoveringPill || jellyTrigger || jellySettled || magneticOffset != .zero else { return }
+
+        isHoveringPill = false
+        jellyGeneration += 1
+
+        if !animated || disableAnimations {
+            jellyTrigger = false
+            jellySettled = false
+            magneticOffset = .zero
+            return
+        }
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            jellyTrigger = false
+            jellySettled = false
+            magneticOffset = .zero
         }
     }
 

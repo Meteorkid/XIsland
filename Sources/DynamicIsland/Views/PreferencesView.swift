@@ -4,6 +4,8 @@ import ServiceManagement
 
 private enum PreferencesPane: String, CaseIterable, Identifiable {
     case general
+    case display
+    case integration
     case agents
     case sound
     case history
@@ -15,6 +17,8 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: L10n.paneGeneral
+        case .display: L10n.paneDisplay
+        case .integration: L10n.paneIntegration
         case .agents: L10n.paneAgents
         case .sound: L10n.sectionSound
         case .history: L10n.sectionHistory
@@ -26,6 +30,8 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .general: "gearshape.fill"
+        case .display: "paintbrush.fill"
+        case .integration: "rectangle.connected.to.line.below"
         case .agents: "terminal.fill"
         case .sound: "speaker.wave.2.fill"
         case .history: "clock.arrow.circlepath"
@@ -66,12 +72,33 @@ struct PreferencesView: View {
     @AppStorage("displayTimestamp") private var displayTimestamp = true
     @AppStorage("reduceMotion") private var reduceMotion = false
     @AppStorage("hoverToExpandPanel") private var hoverToExpandPanel = false
+    @AppStorage("scrollDownToExpandPanel") private var scrollDownToExpandPanel = true
+    @AppStorage("animationIntensity") private var animationIntensity = IslandAnimationIntensity.defaultValue.rawValue
+    @AppStorage("jellyIntensity") private var jellyIntensity = IslandJellyIntensity.defaultValue.rawValue
     @AppStorage("completedLingerDuration") private var completedLingerDuration = 120.0
     @AppStorage("panelWidth") private var panelWidth = 420.0
     @AppStorage("panelMaxHeight") private var panelMaxHeight = 480.0
+    @AppStorage("showCollapsedAgentIcon") private var showCollapsedAgentIcon = true
+    @AppStorage("showCollapsedSessionCount") private var showCollapsedSessionCount = true
+    @AppStorage("showCollapsedQuota") private var showCollapsedQuota = true
+    @AppStorage("showActivityTicker") private var showActivityTicker = true
+    @AppStorage("tickerContentMode") private var tickerContentMode = CollapsedTickerContentMode.defaultValue.rawValue
+    @AppStorage("tickerSpeed") private var tickerSpeed = 25.0
     @AppStorage("quietHoursEnabled") private var quietHoursEnabled = false
     @AppStorage("quietHoursStart") private var quietHoursStart = "22:00"
     @AppStorage("quietHoursEnd") private var quietHoursEnd = "07:00"
+    @AppStorage(
+        IslandIntegrationSettings.Key.swipeSwitchEnabled,
+        store: IslandIntegrationSettings.sharedDefaults
+    ) private var swipeSwitchEnabled = true
+    @AppStorage(
+        IslandIntegrationSettings.Key.swipeSensitivity,
+        store: IslandIntegrationSettings.sharedDefaults
+    ) private var swipeSensitivity = IslandSwitchSensitivity.medium.rawValue
+    @AppStorage(
+        IslandIntegrationSettings.Key.startupDisplayMode,
+        store: IslandIntegrationSettings.sharedDefaults
+    ) private var startupDisplayMode = IslandStartupDisplayMode.lastUsed.rawValue
     @State private var newRulePattern = ""
     @State private var newRuleField: MatchField = .agentType
     @AppStorage(QuotaTracker.anthropicEnabledKey) private var anthropicEnabled = false
@@ -96,7 +123,7 @@ struct PreferencesView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .frame(width: 680, height: 480)
+        .frame(width: 760, height: 520)
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier(TestAccessibility.preferencesRoot)
         .confirmationDialog(
@@ -166,6 +193,8 @@ struct PreferencesView: View {
     private var paneContent: some View {
         switch selection {
         case .general: generalPane
+        case .display: displayPane
+        case .integration: integrationPane
         case .agents: agentsPane
         case .sound: soundPane
         case .history: historyPane
@@ -187,12 +216,6 @@ struct PreferencesView: View {
 
     private var generalPane: some View {
         VStack(alignment: .leading, spacing: 20) {
-            section(L10n.appearanceSection) {
-                card {
-                    ThemePickerView()
-                }
-            }
-
             section(L10n.sectionSystem) {
                 card {
                     row(L10n.language) {
@@ -290,6 +313,90 @@ struct PreferencesView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var addServerSheet: some View {
+        VStack(spacing: 16) {
+            Text("Add Remote Server")
+                .font(.system(size: 16, weight: .semibold))
+
+            VStack(spacing: 8) {
+                HStack {
+                    Text("Label:").frame(width: 80, alignment: .trailing)
+                    TextField("e.g. dev-server", text: $serverLabel)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 250)
+                }
+                HStack {
+                    Text("Host:").frame(width: 80, alignment: .trailing)
+                    TextField("e.g. 192.168.1.10", text: $serverHost)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 250)
+                }
+                HStack {
+                    Text("Port:").frame(width: 80, alignment: .trailing)
+                    TextField("22", value: $serverPort, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                    Spacer()
+                }
+                HStack {
+                    Text("User:").frame(width: 80, alignment: .trailing)
+                    TextField("e.g. root", text: $serverUser)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 250)
+                }
+                HStack {
+                    Text("Identity File:").frame(width: 80, alignment: .trailing)
+                    TextField("optional path to private key", text: $serverIdentityFile)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 250)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Button("Cancel") {
+                    showAddServerSheet = false
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+
+                Button("Add Server") {
+                    sshManager.addServer(
+                        label: serverLabel,
+                        host: serverHost,
+                        port: serverPort,
+                        user: serverUser,
+                        identityFile: serverIdentityFile.isEmpty ? nil : serverIdentityFile
+                    )
+                    serverLabel = ""
+                    serverHost = ""
+                    serverPort = 22
+                    serverUser = ""
+                    serverIdentityFile = ""
+                    showAddServerSheet = false
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.blue)
+                .disabled(serverLabel.isEmpty || serverHost.isEmpty || serverUser.isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 420, height: 300)
+    }
+
+    // MARK: - Display
+
+    private var displayPane: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            section(L10n.appearanceSection) {
+                card {
+                    ThemePickerView()
+                }
+            }
 
             section(L10n.sectionDisplay) {
                 card {
@@ -310,15 +417,199 @@ struct PreferencesView: View {
                     settingRow(L10n.showTimestamps, id: "showTimestamps", description: L10n.showTimestampsDesc) {
                         Toggle("", isOn: $displayTimestamp).labelsHidden()
                     }
+                }
+            }
+
+            section(L10n.sectionInteraction) {
+                card {
+                    settingRow(L10n.hoverToExpandPanel, id: "hoverToExpand", description: L10n.hoverToExpandPanelDesc) {
+                        Toggle("", isOn: $hoverToExpandPanel).labelsHidden()
+                    }
+                    dividerLine
+                    settingRow(L10n.scrollDownToExpand, id: "scrollDownToExpand", description: L10n.scrollDownToExpandDesc) {
+                        Toggle("", isOn: $scrollDownToExpandPanel).labelsHidden()
+                    }
                     dividerLine
                     settingRow(L10n.reduceMotion, id: "reduceMotion", description: L10n.reduceMotionDesc) {
                         Toggle("", isOn: $reduceMotion).labelsHidden()
                     }
                     dividerLine
-                    settingRow(L10n.hoverToExpandPanel, id: "hoverToExpand", description: L10n.hoverToExpandPanelDesc) {
-                        Toggle("", isOn: $hoverToExpandPanel).labelsHidden()
+                    settingRow(L10n.animationIntensity, id: "animationIntensity", description: L10n.animationIntensityDesc) {
+                        Picker("", selection: $animationIntensity) {
+                            ForEach(IslandAnimationIntensity.allCases, id: \.rawValue) { intensity in
+                                Text(intensity.localizedTitle).tag(intensity.rawValue)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 180)
+                        .disabled(reduceMotion)
+                    }
+                    dividerLine
+                    settingRow(L10n.jellyIntensity, id: "jellyIntensity", description: L10n.jellyIntensityDesc) {
+                        Picker("", selection: $jellyIntensity) {
+                            ForEach(IslandJellyIntensity.allCases, id: \.rawValue) { intensity in
+                                Text(intensity.localizedTitle).tag(intensity.rawValue)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 180)
                     }
                 }
+            }
+
+            section(L10n.sectionCollapsedModules) {
+                card {
+                    settingRow(L10n.showCollapsedAgentIcon, id: "showCollapsedAgentIcon", description: L10n.showCollapsedAgentIconDesc) {
+                        Toggle("", isOn: $showCollapsedAgentIcon).labelsHidden()
+                    }
+                    dividerLine
+                    settingRow(L10n.showCollapsedSessionCount, id: "showCollapsedSessionCount", description: L10n.showCollapsedSessionCountDesc) {
+                        Toggle("", isOn: $showCollapsedSessionCount).labelsHidden()
+                    }
+                    dividerLine
+                    settingRow(L10n.showCollapsedQuota, id: "showCollapsedQuota", description: L10n.showCollapsedQuotaDesc) {
+                        Toggle("", isOn: $showCollapsedQuota).labelsHidden()
+                    }
+                }
+            }
+
+            section(L10n.sectionActivityTicker) {
+                card {
+                    settingRow(L10n.showActivityTicker, id: "showActivityTicker", description: L10n.showActivityTickerDesc) {
+                        Toggle("", isOn: $showActivityTicker).labelsHidden()
+                    }
+                    dividerLine
+                    settingRow(L10n.tickerContentMode, id: "tickerContentMode", description: L10n.tickerContentModeDesc) {
+                        Picker("", selection: $tickerContentMode) {
+                            ForEach(CollapsedTickerContentMode.allCases, id: \.rawValue) { mode in
+                                Text(mode.localizedTitle).tag(mode.rawValue)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 220)
+                    }
+                    dividerLine
+                    settingRow(L10n.activityTickerSpeed, id: "tickerSpeed", description: L10n.activityTickerSpeedDesc) {
+                        Slider(value: $tickerSpeed, in: 10...60, step: 5)
+                            .frame(width: 140)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Integration
+
+    private var integrationPane: some View {
+        let counterpart = AppSwitcher.shared.otherIsland ?? .xnook
+        let status = AppSwitcher.shared.peerStatus(for: counterpart)
+
+        return VStack(alignment: .leading, spacing: 20) {
+            section(L10n.sectionIslandSwitching) {
+                card {
+                    settingRow(L10n.enableSwipeSwitch, id: "enableSwipeSwitch", description: L10n.enableSwipeSwitchDesc) {
+                        Toggle("", isOn: $swipeSwitchEnabled).labelsHidden()
+                    }
+                    dividerLine
+                    settingRow(L10n.switchSensitivity, id: "switchSensitivity", description: L10n.switchSensitivityDesc) {
+                        Picker("", selection: $swipeSensitivity) {
+                            Text(L10n.sensitivityLow).tag(IslandSwitchSensitivity.low.rawValue)
+                            Text(L10n.sensitivityMedium).tag(IslandSwitchSensitivity.medium.rawValue)
+                            Text(L10n.sensitivityHigh).tag(IslandSwitchSensitivity.high.rawValue)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 180)
+                    }
+                    dividerLine
+                    settingRow(L10n.startupDisplay, id: "startupDisplay", description: L10n.startupDisplayDesc) {
+                        Picker("", selection: $startupDisplayMode) {
+                            Text(L10n.startupLastUsed).tag(IslandStartupDisplayMode.lastUsed.rawValue)
+                            Text("X Nook").tag(IslandStartupDisplayMode.xnook.rawValue)
+                            Text("X Island").tag(IslandStartupDisplayMode.xisland.rawValue)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 260)
+                    }
+                }
+            }
+
+            section(L10n.sectionCompanionIsland) {
+                card {
+                    row(counterpart.displayName, subtitle: counterpartStatusSummary(status)) {
+                        StatusPill(
+                            title: status.isRunning ? L10n.statusRunning : L10n.statusStopped,
+                            color: status.isRunning ? .green : .secondary
+                        )
+                    }
+                    dividerLine
+                    settingRow(L10n.counterpartInstalled, id: "counterpartInstalled", description: L10n.counterpartInstalledDesc) {
+                        StatusPill(
+                            title: status.isInstalled ? L10n.statusInstalled : L10n.statusMissing,
+                            color: status.isInstalled ? .green : .secondary
+                        )
+                    }
+                    dividerLine
+                    settingRow(L10n.counterpartProtocol, id: "counterpartProtocol", description: L10n.counterpartProtocolDesc) {
+                        StatusPill(
+                            title: status.isProtocolConfigured ? L10n.statusReady : L10n.statusMisconfigured,
+                            color: status.isProtocolConfigured ? .green : .orange
+                        )
+                    }
+                    dividerLine
+                    settingRow(L10n.testSwitch, id: "testSwitch", description: L10n.testSwitchDesc) {
+                        Button(L10n.testSwitchButton) {
+                            AppSwitcher.shared.switchToIsland(named: counterpart.rawValue)
+                        }
+                        .controlSize(.small)
+                        .disabled(!status.isInstalled || !status.isProtocolConfigured)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Agents
+
+    private var agentsPane: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            section(L10n.sectionCLIHooks) {
+                card {
+                    ForEach(Array(AgentType.allCases.enumerated()), id: \.element.id) { index, agent in
+                        hookRow(agent)
+                        if index < AgentType.allCases.count - 1 {
+                            dividerLine
+                        }
+                    }
+                }
+
+                Button("Reconfigure All Hooks") {
+                    ZeroConfigManager.configureAllAgents()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.blue)
+
+                Text("Hooks auto-configure on launch. Use toggles to control per-agent setup.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
+
+            section(L10n.sectionIDEIntegration) {
+                card {
+                    ideRow(name: "VS Code", bundleId: "com.microsoft.VSCode")
+                    dividerLine
+                    ideRow(name: "Cursor", bundleId: "com.todesktop.230313mzl4w4u92")
+                    dividerLine
+                    ideRow(name: "Windsurf", bundleId: "com.codeium.windsurf")
+                    dividerLine
+                    ideRow(name: "Trae", bundleId: "com.trae.app")
+                    dividerLine
+                    ideRow(name: "Trae CN", bundleId: "cn.trae.app")
+                }
+
+                Text("Extensions enable direct terminal-tab jumping from the island.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
             }
 
             section(L10n.sectionUsageTracking) {
@@ -407,124 +698,6 @@ struct PreferencesView: View {
         }
         .sheet(isPresented: $showAddServerSheet) {
             addServerSheet
-        }
-    }
-
-    private var addServerSheet: some View {
-        VStack(spacing: 16) {
-            Text("Add Remote Server")
-                .font(.system(size: 16, weight: .semibold))
-
-            VStack(spacing: 8) {
-                HStack {
-                    Text("Label:").frame(width: 80, alignment: .trailing)
-                    TextField("e.g. dev-server", text: $serverLabel)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 250)
-                }
-                HStack {
-                    Text("Host:").frame(width: 80, alignment: .trailing)
-                    TextField("e.g. 192.168.1.10", text: $serverHost)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 250)
-                }
-                HStack {
-                    Text("Port:").frame(width: 80, alignment: .trailing)
-                    TextField("22", value: $serverPort, format: .number)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 80)
-                    Spacer()
-                }
-                HStack {
-                    Text("User:").frame(width: 80, alignment: .trailing)
-                    TextField("e.g. root", text: $serverUser)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 250)
-                }
-                HStack {
-                    Text("Identity File:").frame(width: 80, alignment: .trailing)
-                    TextField("optional path to private key", text: $serverIdentityFile)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 250)
-                }
-            }
-
-            HStack(spacing: 12) {
-                Button("Cancel") {
-                    showAddServerSheet = false
-                }
-                .buttonStyle(.plain)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-
-                Button("Add Server") {
-                    sshManager.addServer(
-                        label: serverLabel,
-                        host: serverHost,
-                        port: serverPort,
-                        user: serverUser,
-                        identityFile: serverIdentityFile.isEmpty ? nil : serverIdentityFile
-                    )
-                    serverLabel = ""
-                    serverHost = ""
-                    serverPort = 22
-                    serverUser = ""
-                    serverIdentityFile = ""
-                    showAddServerSheet = false
-                }
-                .buttonStyle(.plain)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.blue)
-                .disabled(serverLabel.isEmpty || serverHost.isEmpty || serverUser.isEmpty)
-            }
-        }
-        .padding(24)
-        .frame(width: 420, height: 300)
-    }
-
-    // MARK: - Agents
-
-    private var agentsPane: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            section(L10n.sectionCLIHooks) {
-                card {
-                    ForEach(Array(AgentType.allCases.enumerated()), id: \.element.id) { index, agent in
-                        hookRow(agent)
-                        if index < AgentType.allCases.count - 1 {
-                            dividerLine
-                        }
-                    }
-                }
-
-                Button("Reconfigure All Hooks") {
-                    ZeroConfigManager.configureAllAgents()
-                }
-                .buttonStyle(.plain)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.blue)
-
-                Text("Hooks auto-configure on launch. Use toggles to control per-agent setup.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
-
-            section(L10n.sectionIDEIntegration) {
-                card {
-                    ideRow(name: "VS Code", bundleId: "com.microsoft.VSCode")
-                    dividerLine
-                    ideRow(name: "Cursor", bundleId: "com.todesktop.230313mzl4w4u92")
-                    dividerLine
-                    ideRow(name: "Windsurf", bundleId: "com.codeium.windsurf")
-                    dividerLine
-                    ideRow(name: "Trae", bundleId: "com.trae.app")
-                    dividerLine
-                    ideRow(name: "Trae CN", bundleId: "cn.trae.app")
-                }
-
-                Text("Extensions enable direct terminal-tab jumping from the island.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
         }
     }
 
@@ -1089,6 +1262,14 @@ struct PreferencesView: View {
         .padding(.vertical, 8)
     }
 
+    private func counterpartStatusSummary(_ status: IslandPeerStatus) -> String {
+        [
+            status.isInstalled ? L10n.statusInstalled : L10n.statusMissing,
+            status.isRunning ? L10n.statusRunning : L10n.statusStopped,
+            status.isProtocolConfigured ? L10n.statusReady : L10n.statusMisconfigured,
+        ].joined(separator: " · ")
+    }
+
     private var dividerLine: some View {
         Divider().overlay(.quaternary.opacity(0.4))
     }
@@ -1328,5 +1509,22 @@ struct PreferencesView: View {
         if fallbackToAbout {
             selection = .about
         }
+    }
+}
+
+private struct StatusPill: View {
+    let title: String
+    let color: Color
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(color.opacity(0.12))
+            )
     }
 }

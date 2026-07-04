@@ -1,4 +1,6 @@
 import XCTest
+import Darwin
+import DIShared
 @testable import DIBridge
 
 final class DIBridgeQuestionResponseTests: XCTestCase {
@@ -92,6 +94,56 @@ final class DIBridgeQuestionResponseTests: XCTestCase {
         XCTAssertEqual(output["hookEventName"] as? String, "PermissionRequest")
     }
 
+    func testBridgeDebugLogIsDisabledByDefault() {
+        XCTAssertFalse(DIBridge.shouldWriteDebugLog(environment: [:]))
+        XCTAssertTrue(DIBridge.shouldWriteDebugLog(environment: ["DI_BRIDGE_DEBUG_LOG": "1"]))
+    }
+
+    func testSocketPathCanBeOverriddenForRemoteTunnels() {
+        XCTAssertEqual(
+            DIBridge.socketPath(environment: ["DI_SOCKET_PATH": "/tmp/xisland-remote.sock"]),
+            "/tmp/xisland-remote.sock"
+        )
+        XCTAssertTrue(
+            DIBridge.socketPath(environment: ["DI_SOCKET_PATH": "~/.xisland/remote.sock"])
+                .hasSuffix("/.xisland/remote.sock")
+        )
+    }
+
+    func testBridgeDebugLogRedactsSensitiveValues() {
+        let line = DIBridge.logLine(
+            hook: "PreToolUse",
+            data: [
+                "api_key": "sk-secret",
+                "nested": ["authorization": "Bearer token"],
+                "safe": "visible"
+            ]
+        )
+
+        XCTAssertFalse(line.contains("sk-secret"))
+        XCTAssertFalse(line.contains("Bearer token"))
+        XCTAssertTrue(line.contains("[redacted]"))
+        XCTAssertTrue(line.contains("visible"))
+    }
+
+    func testReceiveResponseReadsLargeFramedMessage() throws {
+        let fds = try makeSocketPair()
+        defer {
+            close(fds.0)
+            close(fds.1)
+        }
+
+        var response = DIMessage(type: .questionResponse, sessionId: "large-response")
+        response.answer = String(repeating: "x", count: 80_000)
+        let data = try DIProtocol.encode(response)
+
+        XCTAssertTrue(DIBridge.sendAll(fd: fds.0, data: data))
+        shutdown(fds.0, SHUT_WR)
+
+        let decoded = DIBridge.receiveResponse(fds.1)
+        XCTAssertEqual(decoded?.answer?.count, 80_000)
+    }
+
     private func decodeJSON(_ json: String) throws -> [String: Any] {
         let data = try XCTUnwrap(json.data(using: .utf8))
         return try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -103,5 +155,14 @@ final class DIBridgeQuestionResponseTests: XCTestCase {
 
     private func updatedInput(from hookOutput: [String: Any]) throws -> [String: Any] {
         try XCTUnwrap(hookOutput["updatedInput"] as? [String: Any])
+    }
+
+    private func makeSocketPair() throws -> (Int32, Int32) {
+        var fds = [Int32](repeating: -1, count: 2)
+        let result = fds.withUnsafeMutableBufferPointer { buffer in
+            socketpair(AF_UNIX, SOCK_STREAM, 0, buffer.baseAddress!)
+        }
+        XCTAssertEqual(result, 0)
+        return (fds[0], fds[1])
     }
 }
