@@ -31,44 +31,73 @@ final class SwipeGestureRecognizer {
     private var gestureStartTime: Date?
     private var hasTriggered = false
     private var lastTriggerTime: Date = .distantPast
+    private var suppressedUntil: Date = .distantPast
 
     /// 处理滚动事件，返回识别结果
     func handleScroll(event: NSEvent) -> SwipeResult {
+        handleScroll(
+            deltaX: event.scrollingDeltaX,
+            deltaY: event.scrollingDeltaY,
+            isPrecise: event.hasPreciseScrollingDeltas,
+            phase: event.phase,
+            momentumPhase: event.momentumPhase,
+            now: Date()
+        )
+    }
+
+    func handleScroll(
+        deltaX: CGFloat,
+        deltaY: CGFloat,
+        isPrecise: Bool,
+        phase: NSEvent.Phase,
+        momentumPhase: NSEvent.Phase,
+        now: Date
+    ) -> SwipeResult {
+        guard momentumPhase.isEmpty else {
+            reset()
+            return .inProgress
+        }
+
+        guard now >= suppressedUntil else {
+            reset()
+            return .inProgress
+        }
+
         // 冷却期内忽略
-        guard Date().timeIntervalSince(lastTriggerTime) > cooldown else {
+        guard now.timeIntervalSince(lastTriggerTime) > cooldown else {
             return .inProgress
         }
 
         // 仅处理触控板精确滚动
-        guard event.hasPreciseScrollingDeltas else {
+        guard isPrecise else {
             reset()
             return .inProgress
         }
 
-        // 忽略惯性滚动（phase 为 .ended 或 .mayBegin 表示惯性阶段）
-        let phase = event.phase
-        if phase == .ended || phase == .mayBegin {
+        // 手势结束或取消时清理累计状态
+        if phase.contains(.ended) || phase.contains(.cancelled) || phase.contains(.mayBegin) {
             reset()
             return .inProgress
+        }
+
+        if phase.contains(.began) {
+            reset()
         }
 
         // 新手势开始时重置
         if gestureStartTime == nil {
-            gestureStartTime = Date()
+            gestureStartTime = now
         }
 
-        let dx = event.scrollingDeltaX
-        let dy = event.scrollingDeltaY
-
         // 方向判断：横向必须明显大于纵向
-        guard abs(dx) > abs(dy) * axisRatio else {
+        guard abs(deltaX) > abs(deltaY) * axisRatio else {
             // 纵向为主，重置横向累计
             accumulatedX = 0
             return .inProgress
         }
 
-        accumulatedX += dx
-        accumulatedY += dy
+        accumulatedX += deltaX
+        accumulatedY += deltaY
 
         // 累计阈值检查
         guard abs(accumulatedX) >= threshold else {
@@ -78,7 +107,7 @@ final class SwipeGestureRecognizer {
         // 触发切换
         hasTriggered = true
         let direction: SwipeDirection = accumulatedX > 0 ? .right : .left
-        lastTriggerTime = Date()
+        lastTriggerTime = now
 
         // 延迟重置，允许手势完成后清理
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
@@ -86,6 +115,12 @@ final class SwipeGestureRecognizer {
         }
 
         return .triggered(direction)
+    }
+
+    /// 目标岛刚显示时，暂时忽略来源手势的剩余事件。
+    func suppress(for duration: TimeInterval, now: Date = Date()) {
+        suppressedUntil = max(suppressedUntil, now.addingTimeInterval(duration))
+        reset()
     }
 
     /// 重置手势状态

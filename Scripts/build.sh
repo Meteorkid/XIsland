@@ -114,6 +114,8 @@ cat > "$APP_BUNDLE/Contents/PkgInfo" << 'EOF'
 APPL????
 EOF
 
+codesign --force --deep --sign - "$APP_BUNDLE"
+
 echo "==> Installing bridge binary..."
 mkdir -p "$BRIDGE_INSTALL_DIR"
 cp "$BUILD_DIR/release/DIBridge" "$BRIDGE_INSTALL_DIR/di-bridge"

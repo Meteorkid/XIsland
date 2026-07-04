@@ -41,6 +41,10 @@ final class NotchWindow: NSPanel {
     let swipeRecognizer = SwipeGestureRecognizer()
     /// 灵动岛当前状态（由 NotchContentView 同步）
     var islandState: IslandState = .collapsed
+    /// 正在切换应用时临时禁用 activeSpaceDidChange 的自动显示
+    var isSwitchingApps = false
+    /// 已让位给另一个灵动岛，收到显式显示命令前禁止自动显示
+    var isHiddenByIslandSwitch = false
 
     init() {
         let screen = Self.bestScreen()
@@ -146,12 +150,12 @@ final class NotchWindow: NSPanel {
     }
 
     @objc private func activeSpaceDidChange(_ note: Notification) {
+        // 切换应用期间不自动显示窗口
+        guard !isSwitchingApps, !isHiddenByIslandSwitch else { return }
+
         let hideInFullscreen = UserDefaults.standard.bool(forKey: "hideInFullscreen")
         guard hideInFullscreen else {
-            if !isVisible {
-                resumeMouseTracking()
-                orderFrontRegardless()
-            }
+            // 不再自动显示窗口——窗口只在明确命令时显示
             return
         }
         // Phase 1: snapshot MainActor-isolated state before leaving the main thread
@@ -167,6 +171,7 @@ final class NotchWindow: NSPanel {
                 Self.isScreenInFullscreenOffMain($0, windowSnapshots: windowSnapshots, frontApp: frontApp)
             } ?? false
             await MainActor.run {
+                guard !self.isSwitchingApps, !self.isHiddenByIslandSwitch else { return }
                 if inFullscreen {
                     self.pauseMouseTracking()
                     self.orderOut(nil)
@@ -381,8 +386,8 @@ final class NotchWindow: NSPanel {
             // 横滑切换手势（仅收起状态响应）
             if islandState == .collapsed {
                 let result = swipeRecognizer.handleScroll(event: event)
-                if case .triggered(let direction) = result {
-                    AppSwitcher.shared.switchToOtherApp(swipeDirection: direction)
+                if case .triggered(_) = result {
+                    AppSwitcher.shared.switchToNextIsland()
                     return
                 }
             }
@@ -395,6 +400,7 @@ final class NotchWindow: NSPanel {
 
     /// 在鼠标所在屏幕显示窗口（URL Scheme 唤醒时调用）
     func showAtMouseScreen() {
+        isHiddenByIslandSwitch = false
         let mouseLocation = NSEvent.mouseLocation
         guard let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) else {
             orderFrontRegardless()
@@ -402,6 +408,13 @@ final class NotchWindow: NSPanel {
         }
         repositionOnScreen(mouseScreen)
         orderFrontRegardless()
+    }
+
+    func isFrontmostIslandWindow() -> Bool {
+        IslandWindowOwnership.isFrontmostIslandWindow(
+            self,
+            bundleIdentifiers: ["com.meteorkid.xnook", "dev.xisland.app"]
+        )
     }
 
     func setFrameDirect(_ rect: NSRect, display: Bool = true) {

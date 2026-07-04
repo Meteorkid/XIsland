@@ -267,7 +267,10 @@ struct NotchContentView: View {
                         }
                     }
                 } else if newCount > 0 && oldCount == 0 {
-                    NSApp.windows.first(where: { $0 is NotchWindow })?.orderFrontRegardless()
+                    if let window = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow,
+                       !window.isHiddenByIslandSwitch {
+                        window.orderFrontRegardless()
+                    }
                 }
             }
         }
@@ -690,7 +693,9 @@ struct NotchContentView: View {
         guard let window = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow else { return }
         guard !window.isDragging else { return }
 
-        if !window.isVisible && (manager.hasInteraction || !manager.visibleSessions.isEmpty) {
+        if !window.isHiddenByIslandSwitch,
+           !window.isVisible,
+           (manager.hasInteraction || !manager.visibleSessions.isEmpty) {
             window.orderFrontRegardless()
         }
 

@@ -11,6 +11,10 @@ extension Notification.Name {
     static let xislandToggleSearch = Notification.Name("xislandToggleSearch")
 }
 
+/// 跨进程通知前缀：请求目标灵动岛隐藏自身
+/// 完整通知名格式：island.switch.hide.{targetAppName}
+private let hideNotificationPrefix = "island.switch.hide."
+
 enum PreferencesRouting {
     static let pendingPaneSelectionKey = "XIsland.Preferences.PendingPaneSelection"
     static let aboutPaneValue = "about"
@@ -56,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let testConfiguration: AppTestConfiguration
     private let launchHooks: LaunchHooks
     private var scrollMonitor: Any?
+    private var islandHideObserver: NSObjectProtocol?
 
     override init() {
         self.testConfiguration = AppTestConfiguration.current()
@@ -120,6 +125,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // 监听跨进程通知：对方应用请求本应用隐藏
+        // 通知名格式：island.switch.hide.{targetAppName}
+        if let appName = AppSwitcher.shared.currentAppName {
+            let hideNotification = "\(hideNotificationPrefix)\(appName)"
+            islandHideObserver = DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name(hideNotification),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.hideIslandForSwitch()
+                }
+            }
+        }
+
         let initialIslandState = NotchContentView.initialIslandState(for: sessionManager)
         sessionManager.currentIslandState = initialIslandState
         refreshDiagnostics(
@@ -136,6 +156,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         socketServer?.stop()
+        if let observer = islandHideObserver {
+            DistributedNotificationCenter.default().removeObserver(observer)
+            islandHideObserver = nil
+        }
         if let monitor = scrollMonitor {
             NSEvent.removeMonitor(monitor)
             scrollMonitor = nil
@@ -144,7 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
-            guard url.scheme == "xisland" else { continue }
+            guard url.scheme == AppSwitcher.shared.currentURLScheme else { continue }
             handleIslandCommand(url)
         }
     }
@@ -152,10 +176,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func handleIslandCommand(_ url: URL) {
         // 解析路径: xisland://island/show
         guard url.host == "island",
-              url.pathComponents.contains("show") else { return }
+              url.pathComponents.contains("show"),
+              let window = notchWindow else { return }
 
-        // 收起内容，重新定位到鼠标屏幕，显示窗口
-        notchWindow?.showAtMouseScreen()
+        // 立即设置切换标志（同步），防止 activeSpaceDidChange 重新显示窗口
+        window.isHiddenByIslandSwitch = false
+        window.isSwitchingApps = true
+        window.swipeRecognizer.suppress(for: 0.8)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            window.isSwitchingApps = false
+        }
+
+        // 先收起并显示自身，确认接管后再请求来源岛隐藏
+        NotificationCenter.default.post(name: .xislandCollapse, object: nil)
+        window.showAtMouseScreen()
+
+        // 发送跨进程通知让来源岛隐藏
+        // 需要找到来源岛的应用名
+        if let sourceAppName = AppSwitcher.shared.otherIslandNames.first {
+            let hideNotification = "\(hideNotificationPrefix)\(sourceAppName)"
+            postHideNotification(hideNotification)
+        }
+    }
+
+    private func hideIslandForSwitch() {
+        guard let window = notchWindow else { return }
+        window.isHiddenByIslandSwitch = true
+        window.isSwitchingApps = true
+        window.orderOut(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            window.isSwitchingApps = false
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -300,14 +351,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleScrollEvent(_ event: NSEvent) {
         guard let window = notchWindow else { return }
+        let mouseLocation = NSEvent.mouseLocation
 
-        // 横滑切换手势（仅收起状态响应）
-        if window.islandState == .collapsed {
+        // 横滑切换手势（仅由鼠标下最上层的收起岛响应）
+        if IslandWindowOwnership.canHandleGlobalSwipe(
+            isVisible: window.isVisible,
+            isCollapsed: window.islandState == .collapsed,
+            windowFrame: window.frame,
+            mouseLocation: mouseLocation
+        ) {
             let result = window.swipeRecognizer.handleScroll(event: event)
-            if case .triggered(let direction) = result {
-                AppSwitcher.shared.switchToOtherApp(swipeDirection: direction)
+            if case .triggered(_) = result {
+                guard window.isFrontmostIslandWindow() else {
+                    window.swipeRecognizer.reset()
+                    return
+                }
+                AppSwitcher.shared.switchToNextIsland()
                 return
             }
+        } else {
+            window.swipeRecognizer.reset()
         }
     }
 
@@ -428,11 +491,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleNotch() {
         if let w = notchWindow {
-            w.isVisible ? w.orderOut(nil) : w.orderFrontRegardless()
+            if w.isVisible {
+                w.orderOut(nil)
+            } else {
+                w.isHiddenByIslandSwitch = false
+                w.orderFrontRegardless()
+            }
         }
     }
 
     @objc private func showNotch() {
+        notchWindow?.isHiddenByIslandSwitch = false
         notchWindow?.orderFrontRegardless()
     }
 
@@ -649,6 +718,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.button?.image = NSImage(
             systemSymbolName: imageName,
             accessibilityDescription: "X Island"
+        )
+    }
+
+    private func postHideNotification(_ name: String) {
+        DistributedNotificationCenter.default().postNotificationName(
+            Notification.Name(name),
+            object: nil,
+            userInfo: nil,
+            deliverImmediately: true
         )
     }
 }
