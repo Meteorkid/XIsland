@@ -25,9 +25,10 @@ final class AppSwitcher {
     ]
 
     /// 灵动岛应用注册表：应用名 → URL Scheme
+    /// 所有灵动岛使用统一的 URL Scheme
     private let islandSchemes: [String: String] = [
-        "xnook": "xnook",
-        "xisland": "xisland",
+        "xnook": "island",
+        "xisland": "island",
     ]
 
     /// 用于延迟清除 isSwitchingApps 标志的 WorkItem
