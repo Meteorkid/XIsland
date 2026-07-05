@@ -6,7 +6,9 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PROJECT_DIR/.build"
 APP_NAME="X Island"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
-VERSION="${1:-1.9.0}"
+
+# 从 VERSION 文件读取版本号（单一版本源），或使用命令行参数
+VERSION="${1:-$(cat "$PROJECT_DIR/VERSION" | tr -d '[:space:]')}"
 DMG_OUTPUT="$BUILD_DIR/XIsland-${VERSION}.dmg"
 
 cd "$PROJECT_DIR"

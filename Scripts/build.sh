@@ -13,6 +13,9 @@ CLI_SRC="$PROJECT_DIR/Scripts/xisland"
 CLI_LIB_DIR="$PROJECT_DIR/Scripts/lib"
 APP_CLI_DIR="$APP_BUNDLE/Contents/Resources/cli"
 
+# 从 VERSION 文件读取版本号（单一版本源）
+VERSION=$(cat "$PROJECT_DIR/VERSION" | tr -d '[:space:]')
+
 cd "$PROJECT_DIR"
 
 # shellcheck source=/dev/null
@@ -58,7 +61,7 @@ cp "$CLI_LIB_DIR/xisland-cli.sh" "$APP_CLI_DIR/lib/xisland-cli.sh"
 codesign -s - -f "$APP_BUNDLE/Contents/MacOS/di-bridge" 2>/dev/null || true
 codesign -s - -f "$APP_BUNDLE/Contents/MacOS/XIsland" 2>/dev/null || true
 
-cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
+cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -70,9 +73,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
     <key>CFBundleIdentifier</key>
     <string>dev.xisland.app</string>
     <key>CFBundleVersion</key>
-    <string>1.9.0</string>
+    <string>${VERSION}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.9.0</string>
+    <string>${VERSION}</string>
     <key>CFBundleExecutable</key>
     <string>XIsland</string>
     <key>CFBundlePackageType</key>
@@ -95,10 +98,10 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>dev.xisland.app</string>
+            <string>com.dynamic-island.unified</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>xisland</string>
+                <string>island</string>
             </array>
         </dict>
     </array>
@@ -150,9 +153,9 @@ if [[ "${X_ISLAND_BUILD_DMG:-0}" == "1" ]]; then
     echo ""
     echo "==> Packaging DMG..."
 
-    # 从 Info.plist 读取版本号
-    VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_BUNDLE/Contents/Info.plist")
-    DMG_FILENAME="XIsland-${VERSION}.dmg"
+    # 规范化版本号：去掉预发布后缀（如 -beta, -rc1）用于 DMG 文件名
+    NORMALIZED_VERSION=$(echo "$VERSION" | sed -E 's/-[a-zA-Z0-9.]+$//')
+    DMG_FILENAME="XIsland-${NORMALIZED_VERSION}.dmg"
     DMG_PATH="$BUILD_DIR/$DMG_FILENAME"
     TEMP_DMG_DIR="$BUILD_DIR/dmg-staging"
 
