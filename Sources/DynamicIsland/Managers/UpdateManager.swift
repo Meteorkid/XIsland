@@ -248,9 +248,14 @@ final class UpdateManager {
             expectedSHA256 = Self.extractSHA256(from: body, for: dmgFilename)
             if expectedSHA256 == nil {
                 os_log(.info, "SHA256 not found in release notes for %{public}@", dmgFilename)
+                // SHA256 缺失时提示用户
+                state = .failed(message: "Release notes 中未包含 SHA256 校验和，无法验证下载完整性。请手动下载安装。")
+                return
             }
         } else {
             expectedSHA256 = nil
+            state = .failed(message: "Release notes 为空，无法验证下载完整性。请手动下载安装。")
+            return
         }
 
         let stageHandler: @MainActor (AppUpdaterStage) -> Void = { [weak self] stage in

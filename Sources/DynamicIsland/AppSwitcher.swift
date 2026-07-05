@@ -25,10 +25,10 @@ final class AppSwitcher {
     ]
 
     /// 灵动岛应用注册表：应用名 → URL Scheme
-    /// 所有灵动岛使用统一的 URL Scheme
+    /// 每个应用使用独立的 URL Scheme，避免 Launch Services 冲突
     private let islandSchemes: [String: String] = [
-        "xnook": "island",
-        "xisland": "island",
+        "xnook": "xnook",
+        "xisland": "xisland",
     ]
 
     /// 用于延迟清除 isSwitchingApps 标志的 WorkItem
@@ -114,14 +114,8 @@ final class AppSwitcher {
     func switchURL(for targetName: String) -> URL? {
         guard islandApps[targetName] != nil,
               let scheme = islandSchemes[targetName] else { return nil }
-        return URL(string: "\(scheme)://island/show")
-    }
-
-    /// 在当前岛显示窗口（URL Scheme 收到 show 指令时调用）
-    func showCurrentIsland() {
-        guard let appDelegate = AppDelegate.shared,
-              let window = appDelegate.notchWindow else { return }
-        window.showAtMouseScreen()
+        // URL 格式: island://{targetName}/show
+        return URL(string: "\(scheme)://\(targetName)/show")
     }
 
     func isIslandInstalled(named islandName: String) -> Bool {

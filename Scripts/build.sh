@@ -98,10 +98,10 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>com.dynamic-island.unified</string>
+            <string>dev.xisland.app</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>island</string>
+                <string>xisland</string>
             </array>
         </dict>
     </array>

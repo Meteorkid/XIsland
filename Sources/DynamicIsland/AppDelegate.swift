@@ -204,10 +204,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.post(name: .xislandCollapse, object: nil)
         window.showAtMouseScreen()
 
-        // 发送跨进程通知让来源岛隐藏
-        // 需要找到来源岛的应用名
-        if let sourceAppName = AppSwitcher.shared.otherIslandNames.first {
-            let hideNotification = "\(hideNotificationPrefix)\(sourceAppName)"
+        // 发送跨进程通知让其他所有岛隐藏
+        for islandName in AppSwitcher.shared.otherIslandNames {
+            let hideNotification = "\(hideNotificationPrefix)\(islandName)"
             postHideNotification(hideNotification)
         }
     }
