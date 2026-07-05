@@ -46,13 +46,23 @@ final class AppSwitcher {
         islandSchemes[appName]
     }
 
-    /// 切换到下一个灵动岛
+    /// 切换到下一个灵动岛（跳过未安装的应用）
     func switchToNextIsland() {
         guard let currentName = currentAppName else { return }
         let allNames = Array(islandApps.keys).sorted()
+
+        // 找到下一个已安装的应用
         guard let currentIndex = allNames.firstIndex(of: currentName) else { return }
-        let nextIndex = (currentIndex + 1) % allNames.count
-        switchToIsland(named: allNames[nextIndex])
+        let count = allNames.count
+        for i in 1...count {
+            let nextIndex = (currentIndex + i) % count
+            let nextName = allNames[nextIndex]
+            if isIslandInstalled(named: nextName) {
+                switchToIsland(named: nextName)
+                return
+            }
+        }
+        // 没有其他已安装的应用，不做任何操作
     }
 
     /// 切换到指定的灵动岛
@@ -60,6 +70,12 @@ final class AppSwitcher {
         // 防止切换到自身
         guard targetName != currentAppName,
               islandApps[targetName] != nil else { return }
+
+        // 检查目标应用是否已安装
+        guard isIslandInstalled(named: targetName) else {
+            // 目标应用未安装，不执行切换
+            return
+        }
 
         // 设置切换标志，防止 activeSpaceDidChange 重新显示窗口
         if let window = AppDelegate.shared?.notchWindow {
