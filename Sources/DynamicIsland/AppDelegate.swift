@@ -452,6 +452,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         observeUpdateState()
         sessionManager.startCleanupTimer()
+        // 启动自动检查更新
+        updateManager.startAutoCheck()
     }
 
     private func performProductionGlobalStartup() {

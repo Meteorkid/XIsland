@@ -1,0 +1,3017 @@
+================================================================================
+                        软件著作权登记申请 - 源代码文档
+================================================================================
+
+软件名称：X Island（X Island）
+版本号：V1.0.0
+开发完成日期：2026年6月
+
+--------------------------------------------------------------------------------
+                              前 30 页（第 1-1500 行）
+--------------------------------------------------------------------------------
+
+// File: Package.swift
+// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "XIsland",
+    platforms: [.macOS(.v14)],
+    targets: [
+        .target(name: "DIShared"),
+        .executableTarget(name: "XIsland", dependencies: ["DIShared"], path: "Sources/DynamicIsland"),
+        .executableTarget(name: "DIBridge", dependencies: ["DIShared"]),
+        .executableTarget(
+            name: "XIslandUITestDriver",
+            dependencies: [],
+            path: "Sources/XIslandUITestDriver"
+        ),
+        .testTarget(name: "XIslandTests", dependencies: ["XIsland", "DIBridge", "XIslandUITestDriver"], path: "Tests/TowerIslandTests"),
+    ]
+)
+// File: Sources/DIBridge/DIBridge.swift
+import Foundation
+import DIShared
+@main
+struct DIBridge {
+    static func main() {
+        let args = parseArgs()
+        let agentType = args["agent"] ?? "unknown"
+        let hookType = args["hook"] ?? "notification"
+        let explicitTool = args["tool"]
+        let stdinData = readStdin()
+        let sessionId: String
+        if let explicit = args["session"] {
+            sessionId = explicit
+        } else if let envId = ProcessInfo.processInfo.environment["DI_SESSION_ID"] {
+            sessionId = envId
+        } else if let nativeId = stdinData?["conversation_id"] as? String ?? stdinData?["session_id"] as? String,
+                  !nativeId.isEmpty {
+            sessionId = "\(agentType)-\(nativeId)"
+        } else {
+            sessionId = stableSessionId(agent: agentType)
+        }
+        dumpStdin(hook: hookType, data: stdinData)
+        var message = buildMessage(
+            agentType: agentType,
+            hookType: hookType,
+            sessionId: sessionId,
+            stdinData: stdinData,
+            explicitTool: explicitTool
+        )
+        message.agentType = agentType
+        /// Hooks spawn `di-bridge` as a one-shot child; we must exit so the parent script continues
+        /// and can read stdout / exit status (e.g. allow=0, deny≠0 for permission tools).
+        let isInteractive = message.type == .permissionRequest
+            || message.type == .question
+            || message.type == .planReview
+        guard let encoded = try? DIProtocol.encode(message) else {
+            fputs("[di-bridge] Failed to encode message\n", stderr)
+            exit(1)
+        }
+        let fd = connectSocket()
+        guard fd >= 0 else {
+            if needsJsonOutput(hookType) {
+                print("{}")
+            }
+            exit(0)
+        }
+        encoded.withUnsafeBytes { ptr in
+            if let base = ptr.baseAddress {
+                _ = send(fd, base, ptr.count, 0)
+            }
+        }
+        shutdown(fd, SHUT_WR)
+        if isInteractive {
+            dumpStdin(hook: "AWAIT_RESPONSE", data: ["type": message.type.rawValue, "fd": "\(fd)"])
+            let response = receiveResponse(fd)
+            dumpStdin(hook: "RECV_DONE", data: ["got": response != nil ? response!.type.rawValue : "nil"])
+            close(fd)
+            if let response {
+                switch response.type {
+                case .permissionResponse:
+                    let approved = response.approved ?? false
+                    // Claude Code reads the PermissionRequest outcome from stdout JSON (hookSpecificOutput),
+                    // not from exit status alone. See hooks.md § PermissionRequest decision control.
+                    if agentType == "claude_code" {
+                        print(Self.buildClaudeCodePermissionResponse(approved: approved))
+                    }
+                    dumpStdin(hook: "PERM_EXIT", data: ["approved": "\(approved)"])
+                    exit(approved ? 0 : 1)
+                case .questionResponse:
+                    let answer = response.answer ?? ""
+                    if agentType == "cursor" {
+                        let jsonObj: [String: Any] = [
+                            "permission": "deny",
+                            "agent_message": "The user already answered this question via X Island. User selected: \(answer). Do NOT ask the same question again. Continue with the conversation using this answer."
+                        ]
+                        if let data = try? JSONSerialization.data(withJSONObject: jsonObj),
+                           let str = String(data: data, encoding: .utf8) {
+                            print(str)
+                        }
+                    } else if isClaudeCodeQuestion(hookType: hookType, stdinData: stdinData) {
+                        let json = buildClaudeCodeQuestionResponse(
+                            answer: answer,
+                            stdinData: stdinData,
+                            hookType: hookType
+                        )
+                        print(json)
+                    } else {
+                        print(answer)
+                    }
+                    exit(0)
+                case .planResponse:
+                    let approved = response.planApproved ?? false
+                    if let feedback = response.feedback {
+                        print(feedback)
+                    }
+                    exit(approved ? 0 : 1)
+                default:
+                    exit(0)
+                }
+            } else {
+                fputs("[di-bridge] No response received\n", stderr)
+                exit(1)
+            }
+        } else {
+            close(fd)
+            if needsJsonOutput(hookType) {
+                print("{}")
+            }
+            exit(0)
+        }
+    }
+    // MARK: - Socket Communication
+    static func connectSocket() -> Int32 {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return -1 }
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let path = DISocketConfig.socketPath
+        let pathBytes = path.utf8CString
+        withUnsafeMutablePointer(to: &addr.sun_path) { sunPath in
+            pathBytes.withUnsafeBufferPointer { src in
+                UnsafeMutableRawPointer(sunPath)
+                    .copyMemory(from: src.baseAddress!, byteCount: min(src.count, 104))
+            }
+        }
+        let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
+        let result = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
+                connect(fd, sockPtr, addrLen)
+            }
+        }
+        if result != 0 {
+            close(fd)
+            return -1
+        }
+        return fd
+    }
+    static func receiveResponse(_ fd: Int32) -> DIMessage? {
+        var data = Data()
+        let bufSize = 65536
+        let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: bufSize)
+        defer { buf.deallocate() }
+        let timeout = timeval(tv_sec: 300, tv_usec: 0)
+        var tv = timeout
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        while true {
+            let n = recv(fd, buf, bufSize, 0)
+            if n > 0 {
+                data.append(buf, count: n)
+                if n < bufSize { break }
+            } else {
+                break
+            }
+        }
+        guard !data.isEmpty else { return nil }
+        return try? DIProtocol.decode(data)
+    }
+    static func needsJsonOutput(_ hookType: String) -> Bool {
+        let h = hookType.lowercased()
+        return h == "stop" || h == "sessionstart" || h == "session_start" || h == "userpromptsubmit"
+    }
+    // MARK: - Session ID
+    static var currentTermSessionId: String {
+        if let id = ProcessInfo.processInfo.environment["ITERM_SESSION_ID"], !id.isEmpty { return "iterm:\(id)" }
+        if let id = ProcessInfo.processInfo.environment["TERM_SESSION_ID"], !id.isEmpty { return "ts:\(id)" }
+        for fd: Int32 in [2, 1, 0] {
+            if isatty(fd) != 0, let tty = ttyname(fd) { return "tty:\(String(cString: tty))" }
+        }
+        return ""
+    }
+    static func stableSessionId(agent: String) -> String {
+        let cwd = FileManager.default.currentDirectoryPath
+        let termProgram = ProcessInfo.processInfo.environment["TERM_PROGRAM"] ?? "unknown"
+        let termSession = currentTermSessionId
+        let seed = "\(agent)-\(cwd)-\(termProgram)-\(termSession)"
+        var hash: UInt64 = 5381
+        for byte in seed.utf8 { hash = hash &* 33 &+ UInt64(byte) }
+        return "\(agent)-\(String(hash, radix: 16))"
+    }
+    // MARK: - Argument Parsing
+    static func parseArgs() -> [String: String] {
+        var result: [String: String] = [:]
+        let args = CommandLine.arguments
+        var i = 1
+        while i < args.count {
+            let arg = args[i]
+            if arg.hasPrefix("--"), i + 1 < args.count {
+                let key = String(arg.dropFirst(2))
+                result[key] = args[i + 1]
+                i += 2
+            } else {
+                i += 1
+            }
+        }
+        return result
+    }
+    // MARK: - Stdin
+    static func readStdin() -> [String: Any]? {
+        if isatty(STDIN_FILENO) != 0 { return nil }
+        var input = ""
+        while let line = readLine(strippingNewline: false) {
+            input += line
+        }
+        guard !input.isEmpty,
+              let data = input.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return json
+    }
+    // MARK: - Token Extraction
+    static func extractTokens(_ data: [String: Any]?, into msg: inout DIMessage) {
+        guard let data else { return }
+        // Try multiple key conventions used by different agents
+        msg.tokensIn = data["tokens_in"] as? Int
+            ?? data["input_tokens"] as? Int
+            ?? (data["usage"] as? [String: Any])?["input_tokens"] as? Int
+        msg.tokensOut = data["tokens_out"] as? Int
+            ?? data["output_tokens"] as? Int
+            ?? (data["usage"] as? [String: Any])?["output_tokens"] as? Int
+        msg.totalTokens = data["total_tokens"] as? Int
+            ?? (data["usage"] as? [String: Any])?["total_tokens"] as? Int
+        if let cost = data["cost_usd"] as? Double {
+            msg.costUSD = cost
+        } else if let cost = data["cost"] as? Double {
+            msg.costUSD = cost
+        }
+        msg.model = data["model"] as? String
+    }
+    // MARK: - Message Building
+    static func buildMessage(agentType: String, hookType: String, sessionId: String, stdinData: [String: Any]?, explicitTool: String? = nil) -> DIMessage {
+        let hook = hookType.lowercased()
+        if hook.contains("pretooluse") || hook.contains("tool_use") || hook == "tooluse" {
+            let toolName = explicitTool ?? stdinData?["tool_name"] as? String ?? stdinData?["tool"] as? String ?? ""
+            if isQuestionTool(toolName) {
+                return buildQuestionFromPermission(sessionId: sessionId, toolName: toolName, data: stdinData)
+            }
+            return buildToolStart(sessionId: sessionId, data: stdinData, explicitTool: explicitTool)
+        }
+        if hook.contains("posttooluse") || hook == "patchapply" {
+            return buildToolComplete(sessionId: sessionId, data: stdinData, explicitTool: explicitTool)
+        }
+        if hook.contains("permission") {
+            return buildPermissionRequest(sessionId: sessionId, data: stdinData)
+        }
+        if hook.contains("question") || hook.contains("ask") {
+            return buildQuestion(sessionId: sessionId, data: stdinData)
+        }
+        if hook.contains("plan") {
+            return buildPlanReview(sessionId: sessionId, data: stdinData)
+        }
+        if hook == "subagentstart" || hook == "subagent_start" {
+            return buildSubagentStart(sessionId: sessionId, agentType: agentType, data: stdinData)
+        }
+        if hook == "subagentstop" || hook == "subagentend" || hook == "subagent_stop" || hook == "subagent_end" {
+            return buildSubagentEnd(sessionId: sessionId, agentType: agentType, data: stdinData)
+        }
+        if hook == "precompact" || hook.contains("compact") {
+            return buildContextCompact(sessionId: sessionId, data: stdinData)
+        }
+        if hook == "sessionstart" || hook.contains("session_start") || hook == "userpromptsubmit" {
+            return buildSessionStart(sessionId: sessionId, agentType: agentType, data: stdinData)
+        }
+        if hook == "sessionend" || hook.contains("session_end") || hook == "stop" {
+            var msg = DIMessage(type: .sessionEnd, sessionId: sessionId)
+            msg.agentType = agentType
+            msg.status = stdinData?["last_assistant_message"] as? String
+                ?? stdinData?["message"] as? String
+                ?? stdinData?["response"] as? String
+                ?? stdinData?["result"] as? String
+            extractTokens(stdinData, into: &msg)
+            return msg
+        }
+        var msg = buildNotification(sessionId: sessionId, data: stdinData)
+        msg.agentType = agentType
+        return msg
+    }
+    static func buildSessionStart(sessionId: String, agentType: String, data: [String: Any]?) -> DIMessage {
+        var msg = DIMessage(type: .sessionStart, sessionId: sessionId)
+        msg.agentType = agentType
+        // 空字符串也要走 fallback，否则 ?? 链被截断，TERM_PROGRAM 不会被使用
+        let termFromData = data?["terminal"] as? String
+        msg.terminal = (termFromData?.isEmpty == false ? termFromData : nil)
+            ?? ProcessInfo.processInfo.environment["TERM_PROGRAM"]
+            ?? "Terminal"
+        let tsid = currentTermSessionId
+        if !tsid.isEmpty { msg.termSessionId = tsid }
+        let cwdFromData = data?["working_dir"] as? String
+            ?? data?["cwd"] as? String
+            ?? data?["projectPath"] as? String
+            ?? data?["workspace"] as? String
+            ?? data?["workspaceFolder"] as? String
+            ?? (data?["workspace_roots"] as? [String])?.first
+        // 不 fallback 到 FileManager.default.currentDirectoryPath——那是 DIBridge 自身的 cwd，不是用户项目
+        msg.workingDir = (cwdFromData?.isEmpty == false ? cwdFromData : nil)
+            ?? ProcessInfo.processInfo.environment["PROJECT_DIR"]
+        msg.prompt = extractUserPrompt(data)
+        extractTokens(data, into: &msg)
+        return msg
+    }
+    static func extractUserPrompt(_ data: [String: Any]?) -> String {
+        guard let raw = data?["prompt"] as? String, !raw.isEmpty else { return "" }
+        // Codex UserPromptSubmit may include system instructions before the user message.
+        // If it looks like a system prompt, extract just the last user turn or truncate.
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("You are a") || trimmed.hasPrefix("You will be") || trimmed.hasPrefix("System:") {
+            // Try to find the actual user message after system instructions
+            for separator in ["\n\nUser:", "\nUser:", "\n\n> ", "\n---\n"] {
+                if let range = trimmed.range(of: separator, options: .backwards) {
+                    let userPart = trimmed[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !userPart.isEmpty { return String(userPart) }
+                }
+            }
+            // Last resort: take the last line if it's short enough to be a user message
+            if let lastLine = trimmed.split(separator: "\n").last, lastLine.count < 500 {
+                return String(lastLine)
+            }
+            return ""
+        }
+        return raw
+    }
+    static func buildToolStart(sessionId: String, data: [String: Any]?, explicitTool: String? = nil) -> DIMessage {
+        var msg = DIMessage(type: .toolStart, sessionId: sessionId)
+        msg.tool = explicitTool ?? data?["tool_name"] as? String ?? data?["tool"] as? String ?? "unknown"
+        // Codex sends tool_input as {"command": "..."}, others send it as a string
+        if let input = data?["tool_input"] as? String {
+            msg.toolInput = input
+        } else if let inputObj = data?["tool_input"] as? [String: Any] {
+            msg.toolInput = inputObj["command"] as? String ?? inputObj.values.first as? String
+        } else {
+            msg.toolInput = data?["input"] as? String
+        }
+        return msg
+    }
+    static func buildToolComplete(sessionId: String, data: [String: Any]?, explicitTool: String? = nil) -> DIMessage {
+        var msg = DIMessage(type: .toolComplete, sessionId: sessionId)
+        msg.tool = explicitTool ?? data?["tool_name"] as? String ?? data?["tool"] as? String ?? "unknown"
+        // Codex uses "tool_response", Claude Code uses "tool_result"
+        msg.toolResult = data?["tool_result"] as? String
+            ?? data?["tool_response"] as? String
+            ?? data?["result"] as? String
+        msg.linesAdded = data?["lines_added"] as? Int
+        msg.linesRemoved = data?["lines_removed"] as? Int
+        extractTokens(data, into: &msg)
+        return msg
+    }
+    static func buildPermissionRequest(sessionId: String, data: [String: Any]?) -> DIMessage {
+        let toolName = data?["tool_name"] as? String ?? data?["tool"] as? String ?? "unknown"
+        if isQuestionTool(toolName) {
+            return buildQuestionFromPermission(sessionId: sessionId, toolName: toolName, data: data)
+        }
+        var msg = DIMessage(type: .permissionRequest, sessionId: sessionId)
+        msg.tool = toolName
+        let inputDict = extractToolInput(data)
+        let sources: [[String: Any]?] = [inputDict, data]
+        var desc = findString(in: sources, keys: ["description", "command", "path", "file_path", "pattern", "query", "content", "text"]) ?? ""
+        if desc.isEmpty {
+            desc = descriptionFromToolInput(inputDict) ?? descriptionFromToolInput(data) ?? ""
+        }
+        msg.permDescription = desc
+        msg.diff = data?["diff"] as? String
+        msg.filePath = findString(in: sources, keys: ["file_path", "path", "filePath"])
+        return msg
+    }
+    static func descriptionFromToolInput(_ input: [String: Any]?) -> String? {
+        guard let input else { return nil }
+        let interestingKeys = ["command", "query", "content", "code", "url", "pattern", "text"]
+        for key in interestingKeys {
+            if let val = input[key] as? String, !val.isEmpty {
+                return val
+            }
+        }
+        if input.count <= 3 {
+            let parts = input.compactMap { k, v -> String? in
+                guard let s = v as? String, !s.isEmpty else { return nil }
+                return "\(k): \(s)"
+            }
+            if !parts.isEmpty { return parts.joined(separator: "\n") }
+        }
+        return nil
+    }
+    static func isQuestionTool(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return lower.contains("askuser") || lower.contains("ask_user")
+            || lower.contains("askquestion") || lower.contains("ask_question")
+            || lower == "question" || lower == "userinput" || lower == "user_input"
+    }
+    static func buildQuestionFromPermission(sessionId: String, toolName: String, data: [String: Any]?) -> DIMessage {
+        var msg = DIMessage(type: .question, sessionId: sessionId)
+        let inputDict = extractToolInput(data)
+        let questionObj = (inputDict?["questions"] as? [[String: Any]])?.first
+        let sources: [[String: Any]?] = [questionObj, inputDict, data]
+        var header = ""
+        if let h = questionObj?["header"] as? String, !h.isEmpty { header = h + ": " }
+        let qText = findString(in: sources, keys: ["question", "text", "message", "description", "prompt"])
+        msg.questionText = qText.map { header + $0 } ?? toolName
+        for src in sources {
+            guard let src else { continue }
+            if let opts = src["options"] as? [String] {
+                msg.options = opts; break
+            }
+            if let opts = src["options"] as? [[String: Any]] {
+                msg.options = extractLabels(from: opts); break
+            }
+            if let opts = src["choices"] as? [String] {
+                msg.options = opts; break
+            }
+            if let opts = src["choices"] as? [[String: Any]] {
+                msg.options = extractLabels(from: opts); break
+            }
+        }
+        if let defaultAnswer = findString(in: sources, keys: ["default_answer", "default"]),
+           msg.options == nil || msg.options!.isEmpty {
+            msg.options = [defaultAnswer]
+        }
+        return msg
+    }
+    private static func findString(in sources: [[String: Any]?], keys: [String]) -> String? {
+        for src in sources {
+            guard let src else { continue }
+            for key in keys {
+                if let val = src[key] as? String, !val.isEmpty { return val }
+            }
+        }
+        return nil
+    }
+    private static func extractLabels(from dicts: [[String: Any]]) -> [String] {
+        dicts.compactMap { $0["label"] as? String ?? $0["value"] as? String ?? $0["text"] as? String ?? $0["description"] as? String }
+    }
+    static func extractToolInput(_ data: [String: Any]?) -> [String: Any]? {
+        for key in ["tool_input", "input", "parameters", "params", "args"] {
+            if let input = data?[key] as? [String: Any] {
+                return input
+            }
+            if let inputStr = data?[key] as? String,
+               let inputData = inputStr.data(using: .utf8),
+               let parsed = try? JSONSerialization.jsonObject(with: inputData) as? [String: Any] {
+                return parsed
+            }
+        }
+        if let tool = data?["tool"] as? [String: Any], let input = tool["input"] as? [String: Any] {
+            return input
+        }
+        return nil
+    }
+    static func buildQuestion(sessionId: String, data: [String: Any]?) -> DIMessage {
+        var msg = DIMessage(type: .question, sessionId: sessionId)
+        msg.questionText = data?["question"] as? String ?? data?["text"] as? String ?? ""
+        msg.options = data?["options"] as? [String] ?? []
+        return msg
+    }
+    static func buildPlanReview(sessionId: String, data: [String: Any]?) -> DIMessage {
+        var msg = DIMessage(type: .planReview, sessionId: sessionId)
+        msg.planMarkdown = data?["plan"] as? String ?? data?["markdown"] as? String ?? ""
+        return msg
+    }
+    static func buildSubagentStart(sessionId: String, agentType: String, data: [String: Any]?) -> DIMessage {
+        var msg = DIMessage(type: .subagentStart, sessionId: sessionId)
+        msg.agentType = agentType
+        msg.parentSessionId = data?["parent_session_id"] as? String ?? sessionId
+        msg.subagentId = data?["subagent_id"] as? String ?? UUID().uuidString
+        msg.prompt = data?["prompt"] as? String ?? data?["task"] as? String ?? ""
+        return msg
+    }
+    static func buildSubagentEnd(sessionId: String, agentType: String, data: [String: Any]?) -> DIMessage {
+        var msg = DIMessage(type: .subagentEnd, sessionId: sessionId)
+        msg.agentType = agentType
+        msg.parentSessionId = data?["parent_session_id"] as? String ?? sessionId
+        msg.subagentId = data?["subagent_id"] as? String
+        extractTokens(data, into: &msg)
+        return msg
+    }
+    static func buildContextCompact(sessionId: String, data: [String: Any]?) -> DIMessage {
+        var msg = DIMessage(type: .contextCompact, sessionId: sessionId)
+        msg.status = data?["message"] as? String ?? "Context window compacting..."
+        extractTokens(data, into: &msg)
+        return msg
+    }
+    static func buildNotification(sessionId: String, data: [String: Any]?) -> DIMessage {
+        var msg = DIMessage(type: .statusUpdate, sessionId: sessionId)
+        msg.status = data?["message"] as? String
+            ?? data?["status"] as? String
+            ?? data?["text"] as? String
+            ?? data?["last-assistant-message"] as? String
+            ?? data?["last_assistant_message"] as? String
+            ?? ""
+        extractTokens(data, into: &msg)
+        return msg
+    }
+    static func isClaudeCodeQuestion(hookType: String, stdinData: [String: Any]?) -> Bool {
+        let hook = hookType.lowercased()
+        guard hook.contains("pretooluse") || hook.contains("tool_use")
+                || hook == "tooluse" || hook.contains("permission") else { return false }
+        let toolName = stdinData?["tool_name"] as? String ?? stdinData?["tool"] as? String ?? ""
+        return isQuestionTool(toolName)
+    }
+    /// Stdout JSON for `PermissionRequest` hooks (Claude Code). Exit code alone is not sufficient.
+    static func buildClaudeCodePermissionResponse(approved: Bool) -> String {
+        let jsonObj: [String: Any] = [
+            "hookSpecificOutput": [
+                "hookEventName": "PermissionRequest",
+                "decision": [
+                    "behavior": approved ? "allow" : "deny"
+                ] as [String: Any]
+            ] as [String: Any]
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: jsonObj),
+              let str = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return str
+    }
+    static func buildClaudeCodeQuestionResponse(
+        answer: String,
+        stdinData: [String: Any]?,
+        hookType: String = "PreToolUse"
+    ) -> String {
+        let toolInput = extractToolInput(stdinData) ?? [:]
+        var updatedInput = toolInput
+        let questions = toolInput["questions"] as? [[String: Any]] ?? []
+        if !questions.isEmpty {
+            var updatedQuestions = questions
+            var answerMap: [String: String] = [:]
+            if !updatedQuestions.isEmpty {
+                let questionText = (updatedQuestions[0]["question"] as? String)
+                    ?? (updatedQuestions[0]["header"] as? String)
+                    ?? ""
+                if !questionText.isEmpty {
+                    answerMap[questionText] = answer
+                }
+                updatedQuestions[0]["answer"] = answer
+                updatedQuestions[0]["answers"] = [answer]
+            }
+            updatedInput["questions"] = updatedQuestions
+            if !answerMap.isEmpty {
+                updatedInput["answers"] = answerMap
+            }
+            updatedInput["answer"] = answer
+        } else {
+            let questionText = toolInput["question"] as? String
+                ?? stdinData?["question"] as? String ?? ""
+            if !questionText.isEmpty {
+                updatedInput["answers"] = [questionText: answer]
+            }
+            updatedInput["answer"] = answer
+        }
+        let lowerHook = hookType.lowercased()
+        let hookEventName = lowerHook.contains("permission") ? "PermissionRequest" : "PreToolUse"
+        let jsonObj: [String: Any] = [
+            "hookSpecificOutput": [
+                "hookEventName": hookEventName,
+                "permissionDecision": "allow",
+                "updatedInput": updatedInput
+            ] as [String: Any]
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: jsonObj),
+              let str = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return str
+    }
+    static func dumpStdin(hook: String, data: [String: Any]?) {
+        let logPath = DISocketConfig.socketDir + "/bridge-stdin.log"
+        var line = "[\(ISO8601DateFormatter().string(from: Date()))] hook=\(hook)"
+        if let data {
+            if let json = try? JSONSerialization.data(withJSONObject: data, options: [.prettyPrinted]),
+               let str = String(data: json, encoding: .utf8) {
+                line += "\n\(str)"
+            } else {
+                line += " keys=\(data.keys.sorted())"
+            }
+        } else {
+            line += " stdin=(nil)"
+        }
+        line += "\n---\n"
+        if let handle = FileHandle(forWritingAtPath: logPath),
+           let data = line.data(using: .utf8) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            handle.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: logPath, contents: line.data(using: .utf8))
+        }
+    }
+}
+// File: Sources/DIShared/Protocol.swift
+import Foundation
+public enum DISocketConfig {
+    public static var socketDir: String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return "\(home)/.xisland"
+    }
+    public static var socketPath: String {
+        "\(socketDir)/di.sock"
+    }
+}
+public enum DIMessageType: String, Codable, Sendable {
+    case sessionStart = "session_start"
+    case sessionEnd = "session_end"
+    case toolStart = "tool_start"
+    case toolComplete = "tool_complete"
+    case permissionRequest = "permission_request"
+    case permissionResponse = "permission_response"
+    case question = "question"
+    case questionResponse = "question_response"
+    case planReview = "plan_review"
+    case planResponse = "plan_response"
+    case statusUpdate = "status_update"
+    case progress = "progress"
+    case subagentStart = "subagent_start"
+    case subagentEnd = "subagent_end"
+    case contextCompact = "context_compact"
+    case recap = "recap"
+}
+public struct DIMessage: Codable, Sendable {
+    public var type: DIMessageType
+    public var sessionId: String
+    public var agentType: String?
+    public var timestamp: Date
+    public var terminal: String?
+    public var termSessionId: String?
+    public var workingDir: String?
+    public var prompt: String?
+    public var tool: String?
+    public var toolInput: String?
+    public var toolResult: String?
+    public var linesAdded: Int?
+    public var linesRemoved: Int?
+    public var permDescription: String?
+    public var diff: String?
+    public var filePath: String?
+    public var approved: Bool?
+    public var questionText: String?
+    public var options: [String]?
+    public var answer: String?
+    public var planMarkdown: String?
+    public var planApproved: Bool?
+    public var feedback: String?
+    public var status: String?
+    // Token/Cost tracking
+    public var tokensIn: Int?
+    public var tokensOut: Int?
+    public var totalTokens: Int?
+    public var costUSD: Double?
+    public var model: String?
+    // Session recap
+    public var recapText: String?
+    // Subagent tracking
+    public var parentSessionId: String?
+    public var subagentId: String?
+    public init(type: DIMessageType, sessionId: String) {
+        self.type = type
+        self.sessionId = sessionId
+        self.timestamp = Date()
+    }
+}
+public enum DIProtocol {
+    private static let encoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.dateEncodingStrategy = .iso8601
+        return e
+    }()
+    private static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+    public static func encode(_ message: DIMessage) throws -> Data {
+        var data = try encoder.encode(message)
+        data.append(0x0A)
+        return data
+    }
+    public static func decode(_ data: Data) throws -> DIMessage {
+        let trimmed = data.filter { $0 != 0x0A && $0 != 0x0D }
+        return try decoder.decode(DIMessage.self, from: Data(trimmed))
+    }
+}
+// File: Sources/XIslandUITestDriver/UITestScenarios.swift
+import AppKit
+import Foundation
+enum UITestAccessibility {
+    static let islandRoot = "island.root"
+    static let collapsedPill = "island.collapsed-pill"
+    static let sessionList = "island.session-list"
+    static let permissionPanel = "island.permission-panel"
+    static let permissionApproveButton = "island.permission-approve"
+    static let questionPanel = "island.question-panel"
+    static let planPanel = "island.plan-panel"
+    static let planApproveButton = "island.plan-approve"
+    static let preferencesRoot = "preferences.root"
+    static let updateCheckButton = "preferences.update-check"
+    static let updateInstallButton = "preferences.update-install"
+    static let updateStatusLabel = "preferences.update-status"
+    static func sessionCard(id: String) -> String {
+        "island.session-card.\(id)"
+    }
+    static func questionOption(index: Int) -> String {
+        "island.question-option.\(index)"
+    }
+}
+struct UITestDiagnosticsSnapshot: Decodable {
+    struct SessionSnapshot: Decodable {
+        let id: String
+    }
+    struct UpdateSnapshot: Decodable {
+        let state: String
+        let version: String?
+        let dmgURL: String?
+    }
+    let islandState: String
+    let selectedSessionId: String?
+    let pendingInteraction: String?
+    let visibleSessions: [SessionSnapshot]
+    let visibleAccessibilityIdentifiers: [String]
+    let update: UpdateSnapshot
+}
+struct UITestDriverConfiguration {
+    let appBundlePath: String
+    let scenarioArguments: [String]
+    let timeout: TimeInterval
+    static func make(arguments: [String]) throws -> Self {
+        var appBundlePath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".build")
+            .appendingPathComponent("X Island.app")
+            .path
+        var scenarioArguments: [String] = []
+        var timeout: TimeInterval = 15
+        var index = 0
+        while index < arguments.count {
+            let argument = arguments[index]
+            switch argument {
+            case "--app-path":
+                let nextIndex = index + 1
+                guard nextIndex < arguments.count else {
+                    throw UITestDriverError.invalidArguments("Missing value after --app-path")
+                }
+                appBundlePath = arguments[nextIndex]
+                index = nextIndex
+            case "--timeout":
+                let nextIndex = index + 1
+                guard nextIndex < arguments.count, let parsed = TimeInterval(arguments[nextIndex]) else {
+                    throw UITestDriverError.invalidArguments("Missing numeric value after --timeout")
+                }
+                timeout = parsed
+                index = nextIndex
+            default:
+                scenarioArguments.append(argument)
+            }
+            index += 1
+        }
+        return Self(
+            appBundlePath: appBundlePath,
+            scenarioArguments: scenarioArguments.isEmpty ? ["smoke"] : scenarioArguments,
+            timeout: timeout
+        )
+    }
+}
+struct UITestRunSelection {
+    let scenarios: [UITestScenario]
+    static func make(arguments: [String]) throws -> Self {
+        let names: [String]
+        if arguments == ["smoke"] {
+            names = UITestScenario.smokeScenarioNames
+        } else if arguments == ["full"] {
+            names = UITestScenario.fullScenarioNames
+        } else {
+            names = arguments
+        }
+        return Self(scenarios: try names.map(UITestScenario.named(_:)))
+    }
+}
+struct UITestScenario {
+    let name: String
+    let fixtureName: String
+    let opensPreferencesOnLaunch: Bool
+    let requiredIdentifiers: [String]
+    let expectedInitialIslandState: String
+    let run: (UITestScenarioContext) throws -> Void
+    static let smokeScenarioNames = [
+        "permission-smoke",
+        "question-smoke",
+        "plan-smoke",
+        "preferences-update",
+    ]
+    static let fullScenarioNames = smokeScenarioNames + ["session-list"]
+    static func named(_ name: String) throws -> Self {
+        switch name {
+        case "permission-smoke":
+            return Self(
+                name: name,
+                fixtureName: "permission-smoke",
+                opensPreferencesOnLaunch: false,
+                requiredIdentifiers: [
+                    UITestAccessibility.permissionApproveButton,
+                ],
+                expectedInitialIslandState: "permission"
+            ) { context in
+                _ = try context.waitForPrimaryWindow(minWidth: 300, description: "Timed out waiting for permission window")
+                _ = try context.waitForSnapshot(
+                    description: "Timed out waiting for permission diagnostics"
+                ) {
+                    $0.pendingInteraction == "permission"
+                        && $0.selectedSessionId == "fixture-permission"
+                }
+                try context.pressElement(UITestAccessibility.permissionApproveButton)
+                _ = try context.waitForSnapshot(
+                    description: "Timed out waiting for permission approval to clear diagnostics"
+                ) {
+                    $0.pendingInteraction == nil && $0.islandState == "collapsed"
+                }
+            }
+        case "question-smoke":
+            return Self(
+                name: name,
+                fixtureName: "question-smoke",
+                opensPreferencesOnLaunch: false,
+                requiredIdentifiers: [
+                    UITestAccessibility.questionPanel,
+                    UITestAccessibility.questionOption(index: 0),
+                ],
+                expectedInitialIslandState: "question"
+            ) { context in
+                _ = try context.waitForPrimaryWindow(minWidth: 300, description: "Timed out waiting for question window")
+                _ = try context.waitForSnapshot(
+                    description: "Timed out waiting for question diagnostics"
+                ) {
+                    $0.pendingInteraction == "question"
+                        && $0.selectedSessionId == "fixture-question"
+                }
+                try context.pressElement(UITestAccessibility.questionOption(index: 0))
+                _ = try context.waitForSnapshot(
+                    description: "Timed out waiting for question answer to clear diagnostics"
+                ) {
+                    $0.pendingInteraction == nil && $0.islandState == "collapsed"
+                }
+            }
+        case "plan-smoke":
+            return Self(
+                name: name,
+                fixtureName: "plan-smoke",
+                opensPreferencesOnLaunch: false,
+                requiredIdentifiers: [
+                    UITestAccessibility.planPanel,
+                    UITestAccessibility.planApproveButton,
+                ],
+                expectedInitialIslandState: "planReview"
+            ) { context in
+                _ = try context.waitForPrimaryWindow(minWidth: 300, description: "Timed out waiting for plan window")
+                _ = try context.waitForSnapshot(
+                    description: "Timed out waiting for plan diagnostics"
+                ) {
+                    $0.pendingInteraction == "planReview"
+                        && $0.selectedSessionId == "fixture-plan"
+                }
+                try context.pressElement(UITestAccessibility.planApproveButton)
+                _ = try context.waitForSnapshot(
+                    description: "Timed out waiting for plan approval to clear diagnostics"
+                ) {
+                    $0.pendingInteraction == nil && $0.islandState == "collapsed"
+                }
+            }
+        case "preferences-update":
+            return Self(
+                name: name,
+                fixtureName: "update-available",
+                opensPreferencesOnLaunch: true,
+                requiredIdentifiers: [
+                    UITestAccessibility.preferencesRoot,
+                    UITestAccessibility.updateStatusLabel,
+                    UITestAccessibility.updateCheckButton,
+                    UITestAccessibility.updateInstallButton,
+                ],
+                expectedInitialIslandState: "collapsed"
+            ) { context in
+                _ = try context.waitForPrimaryWindow(
+                    minWidth: 600,
+                    description: "Timed out waiting for preferences window"
+                )
+                let snapshot = try context.waitForSnapshot(
+                    description: "Timed out waiting for update diagnostics"
+                ) {
+                    $0.update.state == "updateAvailable" && $0.update.version == "1.2.9"
+                }
+                guard snapshot.update.dmgURL == "https://example.com/XIsland-1.2.9.dmg" else {
+                    throw UITestDriverError.actionFailed("Unexpected update diagnostics DMG URL")
+                }
+            }
+        case "session-list":
+            return Self(
+                name: name,
+                fixtureName: "session-list",
+                opensPreferencesOnLaunch: false,
+                requiredIdentifiers: [],
+                expectedInitialIslandState: "collapsed"
+            ) { context in
+                _ = try context.waitForPrimaryWindow(
+                    minWidth: 120,
+                    maxWidth: 220,
+                    description: "Timed out waiting for collapsed island window"
+                )
+                _ = try context.waitForSnapshot(
+                    description: "Timed out waiting for session list fixture diagnostics"
+                ) {
+                    $0.visibleSessions.count == 3
+                        && $0.selectedSessionId == "fixture-session-1"
+                        && $0.islandState == "collapsed"
+                }
+            }
+        default:
+            throw UITestDriverError.invalidArguments("Unknown UI test scenario: \(name)")
+        }
+    }
+}
+struct UITestScenarioContext {
+    let process: Process
+    let application: AXUIElement
+    let diagnosticsURL: URL
+    let timeout: TimeInterval
+    func activate() throws {
+        guard let runningApplication = NSRunningApplication(processIdentifier: process.processIdentifier) else {
+            throw UITestDriverError.launchFailed("Unable to resolve running X Island application")
+        }
+        _ = runningApplication.activate()
+    }
+    func waitForElement(_ identifier: String) throws -> AXUIElement {
+        _ = try waitForSnapshot(
+            description: "Timed out waiting for diagnostics to expose accessibility identifier \(identifier)"
+        ) {
+            $0.visibleAccessibilityIdentifiers.contains(identifier)
+        }
+        return try AXUIHelpers.waitForElement(in: application, identifier: identifier, timeout: timeout)
+    }
+    func pressElement(_ identifier: String) throws {
+        try activate()
+        let element = try waitForElement(identifier)
+        try AXUIHelpers.press(element, identifier: identifier)
+    }
+    func waitForPrimaryWindow(
+        minWidth: CGFloat,
+        maxWidth: CGFloat? = nil,
+        description: String
+    ) throws -> WindowInfo {
+        try AXUIHelpers.waitForWindow(
+            ownedBy: process.processIdentifier,
+            timeout: timeout,
+            where: { window in
+                guard window.layer >= 26 else { return false }
+                guard window.bounds.width >= minWidth else { return false }
+                if let maxWidth, window.bounds.width > maxWidth {
+                    return false
+                }
+                return window.bounds.height >= 32
+            },
+            description: description
+        )
+    }
+    func waitForSnapshot(
+        description: String,
+        predicate: (UITestDiagnosticsSnapshot) -> Bool
+    ) throws -> UITestDiagnosticsSnapshot {
+        try AXUIHelpers.waitUntil(timeout: timeout, description: description) {
+            guard let snapshot = try? currentSnapshot(), predicate(snapshot) else {
+                return nil
+            }
+            return snapshot
+        }
+    }
+    func currentSnapshot() throws -> UITestDiagnosticsSnapshot {
+        let data = try Data(contentsOf: diagnosticsURL)
+        return try JSONDecoder().decode(UITestDiagnosticsSnapshot.self, from: data)
+    }
+}
+struct UITestLaunchRequest {
+    let bundleURL: URL
+    let arguments: [String]
+    let environment: [String: String]
+}
+struct UITestScenarioRunner {
+    let appBundlePath: String
+    let timeout: TimeInterval
+    func run(_ scenario: UITestScenario) throws {
+        let context = try launch(scenario: scenario)
+        defer {
+            terminate(process: context.process)
+        }
+        _ = try context.waitForSnapshot(
+            description: "Timed out waiting for initial diagnostics for \(scenario.name)"
+        ) {
+            $0.islandState == scenario.expectedInitialIslandState
+        }
+        for identifier in scenario.requiredIdentifiers {
+            _ = try context.waitForElement(identifier)
+        }
+        try scenario.run(context)
+    }
+    private func launch(scenario: UITestScenario) throws -> UITestScenarioContext {
+        let diagnosticsURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("xisland-ui-tests")
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("diagnostics.json")
+        try FileManager.default.createDirectory(
+            at: diagnosticsURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let request = makeLaunchRequest(for: scenario, diagnosticsURL: diagnosticsURL)
+        guard Bundle(url: request.bundleURL) != nil else {
+            throw UITestDriverError.launchFailed("X Island app bundle not found at \(request.bundleURL.path)")
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = openArguments(for: request)
+        process.environment = request.environment
+        try process.run()
+        let applicationPID = try waitForApplicationPID(
+            bundleURL: request.bundleURL,
+            diagnosticsURL: diagnosticsURL,
+            scenario: scenario
+        )
+        let application = AXUIHelpers.applicationElement(pid: applicationPID)
+        return UITestScenarioContext(
+            process: process,
+            application: application,
+            diagnosticsURL: diagnosticsURL,
+            timeout: timeout
+        )
+    }
+    func makeLaunchRequest(for scenario: UITestScenario, diagnosticsURL: URL) -> UITestLaunchRequest {
+        UITestLaunchRequest(
+            bundleURL: URL(fileURLWithPath: appBundlePath),
+            arguments: launchArguments(for: scenario),
+            environment: launchEnvironment(diagnosticsURL: diagnosticsURL, scenario: scenario)
+        )
+    }
+    private func launchArguments(for scenario: UITestScenario) -> [String] {
+        var arguments = ["--ui-test-mode", "--fixture", scenario.fixtureName]
+        if scenario.opensPreferencesOnLaunch {
+            arguments.append("--open-preferences")
+        }
+        return arguments
+    }
+    private func launchEnvironment(diagnosticsURL: URL, scenario: UITestScenario) -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        environment["X_ISLAND_TEST_MODE"] = "1"
+        environment["X_ISLAND_TEST_FIXTURE"] = scenario.fixtureName
+        environment["X_ISLAND_TEST_DIAGNOSTICS_PATH"] = diagnosticsURL.path
+        environment["X_ISLAND_DISABLE_ANIMATIONS"] = "1"
+        if scenario.opensPreferencesOnLaunch {
+            environment["X_ISLAND_TEST_OPEN_PREFERENCES"] = "1"
+        } else {
+            environment.removeValue(forKey: "X_ISLAND_TEST_OPEN_PREFERENCES")
+        }
+        return environment
+    }
+    private func openArguments(for request: UITestLaunchRequest) -> [String] {
+        ["-n", request.bundleURL.path, "--args"] + request.arguments
+    }
+    private func waitForApplicationPID(
+        bundleURL: URL,
+        diagnosticsURL: URL,
+        scenario: UITestScenario
+    ) throws -> pid_t {
+        let bundleIdentifier = try bundleIdentifier(for: bundleURL)
+        return try AXUIHelpers.waitUntil(
+            timeout: timeout,
+            description: "Timed out waiting for X Island to launch for \(scenario.name)"
+        ) {
+            guard FileManager.default.fileExists(atPath: diagnosticsURL.path) else {
+                return nil
+            }
+            let candidates = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+            if let match = candidates.sorted(by: { $0.launchDate ?? .distantPast > $1.launchDate ?? .distantPast }).first {
+                return match.processIdentifier
+            }
+            return nil
+        }
+    }
+    private func bundleIdentifier(for bundleURL: URL) throws -> String {
+        guard let bundle = Bundle(url: bundleURL),
+              let bundleIdentifier = bundle.bundleIdentifier,
+              !bundleIdentifier.isEmpty else {
+            throw UITestDriverError.launchFailed("X Island bundle identifier not found at \(bundleURL.path)")
+        }
+        return bundleIdentifier
+    }
+    private func terminate(process: Process) {
+        if process.isRunning {
+            process.terminate()
+            process.waitUntilExit()
+        }
+    }
+}
+// File: Sources/XIslandUITestDriver/AXUIHelpers.swift
+import ApplicationServices
+import Foundation
+enum UITestDriverError: LocalizedError {
+    case accessibilityNotTrusted
+    case timeout(String)
+    case missingElement(String)
+    case actionFailed(String)
+    case launchFailed(String)
+    case invalidArguments(String)
+    var errorDescription: String? {
+        switch self {
+        case .accessibilityNotTrusted:
+            return "Accessibility access is required to run XIslandUITestDriver."
+        case .timeout(let message), .missingElement(let message), .actionFailed(let message), .launchFailed(let message), .invalidArguments(let message):
+            return message
+        }
+    }
+}
+enum AXUIHelpers {
+    private static let shortPollInterval: TimeInterval = 0.1
+    static func requireAccessibilityTrust() throws {
+        guard AXIsProcessTrusted() else {
+            throw UITestDriverError.accessibilityNotTrusted
+        }
+    }
+    static func applicationElement(pid: pid_t) -> AXUIElement {
+        AXUIElementCreateApplication(pid)
+    }
+    static func waitForWindow(
+        ownedBy pid: pid_t,
+        timeout: TimeInterval,
+        where predicate: @escaping (WindowInfo) -> Bool,
+        description: String
+    ) throws -> WindowInfo {
+        try waitUntil(timeout: timeout, description: description) {
+            windowList(ownedBy: pid).first(where: predicate)
+        }
+    }
+    static func windowList(ownedBy pid: pid_t) -> [WindowInfo] {
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let windows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return []
+        }
+        return windows.compactMap { dictionary in
+            guard let ownerPID = dictionary[kCGWindowOwnerPID as String] as? pid_t,
+                  ownerPID == pid,
+                  let boundsDictionary = dictionary[kCGWindowBounds as String] as? [String: Any],
+                  let bounds = CGRect(dictionaryRepresentation: boundsDictionary as CFDictionary)
+            else {
+                return nil
+            }
+            return WindowInfo(
+                windowID: dictionary[kCGWindowNumber as String] as? CGWindowID ?? 0,
+                layer: dictionary[kCGWindowLayer as String] as? Int ?? 0,
+                bounds: bounds,
+                name: dictionary[kCGWindowName as String] as? String,
+                ownerName: dictionary[kCGWindowOwnerName as String] as? String
+            )
+        }
+    }
+    static func clickCenter(of window: WindowInfo) throws {
+        try click(at: CGPoint(x: window.bounds.midX, y: window.bounds.midY))
+    }
+    static func click(at point: CGPoint) throws {
+        guard let mouseDown = CGEvent(
+            mouseEventSource: nil,
+            mouseType: .leftMouseDown,
+            mouseCursorPosition: point,
+            mouseButton: .left
+        ), let mouseUp = CGEvent(
+            mouseEventSource: nil,
+            mouseType: .leftMouseUp,
+            mouseCursorPosition: point,
+            mouseButton: .left
+        ) else {
+            throw UITestDriverError.actionFailed("Failed to create mouse events")
+        }
+        mouseDown.post(tap: .cghidEventTap)
+        mouseUp.post(tap: .cghidEventTap)
+    }
+    static func sendCommandKey(_ character: Character) throws {
+        guard let keyCode = keyCode(for: character) else {
+            throw UITestDriverError.actionFailed("Unsupported keyboard shortcut character: \(character)")
+        }
+        try postKey(keyCode: keyCode, flags: .maskCommand)
+    }
+    static func waitForElement(
+        in application: AXUIElement,
+        identifier: String,
+        timeout: TimeInterval
+    ) throws -> AXUIElement {
+        try waitUntil(timeout: timeout, description: "Timed out waiting for accessibility identifier \(identifier)") {
+            findElement(in: application, identifier: identifier)
+        }
+    }
+    static func press(_ element: AXUIElement, identifier: String) throws {
+        let result = AXUIElementPerformAction(element, kAXPressAction as CFString)
+        guard result == .success else {
+            throw UITestDriverError.actionFailed(
+                "Failed to press accessibility element \(identifier): \(result.rawValue)"
+            )
+        }
+    }
+    static func findElement(in application: AXUIElement, identifier: String) -> AXUIElement? {
+        for window in windows(of: application) {
+            if matchesIdentifier(window, identifier: identifier) {
+                return window
+            }
+            if let match = descendants(of: window).first(where: { matchesIdentifier($0, identifier: identifier) }) {
+                return match
+            }
+        }
+        return nil
+    }
+    static func windows(of application: AXUIElement) -> [AXUIElement] {
+        if let windows = attribute(kAXWindowsAttribute, of: application) as? [AXUIElement], !windows.isEmpty {
+            return windows
+        }
+        if let fallback = attribute(kAXChildrenAttribute, of: application) as? [AXUIElement] {
+            return fallback
+        }
+        return []
+    }
+    static func stringValue(of element: AXUIElement, attribute name: String) -> String? {
+        if let value = attribute(name, of: element) as? String {
+            return value
+        }
+        if let value = attribute(name, of: element) as? NSAttributedString {
+            return value.string
+        }
+        return nil
+    }
+    static func waitUntil<T>(
+        timeout: TimeInterval,
+        description: String,
+        operation: () throws -> T?
+    ) throws -> T {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let value = try operation() {
+                return value
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(shortPollInterval))
+        }
+        throw UITestDriverError.timeout(description)
+    }
+    private static func matchesIdentifier(_ element: AXUIElement, identifier: String) -> Bool {
+        stringValue(of: element, attribute: kAXIdentifierAttribute as String) == identifier
+    }
+    private static func descendants(of root: AXUIElement) -> [AXUIElement] {
+        var result: [AXUIElement] = []
+        var queue = childElements(of: root)
+        var visited: Set<CFHashCode> = []
+        while !queue.isEmpty {
+            let element = queue.removeFirst()
+            let key = CFHash(element)
+            guard visited.insert(key).inserted else { continue }
+            result.append(element)
+            queue.append(contentsOf: childElements(of: element))
+        }
+        return result
+    }
+    private static func childElements(of element: AXUIElement) -> [AXUIElement] {
+        let attributes = [
+            kAXChildrenAttribute as String,
+            kAXContentsAttribute as String,
+            kAXRowsAttribute as String,
+            kAXVisibleChildrenAttribute as String,
+        ]
+        var children: [AXUIElement] = []
+        for attributeName in attributes {
+            if let value = attribute(attributeName, of: element) as? [AXUIElement] {
+                children.append(contentsOf: value)
+            } else if let value = attribute(attributeName, of: element), CFGetTypeID(value) == AXUIElementGetTypeID() {
+                let elementValue = unsafeBitCast(value, to: AXUIElement.self)
+                children.append(elementValue)
+            }
+        }
+        return children
+    }
+    private static func attribute(_ name: String, of element: AXUIElement) -> AnyObject? {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, name as CFString, &value)
+        guard result == .success else { return nil }
+        return value as AnyObject?
+    }
+    private static func postKey(keyCode: CGKeyCode, flags: CGEventFlags) throws {
+        guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false) else {
+            throw UITestDriverError.actionFailed("Failed to create keyboard events")
+        }
+        keyDown.flags = flags
+        keyUp.flags = flags
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
+    }
+    private static func keyCode(for character: Character) -> CGKeyCode? {
+        switch character {
+        case "1": return 18
+        case "y", "Y": return 16
+        default: return nil
+        }
+    }
+}
+struct WindowInfo {
+    let windowID: CGWindowID
+    let layer: Int
+    let bounds: CGRect
+    let name: String?
+    let ownerName: String?
+}
+// File: Sources/XIslandUITestDriver/main.swift
+import Foundation
+do {
+    let configuration = try UITestDriverConfiguration.make(arguments: Array(CommandLine.arguments.dropFirst()))
+    let selection = try UITestRunSelection.make(arguments: configuration.scenarioArguments)
+    try AXUIHelpers.requireAccessibilityTrust()
+    let runner = UITestScenarioRunner(
+        appBundlePath: configuration.appBundlePath,
+        timeout: configuration.timeout
+    )
+    for scenario in selection.scenarios {
+        print("==> Running \(scenario.name)")
+        try runner.run(scenario)
+        print("PASS \(scenario.name)")
+    }
+} catch {
+    fputs("XIslandUITestDriver failed: \(error.localizedDescription)\n", stderr)
+    exit(1)
+}
+// File: Sources/DynamicIsland/Managers/SessionPersistenceManager.swift
+import Foundation
+import Observation
+import SwiftData
+@Observable
+@MainActor
+final class SessionPersistenceManager {
+    var modelContainer: ModelContainer?
+    func setupContainer() {
+        let schema = Schema([StoredSession.self, StoredToolEvent.self, StoredChatMessage.self])
+        let config = ModelConfiguration(isStoredInMemoryOnly: false)
+        do {
+            modelContainer = try ModelContainer(for: schema, configurations: [config])
+            print("[Persistence] Container setup complete")
+        } catch {
+            print("[Persistence] Container setup failed: \(error)")
+        }
+    }
+    func save(session: AgentSession) {
+        guard let modelContainer else { return }
+        let context = modelContainer.mainContext
+        // 检查是否已存在相同 sessionId 的记录，避免重复插入
+        let sessionId = session.id
+        let descriptor = FetchDescriptor<StoredSession>(
+            predicate: #Predicate { $0.sessionId == sessionId }
+        )
+        if let existing = try? context.fetch(descriptor).first {
+            // 更新已有记录
+            existing.agentTypeRaw = session.agentType.rawValue
+            existing.startTime = session.startTime
+            existing.completedAt = session.completedAt
+            existing.prompt = session.prompt
+            existing.workingDirectory = session.workingDirectory
+            existing.terminal = session.terminal
+            existing.statusRaw = session.status.rawValue
+            existing.recapText = session.recapText
+            existing.inputTokens = session.tokenUsage.inputTokens
+            existing.outputTokens = session.tokenUsage.outputTokens
+            existing.totalTokens = session.tokenUsage.totalTokens
+            existing.estimatedCostUSD = session.tokenUsage.estimatedCostUSD
+            existing.model = session.tokenUsage.model
+        } else {
+            let stored = StoredSession(from: session)
+            context.insert(stored)
+        }
+        try? context.save()
+    }
+    func fetchHistory(limit: Int = 100, offset: Int = 0) -> [StoredSession] {
+        guard let modelContainer else { return [] }
+        var descriptor = FetchDescriptor<StoredSession>(
+            sortBy: [SortDescriptor(\.completedAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = limit
+        descriptor.fetchOffset = offset
+        return (try? modelContainer.mainContext.fetch(descriptor)) ?? []
+    }
+    func deleteSession(_ stored: StoredSession) {
+        guard let modelContainer else { return }
+        modelContainer.mainContext.delete(stored)
+        try? modelContainer.mainContext.save()
+    }
+    func cleanup(olderThanDays days: Int = 30) {
+        guard let modelContainer else { return }
+        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        let all = fetchHistory(limit: 10000)
+        let toDelete = all.filter { session in
+            guard let completed = session.completedAt else { return false }
+            return completed < cutoff
+        }
+        for session in toDelete {
+            modelContainer.mainContext.delete(session)
+        }
+        if !toDelete.isEmpty {
+            try? modelContainer.mainContext.save()
+        }
+    }
+    func totalCount() -> Int {
+        guard let modelContainer else { return 0 }
+        return (try? modelContainer.mainContext.fetchCount(FetchDescriptor<StoredSession>())) ?? 0
+    }
+}
+// File: Sources/DynamicIsland/Managers/L10n.swift
+import Foundation
+/// Lightweight localization without Xcode string catalogs.
+/// Supports zh, ko, ja, fr, en. Auto-detected from preferredLanguages,
+/// with optional manual override via UserDefaults "appLanguage".
+enum L10n {
+    // MARK: - Available languages
+    static let availableLanguages: [(code: String, name: String)] = [
+        ("auto", "Auto"),
+        ("zh", "中文"),
+        ("en", "English"),
+        ("ko", "한국어"),
+        ("ja", "日本語"),
+        ("fr", "Français"),
+    ]
+    static var currentLanguageName: String {
+        availableLanguages.first { $0.code == effectiveLanguage }?.name ?? "English"
+    }
+    // MARK: - Language detection
+    static var effectiveLanguage: String {
+        if let manual = UserDefaults.standard.string(forKey: "appLanguage"),
+           manual != "auto",
+           availableLanguages.contains(where: { $0.code == manual }) {
+            return manual
+        }
+        let prefs = Locale.preferredLanguages
+        for lang in prefs {
+            let code = lang.prefix(2).lowercased()
+            if ["zh", "ko", "ja", "fr"].contains(code) { return String(code) }
+        }
+        return "en"
+    }
+    static var isChinese: Bool { effectiveLanguage == "zh" }
+    // MARK: - Helper
+    private static func localized(_ key: String,
+                                  zh: String, ko: String, ja: String, fr: String, en: String) -> String {
+        switch effectiveLanguage {
+        case "zh": return zh
+        case "ko": return ko
+        case "ja": return ja
+        case "fr": return fr
+        default: return en
+        }
+    }
+    // MARK: - UI strings
+    static var activeSessions: String {
+        localized("activeSessions",
+            zh: "个活跃会话", ko: "개 활성 세션", ja: "件のアクティブセッション", fr: " sessions actives",
+            en: " active")
+    }
+    static var approveTitle: String {
+        localized("approveTitle",
+            zh: "批准", ko: "허용", ja: "許可", fr: "Autoriser",
+            en: "Allow")
+    }
+    static var denyTitle: String {
+        localized("denyTitle",
+            zh: "拒绝", ko: "거부", ja: "拒否", fr: "Refuser",
+            en: "Deny")
+    }
+    static var planApprove: String {
+        localized("planApprove",
+            zh: "批准计划", ko: "계획 승인", ja: "計画を承認", fr: "Approuver le plan",
+            en: "Approve Plan")
+    }
+    static var planDeny: String {
+        localized("planDeny",
+            zh: "拒绝计划", ko: "계획 거부", ja: "計画を拒否", fr: "Refuser le plan",
+            en: "Deny Plan")
+    }
+    static var planFeedback: String {
+        localized("planFeedback",
+            zh: "反馈意见...", ko: "피드백...", ja: "フィードバック...", fr: "Commentaires...",
+            en: "Feedback...")
+    }
+    static var jumpTitle: String {
+        localized("jumpTitle",
+            zh: "跳转", ko: "이동", ja: "ジャンプ", fr: "Aller",
+            en: "Jump")
+
+--------------------------------------------------------------------------------
+                              后 30 页（最后 1500 行）
+--------------------------------------------------------------------------------
+
+    private var visible: [AgentSession] { manager.visibleSessions }
+    var body: some View {
+        Button(action: onTap) {
+            Group {
+                if obscuredByNotch {
+                    obscuredBarContent
+                } else {
+                    unobscuredCenteredIcons
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(TestAccessibility.collapsedPill)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+    }
+    private var obscuredBarContent: some View {
+        HStack(spacing: 0) {
+            obscuredLeadingIcon
+            Spacer(minLength: 6)
+            activeCountLabel
+            if audio.isQuietHoursActive {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange.opacity(0.6))
+                    .padding(.leading, 8)
+            }
+            if manager.bypassMode {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.green.opacity(0.7))
+                    .padding(.leading, 6)
+            }
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 4)
+    }
+    private var unobscuredCenteredIcons: some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: 0)
+            if visible.isEmpty {
+                idleContent.transition(.opacity)
+            } else {
+                let maxIcons = 5
+                let shown = Array(visible.prefix(maxIcons))
+                let overflow = visible.count - maxIcons
+                HStack(spacing: 6) {
+                    ForEach(shown) { session in
+                        AgentIcon(agentType: session.agentType, size: 22, status: session.status)
+                    }
+                    if overflow > 0 {
+                        Text("+\(overflow)")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(IslandStyle.secondaryText)
+                    }
+                }
+            }
+            if audio.isQuietHoursActive {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange.opacity(0.6))
+                    .padding(.leading, 8)
+            }
+            if manager.bypassMode {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.green.opacity(0.7))
+                    .padding(.leading, 6)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+    }
+    private func sessionNeedsAttention(_ session: AgentSession) -> Bool {
+        session.status == .waitingPermission || session.status == .waitingAnswer || session.status == .waitingPlanReview
+    }
+    @ViewBuilder
+    private var obscuredLeadingIcon: some View {
+        let sessions = visible
+        if sessions.isEmpty {
+            appIconFallback
+        } else if sessions.count == 1 || reduceMotion {
+            sessionIcon(for: sessions[0])
+        } else {
+            RotatingSessionIcon(sessions: sessions)
+        }
+    }
+    private func sessionIcon(for session: AgentSession) -> some View {
+        ZStack(alignment: .topTrailing) {
+            AgentIcon(agentType: session.agentType, size: 20, status: session.status)
+            if sessionNeedsAttention(session) {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                    .offset(x: 4, y: -2)
+            }
+        }
+        .accessibilityLabel("Session: \(session.displayTitle)")
+    }
+    private var appIconFallback: some View {
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if let img = NSImage(named: NSImage.applicationIconName) {
+                    Image(nsImage: img)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 20, height: 20)
+                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                } else {
+                    Image(systemName: "sparkles.rectangle.stack.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.green.opacity(0.85))
+                        .frame(width: 20, height: 20)
+                }
+            }
+            if visible.contains(where: sessionNeedsAttention) {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                    .offset(x: 2, y: -1)
+            }
+        }
+        .accessibilityLabel("X Island")
+    }
+    @AppStorage("reduceMotion") private var reduceMotion = false
+    @ViewBuilder
+    private var activeCountLabel: some View {
+        let trulyActiveCount = manager.trulyActiveSessions.count
+        let totalCount = manager.sessions.count
+        if isExpanded {
+            // 展开面板时显示总会话数
+            countPair(count: totalCount, label: L10n.total,
+                      accessibility: "\(totalCount) total agents")
+        } else if reduceMotion {
+            countPair(count: trulyActiveCount, label: L10n.active,
+                      accessibility: "\(trulyActiveCount) active agents")
+        } else {
+            // 折叠时交替显示活跃/总计
+            TimelineView(.periodic(from: .now, by: 5.0)) { timeline in
+                let tick = Int(timeline.date.timeIntervalSince1970)
+                let showTotal = tick % 2 == 1
+                let displayCount = showTotal ? totalCount : trulyActiveCount
+                let displayLabel = showTotal ? L10n.total : L10n.active
+                let a11y = showTotal
+                    ? "\(totalCount) total agents"
+                    : "\(trulyActiveCount) active agents"
+                countPair(count: displayCount, label: displayLabel, accessibility: a11y)
+            }
+        }
+    }
+    private func countPair(count: Int, label: String, accessibility: String) -> some View {
+        HStack(spacing: 3) {
+            Text("\(count)")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(IslandStyle.primaryText)
+                .monospacedDigit()
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+        }
+        .accessibilityLabel(accessibility)
+    }
+    private var idleContent: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(.green.opacity(0.6))
+                .frame(width: 6, height: 6)
+            Text(L10n.ready)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(IslandStyle.secondaryText)
+        }
+    }
+}
+/// 轮换显示多个会话的吉祥物图标，带淡入淡出效果
+/// 等待处理的会话（error/waiting*）轮换慢，运行中的会话轮换快
+private struct RotatingSessionIcon: View {
+    let sessions: [AgentSession]
+    /// 按状态优先级排序的会话列表（数值越小越优先）
+    private var sortedSessions: [AgentSession] {
+        sessions.sorted { a, b in
+            if a.status.statusPriority != b.status.statusPriority {
+                return a.status.statusPriority < b.status.statusPriority
+            }
+            return a.lastActivityTime > b.lastActivityTime
+        }
+    }
+    /// 根据会话状态决定轮换周期（秒）
+    /// 等待处理：5s（让用户有时间看到），运行中：0.8s（快速轮换突出等待）
+    private func cycleDuration(for status: SessionStatus) -> Double {
+        switch status {
+        case .error, .waitingPermission, .waitingAnswer, .waitingPlanReview:
+            return 5.0
+        case .active, .thinking, .compacting:
+            return 0.8
+        case .idle, .completed:
+            return 0.6
+        }
+    }
+    /// 根据 elapsed 时间计算当前应显示的会话索引和淡入淡出进度
+    private func rotationState(elapsed: Double, count: Int, sorted: [AgentSession]) -> (outIdx: Int, inIdx: Int, progress: Double) {
+        let totalCycle = sorted.reduce(0) { $0 + cycleDuration(for: $1.status) }
+        let posInCycle = elapsed.truncatingRemainder(dividingBy: totalCycle)
+        var cumTime: Double = 0
+        var outIdx = 0
+        var outDur: Double = 1.5
+        for (i, session) in sorted.enumerated() {
+            let dur = cycleDuration(for: session.status)
+            if posInCycle >= cumTime && posInCycle < cumTime + dur {
+                outIdx = i
+                outDur = dur
+                break
+            }
+            cumTime += dur
+        }
+        let inIdx = (outIdx + 1) % count
+        let cyclePos = posInCycle - cumTime
+        let crossfadeZone = min(0.35, outDur * 0.1)
+        let progress: Double
+        if cyclePos >= (outDur - crossfadeZone) {
+            progress = (cyclePos - (outDur - crossfadeZone)) / crossfadeZone
+        } else {
+            progress = 0
+        }
+        return (outIdx, inIdx, progress)
+    }
+    var body: some View {
+        let sorted = sortedSessions
+        let count = sorted.count
+        ZStack {
+            if count <= 1 {
+                sessionIcon(for: sorted[0])
+            } else {
+                TimelineView(.periodic(from: .now, by: 0.15)) { timeline in
+                    let elapsed = timeline.date.timeIntervalSince1970
+                    let state = rotationState(elapsed: elapsed, count: count, sorted: sorted)
+                    ZStack {
+                        sessionIcon(for: sorted[state.outIdx])
+                            .opacity(1 - state.progress)
+                        sessionIcon(for: sorted[state.inIdx])
+                            .opacity(state.progress)
+                    }
+                }
+            }
+        }
+    }
+    private func sessionIcon(for session: AgentSession) -> some View {
+        ZStack(alignment: .topTrailing) {
+            AgentIcon(agentType: session.agentType, size: 20, status: session.status)
+            if session.status == .waitingPermission
+                || session.status == .waitingAnswer
+                || session.status == .waitingPlanReview {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                    .offset(x: 4, y: -2)
+            }
+        }
+        .accessibilityLabel("Session: \(session.displayTitle)")
+    }
+}
+// File: Sources/DynamicIsland/Views/AgentActivityView.swift
+import SwiftUI
+struct AgentActivityView: View {
+    @Environment(ThemeManager.self) private var themeManager
+    let event: ToolEvent
+    private var scheme: ColorScheme { themeManager.resolvedScheme }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: iconName)
+                    .font(.system(size: 10))
+                    .foregroundStyle(iconColor)
+                    .frame(width: 16, height: 16)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(event.displayName)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(IslandStyle.primaryText)
+                        if event.isComplete {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundStyle(.green.opacity(0.7))
+                        }
+                    }
+                    Text(event.summary)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
+                        .lineLimit(2)
+                }
+                Spacer()
+                if let added = event.linesAdded, let removed = event.linesRemoved {
+                    HStack(spacing: 4) {
+                        Text("+\(added)")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.green.opacity(0.7))
+                        Text("-\(removed)")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.red.opacity(0.7))
+                    }
+                } else if let lines = event.linesRead, lines > 0 {
+                    Text("\(lines) lines")
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.blue.opacity(0.6))
+                }
+            }
+            // Test result details
+            if let tr = event.testResults, tr.total > 0 {
+                HStack(spacing: 6) {
+                    if tr.passed > 0 {
+                        Label("\(tr.passed) passed", systemImage: "checkmark.circle.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.green.opacity(0.7))
+                    }
+                    if tr.failed > 0 {
+                        Label("\(tr.failed) failed", systemImage: "xmark.circle.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.red.opacity(0.7))
+                    }
+                    if tr.skipped > 0 {
+                        Label("\(tr.skipped) skipped", systemImage: "minus.circle")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.yellow.opacity(0.6))
+                    }
+                }
+                .padding(.leading, 24)
+                .padding(.top, 1)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 3)
+    }
+    private var iconName: String {
+        switch event.tool.lowercased() {
+        case "read", "readfile": return "doc.text"
+        case "write", "writefile": return "doc.text.fill"
+        case "edit", "editfile", "str_replace": return "pencil"
+        case "bash", "shell", "terminal": return "terminal"
+        case "search", "grep", "ripgrep": return "magnifyingglass"
+        case "glob", "find", "ls", "list": return "folder"
+        default: return "gearshape"
+        }
+    }
+    private var iconColor: Color {
+        switch event.tool.lowercased() {
+        case "read", "readfile": return .blue.opacity(0.7)
+        case "write", "writefile": return .orange.opacity(0.7)
+        case "edit", "editfile", "str_replace": return .yellow.opacity(0.7)
+        case "bash", "shell", "terminal": return .green.opacity(0.7)
+        case "search", "grep", "ripgrep": return .purple.opacity(0.7)
+        default: return IslandStyle.secondaryText
+        }
+    }
+}
+// File: Sources/DynamicIsland/Views/ChatHistoryView.swift
+import SwiftUI
+struct ChatHistoryView: View {
+    let session: AgentSession
+    @Environment(ThemeManager.self) private var themeManager
+    private var scheme: ColorScheme { themeManager.resolvedScheme }
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 8) {
+                ForEach(session.chatHistory) { message in
+                    chatBubble(message)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+    @ViewBuilder
+    private func chatBubble(_ message: ChatMessage) -> some View {
+        VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                if message.role == .user {
+                    Spacer()
+                }
+                Image(systemName: message.role == .user ? "person.fill" : "sparkles")
+                    .font(.system(size: 8))
+                    .foregroundStyle(message.role == .user ? session.agentType.color.opacity(0.6) : IslandStyle.tertiaryText(for: scheme))
+                Text(message.role == .user ? "You" : session.agentType.shortName)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
+                Text(message.timestamp, style: .time)
+                    .font(.system(size: 8))
+                    .foregroundStyle(IslandStyle.tertiaryText(for: scheme).opacity(0.6))
+                if message.role != .user {
+                    Spacer()
+                }
+            }
+            Text(message.content)
+                .font(.system(size: 11))
+                .foregroundStyle(message.role == .user ? IslandStyle.primaryText : IslandStyle.secondaryText)
+                .lineLimit(message.role == .user ? 3 : 10)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(message.role == .user
+                              ? session.agentType.color.opacity(0.1)
+                              : IslandStyle.insetFill(for: scheme))
+                )
+                .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
+        }
+    }
+}
+// File: Sources/DynamicIsland/Views/SessionListView.swift
+import SwiftUI
+struct SessionListView: View {
+    @Environment(SessionManager.self) private var manager
+    @Environment(ThemeManager.self) private var themeManager
+    var onJump: (() -> Void)?
+    @State private var showFilterBar = false
+    @AppStorage("reduceMotion") private var reduceMotion = false
+    private let cardTransition = AnyTransition.asymmetric(
+        insertion: .move(edge: .trailing).combined(with: .opacity),
+        removal: .move(edge: .leading).combined(with: .opacity)
+    )
+    var body: some View {
+        VStack(spacing: 0) {
+            // 过滤栏头部
+            HStack {
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showFilterBar.toggle()
+                    }
+                } label: {
+                    Image(systemName: showFilterBar ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(showFilterBar ? .cyan : IslandStyle.secondaryText)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
+            // 过滤栏
+            if showFilterBar {
+                SessionFilterBar()
+                    .padding(.bottom, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    // 待处理任务置顶区域
+                    ForEach(pendingSessions) { session in
+                        PendingTaskCardView(session: session)
+                            .transition(reduceMotion ? .identity : .move(edge: .top).combined(with: .opacity))
+                    }
+                    if manager.grouping == .none {
+                        ForEach(manager.filteredSessions) { session in
+                            SessionCardView(session: session, onJump: onJump)
+                                .transition(reduceMotion ? .identity : cardTransition)
+                        }
+                    } else {
+                        ForEach(manager.groupedSessions) { group in
+                            Section(header:
+                                Text(group.title)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 14)
+                                    .padding(.top, 8)
+                            ) {
+                                ForEach(group.sessions) { session in
+                                    SessionCardView(session: session, onJump: onJump)
+                                        .transition(reduceMotion ? .identity : cardTransition)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
+            }
+            .animation(.easeInOut(duration: 0.2), value: manager.filteredSessions.count)
+            .animation(.easeInOut(duration: 0.2), value: manager.grouping)
+        }
+        .accessibilityIdentifier(TestAccessibility.sessionList)
+        .onReceive(NotificationCenter.default.publisher(for: .xislandToggleSearch)) { _ in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showFilterBar.toggle()
+            }
+        }
+    }
+    /// 有待处理交互的会话（问题/权限/计划审查），置顶显示
+    private var pendingSessions: [AgentSession] {
+        manager.sessions.filter { s in
+            s.pendingQuestion != nil || s.pendingPermission != nil || s.pendingPlanReview != nil
+        }
+    }
+}
+// MARK: - PendingTaskCardView
+/// 展开面板顶部的待处理任务卡片，内联显示选项，无需跳转窗口
+struct PendingTaskCardView: View {
+    let session: AgentSession
+    @Environment(SessionManager.self) private var manager
+    @Environment(ThemeManager.self) private var themeManager
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // 会话标识头
+            HStack(spacing: 6) {
+                AgentIcon(agentType: session.agentType, size: 14)
+                Text(session.agentType.shortName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(IslandStyle.secondaryText)
+                Spacer()
+                if session.pendingPermission != nil {
+                    Text(L10n.permission)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.orange.opacity(0.15))
+                        .clipShape(Capsule())
+                } else if session.pendingQuestion != nil {
+                    Text(L10n.question)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.blue)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.blue.opacity(0.15))
+                        .clipShape(Capsule())
+                } else if session.pendingPlanReview != nil {
+                    Text(L10n.review)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.purple)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.purple.opacity(0.15))
+                        .clipShape(Capsule())
+                }
+            }
+            // 内容：根据 pending 类型渲染
+            if let perm = session.pendingPermission {
+                permissionContent(perm)
+            } else if let question = session.pendingQuestion {
+                questionContent(question)
+            } else if let plan = session.pendingPlanReview {
+                planContent(plan)
+            }
+        }
+        .padding(12)
+        .background(IslandStyle.cardRest(for: themeManager.resolvedScheme))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(
+                    IslandStyle.cardStrokeColor(for: themeManager.resolvedScheme)
+                        .opacity(IslandStyle.cardStrokeRest(for: themeManager.resolvedScheme)),
+                    lineWidth: 0.5
+                )
+        )
+    }
+    // MARK: - Permission
+    private func permissionContent(_ perm: PendingPermission) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.system(size: 10))
+                Text(perm.tool)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(IslandStyle.primaryText)
+            }
+            if !perm.description.isEmpty {
+                Text(perm.description)
+                    .font(.system(size: 10))
+                    .foregroundStyle(IslandStyle.secondaryText)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 6) {
+                Button {
+                    manager.denyPermission(session: session)
+                } label: {
+                    Text("Deny")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(.red.opacity(0.3))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                Button {
+                    manager.approvePermission(session: session)
+                } label: {
+                    Text("Allow")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(.green.opacity(0.3))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+    // MARK: - Question
+    private func questionContent(_ q: PendingQuestion) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(q.text)
+                .font(.system(size: 11))
+                .foregroundStyle(IslandStyle.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 4) {
+                ForEach(q.options, id: \.self) { option in
+                    Button {
+                        manager.answerQuestion(session: session, answer: option)
+                    } label: {
+                        Text(option)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(IslandStyle.primaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(IslandStyle.insetFill(for: themeManager.resolvedScheme))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+    // MARK: - Plan Review
+    private func planContent(_ plan: PendingPlanReview) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(plan.markdown)
+                .font(.system(size: 10))
+                .foregroundStyle(IslandStyle.secondaryText)
+                .lineLimit(5)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                Button {
+                    manager.respondToPlan(session: session, approved: false, feedback: nil)
+                } label: {
+                    Text("Reject")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(.red.opacity(0.3))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                Button {
+                    manager.respondToPlan(session: session, approved: true, feedback: nil)
+                } label: {
+                    Text("Approve")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(.green.opacity(0.3))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+struct SessionCardView: View {
+    @Environment(SessionManager.self) private var manager
+    @Environment(ThemeManager.self) private var themeManager
+    let session: AgentSession
+    var onJump: (() -> Void)?
+    @State private var isHovered = false
+    @State private var recapExpanded = false
+    @State private var childrenExpanded = false
+    @State private var showExportSheet = false
+    @State private var previousStatus: SessionStatus?
+    @State private var statusChangeTrigger = 0
+    @AppStorage("compactBadgesInExpandedView") private var compactBadges = true
+    @AppStorage("displayTimestamp") private var displayTimestamp = true
+    @AppStorage("reduceMotion") private var reduceMotion = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // 可跳转的卡片内容
+            Button {
+                print("[UI] Card clicked: session=\(session.id) agent=\(session.agentType.rawValue)")
+                fflush(stdout)
+                TerminalJumpManager.jump(to: session)
+                onJump?()
+            } label: {
+                VStack(alignment: .leading, spacing: 0) {
+                    cardHeader
+                        .padding(.horizontal, 14)
+                        .padding(.top, 12)
+                        .padding(.bottom, 6)
+                    if !session.prompt.isEmpty && !session.hasPromptTitle {
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 8))
+                                .foregroundStyle(session.agentType.color.opacity(0.5))
+                                .padding(.top, 2)
+                            Text("\(L10n.youPrefix): \(session.prompt)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(IslandStyle.secondaryText)
+                                .lineLimit(2)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 4)
+                    }
+                    if !session.agentResponse.isEmpty {
+                        streamingThoughtView(for: session)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 6)
+                    }
+                    if session.currentTool != nil {
+                        HStack(spacing: 5) {
+                            ProgressView()
+                                .scaleEffect(0.4)
+                                .frame(width: 10, height: 10)
+                            Text(session.currentTool ?? "")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.blue.opacity(0.7))
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 8)
+                    }
+                    if !session.events.isEmpty {
+                        Divider()
+                            .background(IslandStyle.divider(for: themeManager.resolvedScheme).opacity(IslandStyle.dividerOpacity(for: themeManager.resolvedScheme)))
+                            .padding(.horizontal, 12)
+                        toolActivity
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            // 摘要区（独立于跳转 Button）
+            if let recap = session.recapText, !recap.isEmpty {
+                Divider()
+                    .background(IslandStyle.divider(for: themeManager.resolvedScheme).opacity(IslandStyle.dividerOpacity(for: themeManager.resolvedScheme)))
+                    .padding(.horizontal, 12)
+                recapSection(recap)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+            }
+            // 子代理区（独立于跳转 Button）
+            if !session.subagentIds.isEmpty {
+                let children = manager.subagents(of: session)
+                if !children.isEmpty {
+                    Divider()
+                        .background(IslandStyle.divider(for: themeManager.resolvedScheme).opacity(IslandStyle.dividerOpacity(for: themeManager.resolvedScheme)))
+                        .padding(.horizontal, 12)
+                    childrenSection(children)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                }
+            }
+        }
+        .padding(.leading, session.isSubagent ? 24 : 0)
+        .background(
+            ZStack(alignment: .leading) {
+                if session.isSubagent {
+                    RoundedRectangle(cornerRadius: 1, style: .continuous)
+                        .fill(Color.purple.opacity(0.4))
+                        .frame(width: 2)
+                        .padding(.leading, 10)
+                }
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isHovered
+                          ? IslandStyle.cardHover(for: themeManager.resolvedScheme)
+                          : IslandStyle.cardRest(for: themeManager.resolvedScheme))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(
+                                IslandStyle.cardStrokeColor(for: themeManager.resolvedScheme)
+                                    .opacity(isHovered ? IslandStyle.cardStrokeHover(for: themeManager.resolvedScheme)
+                                                       : IslandStyle.cardStrokeRest(for: themeManager.resolvedScheme)),
+                                lineWidth: 0.5
+                            )
+                    )
+            }
+            .padding(.leading, session.isSubagent ? 24 : 0)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityIdentifier(TestAccessibility.sessionCard(id: session.id))
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
+        .contextMenu {
+            Button {
+                showExportSheet = true
+            } label: {
+                Label(L10n.exportSession, systemImage: "square.and.arrow.up")
+            }
+        }
+        .sheet(isPresented: $showExportSheet) {
+            ExportView(session: session)
+        }
+        .modifier(ActiveSessionGlow(
+            isRunning: session.status == .active || session.status == .thinking || session.status == .compacting,
+            color: session.agentType.color,
+            reduceMotion: reduceMotion
+        ))
+        .modifier(StatusChangeSweep(
+            statusColor: session.status.uiColor,
+            trigger: statusChangeTrigger,
+            reduceMotion: reduceMotion
+        ))
+        .onAppear {
+            previousStatus = session.status
+        }
+        .onChange(of: session.status) { _, newStatus in
+            guard let prev = previousStatus, prev != newStatus else {
+                previousStatus = newStatus
+                return
+            }
+            previousStatus = newStatus
+            statusChangeTrigger += 1
+        }
+    }
+    private var cardHeader: some View {
+        HStack(spacing: 8) {
+            AgentIcon(agentType: session.agentType, size: 24, status: session.status)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(session.displayTitle)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(IslandStyle.primaryText)
+                    .lineLimit(1)
+                if session.hasPromptTitle {
+                    Text(session.workspaceName)
+                        .font(.system(size: 10))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                        .lineLimit(1)
+                }
+            }
+            Spacer()
+            HStack(spacing: 5) {
+                TagBadge(text: session.agentType.shortName, color: session.agentType.color)
+                TagBadge(text: sourceBadgeText, color: IslandStyle.secondaryText)
+                if displayTimestamp {
+                    Text(session.formattedDuration)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                        .contentTransition(.numericText())
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: session.formattedDuration)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(IslandStyle.insetFill(for: themeManager.resolvedScheme))
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                }
+                if isHovered {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            manager.dismissSession(session)
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                            .frame(width: 18, height: 18)
+                            .background(IslandStyle.insetFill(for: themeManager.resolvedScheme))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+    private var toolActivity: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            let recentEvents = session.events.suffix(5)
+            ForEach(recentEvents) { event in
+                HStack(spacing: 6) {
+                    Image(systemName: event.isComplete ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 9))
+                        .foregroundStyle(event.isComplete ? .green.opacity(0.5) : IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                    Text("\(event.displayName)")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(event.isComplete ? IslandStyle.tertiaryText(for: themeManager.resolvedScheme) : IslandStyle.secondaryText)
+                    if event.isComplete {
+                        Text(event.summary)
+                            .font(.system(size: 9))
+                            .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                            .lineLimit(1)
+                    }
+                }
+            }
+            if let tool = session.currentTool {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .scaleEffect(0.4)
+                        .frame(width: 10, height: 10)
+                    Text(L10n.toolRunning(tool))
+                        .font(.system(size: 10))
+                        .foregroundStyle(IslandStyle.secondaryText)
+                }
+            }
+        }
+    }
+    private func streamingThoughtView(for session: AgentSession) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                if session.status == .thinking {
+                    Image(systemName: "brain.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.blue.opacity(0.5))
+                        .phaseAnimator([false, true]) { content, phase in
+                            content.opacity(phase ? 1.0 : 0.3)
+                        } animation: { _ in .easeInOut(duration: 0.8) }
+                    Text(L10n.thinking)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.blue.opacity(0.4))
+                }
+            }
+            Text(session.agentResponse)
+                .font(.system(size: 11))
+                .foregroundStyle(IslandStyle.secondaryText)
+                .lineLimit(nil)
+                .multilineTextAlignment(.leading)
+                .animation(.easeInOut(duration: 0.3), value: session.agentResponse)
+        }
+    }
+    private func childrenSection(_ children: [AgentSession]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.purple.opacity(0.6))
+                Text(L10n.subagentCount(children.count))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.purple.opacity(0.5))
+                Image(systemName: childrenExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(.purple.opacity(0.4))
+            }
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    childrenExpanded.toggle()
+                }
+            }
+            if childrenExpanded {
+                VStack(spacing: 6) {
+                    ForEach(children) { child in
+                        SessionCardView(session: child, onJump: onJump)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+    }
+    private func recapSection(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // Recap 标题
+            HStack(spacing: 4) {
+                Image(systemName: "text.document")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.cyan.opacity(0.6))
+                Text(L10n.recap)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.cyan.opacity(0.6))
+            }
+            // 直接显示摘要内容
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundStyle(IslandStyle.secondaryText)
+                .lineLimit(recapExpanded ? nil : 3)
+                .multilineTextAlignment(.leading)
+                .padding(.top, 2)
+            // 展开/收起（仅在内容超过3行时显示）
+            if text.components(separatedBy: "\n").count > 3 || text.count > 120 {
+                HStack(spacing: 2) {
+                    Text(recapExpanded ? L10n.showLess : L10n.showMore)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.cyan.opacity(0.4))
+                    Image(systemName: recapExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(.cyan.opacity(0.4))
+                }
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        recapExpanded.toggle()
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(.cyan.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+    private var sourceBadgeText: String {
+        let terminal = normalizedTerminalToken(session.terminal)
+        if session.agentType == .cursor {
+            if terminal == "cursor" {
+                return "cursor ide"
+            }
+            if terminal == "terminal", (session.termSessionId ?? "").isEmpty {
+                return "cursor ide"
+            }
+            if !terminal.isEmpty {
+                return terminal
+            }
+            return "cursor cli"
+        }
+        if session.agentType == .codex {
+            return terminal == "codex" ? "codex ide" : "codex cli"
+        }
+        if terminal == "cursor" {
+            return "cursor ide"
+        }
+        if terminal == "codex" {
+            return "codex ide"
+        }
+        if !terminal.isEmpty {
+            return terminal
+        }
+        switch session.agentType {
+        case .cursor:
+            return "cursor cli"
+        case .codex:
+            return "codex cli"
+        default:
+            return session.agentType.shortName.lowercased() + " cli"
+        }
+    }
+    private func normalizedTerminalToken(_ raw: String) -> String {
+        let lower = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if lower.isEmpty { return "" }
+        if lower.contains("iterm") { return "iterm" }
+        if lower.contains("warp") { return "warp" }
+        if lower == "terminal" || lower.contains("apple_terminal") || lower.contains("com.apple.terminal") {
+            return "terminal"
+        }
+        if lower.contains("cursor") { return "cursor" }
+        if lower.contains("codex") { return "codex" }
+        if lower.contains("ghostty") { return "ghostty" }
+        if lower.contains("kitty") { return "kitty" }
+        if lower.contains("alacritty") { return "alacritty" }
+        if lower.contains("vscode") || lower.contains("visual studio code") || lower == "code" {
+            return "vscode"
+        }
+        return lower
+    }
+}
+struct TagBadge: View {
+    let text: String
+    let color: Color
+    var body: some View {
+        Text(text)
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+    }
+}
+// File: Sources/DynamicIsland/NotchWindow.swift
+import AppKit
+import Combine
+import QuartzCore
+final class NotchWindow: NSPanel {
+    static let maxExpandedWidth: CGFloat = 520
+    static let maxExpandedHeight: CGFloat = 600
+    private static let expandedPadding: CGFloat = 8
+    private static let collapsedHitHeight: CGFloat = 32
+    static func islandTopOffset(for _: NSScreen) -> CGFloat { 0 }
+    /// True when the island sits in the built-in display’s top-center notch band (camera housing occludes content).
+    func isObscuredByPhysicalNotch() -> Bool {
+        guard let screen = self.screen else { return false }
+        if #available(macOS 14.0, *) {
+            guard screen.safeAreaInsets.top > 0 else { return false }
+        } else {
+            return false
+        }
+        let sf = screen.frame
+        let wf = frame
+        let topAligned = abs(wf.maxY - sf.maxY) < 4
+        let inCenterBand = abs(wf.midX - sf.midX) < sf.width * 0.22
+        return topAligned && inCenterBand
+    }
+    var customX: CGFloat?
+    var keyEquivalentHandler: ((NSEvent) -> Bool)?
+    private(set) var isDragging = false
+    private var dragTracking = false
+    private var dragStartWindowX: CGFloat = 0
+    private var dragStartMouseX: CGFloat = 0
+    private var mouseTrackingTimer: Timer?
+    private var lastActiveScreenID: CGDirectDisplayID?
+    /// 缓存 bestScreen() 结果，避免 setFrame 高频调用时重复遍历所有屏幕。
+    private var cachedBestScreen: NSScreen?
+    init() {
+        let screen = Self.bestScreen()
+        let width: CGFloat = 220
+        let height: CGFloat = 50
+        let x = screen.frame.origin.x + (screen.frame.width - width) / 2
+        let y = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen) - height
+        super.init(
+            contentRect: NSRect(x: x, y: y, width: width, height: height),
+            styleMask: [.nonactivatingPanel, .fullSizeContentView, .borderless],
+            backing: .buffered,
+            defer: false
+        )
+        isFloatingPanel = true
+        level = .statusBar + 1
+        backgroundColor = .clear
+        isOpaque = false
+        hasShadow = false
+        ignoresMouseEvents = false
+        isMovableByWindowBackground = false
+        titleVisibility = .hidden
+        titlebarAppearsTransparent = true
+        animationBehavior = .none
+        isReleasedWhenClosed = false
+        // Avoid AppKit frame-restore paths that can throw during setFrame (seen in crash reports).
+        isRestorable = false
+        setFrameAutosaveName("")
+        applySpaceBehavior()
+        contentView = FlippedView(frame: .zero)
+        contentView?.wantsLayer = true
+        contentView?.layer?.backgroundColor = .clear
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(screenDidChange),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil
+        )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(activeSpaceDidChange),
+            name: NSWorkspace.activeSpaceDidChangeNotification, object: nil
+        )
+        // Track mouse movement between screens (throttled to 2 Hz)
+        mouseTrackingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.followMouseIfScreenChanged()
+        }
+    }
+    private func followMouseIfScreenChanged() {
+        let mouseLocation = NSEvent.mouseLocation
+        guard let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }),
+              let screenID = mouseScreen.deviceDescription[NSDeviceDescriptionKey(rawValue: "NSScreenNumber")] as? CGDirectDisplayID
+        else { return }
+        if screenID != lastActiveScreenID {
+            lastActiveScreenID = screenID
+            cachedBestScreen = mouseScreen
+            // Only reposition if not being dragged
+            guard !dragTracking else { return }
+            repositionOnScreen(mouseScreen)
+        }
+    }
+    private func pauseMouseTracking() {
+        mouseTrackingTimer?.invalidate()
+        mouseTrackingTimer = nil
+    }
+    private func resumeMouseTracking() {
+        guard mouseTrackingTimer == nil else { return }
+        mouseTrackingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.followMouseIfScreenChanged()
+        }
+    }
+    private func repositionOnScreen(_ screen: NSScreen) {
+        let currentFrame = frame
+        let x: CGFloat
+        if let cx = customX, cx.isFinite {
+            let ratio = screen.frame.width / (self.screen?.frame.width ?? screen.frame.width)
+            x = max(screen.frame.origin.x,
+                    min(cx * ratio - currentFrame.width / 2,
+                        screen.frame.origin.x + screen.frame.width - currentFrame.width))
+        } else {
+            x = screen.frame.origin.x + (screen.frame.width - currentFrame.width) / 2
+        }
+        let screenTop = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen)
+        let y = screenTop - currentFrame.height
+        setFrameDirect(NSRect(x: x, y: y, width: currentFrame.width, height: currentFrame.height), display: true)
+    }
+    func applySpaceBehavior() {
+        let allSpaces = UserDefaults.standard.bool(forKey: "showOnAllSpaces")
+        if allSpaces {
+            collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        } else {
+            collectionBehavior = [.fullScreenAuxiliary, .stationary]
+        }
+    }
+    @objc private func activeSpaceDidChange(_ note: Notification) {
+        let hideInFullscreen = UserDefaults.standard.bool(forKey: "hideInFullscreen")
+        guard hideInFullscreen else {
+            if !isVisible {
+                resumeMouseTracking()
+                orderFrontRegardless()
+            }
+            return
+        }
+        // Phase 1: snapshot MainActor-isolated state before leaving the main thread
+        let screen = NSScreen.main
+        let windowSnapshots: [(screen: NSScreen?, styleMask: NSWindow.StyleMask)] =
+            NSApplication.shared.windows.map { ($0.screen, $0.styleMask) }
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        // Phase 2: slow CGWindowList work off the main thread
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            let inFullscreen = screen.map {
+                Self.isScreenInFullscreenOffMain($0, windowSnapshots: windowSnapshots, frontApp: frontApp)
+            } ?? false
+            await MainActor.run {
+                if inFullscreen {
+                    self.pauseMouseTracking()
+                    self.orderOut(nil)
+                } else {
+                    self.resumeMouseTracking()
+                    self.orderFrontRegardless()
+                }
+            }
+        }
+    }
+    private nonisolated static func isScreenInFullscreenOffMain(
+        _ screen: NSScreen,
+        windowSnapshots: [(screen: NSScreen?, styleMask: NSWindow.StyleMask)],
+        frontApp: NSRunningApplication?
+    ) -> Bool {
+        // Check AppKit windows using snapshots (no MainActor access needed)
+        for (winScreen, styleMask) in windowSnapshots {
+            if styleMask.contains(.fullScreen) && winScreen == screen {
+                return true
+            }
+        }
+        // Slow CGWindowList check for third-party fullscreen windows
+        if let frontApp,
+           frontApp.bundleIdentifier != Bundle.main.bundleIdentifier {
+            let opts = CGWindowListOption([.optionOnScreenOnly, .excludeDesktopElements])
+            guard let list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] else {
+                return false
+            }
+            for info in list {
+                if let pid = info[kCGWindowOwnerPID as String] as? pid_t,
+                   pid == frontApp.processIdentifier,
+                   let bounds = info[kCGWindowBounds as String] as? [String: CGFloat],
+                   let w = bounds["Width"], let h = bounds["Height"],
+                   w >= screen.frame.width && h >= screen.frame.height {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+    func resizeToFit(contentWidth: CGFloat, contentHeight: CGFloat, display: Bool = true) {
+        let screen = Self.bestScreen()
+        let normalizedContentHeight = max(contentHeight, Self.collapsedHitHeight)
+        let padding = Self.padding(forContentHeight: normalizedContentHeight)
+        let w = contentWidth + padding * 2
+        let h = normalizedContentHeight + padding
+        let x: CGFloat
+        if let cx = customX, cx.isFinite {
+            x = max(screen.frame.origin.x,
+                    min(cx - w / 2, screen.frame.origin.x + screen.frame.width - w))
+        } else {
+            x = screen.frame.origin.x + (screen.frame.width - w) / 2
+        }
+        let screenTop = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen)
+        let yComputed = screenTop - h
+        let rect = Self.safeFrame(NSRect(x: x, y: yComputed, width: w, height: h), screen: screen)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        setFrameDirect(rect, display: display)
+        CATransaction.commit()
+    }
+    func resizeToFitCollapse(contentWidth: CGFloat, contentHeight: CGFloat) {
+        let screen = Self.bestScreen()
+        let targetW = max(1, contentWidth.isFinite ? contentWidth : 180)
+        let targetH = max(contentHeight, Self.collapsedHitHeight)
+        let targetX: CGFloat
+        if let cx = customX, cx.isFinite {
+            targetX = max(screen.frame.origin.x,
+                          min(cx - targetW / 2, screen.frame.origin.x + screen.frame.width - targetW))
+        } else {
+            targetX = screen.frame.origin.x + (screen.frame.width - targetW) / 2
+        }
+        let screenTop = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen)
+        let targetY = screenTop - targetH
+        isDragging = false
+        dragTracking = false
+        let target = Self.safeFrame(
+            NSRect(x: targetX, y: targetY, width: targetW, height: targetH),
+            screen: screen
+        )
+        // No NSAnimationContext: grouping has been observed to rethrow through runAnimationGroup when
+        // AppKit mutates window frame (crash: NSMutableDictionary initWithContentsOfFile: in _reallySetFrame:).
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        setFrameDirect(target, display: true)
+        CATransaction.commit()
+    }
+    /// Ensures window frames never propagate NaN/Inf into AppKit (can abort inside `_reallySetFrame:`).
+    private static func safeFrame(_ rect: NSRect, screen: NSScreen) -> NSRect {
+        let sf = screen.frame
+        let minW: CGFloat = 1
+        let minH = collapsedHitHeight
+        var w = rect.width
+        var h = rect.height
+        var x = rect.origin.x
+        var y = rect.origin.y
+        if !w.isFinite || w < minW { w = minW }
+        if !h.isFinite || h < minH { h = minH }
+        if !x.isFinite { x = sf.midX - w / 2 }
+        if !y.isFinite { y = sf.maxY - h }
+        w = min(w, max(minW, sf.width))
+        h = min(h, max(minH, sf.height))
+        x = max(sf.minX, min(x, sf.maxX - w))
+        y = max(sf.minY, min(y, sf.maxY - h))
+        return NSRect(x: x, y: y, width: w, height: h)
+    }
+    /// Returns the screen that currently contains the mouse cursor.
+    /// Falls back to built-in, then first screen.
+    static func bestScreen() -> NSScreen {
+        let mouseLocation = NSEvent.mouseLocation
+        if let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) {
+            return mouseScreen
+        }
+        if let builtIn = NSScreen.screens.first(where: {
+            $0.deviceDescription[NSDeviceDescriptionKey(rawValue: "NSScreenNumber")]
+                as? CGDirectDisplayID == CGMainDisplayID()
+        }) {
+            return builtIn
+        }
+        return NSScreen.screens.first ?? NSScreen()
+    }
+    /// 返回缓存的 bestScreen，仅在鼠标跨越屏幕边界时刷新。
+    /// 用于 setFrame/setFrameDirect 中避免高频遍历。
+    private func cachedOrRefreshScreen() -> NSScreen {
+        let mouseLocation = NSEvent.mouseLocation
+        let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) })
+        if let mouseScreen {
+            let screenID = mouseScreen.deviceDescription[NSDeviceDescriptionKey(rawValue: "NSScreenNumber")] as? CGDirectDisplayID
+            if screenID == lastActiveScreenID, let cached = cachedBestScreen {
+                return cached
+            }
+            lastActiveScreenID = screenID
+            cachedBestScreen = mouseScreen
+            return mouseScreen
+        }
+        // Mouse not on any screen (rare); fallback
+        return cachedBestScreen ?? Self.bestScreen()
+    }
+    /// True when this screen has a physical notch (camera housing).
+    static func screenHasPhysicalNotch(_ screen: NSScreen) -> Bool {
+        if #available(macOS 14.0, *) {
+            return screen.safeAreaInsets.top > 0
+        }
+        return false
+    }
+    @objc private func screenDidChange(_ note: Notification) {
+        let screen = Self.bestScreen()
+        let x: CGFloat
+        if let cx = customX {
+            x = max(screen.frame.origin.x,
+                    min(cx - frame.width / 2, screen.frame.origin.x + screen.frame.width - frame.width))
+        } else {
+            x = screen.frame.origin.x + (screen.frame.width - frame.width) / 2
+        }
+        let screenTop = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen)
+        let y = screenTop - frame.height
+        setFrameDirect(NSRect(x: x, y: y, width: frame.width, height: frame.height), display: true)
+    }
+    private static func padding(forContentHeight contentHeight: CGFloat) -> CGFloat {
+        contentHeight <= collapsedHitHeight + 0.5 ? 0 : expandedPadding
+    }
+    // MARK: - Horizontal drag via sendEvent
+    override func sendEvent(_ event: NSEvent) {
+        switch event.type {
+        case .leftMouseDown:
+            dragStartMouseX = NSEvent.mouseLocation.x
+            dragStartWindowX = frame.origin.x
+            dragTracking = true
+            isDragging = false
+            super.sendEvent(event)
+        case .leftMouseDragged where dragTracking:
+            let currentX = NSEvent.mouseLocation.x
+            let dx = currentX - dragStartMouseX
+            if !isDragging && abs(dx) > 4 {
+                isDragging = true
+            }
+            if isDragging {
+                let screen = cachedOrRefreshScreen()
+                let newX = max(screen.frame.origin.x,
+                               min(dragStartWindowX + dx,
+                                   screen.frame.origin.x + screen.frame.width - frame.width))
+                let topY = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen) - frame.height
+                setFrameDirect(NSRect(x: newX, y: topY, width: frame.width, height: frame.height))
+            } else {
+                super.sendEvent(event)
+            }
+        case .leftMouseUp where dragTracking:
+            dragTracking = false
+            if isDragging {
+                customX = frame.origin.x + frame.width / 2
+                isDragging = false
+            } else {
+                super.sendEvent(event)
+            }
+        default:
+            super.sendEvent(event)
+        }
+    }
+    func setFrameDirect(_ rect: NSRect, display: Bool = true) {
+        let screen = cachedOrRefreshScreen()
+        let normalized = Self.safeFrame(
+            NSRect(
+                x: rect.origin.x,
+                y: rect.origin.y,
+                width: rect.width,
+                height: max(rect.height, Self.collapsedHitHeight)
+            ),
+            screen: screen
+        )
+        super.setFrame(normalized, display: display)
+    }
+    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        guard frameRect.width.isFinite, frameRect.height.isFinite else { return }
+        let clampedHeight = max(frameRect.height, Self.collapsedHitHeight)
+        let screen = cachedOrRefreshScreen()
+        let topY = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen) - clampedHeight
+        let x: CGFloat
+        if isDragging || dragTracking {
+            x = frame.origin.x
+        } else if let cx = customX, cx.isFinite {
+            x = max(screen.frame.origin.x,
+                    min(cx - frameRect.width / 2,
+                        screen.frame.origin.x + screen.frame.width - frameRect.width))
+        } else {
+            x = screen.frame.origin.x + (screen.frame.width - frameRect.width) / 2
+        }
+        let pinned = Self.safeFrame(
+            NSRect(x: x, y: topY, width: frameRect.width, height: clampedHeight),
+            screen: screen
+        )
+        super.setFrame(pinned, display: flag)
+    }
+    override func setFrame(_ frameRect: NSRect, display displayFlag: Bool, animate animateFlag: Bool) {
+        guard frameRect.width.isFinite, frameRect.height.isFinite else { return }
+        let clampedHeight = max(frameRect.height, Self.collapsedHitHeight)
+        let screen = cachedOrRefreshScreen()
+        let topY = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen) - clampedHeight
+        let x: CGFloat
+        if isDragging || dragTracking {
+            x = frame.origin.x
+        } else if let cx = customX, cx.isFinite {
+            x = max(screen.frame.origin.x,
+                    min(cx - frameRect.width / 2,
+                        screen.frame.origin.x + screen.frame.width - frameRect.width))
+        } else {
+            x = screen.frame.origin.x + (screen.frame.width - frameRect.width) / 2
+        }
+        let pinned = Self.safeFrame(
+            NSRect(x: x, y: topY, width: frameRect.width, height: clampedHeight),
+            screen: screen
+        )
+        super.setFrame(pinned, display: displayFlag, animate: animateFlag)
+    }
+    deinit {
+        mouseTrackingTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+    }
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let handler = keyEquivalentHandler, handler(event) {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+private class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+// File: Sources/DynamicIsland/SingleInstanceLock.swift
+import Darwin
+import Foundation
+/// Encapsulates `flock` single-instance locking (used by app + tests).
+enum SingleInstanceLock {
+    enum AcquireResult: Equatable {
+        /// Holds an open file descriptor; caller must keep it open for the lock lifetime.
+        case acquired(fileDescriptor: Int32)
+        /// Another running instance holds `LOCK_EX`.
+        case alreadyRunning
+        /// `open()` / lock file path is unusable — do not start a second socket server.
+        case lockFileUnavailable
+    }
+    /// - Parameter lockFilePath: Absolute path to the lock file.
+    static func acquire(lockFilePath: String) -> AcquireResult {
+        let fd = open(lockFilePath, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        guard fd >= 0 else {
+            return .lockFileUnavailable
+        }
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            close(fd)
+            return .alreadyRunning
+        }
+        return .acquired(fileDescriptor: fd)
+    }
+}

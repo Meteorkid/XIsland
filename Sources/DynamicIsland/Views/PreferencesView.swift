@@ -1011,6 +1011,22 @@ struct PreferencesView: View {
                             .accessibilityIdentifier(TestAccessibility.updateStatusLabel)
                     }
                     dividerLine
+                    row("Auto Check") {
+                        Toggle("", isOn: Binding(
+                            get: { updateManager.autoCheckForUpdates },
+                            set: { newValue in
+                                updateManager.autoCheckForUpdates = newValue
+                                if newValue {
+                                    updateManager.startAutoCheck()
+                                } else {
+                                    updateManager.stopAutoCheck()
+                                }
+                            }
+                        ))
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                    }
+                    dividerLine
                     row("Actions") {
                         HStack(spacing: 8) {
                             Button(updateCheckButtonTitle) {
