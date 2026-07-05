@@ -1,6 +1,6 @@
 cask "x-island" do
-  version "1.3.5"
-  sha256 "cc8736920f4058fe6d4b157cc3b60ef13088e62091909e8c15ccdec8df3e7788"
+  version "1.9.0"
+  sha256 "097f1c8c83454950e2dc0e563088da2859a247e381b72157583f2007fc266f13"
 
   url "https://github.com/Meteorkid/XIsland/releases/download/v#{version}/XIsland-#{version}.dmg",
       verified: "github.com/Meteorkid/XIsland/"

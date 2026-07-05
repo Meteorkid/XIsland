@@ -747,9 +747,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .updateAvailable(let version):
             checkForUpdatesMenuItem?.title = "Update Available: \(version)"
             checkForUpdatesMenuItem?.isEnabled = true
-            installUpdateMenuItem?.title = "Install \(version)..."
+            // 只有存在 DMG 资产时才显示安装菜单
+            let hasDMG = updateManager.latestRelease?.dmgURL != nil
+            installUpdateMenuItem?.title = hasDMG ? "Install \(version)..." : "Download \(version)..."
             installUpdateMenuItem?.isHidden = false
-            installUpdateMenuItem?.isEnabled = true
+            installUpdateMenuItem?.isEnabled = hasDMG
             imageName = "arrow.down.circle.fill"
         case .checking:
             checkForUpdatesMenuItem?.title = "Checking for Updates..."

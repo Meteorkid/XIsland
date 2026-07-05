@@ -307,21 +307,13 @@ final class UpdateManager {
             throw URLError(.badServerResponse)
         }
 
-        let dmgFilename = AppUpdater.dmgFilename(for: tag)
-        let dmgURL = URL(string: "https://github.com/Meteorkid/XIsland/releases/download")!
-            .appendingPathComponent(tag)
-            .appendingPathComponent(dmgFilename)
-
+        // 注意：不再伪造 DMG URL。如果没有真实的 DMG 资产，assets 数组为空，
+        // 用户将看到 "Download..." 而非 "Install..."，点击后会打开发布页面。
         var payload: [String: Any] = [
             "tag_name": tag,
             "html_url": finalURL.absoluteString,
             "published_at": ISO8601DateFormatter().string(from: checkedAt),
-            "assets": [
-                [
-                    "name": dmgFilename,
-                    "browser_download_url": dmgURL.absoluteString
-                ]
-            ]
+            "assets": []
         ]
         if let body {
             payload["body"] = body
