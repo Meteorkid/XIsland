@@ -17,10 +17,15 @@ final class SocketServerAcceptTests: XCTestCase {
         var payload = Data(repeating: 120, count: 80_000)
         payload.append(0x0A)
 
-        XCTAssertTrue(SocketServer.sendAll(fd: fds.0, data: payload))
-        shutdown(fds.0, SHUT_WR)
+        let sent = expectation(description: "payload sent")
+        DispatchQueue.global().async {
+            XCTAssertTrue(SocketServer.sendAll(fd: fds.0, data: payload))
+            shutdown(fds.0, SHUT_WR)
+            sent.fulfill()
+        }
 
         XCTAssertEqual(SocketServer.readMessage(from: fds.1), payload)
+        wait(for: [sent], timeout: 1)
     }
 
     private func makeSocketPair() throws -> (Int32, Int32) {

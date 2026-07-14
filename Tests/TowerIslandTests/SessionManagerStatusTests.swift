@@ -151,6 +151,18 @@ final class SessionManagerStatusTests: XCTestCase {
         XCTAssertEqual(manager.sessions.first?.agentType, .trae)
     }
 
+    func testInfersTraeFromWorkCnTerminalWhenAgentTypeMissing() {
+        let manager = SessionManager()
+
+        var start = DIMessage(type: .sessionStart, sessionId: "session-work-cn")
+        start.agentType = nil
+        start.terminal = "TRAE SOLO CN"
+        manager.handleMessage(start)
+
+        XCTAssertEqual(manager.sessions.count, 1)
+        XCTAssertEqual(manager.sessions.first?.agentType, .trae)
+    }
+
     func testOpenCodePlaceholderPermissionIsAutoApprovedAndNotShown() {
         let manager = SessionManager()
 

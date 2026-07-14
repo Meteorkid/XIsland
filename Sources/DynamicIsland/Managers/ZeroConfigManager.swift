@@ -24,7 +24,7 @@ enum ZeroConfigManager {
         case .codex: configureCodex()
         case .geminiCli: configureGeminiCli()
         case .cursor: configureCursor()
-        case .trae: configureCursor()
+        case .trae: configureTrae()
         case .openCode: configureOpenCode()
         case .droid: configureDroid()
         case .qoder: configureQoder()
@@ -97,19 +97,30 @@ enum ZeroConfigManager {
 
         // Cursor-family hooks (Cursor / Trae / Trae CN) — different JSON format
         if isAutoConfigEnabled(for: .cursor) || isAutoConfigEnabled(for: .trae) {
-            for hooksPath in cursorHookPaths {
-                guard FileManager.default.fileExists(atPath: hooksPath) else { continue }
-                if let config = readJSON(hooksPath),
+            for target in cursorHookTargets where isAutoConfigEnabled(for: target.agent) {
+                guard FileManager.default.fileExists(atPath: target.path) else { continue }
+                if let config = readJSON(target.path),
                    let hooks = config["hooks"] as? [String: Any] {
                     let hasDIBridge = hooks.values.contains { entries in
                         guard let list = entries as? [[String: Any]] else { return false }
                         return list.contains { ($0["command"] as? String)?.contains("di-bridge") == true }
                     }
                     if !hasDIBridge {
-                        configureCursor()
-                        print("[ZeroConfig] Repaired Cursor-family hooks at \(hooksPath)")
-                        break
+                        configure(target.agent)
+                        print("[ZeroConfig] Repaired \(target.agent.displayName) hooks at \(target.path)")
                     }
+                }
+            }
+        }
+
+        // Trae IDE settings hooks (Trae / Trae CN / TRAE SOLO CN)
+        if isAutoConfigEnabled(for: .trae) {
+            for path in traeIDESettingsPaths where FileManager.default.fileExists(atPath: path) {
+                guard let config = readJSON(path) else { continue }
+                let hooks = config["claudeCode.hooks"] as? [String: Any] ?? [:]
+                if !hooksContainBridge(hooks) {
+                    configure(.trae)
+                    print("[ZeroConfig] Repaired Trae IDE hooks at \(path)")
                 }
             }
         }
@@ -398,17 +409,24 @@ enum ZeroConfigManager {
     // MARK: - Cursor
 
     private static func configureCursor() {
-        for hooksPath in cursorHookPaths {
-            ensureDir((hooksPath as NSString).deletingLastPathComponent)
-            let config = readJSON(hooksPath) ?? [String: Any]()
-            let updatedConfig = sanitizeCursorConfig(config, bridgePath: bridgePath)
-            writeJSON(hooksPath, updatedConfig)
-        }
+        configureCursorFamily(agent: .cursor)
+    }
 
+    private static func configureTrae() {
+        configureCursorFamily(agent: .trae)
         configureTraeIDEClaudeCodeHooks()
     }
 
-    static func sanitizeCursorConfig(_ config: [String: Any], bridgePath: String) -> [String: Any] {
+    private static func configureCursorFamily(agent: AgentType) {
+        for target in cursorHookTargets where target.agent == agent {
+            ensureDir((target.path as NSString).deletingLastPathComponent)
+            let config = readJSON(target.path) ?? [String: Any]()
+            let updatedConfig = sanitizeCursorConfig(config, bridgePath: bridgePath, agent: agent.rawValue)
+            writeJSON(target.path, updatedConfig)
+        }
+    }
+
+    static func sanitizeCursorConfig(_ config: [String: Any], bridgePath: String, agent: String = AgentType.cursor.rawValue) -> [String: Any] {
         var config = config
         var hooks = config["hooks"] as? [String: Any] ?? [:]
 
@@ -433,7 +451,7 @@ enum ZeroConfigManager {
         for (event, hookArgs) in hookMapping {
             var entries = hooks[event] as? [[String: Any]] ?? []
             entries.removeAll { isLegacyCursorHookCommand($0["command"] as? String) }
-            entries.append(["command": "\(bridgePath) --agent cursor \(hookArgs)"])
+            entries.append(["command": "\(bridgePath) --agent \(agent) \(hookArgs)"])
             hooks[event] = entries
         }
 
@@ -457,7 +475,7 @@ enum ZeroConfigManager {
             updatedConfig["claudeCode.hooks"] = sanitizeClaudeCodeHooksForIDE(
                 hooks,
                 bridgePath: bridgePath,
-                agent: AgentType.cursor.rawValue
+                agent: AgentType.trae.rawValue
             )
             writeJSON(settingsPath, updatedConfig)
         }
@@ -1272,18 +1290,28 @@ enum ZeroConfigManager {
         autoConfigKeyPrefix + agent.rawValue
     }
 
-    private static var cursorHookPaths: [String] {
+    private struct CursorHookTarget {
+        let path: String
+        let agent: AgentType
+    }
+
+    private static var cursorHookTargets: [CursorHookTarget] {
         [
-            "\(home)/.cursor/hooks.json",
-            "\(home)/.trae/hooks.json",
-            "\(home)/.trae-cn/hooks.json"
+            CursorHookTarget(path: "\(home)/.cursor/hooks.json", agent: .cursor),
+            CursorHookTarget(path: "\(home)/.trae/hooks.json", agent: .trae),
+            CursorHookTarget(path: "\(home)/.trae-cn/hooks.json", agent: .trae)
         ]
+    }
+
+    private static var cursorHookPaths: [String] {
+        cursorHookTargets.map(\.path)
     }
 
     private static var traeIDESettingsPaths: [String] {
         [
             "\(home)/Library/Application Support/Trae/User/settings.json",
-            "\(home)/Library/Application Support/Trae CN/User/settings.json"
+            "\(home)/Library/Application Support/Trae CN/User/settings.json",
+            "\(home)/Library/Application Support/TRAE SOLO CN/User/settings.json"
         ]
     }
 
@@ -1300,14 +1328,26 @@ enum ZeroConfigManager {
                   let hooks = config["hooks"] as? [String: Any] else { return false }
             return hooksContainBridge(hooks)
         case .cursor:
-            for path in cursorHookPaths {
+            for target in cursorHookTargets where target.agent == .cursor {
+                let path = target.path
                 guard let config = readJSON(path),
                       let hooks = config["hooks"] as? [String: Any] else { continue }
                 if hooksContainBridge(hooks) { return true }
             }
             return false
         case .trae:
-            return hasConfiguration(for: .cursor)
+            for target in cursorHookTargets where target.agent == .trae {
+                let path = target.path
+                guard let config = readJSON(path),
+                      let hooks = config["hooks"] as? [String: Any] else { continue }
+                if hooksContainBridge(hooks) { return true }
+            }
+            for path in traeIDESettingsPaths {
+                guard let config = readJSON(path),
+                      let hooks = config["claudeCode.hooks"] as? [String: Any] else { continue }
+                if hooksContainBridge(hooks) { return true }
+            }
+            return false
         case .openCode:
             let path = "\(home)/.config/opencode/plugins/xisland.js"
             guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
@@ -1379,11 +1419,16 @@ enum ZeroConfigManager {
         case .codex:
             removeBridgeHooks(at: "\(home)/.codex/hooks.json")
         case .cursor:
-            for path in cursorHookPaths {
-                removeCursorBridgeHooks(at: path)
+            for target in cursorHookTargets where target.agent == .cursor {
+                removeCursorBridgeHooks(at: target.path)
             }
         case .trae:
-            removeConfiguration(for: .cursor)
+            for target in cursorHookTargets where target.agent == .trae {
+                removeCursorBridgeHooks(at: target.path)
+            }
+            for path in traeIDESettingsPaths {
+                removeBridgeHooks(at: path, hooksKey: "claudeCode.hooks")
+            }
         case .openCode:
             try? FileManager.default.removeItem(atPath: "\(home)/.config/opencode/plugins/xisland.js")
         case .geminiCli:
@@ -1439,9 +1484,9 @@ enum ZeroConfigManager {
         return (config[key] as? String)?.contains("di-bridge") == true
     }
 
-    private static func removeBridgeHooks(at path: String) {
+    private static func removeBridgeHooks(at path: String, hooksKey: String = "hooks") {
         guard var config = readJSON(path),
-              var hooks = config["hooks"] as? [String: Any] else { return }
+              var hooks = config[hooksKey] as? [String: Any] else { return }
         for key in hooks.keys {
             guard var hookList = hooks[key] as? [[String: Any]] else { continue }
             hookList.removeAll { entry in
@@ -1455,7 +1500,7 @@ enum ZeroConfigManager {
                 hooks[key] = hookList
             }
         }
-        config["hooks"] = hooks
+        config[hooksKey] = hooks
         writeJSON(path, config)
     }
 

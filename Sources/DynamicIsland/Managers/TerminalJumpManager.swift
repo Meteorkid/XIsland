@@ -14,6 +14,7 @@ enum TerminalApp: String, CaseIterable {
     case windsurf = "Windsurf"
     case trae = "Trae"
     case traeCn = "Trae CN"
+    case traeWorkCn = "TRAE SOLO CN"
     case codex = "Codex"
     case wezTerm = "WezTerm"
     case zellij = "Zellij"
@@ -37,6 +38,7 @@ enum TerminalApp: String, CaseIterable {
         case .windsurf: ["com.codeium.windsurf"]
         case .trae: ["com.trae.app"]
         case .traeCn: ["cn.trae.app"]
+        case .traeWorkCn: ["cn.trae.solo.app"]
         case .codex: ["com.openai.codex"]
         case .wezTerm: ["org.wezfurlong.wezterm"]
         case .zellij: ["no.bundle.id.zellij"] // multiplexer, runs inside another terminal
@@ -66,6 +68,7 @@ enum TerminalApp: String, CaseIterable {
         case .windsurf: ["windsurf"]
         case .trae: ["trae"]
         case .traeCn: ["trae cn", "trae-cn", "traecn"]
+        case .traeWorkCn: ["trae work cn", "trae solo cn", "trae-work-cn", "trae-solo-cn", "traeworkcn", "traesolocn", "trae aicc", "trae-aicc"]
         case .codex: ["codex"]
         case .wezTerm: ["wezterm"]
         case .zellij: ["zellij"]
@@ -80,7 +83,7 @@ enum TerminalApp: String, CaseIterable {
 
     var isVSCodeFamily: Bool {
         switch self {
-        case .vscode, .cursor, .windsurf, .trae, .traeCn, .antigravity:
+        case .vscode, .cursor, .windsurf, .trae, .traeCn, .traeWorkCn, .antigravity:
             true
         default:
             false
@@ -295,7 +298,7 @@ enum TerminalJumpManager {
         }
 
         if snap.agentType == .trae {
-            if let appFromTerminal, appFromTerminal == .trae || appFromTerminal == .traeCn {
+            if let appFromTerminal, appFromTerminal == .trae || appFromTerminal == .traeCn || appFromTerminal == .traeWorkCn {
                 return appFromTerminal
             }
             return .trae
@@ -716,6 +719,8 @@ enum TerminalJumpManager {
             commandCandidates = [["windsurf", "-r"]]
         case .trae, .traeCn:
             commandCandidates = [["trae", "-r"], ["trae-cn", "-r"], ["traecn", "-r"]]
+        case .traeWorkCn:
+            commandCandidates = [["trae-aicc", "-r"], ["trae-work-cn", "-r"], ["trae-solo-cn", "-r"]]
         default:
             return false
         }

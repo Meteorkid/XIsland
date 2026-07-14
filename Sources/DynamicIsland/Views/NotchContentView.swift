@@ -291,6 +291,29 @@ struct NotchContentView: View {
         }
     }
 
+    /// 判断是否在专用状态（permission / question / planReview）下显示"查看 Agent Flow"入口。
+    ///
+    /// 设计约束：
+    /// - 仅在专用状态下显示——`.expanded` 已直接渲染完整 Agent Flow，不需要入口；
+    ///   `.collapsed` 不展示任何工具栏入口。
+    /// - 仅在存在阻塞项目时显示——无阻塞时入口无意义，避免工具栏噪音。
+    /// - 纯静态判定，便于单元测试；不读取 SwiftUI 状态。
+    ///
+    /// - Parameters:
+    ///   - state: 当前灵动岛状态。
+    ///   - hasAnyBlocker: 是否存在任意阻塞项目（由调用方通过
+    ///     `AgentFlowRegion.hasAnyBlocker(agentFlowProjects)` 计算）。
+    /// - Returns: 是否应渲染入口按钮。
+    static func shouldShowAgentFlowEntry(state: IslandState, hasAnyBlocker: Bool) -> Bool {
+        guard hasAnyBlocker else { return false }
+        switch state {
+        case .permission, .question, .planReview:
+            return true
+        case .expanded, .collapsed:
+            return false
+        }
+    }
+
     static func initialIslandState(for manager: SessionManager) -> IslandState {
         initialAutoExpandedState(for: manager) ?? .collapsed
     }
@@ -707,6 +730,16 @@ struct NotchContentView: View {
 
             switch state {
             case .expanded, .permission, .question, .planReview:
+                // Agent Flow 区域仅在普通展开态显示，避免与 question/permission/planReview 内联卡片冲突
+                if case .expanded = state {
+                    AgentFlowRegion(
+                        projects: agentFlowProjects,
+                        onJump: {
+                            // 跳转后保持面板打开——鼠标仍在面板上，auto-collapse 会在鼠标移出时自然触发
+                        }
+                    )
+                }
+
                 // 待处理任务（question/permission/planReview）已在 SessionListView 顶部内联显示
                 SessionListView(onJump: {
                     // 跳转后保持面板打开——鼠标仍在面板上，auto-collapse 会在鼠标移出时自然触发
@@ -728,6 +761,12 @@ struct NotchContentView: View {
         .simultaneousGesture(DragGesture(minimumDistance: 1).onChanged { _ in
             markExpandedInteraction(throttled: true)
         })
+    }
+
+    /// Agent Flow 项目聚合：以工作目录分组，识别阻塞并按优先级排序。
+    /// 仅消费 `AgentFlowAggregator` 数据接口，不在 View 内重复业务判定。
+    private var agentFlowProjects: [AgentFlowProject] {
+        AgentFlowAggregator.group(sessions: manager.sessions)
     }
 
     private var quotaPills: some View {
@@ -848,6 +887,34 @@ struct NotchContentView: View {
                 }
             }
 
+            // 专用状态（permission / question / planReview）下进入 Agent Flow 总览的入口。
+            // 仅在存在阻塞项目时显示——避免无阻塞时占用工具栏空间。
+            // 点击后切到 .expanded 总览：当前待处理卡片仍由 SessionListView.pendingSessions 内联渲染。
+            if Self.shouldShowAgentFlowEntry(
+                state: state,
+                hasAnyBlocker: AgentFlowRegion.hasAnyBlocker(agentFlowProjects)
+            ) {
+                Button {
+                    markExpandedInteraction()
+                    expand(to: .expanded)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "circle.hexagonpath")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(L10n.agentFlowViewEntry)
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .foregroundStyle(IslandStyle.primaryText)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(IslandStyle.insetFill(for: themeManager.resolvedScheme))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.agentFlowViewEntry)
+                .accessibilityIdentifier(TestAccessibility.agentFlowViewEntryButton)
+            }
+
             Button {
                 markExpandedInteraction()
                 expandedByHover = false
@@ -885,7 +952,7 @@ struct NotchContentView: View {
             "com.mitchellh.ghostty", "dev.warp.Warp-Stable",
             "net.kovidgoyal.kitty",
             "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92",
-            "com.codeium.windsurf", "com.trae.app", "cn.trae.app"
+            "com.codeium.windsurf", "com.trae.app", "cn.trae.app", "cn.trae.solo.app"
         ]
         return terminalBundleIds.contains(frontApp.bundleIdentifier ?? "")
     }

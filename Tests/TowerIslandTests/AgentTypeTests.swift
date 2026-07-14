@@ -43,6 +43,7 @@ final class AgentTypeTests: XCTestCase {
         XCTAssertEqual(AgentType.fromBundleId("com.todesktop.230313mzl4w4u92"), .cursor)
         XCTAssertEqual(AgentType.fromBundleId("com.openai.codex"), .codex)
         XCTAssertEqual(AgentType.fromBundleId("com.trae.app"), .trae)
+        XCTAssertEqual(AgentType.fromBundleId("cn.trae.solo.app"), .trae)
     }
 
     func testFromBundleIdCaseInsensitive() {

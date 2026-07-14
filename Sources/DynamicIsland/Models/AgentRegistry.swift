@@ -51,10 +51,10 @@ extension AgentType {
             displayName: "Trae", shortName: "Trae",
             color: Color(red: 0.2, green: 0.7, blue: 0.95),
             iconSymbol: "sparkle.magnifyingglass",
-            bundleIds: ["com.trae.app", "cn.trae.app"],
-            processNames: ["Trae", "Trae CN"],
+            bundleIds: ["com.trae.app", "cn.trae.app", "cn.trae.solo.app"],
+            processNames: ["Trae", "Trae CN", "TRAE SOLO CN"],
             isDesktopApp: true, sendsSessionEnd: true,
-            aliases: ["trae", "trae cn", "trae-cn", "traecn"]
+            aliases: ["trae", "trae cn", "trae-cn", "traecn", "trae work cn", "trae solo cn", "trae-aicc"]
         ),
         .openCode: AgentMeta(
             displayName: "OpenCode", shortName: "OpenCode",

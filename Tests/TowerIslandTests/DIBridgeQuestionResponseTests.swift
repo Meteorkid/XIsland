@@ -74,6 +74,12 @@ final class DIBridgeQuestionResponseTests: XCTestCase {
         XCTAssertEqual(denyDecision["behavior"] as? String, "deny")
     }
 
+    func testTraePermissionRequestsUseClaudeCompatibleStdout() {
+        XCTAssertTrue(DIBridge.usesClaudeCodePermissionStdout(agentType: "claude_code"))
+        XCTAssertTrue(DIBridge.usesClaudeCodePermissionStdout(agentType: "trae"))
+        XCTAssertFalse(DIBridge.usesClaudeCodePermissionStdout(agentType: "cursor"))
+    }
+
     func testPermissionHookUsesPermissionRequestEventName() throws {
         let stdin: [String: Any] = [
             "tool_name": "AskUserQuestion",
@@ -137,10 +143,15 @@ final class DIBridgeQuestionResponseTests: XCTestCase {
         response.answer = String(repeating: "x", count: 80_000)
         let data = try DIProtocol.encode(response)
 
-        XCTAssertTrue(DIBridge.sendAll(fd: fds.0, data: data))
-        shutdown(fds.0, SHUT_WR)
+        let sent = expectation(description: "response sent")
+        DispatchQueue.global().async {
+            XCTAssertTrue(DIBridge.sendAll(fd: fds.0, data: data))
+            shutdown(fds.0, SHUT_WR)
+            sent.fulfill()
+        }
 
         let decoded = DIBridge.receiveResponse(fds.1)
+        wait(for: [sent], timeout: 1)
         XCTAssertEqual(decoded?.answer?.count, 80_000)
     }
 

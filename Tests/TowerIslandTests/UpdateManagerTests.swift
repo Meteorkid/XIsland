@@ -188,6 +188,7 @@ final class UpdateManagerTests: XCTestCase {
     @MainActor
     func testInstallUpdateReportsStageProgressAndReturnsToIdle() async throws {
         let gate = InstallGate()
+        let expectedHash = String(repeating: "a", count: 64)
         let release = UpdateManager.ReleaseInfo(
             tagName: "v1.2.6",
             htmlURL: URL(string: "https://example.com/release")!,
@@ -197,7 +198,8 @@ final class UpdateManagerTests: XCTestCase {
                     name: "XIsland-1.2.6.dmg",
                     browserDownloadURL: URL(string: "https://example.com/XIsland-1.2.6.dmg")!
                 )
-            ]
+            ],
+            body: "XIsland-1.2.6.dmg SHA256: \(expectedHash)"
         )
         let expectedDMGURL = URL(string: "https://example.com/XIsland-1.2.6.dmg")!
         let capturedReleaseURL = URLCapture()

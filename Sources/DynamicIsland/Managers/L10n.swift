@@ -1302,6 +1302,148 @@ enum L10n {
             en: "No activity yet")
     }
 
+    // MARK: - Agent Flow
+
+    static var agentFlow: String {
+        localized("agentFlow",
+            zh: "Agent Flow", ko: "Agent Flow", ja: "Agent Flow", fr: "Agent Flow",
+            en: "Agent Flow")
+    }
+
+    static var agentFlowEmpty: String {
+        localized("agentFlowEmpty",
+            zh: "当前没有待处理阻塞", ko: "대기 중인 차단 없음", ja: "保留中のブロックなし", fr: "Aucun bloc en attente",
+            en: "No pending blockers")
+    }
+
+    static var agentFlowGoHandle: String {
+        localized("agentFlowGoHandle",
+            zh: "前往处理", ko: "처리하기", ja: "対応する", fr: "Traiter",
+            en: "Handle")
+    }
+
+    static var agentFlowBlockedUnit: String {
+        localized("agentFlowBlockedUnit",
+            zh: "阻塞", ko: "차단", ja: "ブロック", fr: "bloqués",
+            en: "blocked")
+    }
+
+    static var agentFlowActiveUnit: String {
+        localized("agentFlowActiveUnit",
+            zh: "活跃", ko: "활성", ja: "アクティブ", fr: "actifs",
+            en: "active")
+    }
+
+    /// 专用状态（permission / question / planReview）下进入 Agent Flow 总览的入口按钮文案。
+    /// 紧凑表述，适配灵动岛顶部工具栏的有限横向空间。
+    static var agentFlowViewEntry: String {
+        localized("agentFlowViewEntry",
+            zh: "查看 Agent Flow", ko: "Agent Flow 보기", ja: "Agent Flow を表示", fr: "Voir Agent Flow",
+            en: "View Agent Flow")
+    }
+
+    static var agentFlowWaitingHumanInput: String {
+        localized("agentFlowWaitingHumanInput",
+            zh: "等待人工输入", ko: "사용자 입력 대기", ja: "入力待ち", fr: "Saisie requise",
+            en: "Needs input")
+    }
+
+    static var agentFlowWaitingPermission: String {
+        localized("agentFlowWaitingPermission",
+            zh: "等待权限", ko: "권한 대기", ja: "権限待ち", fr: "Autorisation requise",
+            en: "Needs approval")
+    }
+
+    static var agentFlowToolFailure: String {
+        localized("agentFlowToolFailure",
+            zh: "工具失败", ko: "도구 실패", ja: "ツール失敗", fr: "Échec outil",
+            en: "Tool failed")
+    }
+
+    static var agentFlowNoBlocker: String {
+        localized("agentFlowNoBlocker",
+            zh: "无阻塞", ko: "차단 없음", ja: "ブロックなし", fr: "Aucun blocage",
+            en: "No blocker")
+    }
+
+    static var agentFlowUngroupedSessions: String {
+        localized("agentFlowUngroupedSessions",
+            zh: "未分组会话", ko: "그룹 없는 세션", ja: "未グループのセッション", fr: "Sessions non groupées",
+            en: "Ungrouped sessions")
+    }
+
+    static var agentFlowWaitingAnswer: String {
+        localized("agentFlowWaitingAnswer",
+            zh: "等待回答", ko: "답변 대기", ja: "回答待ち", fr: "Réponse attendue",
+            en: "Waiting for answer")
+    }
+
+    static var agentFlowWaitingPlanReview: String {
+        localized("agentFlowWaitingPlanReview",
+            zh: "等待计划审核", ko: "계획 검토 대기", ja: "計画レビュー待ち", fr: "Revue du plan attendue",
+            en: "Waiting for plan review")
+    }
+
+    static var agentFlowWaitingPermissionApproval: String {
+        localized("agentFlowWaitingPermissionApproval",
+            zh: "等待权限批准", ko: "권한 승인 대기", ja: "権限承認待ち", fr: "Autorisation attendue",
+            en: "Waiting for approval")
+    }
+
+    static func agentFlowWaitingAnswerReason(_ text: String?) -> String {
+        let preview = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !preview.isEmpty else { return agentFlowWaitingAnswer }
+        return agentFlowReason(
+            detail: preview,
+            zhPrefix: "等待回答：",
+            koPrefix: "답변 대기: ",
+            jaPrefix: "回答待ち: ",
+            frPrefix: "Réponse attendue : ",
+            enPrefix: "Waiting for answer: "
+        )
+    }
+
+    static func agentFlowWaitingApprovalReason(_ tool: String?) -> String {
+        let name = tool?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !name.isEmpty else { return agentFlowWaitingPermissionApproval }
+        return agentFlowReason(
+            detail: name,
+            zhPrefix: "等待批准：",
+            koPrefix: "승인 대기: ",
+            jaPrefix: "承認待ち: ",
+            frPrefix: "Autorisation attendue : ",
+            enPrefix: "Waiting for approval: "
+        )
+    }
+
+    static func agentFlowToolFailureReason(_ text: String) -> String {
+        let detail = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !detail.isEmpty else { return agentFlowToolFailure }
+        return agentFlowReason(
+            detail: detail,
+            zhPrefix: "工具失败：",
+            koPrefix: "도구 실패: ",
+            jaPrefix: "ツール失敗: ",
+            frPrefix: "Échec outil : ",
+            enPrefix: "Tool failed: "
+        )
+    }
+
+    private static func agentFlowReason(
+        detail: String,
+        zhPrefix: String,
+        koPrefix: String,
+        jaPrefix: String,
+        frPrefix: String,
+        enPrefix: String
+    ) -> String {
+        let truncated = detail.count > 60 ? String(detail.prefix(60)) + "…" : detail
+        let prefix = localized("agentFlowReasonPrefix",
+            zh: zhPrefix, ko: koPrefix, ja: jaPrefix, fr: frPrefix,
+            en: enPrefix)
+        return prefix + truncated
+    }
+
     static func toolRunning(_ tool: String) -> String {
         switch effectiveLanguage {
         case "zh": return "正在运行 \(tool)..."

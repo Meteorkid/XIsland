@@ -460,7 +460,7 @@ final class SessionManager {
             switch app {
             case .cursor, .windsurf:
                 return .cursor
-            case .trae, .traeCn:
+            case .trae, .traeCn, .traeWorkCn:
                 return .trae
             case .codex:
                 return .codex

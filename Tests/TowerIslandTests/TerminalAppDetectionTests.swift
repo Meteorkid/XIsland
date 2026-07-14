@@ -7,6 +7,12 @@ final class TerminalAppDetectionTests: XCTestCase {
         XCTAssertEqual(TerminalApp.detect(from: "cn.trae.app"), .traeCn)
     }
 
+    func testDetectsTraeWorkCnFromNameAndBundleId() {
+        XCTAssertEqual(TerminalApp.detect(from: "TRAE SOLO CN"), .traeWorkCn)
+        XCTAssertEqual(TerminalApp.detect(from: "Trae Work CN"), .traeWorkCn)
+        XCTAssertEqual(TerminalApp.detect(from: "cn.trae.solo.app"), .traeWorkCn)
+    }
+
     func testDetectsTraeFromNameAndBundleId() {
         XCTAssertEqual(TerminalApp.detect(from: "trae"), .trae)
         XCTAssertEqual(TerminalApp.detect(from: "com.trae.app"), .trae)
@@ -17,6 +23,7 @@ final class TerminalAppDetectionTests: XCTestCase {
         XCTAssertEqual(AgentType.fromBundleId("com.codeium.windsurf"), .cursor)
         XCTAssertEqual(AgentType.fromBundleId("com.trae.app"), .trae)
         XCTAssertEqual(AgentType.fromBundleId("cn.trae.app"), .trae)
+        XCTAssertEqual(AgentType.fromBundleId("cn.trae.solo.app"), .trae)
     }
 
     func testCursorAgentPrefersCursorAppOverGenericTerminalHint() {
@@ -41,6 +48,18 @@ final class TerminalAppDetectionTests: XCTestCase {
             windowNumber: nil
         )
         XCTAssertEqual(TerminalJumpManager.resolveTargetApp(snap: snap), .cursor)
+    }
+
+    func testTraeAgentKeepsWorkCnHint() {
+        let snap = TerminalJumpManager.SessionSnapshot(
+            id: "trae-work-1",
+            agentType: .trae,
+            terminal: "TRAE SOLO CN",
+            workingDirectory: "/tmp/project",
+            termSessionId: nil,
+            windowNumber: nil
+        )
+        XCTAssertEqual(TerminalJumpManager.resolveTargetApp(snap: snap), .traeWorkCn)
     }
 
     func testCursorAgentKeepsWindsurfHint() {

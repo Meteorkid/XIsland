@@ -75,7 +75,7 @@ struct DIBridge {
                     let approved = response.approved ?? false
                     // Claude Code reads the PermissionRequest outcome from stdout JSON (hookSpecificOutput),
                     // not from exit status alone. See hooks.md § PermissionRequest decision control.
-                    if agentType == "claude_code" {
+                    if usesClaudeCodePermissionStdout(agentType: agentType) {
                         print(Self.buildClaudeCodePermissionResponse(approved: approved))
                     }
                     dumpStdin(hook: "PERM_EXIT", data: ["approved": "\(approved)"])
@@ -604,6 +604,11 @@ struct DIBridge {
     }
 
     /// Stdout JSON for `PermissionRequest` hooks (Claude Code). Exit code alone is not sufficient.
+    static func usesClaudeCodePermissionStdout(agentType: String) -> Bool {
+        let agent = agentType.lowercased()
+        return agent == "claude_code" || agent == "trae"
+    }
+
     static func buildClaudeCodePermissionResponse(approved: Bool) -> String {
         let jsonObj: [String: Any] = [
             "hookSpecificOutput": [

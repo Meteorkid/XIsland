@@ -605,6 +605,8 @@ struct PreferencesView: View {
                     ideRow(name: "Trae", bundleId: "com.trae.app")
                     dividerLine
                     ideRow(name: "Trae CN", bundleId: "cn.trae.app")
+                    dividerLine
+                    ideRow(name: "TRAE SOLO CN", bundleId: "cn.trae.solo.app")
                 }
 
                 Text("Extensions enable direct terminal-tab jumping from the island.")

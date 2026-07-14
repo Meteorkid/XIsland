@@ -3,7 +3,7 @@ import AppKit
 /// 负责在灵动岛应用之间快速切换
 ///
 /// 每个灵动岛使用独立 URL Scheme 进行跨应用通信。
-/// URL 格式: `{target-app-name}://island/show`
+/// URL 格式: `{target-app-name}://{target-app-name}/show`
 struct IslandPeerStatus {
     let island: IslandApp
     let isInstalled: Bool
@@ -114,7 +114,7 @@ final class AppSwitcher {
     func switchURL(for targetName: String) -> URL? {
         guard islandApps[targetName] != nil,
               let scheme = islandSchemes[targetName] else { return nil }
-        // URL 格式: island://{targetName}/show
+        // URL 格式: {targetName}://{targetName}/show
         return URL(string: "\(scheme)://\(targetName)/show")
     }
 

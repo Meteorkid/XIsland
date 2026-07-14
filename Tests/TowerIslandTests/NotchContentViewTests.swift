@@ -331,4 +331,26 @@ final class NotchContentViewTests: XCTestCase {
             "Claude · xisland"
         )
     }
+
+    // MARK: - Agent Flow Entry (专用状态 → 总览入口)
+
+    /// 专用状态下存在阻塞时应显示入口——这是核心交互缺口修复的入口判定。
+    func testShouldShowAgentFlowEntryInInteractionStatesWhenBlocked() {
+        XCTAssertTrue(NotchContentView.shouldShowAgentFlowEntry(state: .permission("s1"), hasAnyBlocker: true))
+        XCTAssertTrue(NotchContentView.shouldShowAgentFlowEntry(state: .question("s1"), hasAnyBlocker: true))
+        XCTAssertTrue(NotchContentView.shouldShowAgentFlowEntry(state: .planReview("s1"), hasAnyBlocker: true))
+    }
+
+    /// `.expanded` 已直接渲染完整 Agent Flow，不需要入口；`.collapsed` 不展示工具栏入口。
+    func testShouldShowAgentFlowEntryHiddenInExpandedAndCollapsed() {
+        XCTAssertFalse(NotchContentView.shouldShowAgentFlowEntry(state: .expanded, hasAnyBlocker: true))
+        XCTAssertFalse(NotchContentView.shouldShowAgentFlowEntry(state: .collapsed, hasAnyBlocker: true))
+    }
+
+    /// 无阻塞时不显示入口——避免工具栏噪音。
+    func testShouldShowAgentFlowEntryHiddenWithoutBlocker() {
+        XCTAssertFalse(NotchContentView.shouldShowAgentFlowEntry(state: .permission("s1"), hasAnyBlocker: false))
+        XCTAssertFalse(NotchContentView.shouldShowAgentFlowEntry(state: .question("s1"), hasAnyBlocker: false))
+        XCTAssertFalse(NotchContentView.shouldShowAgentFlowEntry(state: .planReview("s1"), hasAnyBlocker: false))
+    }
 }
