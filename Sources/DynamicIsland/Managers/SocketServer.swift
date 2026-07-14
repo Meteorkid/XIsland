@@ -194,7 +194,18 @@ final class SocketServer: @unchecked Sendable {
     }
 
     static func sendAll(fd: Int32, data: Data) -> Bool {
-        data.withUnsafeBytes { ptr -> Bool in
+        var noSigPipe: Int32 = 1
+        guard setsockopt(
+            fd,
+            SOL_SOCKET,
+            SO_NOSIGPIPE,
+            &noSigPipe,
+            socklen_t(MemoryLayout<Int32>.size)
+        ) == 0 else {
+            return false
+        }
+
+        return data.withUnsafeBytes { ptr -> Bool in
             guard let base = ptr.baseAddress else { return true }
             var sent = 0
             while sent < ptr.count {
