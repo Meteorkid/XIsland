@@ -9,7 +9,8 @@ final class NotchWindowTests: XCTestCase {
         window.resizeToFitCollapse(contentWidth: 180, contentHeight: 32)
 
         XCTAssertEqual(window.frame.width, 180, accuracy: 0.5)
-        XCTAssertEqual(window.frame.height, 32, accuracy: 0.5)
+        // 高度 = 内容高度 + windowTopExtension（窗口向上延伸使屏幕顶端在窗口内部）
+        XCTAssertEqual(window.frame.height, 32 + NotchWindow.windowTopExtension, accuracy: 0.5)
     }
 
     func testResizeToFitClampsTinyHeights() {
@@ -17,7 +18,7 @@ final class NotchWindowTests: XCTestCase {
 
         window.resizeToFit(contentWidth: 180, contentHeight: 1)
 
-        XCTAssertEqual(window.frame.height, 32, accuracy: 0.5)
+        XCTAssertEqual(window.frame.height, 32 + NotchWindow.windowTopExtension, accuracy: 0.5)
     }
 
     func testShouldTriggerScrollExpandAcceptsCollapsedPreciseDownwardScrollInsideHitFrame() {

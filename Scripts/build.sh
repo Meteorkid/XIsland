@@ -120,14 +120,18 @@ EOF
 codesign --force --deep --sign - "$APP_BUNDLE"
 
 echo "==> Installing bridge binary..."
-mkdir -p "$BRIDGE_INSTALL_DIR"
-cp "$BUILD_DIR/release/DIBridge" "$BRIDGE_INSTALL_DIR/di-bridge"
-chmod +x "$BRIDGE_INSTALL_DIR/di-bridge"
-codesign -s - -f "$BRIDGE_INSTALL_DIR/di-bridge" 2>/dev/null || true
-cp "$CLI_SRC" "$BRIDGE_INSTALL_DIR/xisland"
-mkdir -p "$BRIDGE_INSTALL_DIR/lib"
-cp "$CLI_LIB_DIR/xisland-cli.sh" "$BRIDGE_INSTALL_DIR/lib/xisland-cli.sh"
-chmod +x "$BRIDGE_INSTALL_DIR/xisland"
+if [[ "${X_ISLAND_SKIP_BRIDGE_INSTALL:-0}" == "1" ]]; then
+    echo "Skipping bridge binary installation."
+else
+    mkdir -p "$BRIDGE_INSTALL_DIR"
+    cp "$BUILD_DIR/release/DIBridge" "$BRIDGE_INSTALL_DIR/di-bridge"
+    chmod +x "$BRIDGE_INSTALL_DIR/di-bridge"
+    codesign -s - -f "$BRIDGE_INSTALL_DIR/di-bridge" 2>/dev/null || true
+    cp "$CLI_SRC" "$BRIDGE_INSTALL_DIR/xisland"
+    mkdir -p "$BRIDGE_INSTALL_DIR/lib"
+    cp "$CLI_LIB_DIR/xisland-cli.sh" "$BRIDGE_INSTALL_DIR/lib/xisland-cli.sh"
+    chmod +x "$BRIDGE_INSTALL_DIR/xisland"
+fi
 
 echo ""
 echo "Build complete!"
