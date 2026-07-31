@@ -80,6 +80,10 @@ final class SessionManager {
         get { UserDefaults.standard.bool(forKey: "bypassMode") }
         set { UserDefaults.standard.set(newValue, forKey: "bypassMode") }
     }
+
+    /// 从 xnook 被中断的次数（用于审批完成后恢复），用计数器处理快速连续审批
+    private var approvalInterruptCount = 0
+
     /// Incremented to force SwiftUI to re-evaluate `visibleSessions` after linger expires.
     var visibleSessionsVersion: Int = 0
     private var cleanupTimer: Timer?
@@ -544,6 +548,9 @@ final class SessionManager {
         selectedSessionId = session.id
         audioEngine?.play(.permissionRequest, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+
+        // 有审批时强制置顶显示
+        forceToShowForApproval()
     }
 
     func handleQuestionRequest(_ message: DIMessage, respond: @escaping @Sendable (String) -> Void, cancel: (@Sendable () -> Void)? = nil) {
@@ -591,6 +598,9 @@ final class SessionManager {
         selectedSessionId = session.id
         audioEngine?.play(.question, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+
+        // 有交互时强制置顶显示
+        forceToShowForApproval()
     }
 
     func handlePlanReview(_ message: DIMessage, respond: @escaping @Sendable (Bool, String?) -> Void) {
@@ -610,6 +620,9 @@ final class SessionManager {
         selectedSessionId = session.id
         audioEngine?.play(.planReview, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+
+        // 有审批时强制置顶显示
+        forceToShowForApproval()
     }
 
     func approvePermission(session: AgentSession) {
@@ -618,6 +631,9 @@ final class SessionManager {
         session.status = .active
         audioEngine?.play(.approved, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+
+        // 审批完成后恢复到 xnook
+        restoreToXnookIfNeeded()
     }
 
     func denyPermission(session: AgentSession) {
@@ -626,6 +642,9 @@ final class SessionManager {
         session.status = .active
         audioEngine?.play(.denied, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+
+        // 审批完成后恢复到 xnook
+        restoreToXnookIfNeeded()
     }
 
     func answerQuestion(session: AgentSession, answer: String) {
@@ -643,6 +662,9 @@ final class SessionManager {
         session.status = .active
         audioEngine?.play(.answered, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+
+        // 审批完成后恢复到 xnook
+        restoreToXnookIfNeeded()
     }
 
     func respondToPlan(session: AgentSession, approved: Bool, feedback: String?) {
@@ -651,6 +673,9 @@ final class SessionManager {
         session.status = .active
         audioEngine?.play(approved ? .approved : .denied, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+
+        // 审批完成后恢复到 xnook
+        restoreToXnookIfNeeded()
     }
 
     func dismissSession(_ session: AgentSession) {
@@ -914,6 +939,10 @@ final class SessionManager {
     /// If the agent sent new activity while we were still showing a pending interaction,
     /// the interaction was handled externally (e.g. user responded in the terminal).
     private func clearStaleInteraction(_ session: AgentSession) {
+        let hadPendingInteraction = session.status == .waitingPermission
+            || session.status == .waitingAnswer
+            || session.status == .waitingPlanReview
+
         switch session.status {
         case .waitingPermission:
             session.pendingPermission = nil
@@ -926,6 +955,11 @@ final class SessionManager {
             session.status = .active
         default:
             break
+        }
+
+        // 交互被外部清除时，重置中断标志，防止误触发恢复
+        if hadPendingInteraction {
+            approvalInterruptCount = 0
         }
     }
 
@@ -1032,5 +1066,32 @@ final class SessionManager {
         sessions.append(session)
         updateIndexForAppend(session, at: index)
         return session
+    }
+
+    // MARK: - 审批置顶与恢复
+
+    /// 有审批时强制置顶显示灵动岛（即使 xnook 在前台）
+    private func forceToShowForApproval() {
+        // 精确检查 xnook 是否正在运行（而非任意其他灵动岛应用）
+        if AppSwitcher.shared.isIslandRunning(named: "xnook") {
+            approvalInterruptCount += 1
+        }
+
+        // 强制显示灵动岛窗口
+        if let window = AppDelegate.shared?.notchWindow {
+            window.orderFrontRegardless()
+        }
+    }
+
+    /// 审批完成后恢复到 xnook（如果之前是从 xnook 被中断的）
+    private func restoreToXnookIfNeeded() {
+        approvalInterruptCount = max(0, approvalInterruptCount - 1)
+        guard approvalInterruptCount == 0 else { return }
+
+        // 精确检查 xnook 是否仍然运行
+        guard AppSwitcher.shared.isIslandRunning(named: "xnook") else { return }
+
+        // 切换回 xnook
+        AppSwitcher.shared.switchToIsland(named: "xnook")
     }
 }
