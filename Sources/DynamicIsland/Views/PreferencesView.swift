@@ -62,9 +62,6 @@ struct PreferencesView: View {
 
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("showOnAllSpaces") private var showOnAllSpaces = true
-    @AppStorage("autoCollapseDelay") private var autoCollapseDelay = 3.0
-    @AppStorage("expandedInactivityAutoHideDelay") private var expandedInactivityAutoHideDelay = 10.0
-    @AppStorage("hoverExitCollapseDelay") private var hoverExitCollapseDelay = 0.5
     @AppStorage("hideInFullscreen") private var hideInFullscreen = false
     @AppStorage("autoHideWhenNoActiveSessions") private var autoHideWhenNoActiveSessions = false
     @AppStorage("smartSuppression") private var smartSuppression = true
@@ -75,15 +72,11 @@ struct PreferencesView: View {
     @AppStorage("scrollDownToExpandPanel") private var scrollDownToExpandPanel = true
     @AppStorage("animationIntensity") private var animationIntensity = IslandAnimationIntensity.defaultValue.rawValue
     @AppStorage("jellyIntensity") private var jellyIntensity = IslandJellyIntensity.defaultValue.rawValue
-    @AppStorage("completedLingerDuration") private var completedLingerDuration = 120.0
-    @AppStorage("panelWidth") private var panelWidth = 420.0
-    @AppStorage("panelMaxHeight") private var panelMaxHeight = 480.0
     @AppStorage("showCollapsedAgentIcon") private var showCollapsedAgentIcon = true
     @AppStorage("showCollapsedSessionCount") private var showCollapsedSessionCount = true
     @AppStorage("showCollapsedQuota") private var showCollapsedQuota = true
     @AppStorage("showActivityTicker") private var showActivityTicker = true
     @AppStorage("tickerContentMode") private var tickerContentMode = CollapsedTickerContentMode.defaultValue.rawValue
-    @AppStorage("tickerSpeed") private var tickerSpeed = 25.0
     @AppStorage("quietHoursEnabled") private var quietHoursEnabled = false
     @AppStorage("quietHoursStart") private var quietHoursStart = "22:00"
     @AppStorage("quietHoursEnd") private var quietHoursEnd = "07:00"
@@ -281,18 +274,15 @@ struct PreferencesView: View {
                     }
                     dividerLine
                     settingRow(L10n.autoCollapse, id: "autoCollapse", description: L10n.autoCollapseDesc) {
-                        Slider(value: $autoCollapseDelay, in: 0...15, step: 0.5)
-                            .frame(width: 140)
+                        AppStorageSlider(key: "autoCollapseDelay", range: 0...15, format: "%.2fs")
                     }
                     dividerLine
                     settingRow(L10n.expandedInactivityAutoHide, id: "expandedInactivity", description: L10n.expandedInactivityAutoHideDesc) {
-                        Slider(value: $expandedInactivityAutoHideDelay, in: 0...120, step: 1)
-                            .frame(width: 140)
+                        AppStorageSlider(key: "expandedInactivityAutoHideDelay", range: 0...600, format: "%.2fs")
                     }
                     dividerLine
                     settingRow(L10n.hoverExitCollapse, id: "hoverExit", description: L10n.hoverExitCollapseDesc) {
-                        Slider(value: $hoverExitCollapseDelay, in: 0.1...3.0, step: 0.05)
-                            .frame(width: 140)
+                        AppStorageSlider(key: "hoverExitCollapseDelay", range: 0.1...3.0, format: "%.2fs")
                     }
                     dividerLine
                     settingRow(L10n.hideInFullscreen, id: "hideInFullscreen", description: L10n.hideInFullscreenDesc) {
@@ -308,8 +298,7 @@ struct PreferencesView: View {
                     }
                     dividerLine
                     settingRow(L10n.completedDisplay, id: "completedDisplay", description: L10n.completedDisplayDesc) {
-                        Slider(value: $completedLingerDuration, in: 0...600, step: 5)
-                            .frame(width: 140)
+                        AppStorageSlider(key: "completedLingerDuration", range: 0...600, format: "%.2fs")
                     }
                 }
             }
@@ -400,14 +389,20 @@ struct PreferencesView: View {
 
             section(L10n.sectionDisplay) {
                 card {
+                    settingRow(L10n.islandWidth, id: "islandWidth", description: L10n.islandWidthDesc) {
+                        AppStorageSlider(key: "islandWidth", range: 40...600, format: "%.2fpt")
+                    }
+                    dividerLine
+                    settingRow(L10n.islandHeight, id: "islandHeight", description: L10n.islandHeightDesc) {
+                        AppStorageSlider(key: "islandHeight", range: 8...120, format: "%.2fpt")
+                    }
+                    dividerLine
                     settingRow(L10n.panelWidth, id: "panelWidth", description: L10n.panelWidthDesc) {
-                        Slider(value: $panelWidth, in: 320...600, step: 20)
-                            .frame(width: 140)
+                        AppStorageSlider(key: "panelWidth", range: 320...600, format: "%.2fpt")
                     }
                     dividerLine
                     settingRow(L10n.panelMaxHeight, id: "panelMaxHeight", description: L10n.panelMaxHeightDesc) {
-                        Slider(value: $panelMaxHeight, in: 320...700, step: 20)
-                            .frame(width: 140)
+                        AppStorageSlider(key: "panelMaxHeight", range: 320...700, format: "%.2fpt")
                     }
                     dividerLine
                     settingRow(L10n.compactBadges, id: "compactBadges", description: L10n.compactBadgesDesc) {
@@ -490,8 +485,7 @@ struct PreferencesView: View {
                     }
                     dividerLine
                     settingRow(L10n.activityTickerSpeed, id: "tickerSpeed", description: L10n.activityTickerSpeedDesc) {
-                        Slider(value: $tickerSpeed, in: 10...60, step: 5)
-                            .frame(width: 140)
+                        AppStorageSlider(key: "tickerSpeed", range: 10...60, format: "%.2fpt/s")
                     }
                 }
             }

@@ -4,8 +4,22 @@ import SwiftUI
 enum IslandSizeCalculator {
     static let expandedPanelHeaderHeight: CGFloat = 48
     static let expandedPanelBottomInset: CGFloat = 16
-    static let collapsedShapeHeight: CGFloat = 32
+    static let defaultCollapsedShapeHeight: CGFloat = 32
     static let collapsedPillWidthNotched: CGFloat = 276
+    /// 收起状态默认宽度（未被刘海遮挡时）
+    static let defaultCollapsedPillWidth: CGFloat = 180
+
+    /// 读取用户设置的收起高度；未设置（0）时返回默认值
+    static var collapsedShapeHeight: CGFloat {
+        let saved = UserDefaults.standard.double(forKey: "islandHeight")
+        return saved > 0 ? CGFloat(saved) : defaultCollapsedShapeHeight
+    }
+
+    /// 读取用户设置的收起宽度；未设置（0）时返回默认值
+    static var collapsedPillWidth: CGFloat {
+        let saved = UserDefaults.standard.double(forKey: "islandWidth")
+        return saved > 0 ? CGFloat(saved) : defaultCollapsedPillWidth
+    }
 
     // MARK: - Collapsed
 
@@ -13,14 +27,8 @@ enum IslandSizeCalculator {
         islandObscuredByNotch: Bool,
         visibleSessionCount: Int
     ) -> CGFloat {
-        if islandObscuredByNotch { return collapsedPillWidthNotched }
-        let n = visibleSessionCount
-        if n == 0 { return 180 }
-        let icon: CGFloat = 22
-        let gap: CGFloat = 8
-        let horizontalPadding: CGFloat = 40
-        let w = horizontalPadding + CGFloat(n) * icon + CGFloat(max(0, n - 1)) * gap
-        return min(max(w, 160), 420)
+        // 始终使用用户设置的宽度（参考 xnook），未设置时回落到默认值
+        return collapsedPillWidth
     }
 
     // MARK: - Expanded

@@ -7,7 +7,8 @@ final class NotchWindow: NSPanel {
     static let maxExpandedHeight: CGFloat = 600
 
     private static let expandedPadding: CGFloat = 8
-    private static let collapsedHitHeight: CGFloat = 32
+    /// 最小点击高度，使用 IslandSizeCalculator 的用户设置高度
+    private static var collapsedHitHeight: CGFloat { IslandSizeCalculator.collapsedShapeHeight }
     /// 双指下滑展开的最小滚动距离，过滤触控板惯性残余
     static let scrollExpandMinDelta: CGFloat = 2
 
@@ -85,7 +86,7 @@ final class NotchWindow: NSPanel {
     init() {
         let screen = Self.bestScreen()
         let width: CGFloat = 220
-        let height: CGFloat = 50
+        let height = IslandSizeCalculator.collapsedShapeHeight
         let x = screen.frame.origin.x + (screen.frame.width - width) / 2
         let y = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen) - height
 

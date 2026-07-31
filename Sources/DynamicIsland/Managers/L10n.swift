@@ -230,6 +230,18 @@ enum L10n {
             en: "Panel width")
     }
 
+    static var islandWidth: String {
+        localized("islandWidth",
+            zh: "岛宽度", ko: "섬 너비", ja: "アイランド幅", fr: "Largeur de l'île",
+            en: "Island width")
+    }
+
+    static var islandHeight: String {
+        localized("islandHeight",
+            zh: "岛高度", ko: "섬 높이", ja: "アイランド高さ", fr: "Hauteur de l'île",
+            en: "Island height")
+    }
+
     static var panelMaxHeight: String {
         localized("panelMaxHeight",
             zh: "面板最大高度", ko: "패널 최대 높이", ja: "パネル最大高さ", fr: "Hauteur max du panneau",
@@ -1091,6 +1103,24 @@ enum L10n {
             ja: "展開パネルの幅（ピクセル）、スライダーで調整",
             fr: "Largeur du panneau déplié (pixels), ajustable avec le curseur",
             en: "Width of the expanded panel in pixels, adjustable with the slider")
+    }
+
+    static var islandWidthDesc: String {
+        localized("islandWidthDesc",
+            zh: "收起状态下灵动岛的宽度（像素），拖动滑块无极调节",
+            ko: "접힌 상태의 아일랜드 너비 (픽셀)",
+            ja: "折りたたみ時のアイランド幅（ピクセル）、スライダーで調整",
+            fr: "Largeur de l'île en mode réduit (pixels), ajustable avec le curseur",
+            en: "Width of the island when collapsed in pixels, adjustable with the slider")
+    }
+
+    static var islandHeightDesc: String {
+        localized("islandHeightDesc",
+            zh: "收起状态下灵动岛的高度（像素），拖动滑块无极调节",
+            ko: "접힌 상태의 아일랜드 높이 (픽셀)",
+            ja: "折りたたみ時のアイランド高さ（ピクセル）、スライダーで調整",
+            fr: "Hauteur de l'île en mode réduit (pixels), ajustable avec le curseur",
+            en: "Height of the island when collapsed in pixels, adjustable with the slider")
     }
 
     static var panelMaxHeightDesc: String {
