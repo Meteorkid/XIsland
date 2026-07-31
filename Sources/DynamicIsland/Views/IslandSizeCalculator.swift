@@ -4,10 +4,10 @@ import SwiftUI
 enum IslandSizeCalculator {
     static let expandedPanelHeaderHeight: CGFloat = 48
     static let expandedPanelBottomInset: CGFloat = 16
-    static let defaultCollapsedShapeHeight: CGFloat = 32
+    static let defaultCollapsedShapeHeight: CGFloat = 38.77
     static let collapsedPillWidthNotched: CGFloat = 276
     /// 收起状态默认宽度（未被刘海遮挡时）
-    static let defaultCollapsedPillWidth: CGFloat = 180
+    static let defaultCollapsedPillWidth: CGFloat = 261.34
 
     /// 读取用户设置的收起高度；未设置（0）时返回默认值
     static var collapsedShapeHeight: CGFloat {

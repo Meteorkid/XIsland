@@ -51,8 +51,8 @@ struct NotchContentView: View {
     @AppStorage("hoverToExpandPanel") private var hoverToExpandPanel = false
     @AppStorage("smartSuppression") private var smartSuppression = true
     @AppStorage("autoHideWhenNoActiveSessions") private var autoHideWhenNoActiveSessions = false
-    @AppStorage("panelWidth") private var panelWidth = 420.0
-    @AppStorage("panelMaxHeight") private var panelMaxHeight = 480.0
+    @AppStorage("panelWidth") private var panelWidth = 380.0
+    @AppStorage("panelMaxHeight") private var panelMaxHeight = 620.0
     @AppStorage("showActivityTicker") private var showActivityTicker = true
     @AppStorage("tickerContentMode") private var tickerContentMode = CollapsedTickerContentMode.defaultValue.rawValue
     @AppStorage("tickerSpeed") private var tickerSpeed = 25.0
