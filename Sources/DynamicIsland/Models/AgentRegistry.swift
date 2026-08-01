@@ -51,10 +51,10 @@ extension AgentType {
             displayName: "Trae", shortName: "Trae",
             color: Color(red: 0.2, green: 0.7, blue: 0.95),
             iconSymbol: "sparkle.magnifyingglass",
-            bundleIds: ["com.trae.app", "cn.trae.app", "cn.trae.solo.app"],
-            processNames: ["Trae", "Trae CN", "TRAE SOLO CN"],
+            bundleIds: ["com.trae.app", "cn.trae.app", "cn.trae.solo.app", "cn.trae.work.app"],
+            processNames: ["Trae", "Trae CN", "TRAE SOLO CN", "TRAE WORK CN"],
             isDesktopApp: true, sendsSessionEnd: true,
-            aliases: ["trae", "trae cn", "trae-cn", "traecn", "trae work cn", "trae solo cn", "trae-aicc"]
+            aliases: ["trae", "trae cn", "trae-cn", "traecn", "trae work cn", "trae solo cn", "trae-aicc", "trae work"]
         ),
         .openCode: AgentMeta(
             displayName: "OpenCode", shortName: "OpenCode",
@@ -167,6 +167,70 @@ extension AgentType {
             bundleIds: [], processNames: ["aider"],
             isDesktopApp: false, sendsSessionEnd: true,
             aliases: ["aider"]
+        ),
+        .windsurf: AgentMeta(
+            displayName: "Windsurf", shortName: "Windsurf",
+            color: Color(red: 0.2, green: 0.6, blue: 0.9),
+            iconSymbol: "wind",
+            bundleIds: ["com.codeium.windsurf"], processNames: ["Windsurf"],
+            isDesktopApp: true, sendsSessionEnd: true,
+            aliases: ["windsurf"]
+        ),
+        .devin: AgentMeta(
+            displayName: "Devin", shortName: "Devin",
+            color: Color(red: 0.4, green: 0.4, blue: 0.9),
+            iconSymbol: "person.fill.checkmark",
+            bundleIds: [], processNames: ["devin"],
+            isDesktopApp: false, sendsSessionEnd: true,
+            aliases: ["devin", "cognition"]
+        ),
+        .amazonQ: AgentMeta(
+            displayName: "Amazon Q", shortName: "Q",
+            color: Color(red: 0.95, green: 0.6, blue: 0.1),
+            iconSymbol: "q.square",
+            bundleIds: [], processNames: ["q", "amazon-q"],
+            isDesktopApp: false, sendsSessionEnd: true,
+            aliases: ["amazon q", "q developer", "codewhisperer", "amazon-q"]
+        ),
+        .tabnine: AgentMeta(
+            displayName: "Tabnine", shortName: "Tabnine",
+            color: Color(red: 0.3, green: 0.3, blue: 0.9),
+            iconSymbol: "t.circle",
+            bundleIds: [], processNames: ["tabnine"],
+            isDesktopApp: false, sendsSessionEnd: true,
+            aliases: ["tabnine"]
+        ),
+        .cody: AgentMeta(
+            displayName: "Cody", shortName: "Cody",
+            color: Color(red: 0.8, green: 0.3, blue: 0.5),
+            iconSymbol: "c.circle",
+            bundleIds: [], processNames: ["cody"],
+            isDesktopApp: false, sendsSessionEnd: true,
+            aliases: ["cody", "sourcegraph"]
+        ),
+        .cline: AgentMeta(
+            displayName: "Cline", shortName: "Cline",
+            color: Color(red: 0.2, green: 0.8, blue: 0.6),
+            iconSymbol: "l.circle",
+            bundleIds: [], processNames: ["cline"],
+            isDesktopApp: false, sendsSessionEnd: true,
+            aliases: ["cline"]
+        ),
+        .`continue`: AgentMeta(
+            displayName: "Continue", shortName: "Continue",
+            color: Color(red: 0.5, green: 0.5, blue: 0.9),
+            iconSymbol: "arrow.right.circle",
+            bundleIds: [], processNames: ["continue"],
+            isDesktopApp: false, sendsSessionEnd: true,
+            aliases: ["continue"]
+        ),
+        .copilotCli: AgentMeta(
+            displayName: "Copilot CLI", shortName: "Copilot",
+            color: Color(red: 0.3, green: 0.7, blue: 0.9),
+            iconSymbol: "terminal.fill",
+            bundleIds: [], processNames: ["copilot"],
+            isDesktopApp: false, sendsSessionEnd: true,
+            aliases: ["copilot cli", "github copilot"]
         ),
     ]
 

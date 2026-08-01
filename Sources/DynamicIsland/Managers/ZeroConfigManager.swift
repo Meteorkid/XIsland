@@ -39,6 +39,14 @@ enum ZeroConfigManager {
         case .hermes: configureHermes()
         case .glm: configureGLM()
         case .aider: configureAider()
+        case .windsurf: configureWindsurf()
+        case .devin: configureDevin()
+        case .amazonQ: configureAmazonQ()
+        case .tabnine: configureTabnine()
+        case .cody: configureCody()
+        case .cline: configureCline()
+        case .`continue`: configureContinue()
+        case .copilotCli: configureCopilotCli()
         }
     }
 
@@ -1265,6 +1273,178 @@ enum ZeroConfigManager {
         let newContent = content + "\n" + block + "\n"
         try? newContent.write(toFile: configPath, atomically: true, encoding: .utf8)
         print("[ZeroConfig] GLM hooks configured at \(configPath)")
+    }
+
+    // MARK: - New Agents Configuration
+
+    private static func configureWindsurf() {
+        // Windsurf uses JSON hooks at ~/.windsurf/hooks.json (similar to Cursor)
+        let path = "\(home)/.windsurf/hooks.json"
+        var config = readJSON(path) ?? [:]
+        var hooks = config["hooks"] as? [[String: Any]] ?? []
+
+        let startHook: [String: Any] = [
+            "name": "xisland_session_start",
+            "command": "~/.xisland/bin/di-bridge --agent windsurf --hook session_start --session windsurf-$(pwd | md5)",
+            "event": "onIdle"
+        ]
+        let endHook: [String: Any] = [
+            "name": "xisland_session_end",
+            "command": "~/.xisland/bin/di-bridge --agent windsurf --hook session_end --session windsurf-$(pwd | md5)",
+            "event": "afterCommand"
+        ]
+
+        hooks.removeAll { ($0["name"] as? String)?.hasPrefix("xisland_") == true }
+        hooks.append(contentsOf: [startHook, endHook])
+        config["hooks"] = hooks
+        writeJSON(path, config)
+        print("[ZeroConfig] Windsurf hooks configured at \(path)")
+    }
+
+    private static func configureDevin() {
+        // Devin uses its own config format
+        let dir = "\(home)/.devin"
+        let configPath = "\(dir)/config.json"
+        ensureDir(dir)
+
+        var config = readJSON(configPath) ?? [:]
+        config["xisland_bridge"] = "~/.xisland/bin/di-bridge"
+        config["xisland_agent"] = "devin"
+        writeJSON(configPath, config)
+        print("[ZeroConfig] Devin config updated at \(configPath)")
+    }
+
+    private static func configureAmazonQ() {
+        // Amazon Q Developer uses JSON config
+        let path = "\(home)/.amazonq/hooks.json"
+        var config = readJSON(path) ?? [:]
+        var hooks = config["hooks"] as? [[String: Any]] ?? []
+
+        let startHook: [String: Any] = [
+            "name": "xisland_session_start",
+            "command": "~/.xisland/bin/di-bridge --agent amazon_q --hook session_start --session amazonq-$(pwd | md5)",
+            "event": "onIdle"
+        ]
+        let endHook: [String: Any] = [
+            "name": "xisland_session_end",
+            "command": "~/.xisland/bin/di-bridge --agent amazon_q --hook session_end --session amazonq-$(pwd | md5)",
+            "event": "afterCommand"
+        ]
+
+        hooks.removeAll { ($0["name"] as? String)?.hasPrefix("xisland_") == true }
+        hooks.append(contentsOf: [startHook, endHook])
+        config["hooks"] = hooks
+        writeJSON(path, config)
+        print("[ZeroConfig] Amazon Q hooks configured at \(path)")
+    }
+
+    private static func configureTabnine() {
+        // Tabnine uses its own config format
+        let dir = "\(home)/.tabnine"
+        let configPath = "\(dir)/config.json"
+        ensureDir(dir)
+
+        var config = readJSON(configPath) ?? [:]
+        config["xisland_bridge"] = "~/.xisland/bin/di-bridge"
+        config["xisland_agent"] = "tabnine"
+        writeJSON(configPath, config)
+        print("[ZeroConfig] Tabnine config updated at \(configPath)")
+    }
+
+    private static func configureCody() {
+        // Cody (Sourcegraph) uses JSON config
+        let path = "\(home)/.cody/hooks.json"
+        var config = readJSON(path) ?? [:]
+        var hooks = config["hooks"] as? [[String: Any]] ?? []
+
+        let startHook: [String: Any] = [
+            "name": "xisland_session_start",
+            "command": "~/.xisland/bin/di-bridge --agent cody --hook session_start --session cody-$(pwd | md5)",
+            "event": "onIdle"
+        ]
+        let endHook: [String: Any] = [
+            "name": "xisland_session_end",
+            "command": "~/.xisland/bin/di-bridge --agent cody --hook session_end --session cody-$(pwd | md5)",
+            "event": "afterCommand"
+        ]
+
+        hooks.removeAll { ($0["name"] as? String)?.hasPrefix("xisland_") == true }
+        hooks.append(contentsOf: [startHook, endHook])
+        config["hooks"] = hooks
+        writeJSON(path, config)
+        print("[ZeroConfig] Cody hooks configured at \(path)")
+    }
+
+    private static func configureCline() {
+        // Cline uses JSON config
+        let path = "\(home)/.cline/hooks.json"
+        var config = readJSON(path) ?? [:]
+        var hooks = config["hooks"] as? [[String: Any]] ?? []
+
+        let startHook: [String: Any] = [
+            "name": "xisland_session_start",
+            "command": "~/.xisland/bin/di-bridge --agent cline --hook session_start --session cline-$(pwd | md5)",
+            "event": "onIdle"
+        ]
+        let endHook: [String: Any] = [
+            "name": "xisland_session_end",
+            "command": "~/.xisland/bin/di-bridge --agent cline --hook session_end --session cline-$(pwd | md5)",
+            "event": "afterCommand"
+        ]
+
+        hooks.removeAll { ($0["name"] as? String)?.hasPrefix("xisland_") == true }
+        hooks.append(contentsOf: [startHook, endHook])
+        config["hooks"] = hooks
+        writeJSON(path, config)
+        print("[ZeroConfig] Cline hooks configured at \(path)")
+    }
+
+    private static func configureContinue() {
+        // Continue uses JSON config
+        let path = "\(home)/.continue/hooks.json"
+        var config = readJSON(path) ?? [:]
+        var hooks = config["hooks"] as? [[String: Any]] ?? []
+
+        let startHook: [String: Any] = [
+            "name": "xisland_session_start",
+            "command": "~/.xisland/bin/di-bridge --agent continue --hook session_start --session continue-$(pwd | md5)",
+            "event": "onIdle"
+        ]
+        let endHook: [String: Any] = [
+            "name": "xisland_session_end",
+            "command": "~/.xisland/bin/di-bridge --agent continue --hook session_end --session continue-$(pwd | md5)",
+            "event": "afterCommand"
+        ]
+
+        hooks.removeAll { ($0["name"] as? String)?.hasPrefix("xisland_") == true }
+        hooks.append(contentsOf: [startHook, endHook])
+        config["hooks"] = hooks
+        writeJSON(path, config)
+        print("[ZeroConfig] Continue hooks configured at \(path)")
+    }
+
+    private static func configureCopilotCli() {
+        // GitHub Copilot CLI uses JSON config
+        let path = "\(home)/.copilot/hooks.json"
+        var config = readJSON(path) ?? [:]
+        var hooks = config["hooks"] as? [[String: Any]] ?? []
+
+        let startHook: [String: Any] = [
+            "name": "xisland_session_start",
+            "command": "~/.xisland/bin/di-bridge --agent copilot_cli --hook session_start --session copilot-$(pwd | md5)",
+            "event": "onIdle"
+        ]
+        let endHook: [String: Any] = [
+            "name": "xisland_session_end",
+            "command": "~/.xisland/bin/di-bridge --agent copilot_cli --hook session_end --session copilot-$(pwd | md5)",
+            "event": "afterCommand"
+        ]
+
+        hooks.removeAll { ($0["name"] as? String)?.hasPrefix("xisland_") == true }
+        hooks.append(contentsOf: [startHook, endHook])
+        config["hooks"] = hooks
+        writeJSON(path, config)
+        print("[ZeroConfig] Copilot CLI hooks configured at \(path)")
     }
 
     // MARK: - Helpers

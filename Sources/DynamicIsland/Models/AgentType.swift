@@ -20,6 +20,14 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
     case hermes = "hermes"
     case glm = "glm"
     case aider = "aider"
+    case windsurf = "windsurf"
+    case devin = "devin"
+    case amazonQ = "amazon_q"
+    case tabnine = "tabnine"
+    case cody = "cody"
+    case cline = "cline"
+    case `continue` = "continue"
+    case copilotCli = "copilot_cli"
 
     var id: String { rawValue }
 
@@ -68,11 +76,19 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
                 return type
             }
         }
-        if lower.contains("cursor") || lower.contains("windsurf") { return .cursor }
+        if lower.contains("cursor") { return .cursor }
+        if lower.contains("windsurf") { return .windsurf }
         if lower.contains("claude") { return .claudeCode }
         if lower.contains("codex") { return .codex }
         if lower.contains("trae") { return .trae }
         if lower.contains("aider") { return .aider }
+        if lower.contains("devin") { return .devin }
+        if lower.contains("amazon") || lower.contains("q developer") { return .amazonQ }
+        if lower.contains("tabnine") { return .tabnine }
+        if lower.contains("cody") { return .cody }
+        if lower.contains("cline") { return .cline }
+        if lower.contains("continue") { return .`continue` }
+        if lower.contains("copilot") { return .copilot }
 
         return nil
     }
