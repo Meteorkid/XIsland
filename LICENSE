@@ -1,21 +1,42 @@
-MIT License
+# 源码可用 — 非商业许可证（Source-Available, Non-Commercial License）
 
-Copyright (c) 2026 Meteorkid
+Copyright (c) 2026 Meteor Store
+联系 / Contact: meteor@stu.gpnu.edu.cn
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## 中文版
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+本软件及其源代码（以下合称"软件"）保留所有权利。在遵守下列限制的前提下，你被允许查看这份软件，否则不得使用本软件。
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+### 允许（Permitted）
+- 出于个人学习、研究、安全评估或非商业测试目的，查看、阅读本软件源码，以及在本机运行本软件。
+- 就本软件的缺陷或改进建议联系作者。
+
+### 禁止（Prohibited）
+- 任何商业用途，包括但不限于：销售、出租、出借、许可、转售本软件或其副本，或将其作为任何收费产品、服务、订阅的一部分。
+- 复制、分叉、重新分发本软件或其任何部分（包括源码与预编译二进制），无论是否经过修改。
+- 将本软件整体或部分打包进其他软件、项目、商店或发行渠道向第三方提供。
+- 绕过、规避或移除本软件的任何授权校验、访问门控或试用限制机制。
+
+### 单独的商业授权
+如需将本软件用于商业用途、定制开发或集成，请通过 meteor@stu.gpnu.edu.cn 联系作者获取商业授权。
+
+## English
+
+All rights reserved. You may view this software under the following restrictions; otherwise you may not use it.
+
+### Permitted
+- Viewing, reading, and running the software locally for personal learning, research, security evaluation, or non-commercial testing.
+- Contacting the author about defects or improvement suggestions.
+
+### Prohibited
+- Any commercial use, including selling, renting, licensing, or reselling the software or its copies, or bundling it into any paid product or service.
+- Copying, forking, or redistributing the software, in whole or in part (source or prebuilt binaries), whether modified or not.
+- Bundling the software into other software, projects, stores, or distribution channels provided to third parties.
+- Bypassing, circumventing, or removing any authorization checks, access gates, or trial restrictions of the software.
+
+### Commercial license
+For commercial use, customization, or integration, contact the author at meteor@stu.gpnu.edu.cn.
+
+## 免责声明 / DISCLAIMER
+本软件按"现状"提供，不对其正确性、安全性或适用性作任何明示或默示的担保。作者不对因使用本软件造成的任何直接或间接损失承担责任。
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM THE USE OF OR OTHER DEALINGS IN THE SOFTWARE.
