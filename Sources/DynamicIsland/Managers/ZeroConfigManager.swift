@@ -47,6 +47,7 @@ enum ZeroConfigManager {
         case .cline: configureCline()
         case .`continue`: configureContinue()
         case .copilotCli: configureCopilotCli()
+        default: break
         }
     }
 
@@ -1589,6 +1590,8 @@ enum ZeroConfigManager {
         case .aider:
             let path = "\(home)/.xisland/bin/aider-bridge"
             return FileManager.default.fileExists(atPath: path)
+        default:
+            return false
         }
     }
 
@@ -1643,6 +1646,8 @@ enum ZeroConfigManager {
             removeTOMLBlock(at: "\(home)/.zhipu/config.toml", marker: "# X Island hooks")
         case .aider:
             try? FileManager.default.removeItem(atPath: "\(home)/.xisland/bin/aider-bridge")
+        default:
+            break
         }
     }
 

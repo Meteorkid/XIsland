@@ -8,9 +8,10 @@ final class NotchWindowTests: XCTestCase {
 
         window.resizeToFitCollapse(contentWidth: 180, contentHeight: 32)
 
+        // 高度 = max(内容高度, 收起态高度) + windowTopExtension（窗口向上延伸使屏幕顶端在窗口内部）
+        let expectedHeight = max(32, IslandSizeCalculator.collapsedShapeHeight) + NotchWindow.windowTopExtension
         XCTAssertEqual(window.frame.width, 180, accuracy: 0.5)
-        // 高度 = 内容高度 + windowTopExtension（窗口向上延伸使屏幕顶端在窗口内部）
-        XCTAssertEqual(window.frame.height, 32 + NotchWindow.windowTopExtension, accuracy: 0.5)
+        XCTAssertEqual(window.frame.height, expectedHeight, accuracy: 0.5)
     }
 
     func testResizeToFitClampsTinyHeights() {
@@ -18,7 +19,8 @@ final class NotchWindowTests: XCTestCase {
 
         window.resizeToFit(contentWidth: 180, contentHeight: 1)
 
-        XCTAssertEqual(window.frame.height, 32 + NotchWindow.windowTopExtension, accuracy: 0.5)
+        let expectedHeight = max(32, IslandSizeCalculator.collapsedShapeHeight) + NotchWindow.windowTopExtension
+        XCTAssertEqual(window.frame.height, expectedHeight, accuracy: 0.5)
     }
 
     func testShouldTriggerScrollExpandAcceptsCollapsedPreciseDownwardScrollInsideHitFrame() {
@@ -68,5 +70,21 @@ final class NotchWindowTests: XCTestCase {
                 mouseLocation: CGPoint(x: 80, y: 899)
             )
         )
+    }
+
+    func testActiveScreenReturnsAnAvailableScreen() {
+        let active = NotchWindow.activeScreen()
+        XCTAssertTrue(NSScreen.screens.contains { $0.frame == active.frame })
+    }
+
+    func testShowAtActiveScreenPositionsOnAnAvailableScreenAndShows() {
+        let window = NotchWindow()
+        window.orderOut(nil)
+        XCTAssertFalse(window.isVisible)
+
+        window.showAtActiveScreen()
+
+        XCTAssertTrue(window.isVisible)
+        XCTAssertTrue(NSScreen.screens.contains { $0.frame == window.screen?.frame })
     }
 }

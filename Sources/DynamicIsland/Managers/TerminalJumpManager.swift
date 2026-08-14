@@ -140,9 +140,9 @@ enum TerminalApp: String, CaseIterable {
         case .trae: return .trae
         case .codex: return .codex
         case .copilot: return .vscode
-        case .claudeCode, .geminiCli, .openCode, .droid, .qoder, .codeBuddy,
-             .qwen, .kimi, .deepseek, .kiro, .amp, .pi, .hermes, .glm, .aider:
-            return nil
+        case .windsurf: return .windsurf
+        case .zed: return .zed
+        default: return nil
         }
     }
 }

@@ -28,6 +28,10 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
     case cline = "cline"
     case `continue` = "continue"
     case copilotCli = "copilot_cli"
+    case rooCode = "roo_code"
+    case pearai = "pearai"
+    case zed = "zed"
+    case jetbrainsAi = "jetbrains_ai"
 
     var id: String { rawValue }
 
@@ -89,6 +93,10 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
         if lower.contains("cline") { return .cline }
         if lower.contains("continue") { return .`continue` }
         if lower.contains("copilot") { return .copilot }
+        if lower.contains("roo code") || lower.contains("roo-code") || lower.contains("roocode") || lower.contains("roo-cline") || lower.contains("roocline") { return .rooCode }
+        if lower.contains("pearai") { return .pearai }
+        if lower == "zed" || lower.contains("zed ai") || lower.hasPrefix("zed-") || lower.contains("zed.dev") { return .zed }
+        if lower.contains("jetbrains") || lower.contains("intellij") || lower.contains("webstorm") || lower.contains("goland") || lower.contains("pycharm") || lower.contains("rustrover") || lower.contains("phpstorm") || lower.contains("rubymine") || lower.contains("clion") || lower.contains("rider") { return .jetbrainsAi }
 
         return nil
     }

@@ -20,7 +20,7 @@ final class TerminalAppDetectionTests: XCTestCase {
 
     func testAgentTypeMapsCursorFamilyBundleIds() {
         XCTAssertEqual(AgentType.fromBundleId("com.todesktop.230313mzl4w4u92"), .cursor)
-        XCTAssertEqual(AgentType.fromBundleId("com.codeium.windsurf"), .cursor)
+        XCTAssertEqual(AgentType.fromBundleId("com.codeium.windsurf"), .windsurf)
         XCTAssertEqual(AgentType.fromBundleId("com.trae.app"), .trae)
         XCTAssertEqual(AgentType.fromBundleId("cn.trae.app"), .trae)
         XCTAssertEqual(AgentType.fromBundleId("cn.trae.solo.app"), .trae)

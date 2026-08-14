@@ -1077,9 +1077,9 @@ final class SessionManager {
             approvalInterruptCount += 1
         }
 
-        // 强制显示灵动岛窗口
+        // 强制显示灵动岛窗口（重新定位到当前主界面所在屏幕，避免多桌面/多显示器时展开到错误位置）
         if let window = AppDelegate.shared?.notchWindow {
-            window.orderFrontRegardless()
+            window.showAtActiveScreen()
         }
     }
 

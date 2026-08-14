@@ -18,8 +18,18 @@ final class AgentTypeTests: XCTestCase {
 
     func testFromAlias() {
         XCTAssertEqual(AgentType.from("claude"), .claudeCode)
-        XCTAssertEqual(AgentType.from("windsurf"), .cursor)
+        XCTAssertEqual(AgentType.from("windsurf"), .windsurf)
         XCTAssertEqual(AgentType.from("zhipu"), .glm)
+    }
+
+    func testFromAliasNewAgents() {
+        XCTAssertEqual(AgentType.from("roo"), .rooCode)
+        XCTAssertEqual(AgentType.from("roo-cline"), .rooCode)
+        XCTAssertEqual(AgentType.from("pearai"), .pearai)
+        XCTAssertEqual(AgentType.from("zed"), .zed)
+        XCTAssertEqual(AgentType.from("zed-ai"), .zed)
+        XCTAssertEqual(AgentType.from("jetbrains"), .jetbrainsAi)
+        XCTAssertEqual(AgentType.from("intellij"), .jetbrainsAi)
     }
 
     func testFromSubstringFallback() {
@@ -44,6 +54,13 @@ final class AgentTypeTests: XCTestCase {
         XCTAssertEqual(AgentType.fromBundleId("com.openai.codex"), .codex)
         XCTAssertEqual(AgentType.fromBundleId("com.trae.app"), .trae)
         XCTAssertEqual(AgentType.fromBundleId("cn.trae.solo.app"), .trae)
+    }
+
+    func testFromBundleIdNewAgents() {
+        XCTAssertEqual(AgentType.fromBundleId("dev.pearai"), .pearai)
+        XCTAssertEqual(AgentType.fromBundleId("com.pearai.app"), .pearai)
+        XCTAssertEqual(AgentType.fromBundleId("dev.zed.Zed"), .zed)
+        XCTAssertEqual(AgentType.fromBundleId("dev.zed.Zed-Preview"), .zed)
     }
 
     func testFromBundleIdCaseInsensitive() {

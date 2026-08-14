@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.13.0 (2026-08-14)
+
+- 适配市面主流 AI 编程工具：新增 Roo Code、PearAI、Zed AI、JetBrains AI 支持；将 Windsurf 从 Cursor 中拆分为独立工具。
+- 更新 README / README_zh 支持矩阵，补充 Trae CN、Qwen Code、Amp、Pi Agent、Copilot CLI、Cline、Continue、Cody、Tabnine、Amazon Q Developer、Devin、Qoder、Roo Code、PearAI、Zed、JetBrains AI 等工具的接入方式。
+- 修复多显示器/多桌面（Spaces）场景下，显示审批面板时可能误判"当前主界面"所在屏幕，导致面板在错误的屏幕/桌面展开的问题；现在审批时会在用户当前正在使用的主界面所在屏幕展开面板。
+
+---
+
+## v1.12.0 (2026-08-01)
+
+- 灵动岛高度无极调节：收起态药丸高度可自由调节，并新增 AppStorageSlider 组件。
+- 更新 Cask 安装包版本号与校验和。
+
+---
+
 ## v1.11.0 (2026-07-16)
 
 - 新增任务审批置顶功能：当有权限请求、计划审查或问题询问时，自动展开并置顶显示灵动岛，即使 xnook 在前台也会优先显示。

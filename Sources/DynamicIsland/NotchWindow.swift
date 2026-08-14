@@ -342,6 +342,42 @@ final class NotchWindow: NSPanel {
         return NSScreen.screens.first ?? NSScreen()
     }
 
+    /// 返回当前"正在显示的主界面"所在的屏幕。
+    /// 多显示器/多桌面时，鼠标未必落在用户当前工作的显示器上，
+    /// 因此优先取前台应用主窗口所在屏幕，其次 NSScreen.main，最后才是鼠标所在屏幕（bestScreen）。
+    static func activeScreen() -> NSScreen {
+        if let front = NSWorkspace.shared.frontmostApplication,
+           front.bundleIdentifier != Bundle.main.bundleIdentifier {
+            let opts = CGWindowListOption([.optionOnScreenOnly, .excludeDesktopElements])
+            if let list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] {
+                var best: CGRect?
+                var bestArea: CGFloat = 0
+                for info in list {
+                    guard (info[kCGWindowOwnerPID as String] as? pid_t) == front.processIdentifier,
+                          let bounds = info[kCGWindowBounds as String] as? [String: CGFloat],
+                          let x = bounds["X"],
+                          let y = bounds["Y"],
+                          let w = bounds["Width"],
+                          let h = bounds["Height"],
+                          w >= 100, h >= 100 else { continue }
+                    let rect = CGRect(x: x, y: y, width: w, height: h)
+                    let area = w * h
+                    if area > bestArea {
+                        bestArea = area
+                        best = rect
+                    }
+                }
+                if let best,
+                   best.minX.isFinite, best.minY.isFinite,
+                   let screen = NSScreen.screens.first(where: { $0.frame.contains(CGPoint(x: best.midX, y: best.midY)) }) {
+                    return screen
+                }
+            }
+        }
+        if let main = NSScreen.main { return main }
+        return bestScreen()
+    }
+
     /// 返回缓存的 bestScreen，仅在鼠标跨越屏幕边界时刷新。
     /// 用于 setFrame/setFrameDirect 中避免高频遍历。
     private func cachedOrRefreshScreen() -> NSScreen {
@@ -468,6 +504,17 @@ final class NotchWindow: NSPanel {
             return
         }
         repositionOnScreen(mouseScreen)
+        orderFrontRegardless()
+    }
+
+    /// 在当前"正在显示的主界面"所在屏幕显示并置顶（审批/问答/计划评审时使用）。
+    /// 与 showAtMouseScreen 不同，不依赖鼠标位置，避免多显示器时展开到错误的屏幕。
+    func showAtActiveScreen() {
+        isHiddenByIslandSwitch = false
+        if let currentIsland = AppSwitcher.shared.currentIsland {
+            IslandIntegrationSettings.markVisible(currentIsland)
+        }
+        repositionOnScreen(Self.activeScreen())
         orderFrontRegardless()
     }
 

@@ -42,10 +42,10 @@ extension AgentType {
             displayName: "Cursor", shortName: "Cursor",
             color: Color(red: 0.6, green: 0.4, blue: 0.9),
             iconSymbol: "cursorarrow.rays",
-            bundleIds: ["com.todesktop.230313mzl4w4u92", "com.codeium.windsurf"],
+            bundleIds: ["com.todesktop.230313mzl4w4u92"],
             processNames: ["Cursor"],
             isDesktopApp: true, sendsSessionEnd: true,
-            aliases: ["windsurf"]
+            aliases: []
         ),
         .trae: AgentMeta(
             displayName: "Trae", shortName: "Trae",
@@ -231,6 +231,38 @@ extension AgentType {
             bundleIds: [], processNames: ["copilot"],
             isDesktopApp: false, sendsSessionEnd: true,
             aliases: ["copilot cli", "github copilot"]
+        ),
+        .rooCode: AgentMeta(
+            displayName: "Roo Code", shortName: "Roo",
+            color: Color(red: 0.85, green: 0.3, blue: 0.5),
+            iconSymbol: "r.circle",
+            bundleIds: [], processNames: [],
+            isDesktopApp: false, sendsSessionEnd: true,
+            aliases: ["roo", "roo-code", "roo_code", "roo-cline", "roocline", "roo code"]
+        ),
+        .pearai: AgentMeta(
+            displayName: "PearAI", shortName: "Pear",
+            color: Color(red: 0.4, green: 0.9, blue: 0.6),
+            iconSymbol: "leaf",
+            bundleIds: ["dev.pearai", "com.pearai.app"], processNames: ["PearAI"],
+            isDesktopApp: true, sendsSessionEnd: true,
+            aliases: ["pearai", "pear-ai", "pear_ai"]
+        ),
+        .zed: AgentMeta(
+            displayName: "Zed AI", shortName: "Zed",
+            color: Color(red: 0.85, green: 0.2, blue: 0.95),
+            iconSymbol: "z.circle",
+            bundleIds: ["dev.zed.Zed", "dev.zed.Zed-Preview"], processNames: ["Zed", "Zed Preview"],
+            isDesktopApp: true, sendsSessionEnd: true,
+            aliases: ["zed", "zed-ai", "zed_ai", "zed.dev"]
+        ),
+        .jetbrainsAi: AgentMeta(
+            displayName: "JetBrains AI", shortName: "JB AI",
+            color: Color(red: 0.95, green: 0.4, blue: 0.3),
+            iconSymbol: "j.circle",
+            bundleIds: [], processNames: [],
+            isDesktopApp: true, sendsSessionEnd: true,
+            aliases: ["jetbrains", "jetbrains-ai", "jetbrains_ai", "intellij", "idea"]
         ),
     ]
 

@@ -60,17 +60,34 @@ X Island 以一个紧凑的药丸形状悬浮在屏幕顶部。当 AI Agent 工�
 |-------|---------|---------|
 | Claude Code | 原生 hooks (settings.json) | 完整支持 |
 | Cursor | Hooks API (hooks.json) | 完整支持 |
+| Trae / Trae CN / TRAE SOLO CN | Hooks API (hooks.json) + IDE settings.json `claudeCode.hooks` | 完整支持 |
+| Windsurf | Hooks API (hooks.json) | 完整支持 |
 | Codex (OpenAI) | 原生 hooks | 完整支持 |
 | Aider | 索引信号文件 | 完整支持 |
 | OpenCode | JS 插件 | 完整支持 |
 | GLM (智谱) | TOML hooks (config.toml) | 完整支持 |
 | Kimi (月之暗面) | TOML hooks (config.toml) | 完整支持 |
 | DeepSeek | TOML hooks (config.toml) | 完整支持 |
+| Qwen Code | TOML hooks (config.toml) | 完整支持 |
 | Kiro | Spec hook | 完整支持 |
 | CodeBuddy | 配置 hook | 完整支持 |
+| Amp (Sourcegraph) | 配置 hook | 完整支持 |
+| Pi Agent | 配置 hook | 完整支持 |
 | Gemini CLI | 配置 hook | 基础支持 |
 | Copilot (VS Code) | 配置 hook | 基础支持 |
+| Copilot CLI | 配置 hook | 基础支持 |
+| Cline | 配置 hook | 基础支持 |
+| Continue | 配置 hook | 基础支持 |
+| Cody (Sourcegraph) | 配置 hook | 基础支持 |
+| Tabnine | 配置 hook | 基础支持 |
+| Amazon Q Developer | 配置 hook | 基础支持 |
+| Devin (Cognition) | 配置 hook | 基础支持 |
 | Droid (Factory) | 配置 hook | 基础支持 |
+| Qoder | 配置 hook | 基础支持 |
+| Roo Code | 配置 hook | 基础支持 |
+| PearAI | 配置 hook | 基础支持 |
+| Zed AI | 配置 hook | 基础支持 |
+| JetBrains AI Assistant | 配置 hook | 基础支持 |
 
 ## 安装
 

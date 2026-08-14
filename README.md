@@ -60,17 +60,34 @@ X Island sits at the top of your screen as a compact pill. When your AI agents a
 |-------|------------|--------|
 | Claude Code | Native hooks (settings.json) | Full support |
 | Cursor | Hooks API (hooks.json) | Full support |
+| Trae / Trae CN / TRAE SOLO CN | Hooks API (hooks.json) + IDE settings.json `claudeCode.hooks` | Full support |
+| Windsurf | Hooks API (hooks.json) | Full support |
 | Codex (OpenAI) | Native hooks | Full support |
 | Aider | Index-based signal file | Full support |
 | OpenCode | JS plugin | Full support |
 | GLM (Zhipu) | TOML hooks (config.toml) | Full support |
 | Kimi (Moonshot) | TOML hooks (config.toml) | Full support |
 | DeepSeek | TOML hooks (config.toml) | Full support |
+| Qwen Code | TOML hooks (config.toml) | Full support |
 | Kiro | Spec hook | Full support |
 | CodeBuddy | Config hook | Full support |
+| Amp (Sourcegraph) | Config hook | Full support |
+| Pi Agent | Config hook | Full support |
 | Gemini CLI | Config hook | Basic support |
 | Copilot (VS Code) | Config hook | Basic support |
+| Copilot CLI | Config hook | Basic support |
+| Cline | Config hook | Basic support |
+| Continue | Config hook | Basic support |
+| Cody (Sourcegraph) | Config hook | Basic support |
+| Tabnine | Config hook | Basic support |
+| Amazon Q Developer | Config hook | Basic support |
+| Devin (Cognition) | Config hook | Basic support |
 | Droid (Factory) | Config hook | Basic support |
+| Qoder | Config hook | Basic support |
+| Roo Code | Config hook | Basic support |
+| PearAI | Config hook | Basic support |
+| Zed AI | Config hook | Basic support |
+| JetBrains AI Assistant | Config hook | Basic support |
 
 ## Install
 
