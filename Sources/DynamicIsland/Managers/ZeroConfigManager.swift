@@ -19,6 +19,10 @@ enum ZeroConfigManager {
     }
 
     static func configure(_ agent: AgentType) {
+        if let target = arrayHookTarget(for: agent) {
+            configureArrayHooks(agent: agent, target: target)
+            return
+        }
         switch agent {
         case .claudeCode: configureClaudeCode()
         case .codex: configureCodex()
@@ -39,16 +43,85 @@ enum ZeroConfigManager {
         case .hermes: configureHermes()
         case .glm: configureGLM()
         case .aider: configureAider()
-        case .windsurf: configureWindsurf()
         case .devin: configureDevin()
-        case .amazonQ: configureAmazonQ()
         case .tabnine: configureTabnine()
-        case .cody: configureCody()
-        case .cline: configureCline()
-        case .`continue`: configureContinue()
-        case .copilotCli: configureCopilotCli()
         default: break
         }
+    }
+
+    /// 模板式 hooks.json 的配置位置与 session 前缀。
+    /// 这些工具共用同一套「hooks 数组 + xisland_ 前缀条目」格式，配置、检测、移除三条路径都以本表为准，
+    /// 避免像此前那样出现「写得进去、却检测不出来」的分叉。
+    private struct ArrayHookTarget {
+        let path: String
+        let sessionPrefix: String
+    }
+
+    private static func arrayHookTarget(for agent: AgentType) -> ArrayHookTarget? {
+        switch agent {
+        case .windsurf: ArrayHookTarget(path: "\(home)/.windsurf/hooks.json", sessionPrefix: "windsurf")
+        case .amazonQ: ArrayHookTarget(path: "\(home)/.amazonq/hooks.json", sessionPrefix: "amazonq")
+        case .cody: ArrayHookTarget(path: "\(home)/.cody/hooks.json", sessionPrefix: "cody")
+        case .cline: ArrayHookTarget(path: "\(home)/.cline/hooks.json", sessionPrefix: "cline")
+        case .`continue`: ArrayHookTarget(path: "\(home)/.continue/hooks.json", sessionPrefix: "continue")
+        case .copilotCli: ArrayHookTarget(path: "\(home)/.copilot/hooks.json", sessionPrefix: "copilot")
+        case .rooCode: ArrayHookTarget(path: "\(home)/.roo/hooks.json", sessionPrefix: "roo")
+        case .pearai: ArrayHookTarget(path: "\(home)/.pearai/hooks.json", sessionPrefix: "pearai")
+        case .zed: ArrayHookTarget(path: "\(home)/.config/zed/hooks.json", sessionPrefix: "zed")
+        case .jetbrainsAi: ArrayHookTarget(path: "\(home)/.jetbrains/hooks.json", sessionPrefix: "jetbrains")
+        default: nil
+        }
+    }
+
+    private static func configureArrayHooks(agent: AgentType, target: ArrayHookTarget) {
+        // writeJSON 不建父目录，目录不存在时会静默写不进去。
+        // 这里不主动创建：目录不存在即视为工具未安装，直接跳过，
+        // 避免为用户没装的工具在家目录里凭空造一堆配置目录（装上并运行一次后，下次启动会自动配置）。
+        let directory = (target.path as NSString).deletingLastPathComponent
+        guard FileManager.default.fileExists(atPath: directory) else {
+            return
+        }
+
+        var config = readJSON(target.path) ?? [:]
+        var hooks = config["hooks"] as? [[String: Any]] ?? []
+        let session = "\(target.sessionPrefix)-$(pwd | md5)"
+
+        let startHook: [String: Any] = [
+            "name": "xisland_session_start",
+            "command": "~/.xisland/bin/di-bridge --agent \(agent.rawValue) --hook session_start --session \(session)",
+            "event": "onIdle"
+        ]
+        let endHook: [String: Any] = [
+            "name": "xisland_session_end",
+            "command": "~/.xisland/bin/di-bridge --agent \(agent.rawValue) --hook session_end --session \(session)",
+            "event": "afterCommand"
+        ]
+
+        hooks.removeAll { isXIslandHook($0) }
+        hooks.append(contentsOf: [startHook, endHook])
+        config["hooks"] = hooks
+        writeJSON(target.path, config)
+        print("[ZeroConfig] \(agent.displayName) hooks configured at \(target.path)")
+    }
+
+    private static func isXIslandHook(_ entry: [String: Any]) -> Bool {
+        (entry["name"] as? String)?.hasPrefix("xisland_") == true
+    }
+
+    private static func hasArrayHooks(at path: String) -> Bool {
+        guard let config = readJSON(path),
+              let hooks = config["hooks"] as? [[String: Any]] else { return false }
+        return hooks.contains { entry in
+            isXIslandHook(entry) && (entry["command"] as? String)?.contains("di-bridge") == true
+        }
+    }
+
+    private static func removeArrayHooks(at path: String) {
+        guard var config = readJSON(path),
+              var hooks = config["hooks"] as? [[String: Any]] else { return }
+        hooks.removeAll { isXIslandHook($0) }
+        config["hooks"] = hooks
+        writeJSON(path, config)
     }
 
     static func isAutoConfigEnabled(for agent: AgentType) -> Bool {
@@ -1278,35 +1351,11 @@ enum ZeroConfigManager {
 
     // MARK: - New Agents Configuration
 
-    private static func configureWindsurf() {
-        // Windsurf uses JSON hooks at ~/.windsurf/hooks.json (similar to Cursor)
-        let path = "\(home)/.windsurf/hooks.json"
-        var config = readJSON(path) ?? [:]
-        var hooks = config["hooks"] as? [[String: Any]] ?? []
-
-        let startHook: [String: Any] = [
-            "name": "xisland_session_start",
-            "command": "~/.xisland/bin/di-bridge --agent windsurf --hook session_start --session windsurf-$(pwd | md5)",
-            "event": "onIdle"
-        ]
-        let endHook: [String: Any] = [
-            "name": "xisland_session_end",
-            "command": "~/.xisland/bin/di-bridge --agent windsurf --hook session_end --session windsurf-$(pwd | md5)",
-            "event": "afterCommand"
-        ]
-
-        hooks.removeAll { ($0["name"] as? String)?.hasPrefix("xisland_") == true }
-        hooks.append(contentsOf: [startHook, endHook])
-        config["hooks"] = hooks
-        writeJSON(path, config)
-        print("[ZeroConfig] Windsurf hooks configured at \(path)")
-    }
 
     private static func configureDevin() {
         // Devin uses its own config format
-        let dir = "\(home)/.devin"
-        let configPath = "\(dir)/config.json"
-        ensureDir(dir)
+        let configPath = customBridgeConfigPath(for: .devin)
+        ensureDir((configPath as NSString).deletingLastPathComponent)
 
         var config = readJSON(configPath) ?? [:]
         config["xisland_bridge"] = "~/.xisland/bin/di-bridge"
@@ -1315,35 +1364,11 @@ enum ZeroConfigManager {
         print("[ZeroConfig] Devin config updated at \(configPath)")
     }
 
-    private static func configureAmazonQ() {
-        // Amazon Q Developer uses JSON config
-        let path = "\(home)/.amazonq/hooks.json"
-        var config = readJSON(path) ?? [:]
-        var hooks = config["hooks"] as? [[String: Any]] ?? []
-
-        let startHook: [String: Any] = [
-            "name": "xisland_session_start",
-            "command": "~/.xisland/bin/di-bridge --agent amazon_q --hook session_start --session amazonq-$(pwd | md5)",
-            "event": "onIdle"
-        ]
-        let endHook: [String: Any] = [
-            "name": "xisland_session_end",
-            "command": "~/.xisland/bin/di-bridge --agent amazon_q --hook session_end --session amazonq-$(pwd | md5)",
-            "event": "afterCommand"
-        ]
-
-        hooks.removeAll { ($0["name"] as? String)?.hasPrefix("xisland_") == true }
-        hooks.append(contentsOf: [startHook, endHook])
-        config["hooks"] = hooks
-        writeJSON(path, config)
-        print("[ZeroConfig] Amazon Q hooks configured at \(path)")
-    }
 
     private static func configureTabnine() {
         // Tabnine uses its own config format
-        let dir = "\(home)/.tabnine"
-        let configPath = "\(dir)/config.json"
-        ensureDir(dir)
+        let configPath = customBridgeConfigPath(for: .tabnine)
+        ensureDir((configPath as NSString).deletingLastPathComponent)
 
         var config = readJSON(configPath) ?? [:]
         config["xisland_bridge"] = "~/.xisland/bin/di-bridge"
@@ -1352,101 +1377,9 @@ enum ZeroConfigManager {
         print("[ZeroConfig] Tabnine config updated at \(configPath)")
     }
 
-    private static func configureCody() {
-        // Cody (Sourcegraph) uses JSON config
-        let path = "\(home)/.cody/hooks.json"
-        var config = readJSON(path) ?? [:]
-        var hooks = config["hooks"] as? [[String: Any]] ?? []
 
-        let startHook: [String: Any] = [
-            "name": "xisland_session_start",
-            "command": "~/.xisland/bin/di-bridge --agent cody --hook session_start --session cody-$(pwd | md5)",
-            "event": "onIdle"
-        ]
-        let endHook: [String: Any] = [
-            "name": "xisland_session_end",
-            "command": "~/.xisland/bin/di-bridge --agent cody --hook session_end --session cody-$(pwd | md5)",
-            "event": "afterCommand"
-        ]
 
-        hooks.removeAll { ($0["name"] as? String)?.hasPrefix("xisland_") == true }
-        hooks.append(contentsOf: [startHook, endHook])
-        config["hooks"] = hooks
-        writeJSON(path, config)
-        print("[ZeroConfig] Cody hooks configured at \(path)")
-    }
 
-    private static func configureCline() {
-        // Cline uses JSON config
-        let path = "\(home)/.cline/hooks.json"
-        var config = readJSON(path) ?? [:]
-        var hooks = config["hooks"] as? [[String: Any]] ?? []
-
-        let startHook: [String: Any] = [
-            "name": "xisland_session_start",
-            "command": "~/.xisland/bin/di-bridge --agent cline --hook session_start --session cline-$(pwd | md5)",
-            "event": "onIdle"
-        ]
-        let endHook: [String: Any] = [
-            "name": "xisland_session_end",
-            "command": "~/.xisland/bin/di-bridge --agent cline --hook session_end --session cline-$(pwd | md5)",
-            "event": "afterCommand"
-        ]
-
-        hooks.removeAll { ($0["name"] as? String)?.hasPrefix("xisland_") == true }
-        hooks.append(contentsOf: [startHook, endHook])
-        config["hooks"] = hooks
-        writeJSON(path, config)
-        print("[ZeroConfig] Cline hooks configured at \(path)")
-    }
-
-    private static func configureContinue() {
-        // Continue uses JSON config
-        let path = "\(home)/.continue/hooks.json"
-        var config = readJSON(path) ?? [:]
-        var hooks = config["hooks"] as? [[String: Any]] ?? []
-
-        let startHook: [String: Any] = [
-            "name": "xisland_session_start",
-            "command": "~/.xisland/bin/di-bridge --agent continue --hook session_start --session continue-$(pwd | md5)",
-            "event": "onIdle"
-        ]
-        let endHook: [String: Any] = [
-            "name": "xisland_session_end",
-            "command": "~/.xisland/bin/di-bridge --agent continue --hook session_end --session continue-$(pwd | md5)",
-            "event": "afterCommand"
-        ]
-
-        hooks.removeAll { ($0["name"] as? String)?.hasPrefix("xisland_") == true }
-        hooks.append(contentsOf: [startHook, endHook])
-        config["hooks"] = hooks
-        writeJSON(path, config)
-        print("[ZeroConfig] Continue hooks configured at \(path)")
-    }
-
-    private static func configureCopilotCli() {
-        // GitHub Copilot CLI uses JSON config
-        let path = "\(home)/.copilot/hooks.json"
-        var config = readJSON(path) ?? [:]
-        var hooks = config["hooks"] as? [[String: Any]] ?? []
-
-        let startHook: [String: Any] = [
-            "name": "xisland_session_start",
-            "command": "~/.xisland/bin/di-bridge --agent copilot_cli --hook session_start --session copilot-$(pwd | md5)",
-            "event": "onIdle"
-        ]
-        let endHook: [String: Any] = [
-            "name": "xisland_session_end",
-            "command": "~/.xisland/bin/di-bridge --agent copilot_cli --hook session_end --session copilot-$(pwd | md5)",
-            "event": "afterCommand"
-        ]
-
-        hooks.removeAll { ($0["name"] as? String)?.hasPrefix("xisland_") == true }
-        hooks.append(contentsOf: [startHook, endHook])
-        config["hooks"] = hooks
-        writeJSON(path, config)
-        print("[ZeroConfig] Copilot CLI hooks configured at \(path)")
-    }
 
     // MARK: - Helpers
 
@@ -1497,6 +1430,9 @@ enum ZeroConfigManager {
     }
 
     private static func hasConfiguration(for agent: AgentType) -> Bool {
+        if let target = arrayHookTarget(for: agent) {
+            return hasArrayHooks(at: target.path)
+        }
         switch agent {
         case .claudeCode:
             let path = "\(home)/.claude/settings.json"
@@ -1590,13 +1526,31 @@ enum ZeroConfigManager {
         case .aider:
             let path = "\(home)/.xisland/bin/aider-bridge"
             return FileManager.default.fileExists(atPath: path)
+        case .devin, .tabnine:
+            guard let config = readJSON(customBridgeConfigPath(for: agent)) else { return false }
+            return (config["xisland_bridge"] as? String)?.contains("di-bridge") == true
         default:
             return false
         }
     }
 
+    /// Devin / Tabnine 走各自的 config.json，只写入 xisland_bridge 标记而非 hooks 数组
+    private static func customBridgeConfigPath(for agent: AgentType) -> String {
+        agent == .devin ? "\(home)/.devin/config.json" : "\(home)/.tabnine/config.json"
+    }
+
     private static func removeConfiguration(for agent: AgentType) {
+        if let target = arrayHookTarget(for: agent) {
+            removeArrayHooks(at: target.path)
+            return
+        }
         switch agent {
+        case .devin, .tabnine:
+            let path = customBridgeConfigPath(for: agent)
+            guard var config = readJSON(path) else { return }
+            config.removeValue(forKey: "xisland_bridge")
+            config.removeValue(forKey: "xisland_agent")
+            writeJSON(path, config)
         case .claudeCode:
             removeBridgeHooks(at: "\(home)/.claude/settings.json")
         case .codex:
