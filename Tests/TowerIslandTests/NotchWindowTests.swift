@@ -72,6 +72,55 @@ final class NotchWindowTests: XCTestCase {
         )
     }
 
+    // MARK: - 屏幕选择（纯函数，与实际显示器配置无关）
+
+    /// 副屏在主屏上方时，Quartz 的 y 为负；不做翻转会导致任何屏都判不中
+    func testConvertToAppKitFlipsVerticallyStackedDisplay() {
+        let primaryFrame = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        let windowOnUpperScreen = CGRect(x: 0, y: -1080, width: 1600, height: 900)
+
+        let converted = NotchWindow.convertToAppKit(cgRect: windowOnUpperScreen, primaryFrame: primaryFrame)
+
+        XCTAssertEqual(converted, CGRect(x: 0, y: 1260, width: 1600, height: 900))
+    }
+
+    func testConvertToAppKitLeavesWindowOnPrimaryScreenInPlace() {
+        let primaryFrame = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        let fullScreenWindow = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+
+        let converted = NotchWindow.convertToAppKit(cgRect: fullScreenWindow, primaryFrame: primaryFrame)
+
+        XCTAssertEqual(converted, primaryFrame)
+    }
+
+    func testIndexOfScreenPicksVerticallyStackedUpperScreen() {
+        let frames = [
+            CGRect(x: 0, y: 0, width: 1920, height: 1080),
+            CGRect(x: 0, y: 1080, width: 1920, height: 1080)
+        ]
+        let windowOnUpperScreen = CGRect(x: 0, y: 1260, width: 1600, height: 900)
+
+        XCTAssertEqual(NotchWindow.indexOfScreen(bestOverlapping: windowOnUpperScreen, in: frames), 1)
+    }
+
+    /// 窗口跨屏时按重叠面积选，而不是按中心点
+    func testIndexOfScreenPicksLargerOverlapWhenWindowStraddlesScreens() {
+        let frames = [
+            CGRect(x: 0, y: 0, width: 1000, height: 1000),
+            CGRect(x: 1000, y: 0, width: 1000, height: 1000)
+        ]
+        let mostlyOnSecondScreen = CGRect(x: 900, y: 0, width: 800, height: 1000)
+
+        XCTAssertEqual(NotchWindow.indexOfScreen(bestOverlapping: mostlyOnSecondScreen, in: frames), 1)
+    }
+
+    func testIndexOfScreenReturnsNilWhenNothingOverlaps() {
+        let frames = [CGRect(x: 0, y: 0, width: 1000, height: 1000)]
+
+        XCTAssertNil(NotchWindow.indexOfScreen(bestOverlapping: CGRect(x: 5000, y: 5000, width: 100, height: 100), in: frames))
+        XCTAssertNil(NotchWindow.indexOfScreen(bestOverlapping: CGRect(x: 0, y: 0, width: 100, height: 100), in: []))
+    }
+
     func testActiveScreenReturnsAnAvailableScreen() {
         let active = NotchWindow.activeScreen()
         XCTAssertTrue(NSScreen.screens.contains { $0.frame == active.frame })

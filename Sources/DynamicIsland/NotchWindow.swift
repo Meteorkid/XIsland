@@ -73,6 +73,9 @@ final class NotchWindow: NSPanel {
     private var lastActiveScreenID: CGDirectDisplayID?
     /// 缓存 bestScreen() 结果，避免 setFrame 高频调用时重复遍历所有屏幕。
     private var cachedBestScreen: NSScreen?
+    /// 审批期间锚定的屏幕。非 nil 时所有重排都以该屏为基准，
+    /// 否则 resizeToFit / setFrame / 鼠标跟随定时器会各自按鼠标所在屏重算，把面板拉回错误的屏幕。
+    private var pinnedScreenID: CGDirectDisplayID?
 
     /// 横滑切换手势识别器
     let swipeRecognizer = SwipeGestureRecognizer()
@@ -135,6 +138,8 @@ final class NotchWindow: NSPanel {
     }
 
     private func followMouseIfScreenChanged() {
+        // 锚定期间不跟随鼠标，否则审批面板展开后会被拽回鼠标所在屏
+        guard pinnedScreenID == nil else { return }
         let mouseLocation = NSEvent.mouseLocation
         guard let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }),
               let screenID = mouseScreen.deviceDescription[NSDeviceDescriptionKey(rawValue: "NSScreenNumber")] as? CGDirectDisplayID
@@ -253,7 +258,7 @@ final class NotchWindow: NSPanel {
     }
 
     func resizeToFit(contentWidth: CGFloat, contentHeight: CGFloat, display: Bool = true) {
-        let screen = Self.bestScreen()
+        let screen = layoutScreen()
         let normalizedContentHeight = max(contentHeight, Self.collapsedHitHeight)
         let padding = Self.padding(forContentHeight: normalizedContentHeight)
         let w = contentWidth + padding * 2
@@ -276,7 +281,7 @@ final class NotchWindow: NSPanel {
     }
 
     func resizeToFitCollapse(contentWidth: CGFloat, contentHeight: CGFloat) {
-        let screen = Self.bestScreen()
+        let screen = layoutScreen()
         let targetW = max(1, contentWidth.isFinite ? contentWidth : 180)
         // 向上延伸窗口
         let targetH = max(contentHeight, Self.collapsedHitHeight) + Self.windowTopExtension
@@ -303,6 +308,9 @@ final class NotchWindow: NSPanel {
         CATransaction.setDisableActions(true)
         setFrameDirect(target, display: true)
         CATransaction.commit()
+
+        // 收起后解除锚定：先在锚定屏完成收起动画，之后恢复跟随鼠标
+        pinnedScreenID = nil
     }
 
     /// Ensures window frames never propagate NaN/Inf into AppKit (can abort inside `_reallySetFrame:`).
@@ -342,40 +350,107 @@ final class NotchWindow: NSPanel {
         return NSScreen.screens.first ?? NSScreen()
     }
 
+    /// 主窗口的最小边长，用于过滤工具条、HUD 等小窗口。
+    private static let minMainWindowSide: CGFloat = 100
+
     /// 返回当前"正在显示的主界面"所在的屏幕。
     /// 多显示器/多桌面时，鼠标未必落在用户当前工作的显示器上，
     /// 因此优先取前台应用主窗口所在屏幕，其次 NSScreen.main，最后才是鼠标所在屏幕（bestScreen）。
+    @MainActor
     static func activeScreen() -> NSScreen {
+        let screens = NSScreen.screens
         if let front = NSWorkspace.shared.frontmostApplication,
-           front.bundleIdentifier != Bundle.main.bundleIdentifier {
-            let opts = CGWindowListOption([.optionOnScreenOnly, .excludeDesktopElements])
-            if let list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] {
-                var best: CGRect?
-                var bestArea: CGFloat = 0
-                for info in list {
-                    guard (info[kCGWindowOwnerPID as String] as? pid_t) == front.processIdentifier,
-                          let bounds = info[kCGWindowBounds as String] as? [String: CGFloat],
-                          let x = bounds["X"],
-                          let y = bounds["Y"],
-                          let w = bounds["Width"],
-                          let h = bounds["Height"],
-                          w >= 100, h >= 100 else { continue }
-                    let rect = CGRect(x: x, y: y, width: w, height: h)
-                    let area = w * h
-                    if area > bestArea {
-                        bestArea = area
-                        best = rect
-                    }
-                }
-                if let best,
-                   best.minX.isFinite, best.minY.isFinite,
-                   let screen = NSScreen.screens.first(where: { $0.frame.contains(CGPoint(x: best.midX, y: best.midY)) }) {
-                    return screen
-                }
+           front.bundleIdentifier != Bundle.main.bundleIdentifier,
+           let primaryFrame = primaryScreenFrame(screens),
+           let windowRect = largestWindowRect(ofPID: front.processIdentifier) {
+            let appKitRect = convertToAppKit(cgRect: windowRect, primaryFrame: primaryFrame)
+            if let index = indexOfScreen(bestOverlapping: appKitRect, in: screens.map(\.frame)) {
+                return screens[index]
             }
         }
         if let main = NSScreen.main { return main }
         return bestScreen()
+    }
+
+    /// 返回指定进程在屏幕上面积最大的普通窗口，坐标为 Quartz 全局坐标（原点在主屏左上、y 向下）。
+    /// 只取 layer 0 的普通窗口，避免前台应用的浮动面板、工具窗参与"最大面积"选举。
+    private static func largestWindowRect(ofPID pid: pid_t) -> CGRect? {
+        let opts = CGWindowListOption([.optionOnScreenOnly, .excludeDesktopElements])
+        guard let list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+        var best: CGRect?
+        var bestArea: CGFloat = 0
+        for info in list {
+            guard (info[kCGWindowOwnerPID as String] as? pid_t) == pid,
+                  (info[kCGWindowLayer as String] as? Int) == 0,
+                  let bounds = info[kCGWindowBounds as String] as? [String: CGFloat],
+                  let x = bounds["X"],
+                  let y = bounds["Y"],
+                  let w = bounds["Width"],
+                  let h = bounds["Height"],
+                  x.isFinite, y.isFinite,
+                  w >= minMainWindowSide, h >= minMainWindowSide else { continue }
+            let area = w * h
+            if area > bestArea {
+                bestArea = area
+                best = CGRect(x: x, y: y, width: w, height: h)
+            }
+        }
+        return best
+    }
+
+    /// AppKit 坐标系原点 (0,0) 所在的屏幕 frame，即 Quartz 坐标的参照屏。
+    private static func primaryScreenFrame(_ screens: [NSScreen]) -> CGRect? {
+        (screens.first { $0.frame.origin == .zero } ?? screens.first)?.frame
+    }
+
+    /// 把 Quartz 全局坐标矩形（原点在主屏左上、y 向下）翻转为 AppKit 坐标（原点在主屏左下、y 向上）。
+    /// 两套坐标系直接混用时，显示器上下排布会导致任何屏都判不中，静默退化到主屏。
+    static func convertToAppKit(cgRect: CGRect, primaryFrame: CGRect) -> CGRect {
+        CGRect(
+            x: cgRect.origin.x,
+            y: primaryFrame.maxY - cgRect.maxY,
+            width: cgRect.width,
+            height: cgRect.height
+        )
+    }
+
+    /// 返回与 rect 重叠面积最大的屏幕下标；全部无重叠时返回 nil。
+    /// 用重叠面积而非中心点判定，窗口跨屏或中心落在屏幕间隙时也能选中正确的屏幕。
+    static func indexOfScreen(bestOverlapping rect: CGRect, in frames: [CGRect]) -> Int? {
+        var bestIndex: Int?
+        var bestArea: CGFloat = 0
+        for (index, frame) in frames.enumerated() {
+            let overlap = frame.intersection(rect)
+            guard !overlap.isNull else { continue }
+            let area = overlap.width * overlap.height
+            if area > bestArea {
+                bestArea = area
+                bestIndex = index
+            }
+        }
+        return bestIndex
+    }
+
+    private static func displayID(of screen: NSScreen) -> CGDirectDisplayID? {
+        screen.deviceDescription[NSDeviceDescriptionKey(rawValue: "NSScreenNumber")] as? CGDirectDisplayID
+    }
+
+    private static func screen(withID id: CGDirectDisplayID) -> NSScreen? {
+        NSScreen.screens.first { displayID(of: $0) == id }
+    }
+
+    /// 所有重排的统一基准屏：审批期间用锚定屏，其余时候用鼠标所在屏。
+    /// 锚定屏已断开时清除锚定，避免窗口卡在不存在的显示器上。
+    private func layoutScreen() -> NSScreen {
+        if let pinnedScreenID {
+            if let pinned = Self.screen(withID: pinnedScreenID) {
+                return pinned
+            }
+            self.pinnedScreenID = nil
+        }
+        return cachedOrRefreshScreen()
     }
 
     /// 返回缓存的 bestScreen，仅在鼠标跨越屏幕边界时刷新。
@@ -405,7 +480,7 @@ final class NotchWindow: NSPanel {
     }
 
     @objc private func screenDidChange(_ note: Notification) {
-        let screen = Self.bestScreen()
+        let screen = layoutScreen()
         let x: CGFloat
         if let cx = customX {
             x = max(screen.frame.origin.x,
@@ -498,6 +573,8 @@ final class NotchWindow: NSPanel {
         if let currentIsland = AppSwitcher.shared.currentIsland {
             IslandIntegrationSettings.markVisible(currentIsland)
         }
+        // 明确要求在鼠标所在屏显示，解除审批期间的锚定
+        pinnedScreenID = nil
         let mouseLocation = NSEvent.mouseLocation
         guard let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) else {
             orderFrontRegardless()
@@ -514,7 +591,11 @@ final class NotchWindow: NSPanel {
         if let currentIsland = AppSwitcher.shared.currentIsland {
             IslandIntegrationSettings.markVisible(currentIsland)
         }
-        repositionOnScreen(Self.activeScreen())
+        // 先锚定再重排：锚定后 layoutScreen() 一律返回该屏，
+        // 后续的 resizeToFit / setFrame / 鼠标跟随都不会再把面板拉回鼠标所在屏
+        let target = Self.activeScreen()
+        pinnedScreenID = Self.displayID(of: target)
+        repositionOnScreen(target)
         orderFrontRegardless()
     }
 
@@ -534,7 +615,7 @@ final class NotchWindow: NSPanel {
     }
 
     func setFrameDirect(_ rect: NSRect, display: Bool = true) {
-        let screen = cachedOrRefreshScreen()
+        let screen = layoutScreen()
         let normalized = Self.safeFrame(
             NSRect(
                 x: rect.origin.x,
@@ -552,7 +633,7 @@ final class NotchWindow: NSPanel {
         let clampedHeight = max(frameRect.height, Self.collapsedHitHeight)
         // 向上延伸窗口，使屏幕顶端在窗口内部
         let windowHeight = clampedHeight + Self.windowTopExtension
-        let screen = cachedOrRefreshScreen()
+        let screen = layoutScreen()
         let topY = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen) - clampedHeight
         let x: CGFloat
         if isDragging || dragTracking {
@@ -576,7 +657,7 @@ final class NotchWindow: NSPanel {
         let clampedHeight = max(frameRect.height, Self.collapsedHitHeight)
         // 向上延伸窗口，使屏幕顶端在窗口内部
         let windowHeight = clampedHeight + Self.windowTopExtension
-        let screen = cachedOrRefreshScreen()
+        let screen = layoutScreen()
         let topY = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen) - clampedHeight
         let x: CGFloat
         if isDragging || dragTracking {
