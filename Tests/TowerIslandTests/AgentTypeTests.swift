@@ -37,6 +37,21 @@ final class AgentTypeTests: XCTestCase {
         XCTAssertEqual(AgentType.from("cursor-ide"), .cursor)
     }
 
+    /// 短别名（zed / roo / pi / idea）必须落在词边界上，否则会吃掉无关输入
+    func testFromShortAliasDoesNotMatchInsideWords() {
+        XCTAssertNil(AgentType.from("optimized"))
+        XCTAssertNil(AgentType.from("root"))
+        XCTAssertNil(AgentType.from("kangaroo"))
+        XCTAssertNil(AgentType.from("analyzed"))
+    }
+
+    /// 词边界不把数字算作字母，带版本号后缀的输入仍应匹配
+    func testFromAliasStillMatchesWithVersionSuffix() {
+        XCTAssertEqual(AgentType.from("qwen3"), .qwen)
+        XCTAssertEqual(AgentType.from("kimi-cli"), .kimi)
+        XCTAssertEqual(AgentType.from("zed nightly"), .zed)
+    }
+
     func testFromNilReturnsNil() {
         XCTAssertNil(AgentType.from(nil))
         XCTAssertNil(AgentType.from(""))

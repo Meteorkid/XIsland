@@ -44,7 +44,7 @@ enum TerminalApp: String, CaseIterable {
         case .zellij: ["no.bundle.id.zellij"] // multiplexer, runs inside another terminal
         case .antigravity: ["com.antigravity.Antigravity"] // Antigravity IDE terminal
         case .hyper: ["co.zeit.hyper"]
-        case .zed: ["dev.zed.Zed"]
+        case .zed: ["dev.zed.Zed", "dev.zed.Zed-Preview"]
         case .cmux: [] // cmux runs inside another terminal — no macOS bundle
         case .conductor: [] // conductor runs inside another terminal — no macOS bundle
         case .termius: ["com.termius.mac"]
@@ -179,8 +179,12 @@ enum TerminalJumpManager {
         let targetApp = resolveTargetApp(snap: snap)
         log("performJump: id=\(snap.id) agent=\(snap.agentType.rawValue) terminal=\(snap.terminal) cwd=\(snap.workingDirectory) tsid=\(snap.termSessionId ?? "nil") wid=\(snap.windowNumber.map(String.init) ?? "nil") target=\(targetApp?.rawValue ?? "nil")")
 
-        if snap.agentType == .cursor {
-            let preferredApp = (targetApp == .windsurf) ? TerminalApp.windsurf : TerminalApp.cursor
+        // Windsurf 从 Cursor 拆出后仍走同一套 Cursor 系跳转（先匹配窗口，再抬起同族全部窗口）
+        if snap.agentType == .cursor || snap.agentType == .windsurf {
+            let preferredApp: TerminalApp = {
+                if let targetApp, targetApp == .cursor || targetApp == .windsurf { return targetApp }
+                return snap.agentType == .windsurf ? .windsurf : .cursor
+            }()
             if raiseMatchingWindow(snap: snap, app: preferredApp, allowFallbackActivate: false) {
                 log("cursor matched existing window app=\(preferredApp.rawValue)")
                 return
@@ -275,7 +279,8 @@ enum TerminalJumpManager {
         let appFromTerminal: TerminalApp? = snap.terminal.isEmpty ? nil : TerminalApp.detect(from: snap.terminal)
         let appFromAgent = TerminalApp.forAgent(snap.agentType)
 
-        if snap.agentType == .cursor {
+        if snap.agentType == .cursor || snap.agentType == .windsurf {
+            let defaultApp: TerminalApp = snap.agentType == .windsurf ? .windsurf : .cursor
             if let appFromTerminal {
                 if appFromTerminal == .cursor || appFromTerminal == .windsurf {
                     return appFromTerminal
@@ -287,14 +292,14 @@ enum TerminalJumpManager {
                     if snap.windowNumber != nil {
                         return .terminal
                     }
-                    return .cursor
+                    return defaultApp
                 }
                 if appFromTerminal.isVSCodeFamily {
-                    return .cursor
+                    return defaultApp
                 }
                 return appFromTerminal
             }
-            return .cursor
+            return defaultApp
         }
 
         if snap.agentType == .trae {

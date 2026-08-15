@@ -76,7 +76,7 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
 
         // 4. Substring fallback
         for type in AgentType.allCases {
-            for alias in type.meta.aliases where lower.contains(alias) {
+            for alias in type.meta.aliases where containsAsWord(lower, alias) {
                 return type
             }
         }
@@ -99,6 +99,25 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
         if lower.contains("jetbrains") || lower.contains("intellij") || lower.contains("webstorm") || lower.contains("goland") || lower.contains("pycharm") || lower.contains("rustrover") || lower.contains("phpstorm") || lower.contains("rubymine") || lower.contains("clion") || lower.contains("rider") { return .jetbrainsAi }
 
         return nil
+    }
+
+    /// 子串回退时要求别名落在词边界上（前后不是字母）。
+    /// 直接用 contains 会让 "zed"/"roo"/"pi" 这类短别名吃掉 "optimized"/"root"/"copilot"；
+    /// 数字不算边界字符，"qwen3"、"claude2" 这类带版本号的输入仍能匹配。
+    static func containsAsWord(_ haystack: String, _ needle: String) -> Bool {
+        guard !needle.isEmpty else { return false }
+        var searchStart = haystack.startIndex
+        while let range = haystack.range(of: needle, range: searchStart..<haystack.endIndex) {
+            let precededByLetter = range.lowerBound > haystack.startIndex
+                && haystack[haystack.index(before: range.lowerBound)].isLetter
+            let followedByLetter = range.upperBound < haystack.endIndex
+                && haystack[range.upperBound].isLetter
+            if !precededByLetter && !followedByLetter {
+                return true
+            }
+            searchStart = haystack.index(after: range.lowerBound)
+        }
+        return false
     }
 
     static func fromBundleId(_ bundleId: String) -> AgentType? {

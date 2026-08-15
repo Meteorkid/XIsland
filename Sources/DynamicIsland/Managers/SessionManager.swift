@@ -431,8 +431,10 @@ final class SessionManager {
         }
     }
 
+    /// Cursor 系（VSCode fork）的桥接都会同时发出 `<agent>-<uuid>` 与 `claude_code-<uuid>`，
+    /// 需要按同一套镜像规则合并成一行。Windsurf 从 Cursor 拆出后仍属此列。
     private func isCursorFamily(_ agentType: AgentType) -> Bool {
-        agentType == .cursor || agentType == .trae
+        agentType == .cursor || agentType == .trae || agentType == .windsurf
     }
 
     private func mirroredSessionSuffix(from sessionId: String) -> String? {
@@ -462,8 +464,10 @@ final class SessionManager {
 
         if let terminal = message.terminal, let app = TerminalApp.detect(from: terminal) {
             switch app {
-            case .cursor, .windsurf:
+            case .cursor:
                 return .cursor
+            case .windsurf:
+                return .windsurf
             case .trae, .traeCn, .traeWorkCn:
                 return .trae
             case .codex:
@@ -501,6 +505,7 @@ final class SessionManager {
     /// Bridges often emit both `cursor-<uuid>` and `claude_code-<uuid>` for one run; keep a single island row.
     private func mergeAgentTypesForMirror(_ existing: AgentType, _ incoming: AgentType) -> AgentType {
         if existing == .cursor || incoming == .cursor { return .cursor }
+        if existing == .windsurf || incoming == .windsurf { return .windsurf }
         return existing
     }
 
