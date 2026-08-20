@@ -260,16 +260,29 @@ extension AgentType {
             displayName: "JetBrains AI", shortName: "JB AI",
             color: Color(red: 0.95, green: 0.4, blue: 0.3),
             iconSymbol: "j.circle",
+            // JetBrains AI 是跑在 IntelliJ/PyCharm 等宿主 IDE 里的插件，没有自己的 bundle id。
+            // 此前标 isDesktopApp: true 但 bundleIds 为空，bundleId 恒为 nil，
+            // 所有依赖 bundleId 的桌面应用逻辑对它都是空转。与同为扩展的 Roo Code 保持一致。
             bundleIds: [], processNames: [],
-            isDesktopApp: true, sendsSessionEnd: true,
+            isDesktopApp: false, sendsSessionEnd: true,
             aliases: ["jetbrains", "jetbrains-ai", "jetbrains_ai", "intellij", "idea"]
         ),
     ]
 
+    /// registry 漏配条目时的兜底。此前是 fatalError——新增 case 而忘记登记就是运行时崩溃，
+    /// 且编译器不会提示。AgentRegistryFallbackTests 会在 CI 上先一步失败，运行期不必再赔上崩溃。
+    static func fallbackMeta(for type: AgentType) -> AgentMeta {
+        AgentMeta(
+            displayName: type.rawValue, shortName: type.rawValue,
+            color: .gray,
+            iconSymbol: "questionmark.circle",
+            bundleIds: [], processNames: [],
+            isDesktopApp: false, sendsSessionEnd: true,
+            aliases: []
+        )
+    }
+
     var meta: AgentMeta {
-        guard let m = Self.registry[self] else {
-            fatalError("AgentMeta missing for \(self.rawValue)")
-        }
-        return m
+        Self.registry[self] ?? Self.fallbackMeta(for: self)
     }
 }

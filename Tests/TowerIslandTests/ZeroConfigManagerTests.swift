@@ -86,4 +86,26 @@ final class ZeroConfigManagerTests: XCTestCase {
         XCTAssertEqual(command, "/Users/test/.tower-island/bin/di-bridge --agent trae --hook session_start")
         XCTAssertFalse(command.contains("--agent cursor"))
     }
+
+    // MARK: - hook 命令生成
+
+    /// 审批必须靠退出码回传用户的选择，一旦被 || true 吞掉，工具会当成"已放行"
+    func testBridgeHookCommandKeepsExitCodeForPermissionRequest() {
+        XCTAssertEqual(
+            ZeroConfigManager.bridgeHookCommand(
+                bridgePath: "/bin/di-bridge", agent: .qwen, hookArg: "PermissionRequest"
+            ),
+            "/bin/di-bridge --agent qwen --hook PermissionRequest"
+        )
+    }
+
+    /// 其余事件只上报状态，桥接不可用时不该阻塞工具运行
+    func testBridgeHookCommandSwallowsFailureForReportingHooks() {
+        XCTAssertEqual(
+            ZeroConfigManager.bridgeHookCommand(
+                bridgePath: "/bin/di-bridge", agent: .droid, hookArg: "session_start"
+            ),
+            "/bin/di-bridge --agent droid --hook session_start || true"
+        )
+    }
 }

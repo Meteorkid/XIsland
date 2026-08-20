@@ -18,26 +18,24 @@ enum ZeroConfigManager {
         print("[ZeroConfig] Agent hooks configured")
     }
 
+    /// 穷尽 switch，不留 default：新增 AgentType 时编译器会强制在这里做出选择。
+    /// v1.13.0 新增的 4 个工具正是因为 default 分支而被静默漏配。
     static func configure(_ agent: AgentType) {
-        if let target = arrayHookTarget(for: agent) {
-            configureArrayHooks(agent: agent, target: target)
-            return
-        }
         switch agent {
+        case .windsurf, .amazonQ, .cody, .cline, .`continue`, .copilotCli,
+             .rooCode, .pearai, .zed, .jetbrainsAi:
+            configureArrayHooks(agent)
         case .claudeCode: configureClaudeCode()
         case .codex: configureCodex()
-        case .geminiCli: configureGeminiCli()
+        case .qwen, .codeBuddy, .droid, .geminiCli, .kiro:
+            configureSettingsHooks(agent)
         case .cursor: configureCursor()
         case .trae: configureTrae()
         case .openCode: configureOpenCode()
-        case .droid: configureDroid()
         case .qoder: configureQoder()
         case .copilot: configureCopilot()
-        case .codeBuddy: configureCodeBuddy()
-        case .qwen: configureQwen()
         case .kimi: configureKimi()
         case .deepseek: configureDeepSeek()
-        case .kiro: configureKiro()
         case .amp: configureAmp()
         case .pi: configurePi()
         case .hermes: configureHermes()
@@ -45,13 +43,146 @@ enum ZeroConfigManager {
         case .aider: configureAider()
         case .devin: configureDevin()
         case .tabnine: configureTabnine()
-        default: break
         }
     }
 
     /// 模板式 hooks.json 的配置位置与 session 前缀。
     /// 这些工具共用同一套「hooks 数组 + xisland_ 前缀条目」格式，配置、检测、移除三条路径都以本表为准，
     /// 避免像此前那样出现「写得进去、却检测不出来」的分叉。
+    /// settings.json 型零配置：hooks 是「事件名 → 条目数组」的字典。
+    /// Claude Code 系的 CLI 多沿用这套格式，此前每个工具各抄一份约 55 行的相同实现
+    /// （Qwen / CodeBuddy / Droid 三份逐字相同），改一处漏三处，且 removeConfiguration 一直没跟上。
+    private struct SettingsHookBinding {
+        let event: String     // settings.json 里的事件名
+        let hookArg: String   // 传给 di-bridge 的 --hook 参数
+        let timeout: Int
+    }
+
+    private struct SettingsHookTarget {
+        let configDir: String
+        let bindings: [SettingsHookBinding]
+        /// 早期版本写入、现已废弃的顶层键，配置时顺带清掉
+        let legacyKeys: [String]
+    }
+
+    /// 与 Claude Code 事件名一致的通用映射
+    private static let standardHookBindings: [SettingsHookBinding] = [
+        SettingsHookBinding(event: "PreToolUse", hookArg: "PreToolUse", timeout: 5),
+        SettingsHookBinding(event: "PostToolUse", hookArg: "PostToolUse", timeout: 5),
+        SettingsHookBinding(event: "UserPromptSubmit", hookArg: "session_start", timeout: 5),
+        SettingsHookBinding(event: "SessionStart", hookArg: "session_start", timeout: 5),
+        SettingsHookBinding(event: "SessionEnd", hookArg: "session_end", timeout: 5),
+        SettingsHookBinding(event: "Stop", hookArg: "notification", timeout: 5),
+        SettingsHookBinding(event: "SubagentStart", hookArg: "subagent_start", timeout: 5),
+        SettingsHookBinding(event: "SubagentStop", hookArg: "subagent_end", timeout: 5),
+        SettingsHookBinding(event: "PreCompact", hookArg: "compact", timeout: 5),
+        SettingsHookBinding(event: "Notification", hookArg: "Notification", timeout: 5),
+        SettingsHookBinding(event: "PermissionRequest", hookArg: "PermissionRequest", timeout: 300),
+    ]
+
+    /// Kiro 用自己的一套事件名，且没有审批/压缩类事件
+    private static let kiroHookBindings: [SettingsHookBinding] = [
+        SettingsHookBinding(event: "agentSpawn", hookArg: "session_start", timeout: 5),
+        SettingsHookBinding(event: "userPromptSubmit", hookArg: "session_start", timeout: 5),
+        SettingsHookBinding(event: "preToolUse", hookArg: "PreToolUse", timeout: 5),
+        SettingsHookBinding(event: "postToolUse", hookArg: "PostToolUse", timeout: 5),
+        SettingsHookBinding(event: "Stop", hookArg: "session_end", timeout: 5),
+    ]
+
+    private static func settingsHookTarget(for agent: AgentType) -> SettingsHookTarget? {
+        switch agent {
+        case .qwen:
+            SettingsHookTarget(configDir: "\(home)/.qwen", bindings: standardHookBindings, legacyKeys: [])
+        case .codeBuddy:
+            SettingsHookTarget(configDir: "\(home)/.codebuddy", bindings: standardHookBindings, legacyKeys: [])
+        case .droid:
+            SettingsHookTarget(configDir: "\(home)/.factory", bindings: standardHookBindings, legacyKeys: [])
+        case .geminiCli:
+            SettingsHookTarget(configDir: "\(home)/.gemini", bindings: standardHookBindings, legacyKeys: ["xisland_hook"])
+        case .kiro:
+            SettingsHookTarget(configDir: "\(home)/.kiro", bindings: kiroHookBindings, legacyKeys: [])
+        default:
+            nil
+        }
+    }
+
+    private static func settingsPath(for agent: AgentType) -> String? {
+        settingsHookTarget(for: agent).map { "\($0.configDir)/settings.json" }
+    }
+
+    private static func configureSettingsHooks(_ agent: AgentType) {
+        guard let target = settingsHookTarget(for: agent),
+              let path = settingsPath(for: agent) else { return }
+        ensureDir(target.configDir)
+
+        var settings = readJSON(path) ?? [String: Any]()
+        for key in target.legacyKeys {
+            settings.removeValue(forKey: key)
+        }
+        var hooks = settings["hooks"] as? [String: Any] ?? [:]
+
+        for binding in target.bindings {
+            var hookList = hooks[binding.event] as? [[String: Any]] ?? []
+            hookList.removeAll { entryContainsBridge($0) }
+
+            let guardedCmd = bridgeHookCommand(
+                bridgePath: bridgePath, agent: agent, hookArg: binding.hookArg
+            )
+
+            hookList.append([
+                "matcher": "*",
+                "hooks": [
+                    [
+                        "type": "command",
+                        "command": guardedCmd,
+                        "timeout": binding.timeout
+                    ] as [String: Any]
+                ]
+            ] as [String: Any])
+            hooks[binding.event] = hookList
+        }
+
+        settings["hooks"] = hooks
+        writeJSON(path, settings)
+    }
+
+    /// PermissionRequest 要靠退出码把用户的选择回传给工具，不能用 || true 吞掉；
+    /// 其余事件只是上报状态，失败不该阻塞工具本身运行。
+    static func bridgeHookCommand(bridgePath: String, agent: AgentType, hookArg: String) -> String {
+        let base = "\(bridgePath) --agent \(agent.rawValue) --hook \(hookArg)"
+        return hookArg == "PermissionRequest" ? base : "\(base) || true"
+    }
+
+    private static func hasSettingsHooks(for agent: AgentType) -> Bool {
+        guard let path = settingsPath(for: agent),
+              let settings = readJSON(path),
+              let hooks = settings["hooks"] as? [String: Any] else { return false }
+        return hooksContainBridge(hooks)
+    }
+
+    private static func removeSettingsHooks(for agent: AgentType) {
+        guard let target = settingsHookTarget(for: agent),
+              let path = settingsPath(for: agent),
+              var settings = readJSON(path) else { return }
+        for key in target.legacyKeys {
+            settings.removeValue(forKey: key)
+        }
+        if var hooks = settings["hooks"] as? [String: Any] {
+            for (event, list) in hooks {
+                guard var entries = list as? [[String: Any]] else { continue }
+                entries.removeAll { entryContainsBridge($0) }
+                hooks[event] = entries
+            }
+            settings["hooks"] = hooks
+        }
+        writeJSON(path, settings)
+    }
+
+    private static func entryContainsBridge(_ entry: [String: Any]) -> Bool {
+        let cmds = entry["hooks"] as? [[String: Any]] ?? []
+        return cmds.contains { ($0["command"] as? String)?.contains("di-bridge") == true }
+    }
+
     private struct ArrayHookTarget {
         let path: String
         let sessionPrefix: String
@@ -73,7 +204,8 @@ enum ZeroConfigManager {
         }
     }
 
-    private static func configureArrayHooks(agent: AgentType, target: ArrayHookTarget) {
+    private static func configureArrayHooks(_ agent: AgentType) {
+        guard let target = arrayHookTarget(for: agent) else { return }
         // writeJSON 不建父目录，目录不存在时会静默写不进去。
         // 这里不主动创建：目录不存在即视为工具未安装，直接跳过，
         // 避免为用户没装的工具在家目录里凭空造一堆配置目录（装上并运行一次后，下次启动会自动配置）。
@@ -426,67 +558,6 @@ enum ZeroConfigManager {
 
     // MARK: - Gemini CLI
 
-    private static func configureGeminiCli() {
-        let configDir = "\(home)/.gemini"
-        let settingsPath = "\(configDir)/settings.json"
-        ensureDir(configDir)
-
-        var settings = readJSON(settingsPath) ?? [String: Any]()
-
-        // Clean up legacy xisland_hook key
-        if settings["xisland_hook"] != nil {
-            settings.removeValue(forKey: "xisland_hook")
-        }
-
-        var hooks = settings["hooks"] as? [String: Any] ?? [:]
-
-        let hookMapping: [(String, String, Int)] = [
-            ("PreToolUse", "PreToolUse", 5),
-            ("PostToolUse", "PostToolUse", 5),
-            ("UserPromptSubmit", "session_start", 5),
-            ("SessionStart", "session_start", 5),
-            ("SessionEnd", "session_end", 5),
-            ("Stop", "notification", 5),
-            ("SubagentStart", "subagent_start", 5),
-            ("SubagentStop", "subagent_end", 5),
-            ("PreCompact", "compact", 5),
-            ("Notification", "Notification", 5),
-            ("PermissionRequest", "PermissionRequest", 300),
-        ]
-
-        for (hookType, hookArg, timeout) in hookMapping {
-            var hookList = hooks[hookType] as? [[String: Any]] ?? []
-
-            hookList.removeAll { entry in
-                let cmds = entry["hooks"] as? [[String: Any]] ?? []
-                return cmds.contains {
-                    guard let cmd = $0["command"] as? String else { return false }
-                    return cmd.contains("di-bridge")
-                }
-            }
-
-            let guardedCmd: String
-            if hookArg == "PermissionRequest" {
-                guardedCmd = "\(bridgePath) --agent gemini_cli --hook \(hookArg)"
-            } else {
-                guardedCmd = "\(bridgePath) --agent gemini_cli --hook \(hookArg) || true"
-            }
-            hookList.append([
-                "matcher": "*",
-                "hooks": [
-                    [
-                        "type": "command",
-                        "command": guardedCmd,
-                        "timeout": timeout
-                    ] as [String: Any]
-                ]
-            ] as [String: Any])
-            hooks[hookType] = hookList
-        }
-
-        settings["hooks"] = hooks
-        writeJSON(settingsPath, settings)
-    }
 
     // MARK: - Cursor
 
@@ -801,61 +872,6 @@ enum ZeroConfigManager {
 
     // MARK: - Droid
 
-    private static func configureDroid() {
-        let configDir = "\(home)/.factory"
-        let settingsPath = "\(configDir)/settings.json"
-        ensureDir(configDir)
-
-        var settings = readJSON(settingsPath) ?? [String: Any]()
-        var hooks = settings["hooks"] as? [String: Any] ?? [:]
-
-        let hookMapping: [(String, String, Int)] = [
-            ("PreToolUse", "PreToolUse", 5),
-            ("PostToolUse", "PostToolUse", 5),
-            ("UserPromptSubmit", "session_start", 5),
-            ("SessionStart", "session_start", 5),
-            ("SessionEnd", "session_end", 5),
-            ("Stop", "notification", 5),
-            ("SubagentStart", "subagent_start", 5),
-            ("SubagentStop", "subagent_end", 5),
-            ("PreCompact", "compact", 5),
-            ("Notification", "Notification", 5),
-            ("PermissionRequest", "PermissionRequest", 300),
-        ]
-
-        for (hookType, hookArg, timeout) in hookMapping {
-            var hookList = hooks[hookType] as? [[String: Any]] ?? []
-
-            hookList.removeAll { entry in
-                let cmds = entry["hooks"] as? [[String: Any]] ?? []
-                return cmds.contains {
-                    guard let cmd = $0["command"] as? String else { return false }
-                    return cmd.contains("di-bridge")
-                }
-            }
-
-            let guardedCmd: String
-            if hookArg == "PermissionRequest" {
-                guardedCmd = "\(bridgePath) --agent droid --hook \(hookArg)"
-            } else {
-                guardedCmd = "\(bridgePath) --agent droid --hook \(hookArg) || true"
-            }
-            hookList.append([
-                "matcher": "*",
-                "hooks": [
-                    [
-                        "type": "command",
-                        "command": guardedCmd,
-                        "timeout": timeout
-                    ] as [String: Any]
-                ]
-            ] as [String: Any])
-            hooks[hookType] = hookList
-        }
-
-        settings["hooks"] = hooks
-        writeJSON(settingsPath, settings)
-    }
 
     // MARK: - Qoder
 
@@ -873,119 +889,9 @@ enum ZeroConfigManager {
 
     // MARK: - CodeBuddy
 
-    private static func configureCodeBuddy() {
-        let configDir = "\(home)/.codebuddy"
-        let settingsPath = "\(configDir)/settings.json"
-        ensureDir(configDir)
-
-        var settings = readJSON(settingsPath) ?? [String: Any]()
-        var hooks = settings["hooks"] as? [String: Any] ?? [:]
-
-        let hookMapping: [(String, String, Int)] = [
-            ("PreToolUse", "PreToolUse", 5),
-            ("PostToolUse", "PostToolUse", 5),
-            ("UserPromptSubmit", "session_start", 5),
-            ("SessionStart", "session_start", 5),
-            ("SessionEnd", "session_end", 5),
-            ("Stop", "notification", 5),
-            ("SubagentStart", "subagent_start", 5),
-            ("SubagentStop", "subagent_end", 5),
-            ("PreCompact", "compact", 5),
-            ("Notification", "Notification", 5),
-            ("PermissionRequest", "PermissionRequest", 300),
-        ]
-
-        for (hookType, hookArg, timeout) in hookMapping {
-            var hookList = hooks[hookType] as? [[String: Any]] ?? []
-
-            hookList.removeAll { entry in
-                let cmds = entry["hooks"] as? [[String: Any]] ?? []
-                return cmds.contains {
-                    guard let cmd = $0["command"] as? String else { return false }
-                    return cmd.contains("di-bridge")
-                }
-            }
-
-            let guardedCmd: String
-            if hookArg == "PermissionRequest" {
-                guardedCmd = "\(bridgePath) --agent code_buddy --hook \(hookArg)"
-            } else {
-                guardedCmd = "\(bridgePath) --agent code_buddy --hook \(hookArg) || true"
-            }
-            hookList.append([
-                "matcher": "*",
-                "hooks": [
-                    [
-                        "type": "command",
-                        "command": guardedCmd,
-                        "timeout": timeout
-                    ] as [String: Any]
-                ]
-            ] as [String: Any])
-            hooks[hookType] = hookList
-        }
-
-        settings["hooks"] = hooks
-        writeJSON(settingsPath, settings)
-    }
 
     // MARK: - Qwen Code
 
-    private static func configureQwen() {
-        let configDir = "\(home)/.qwen"
-        let settingsPath = "\(configDir)/settings.json"
-        ensureDir(configDir)
-
-        var settings = readJSON(settingsPath) ?? [String: Any]()
-        var hooks = settings["hooks"] as? [String: Any] ?? [:]
-
-        let hookMapping: [(String, String, Int)] = [
-            ("PreToolUse", "PreToolUse", 5),
-            ("PostToolUse", "PostToolUse", 5),
-            ("UserPromptSubmit", "session_start", 5),
-            ("SessionStart", "session_start", 5),
-            ("SessionEnd", "session_end", 5),
-            ("Stop", "notification", 5),
-            ("SubagentStart", "subagent_start", 5),
-            ("SubagentStop", "subagent_end", 5),
-            ("PreCompact", "compact", 5),
-            ("Notification", "Notification", 5),
-            ("PermissionRequest", "PermissionRequest", 300),
-        ]
-
-        for (hookType, hookArg, timeout) in hookMapping {
-            var hookList = hooks[hookType] as? [[String: Any]] ?? []
-
-            hookList.removeAll { entry in
-                let cmds = entry["hooks"] as? [[String: Any]] ?? []
-                return cmds.contains {
-                    guard let cmd = $0["command"] as? String else { return false }
-                    return cmd.contains("di-bridge")
-                }
-            }
-
-            let guardedCmd: String
-            if hookArg == "PermissionRequest" {
-                guardedCmd = "\(bridgePath) --agent qwen --hook \(hookArg)"
-            } else {
-                guardedCmd = "\(bridgePath) --agent qwen --hook \(hookArg) || true"
-            }
-            hookList.append([
-                "matcher": "*",
-                "hooks": [
-                    [
-                        "type": "command",
-                        "command": guardedCmd,
-                        "timeout": timeout
-                    ] as [String: Any]
-                ]
-            ] as [String: Any])
-            hooks[hookType] = hookList
-        }
-
-        settings["hooks"] = hooks
-        writeJSON(settingsPath, settings)
-    }
 
     // MARK: - Kimi Code
 
@@ -1098,57 +1004,6 @@ enum ZeroConfigManager {
 
     // MARK: - Kiro
 
-    private static func configureKiro() {
-        let configDir = "\(home)/.kiro"
-        let settingsPath = "\(configDir)/settings.json"
-        ensureDir(configDir)
-
-        var settings = readJSON(settingsPath) ?? [String: Any]()
-        var hooks = settings["hooks"] as? [String: Any] ?? [:]
-
-        let hookMapping: [(String, String, Int)] = [
-            ("agentSpawn", "session_start", 5),
-            ("userPromptSubmit", "session_start", 5),
-            ("preToolUse", "PreToolUse", 5),
-            ("postToolUse", "PostToolUse", 5),
-            ("Stop", "session_end", 5),
-            ("Notification", "Notification", 5),
-            ("PermissionRequest", "PermissionRequest", 300),
-        ]
-
-        for (hookType, hookArg, timeout) in hookMapping {
-            var hookList = hooks[hookType] as? [[String: Any]] ?? []
-
-            hookList.removeAll { entry in
-                let cmds = entry["hooks"] as? [[String: Any]] ?? []
-                return cmds.contains {
-                    guard let cmd = $0["command"] as? String else { return false }
-                    return cmd.contains("di-bridge")
-                }
-            }
-
-            let guardedCmd: String
-            if hookArg == "PermissionRequest" {
-                guardedCmd = "\(bridgePath) --agent kiro --hook \(hookArg)"
-            } else {
-                guardedCmd = "\(bridgePath) --agent kiro --hook \(hookArg) || true"
-            }
-            hookList.append([
-                "matcher": "*",
-                "hooks": [
-                    [
-                        "type": "command",
-                        "command": guardedCmd,
-                        "timeout": timeout
-                    ] as [String: Any]
-                ]
-            ] as [String: Any])
-            hooks[hookType] = hookList
-        }
-
-        settings["hooks"] = hooks
-        writeJSON(settingsPath, settings)
-    }
 
     // MARK: - Amp
 
@@ -1430,10 +1285,13 @@ enum ZeroConfigManager {
     }
 
     private static func hasConfiguration(for agent: AgentType) -> Bool {
-        if let target = arrayHookTarget(for: agent) {
-            return hasArrayHooks(at: target.path)
-        }
         switch agent {
+        case .windsurf, .amazonQ, .cody, .cline, .`continue`, .copilotCli,
+             .rooCode, .pearai, .zed, .jetbrainsAi:
+            guard let target = arrayHookTarget(for: agent) else { return false }
+            return hasArrayHooks(at: target.path)
+        case .qwen, .codeBuddy, .droid, .geminiCli, .kiro:
+            return hasSettingsHooks(for: agent)
         case .claudeCode:
             let path = "\(home)/.claude/settings.json"
             guard let settings = readJSON(path),
@@ -1469,32 +1327,12 @@ enum ZeroConfigManager {
             let path = "\(home)/.config/opencode/plugins/xisland.js"
             guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
             return text.contains("di-bridge")
-        case .geminiCli:
-            let path = "\(home)/.gemini/settings.json"
-            guard let settings = readJSON(path),
-                  let hooks = settings["hooks"] as? [String: Any] else { return false }
-            return hooksContainBridge(hooks)
-        case .droid:
-            let path = "\(home)/.factory/settings.json"
-            guard let settings = readJSON(path),
-                  let hooks = settings["hooks"] as? [String: Any] else { return false }
-            return hooksContainBridge(hooks)
         case .qoder:
             // No hook system — always false
             return false
         case .copilot:
             // No hook system — always false
             return false
-        case .codeBuddy:
-            let path = "\(home)/.codebuddy/settings.json"
-            guard let settings = readJSON(path),
-                  let hooks = settings["hooks"] as? [String: Any] else { return false }
-            return hooksContainBridge(hooks)
-        case .qwen:
-            let path = "\(home)/.qwen/settings.json"
-            guard let settings = readJSON(path),
-                  let hooks = settings["hooks"] as? [String: Any] else { return false }
-            return hooksContainBridge(hooks)
         case .kimi:
             let path = "\(home)/.kimi/config.toml"
             guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
@@ -1503,11 +1341,6 @@ enum ZeroConfigManager {
             let path = "\(home)/.deepseek/config.toml"
             guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
             return text.contains("di-bridge")
-        case .kiro:
-            let path = "\(home)/.kiro/settings.json"
-            guard let settings = readJSON(path),
-                  let hooks = settings["hooks"] as? [String: Any] else { return false }
-            return hooksContainBridge(hooks)
         case .amp:
             let path = "\(home)/.config/amp/plugins/xisland.ts"
             guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
@@ -1529,8 +1362,6 @@ enum ZeroConfigManager {
         case .devin, .tabnine:
             guard let config = readJSON(customBridgeConfigPath(for: agent)) else { return false }
             return (config["xisland_bridge"] as? String)?.contains("di-bridge") == true
-        default:
-            return false
         }
     }
 
@@ -1540,11 +1371,13 @@ enum ZeroConfigManager {
     }
 
     private static func removeConfiguration(for agent: AgentType) {
-        if let target = arrayHookTarget(for: agent) {
-            removeArrayHooks(at: target.path)
-            return
-        }
         switch agent {
+        case .windsurf, .amazonQ, .cody, .cline, .`continue`, .copilotCli,
+             .rooCode, .pearai, .zed, .jetbrainsAi:
+            guard let target = arrayHookTarget(for: agent) else { return }
+            removeArrayHooks(at: target.path)
+        case .qwen, .codeBuddy, .droid, .geminiCli, .kiro:
+            removeSettingsHooks(for: agent)
         case .devin, .tabnine:
             let path = customBridgeConfigPath(for: agent)
             guard var config = readJSON(path) else { return }
@@ -1568,28 +1401,16 @@ enum ZeroConfigManager {
             }
         case .openCode:
             try? FileManager.default.removeItem(atPath: "\(home)/.config/opencode/plugins/xisland.js")
-        case .geminiCli:
-            removeBridgeHooks(at: "\(home)/.gemini/settings.json")
-            // Also clean up legacy xisland_hook key if present
-            removeBridgeConfigValue(at: "\(home)/.gemini/settings.json", key: "xisland_hook")
-        case .droid:
-            removeBridgeHooks(at: "\(home)/.factory/settings.json")
         case .qoder:
             // No hook config — nothing to remove
             break
         case .copilot:
             // No hook config — nothing to remove
             break
-        case .codeBuddy:
-            removeBridgeHooks(at: "\(home)/.codebuddy/settings.json")
-        case .qwen:
-            removeBridgeHooks(at: "\(home)/.qwen/settings.json")
         case .kimi:
             removeTOMLBlock(at: "\(home)/.kimi/config.toml", marker: "# X Island hooks")
         case .deepseek:
             removeTOMLBlock(at: "\(home)/.deepseek/config.toml", marker: "# X Island hooks")
-        case .kiro:
-            removeBridgeHooks(at: "\(home)/.kiro/settings.json")
         case .amp:
             try? FileManager.default.removeItem(atPath: "\(home)/.config/amp/plugins/xisland.ts")
         case .pi:
@@ -1600,8 +1421,6 @@ enum ZeroConfigManager {
             removeTOMLBlock(at: "\(home)/.zhipu/config.toml", marker: "# X Island hooks")
         case .aider:
             try? FileManager.default.removeItem(atPath: "\(home)/.xisland/bin/aider-bridge")
-        default:
-            break
         }
     }
 
@@ -1659,13 +1478,6 @@ enum ZeroConfigManager {
         writeJSON(path, config)
     }
 
-    private static func removeBridgeConfigValue(at path: String, key: String) {
-        guard var config = readJSON(path) else { return }
-        if (config[key] as? String)?.contains("di-bridge") == true {
-            config.removeValue(forKey: key)
-            writeJSON(path, config)
-        }
-    }
 
     private static func removeTOMLBlock(at path: String, marker: String) {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8),

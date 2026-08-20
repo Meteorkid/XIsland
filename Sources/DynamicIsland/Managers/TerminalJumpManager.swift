@@ -142,7 +142,13 @@ enum TerminalApp: String, CaseIterable {
         case .copilot: return .vscode
         case .windsurf: return .windsurf
         case .zed: return .zed
-        default: return nil
+        // CLI 工具，或没有对应的 TerminalApp 条目：跳转目标改由会话上报的 terminal 决定。
+        // 不用 default，新增 AgentType 时编译器会强制在这里表态。
+        case .claudeCode, .geminiCli, .openCode, .droid, .qoder, .codeBuddy,
+             .qwen, .kimi, .deepseek, .kiro, .amp, .pi, .hermes, .glm, .aider,
+             .devin, .amazonQ, .tabnine, .cody, .cline, .`continue`, .copilotCli,
+             .rooCode, .pearai, .jetbrainsAi:
+            return nil
         }
     }
 }
