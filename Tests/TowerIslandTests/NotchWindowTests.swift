@@ -3,24 +3,46 @@ import XCTest
 
 @MainActor
 final class NotchWindowTests: XCTestCase {
-    func testCollapsedWindowFrameMatchesVisiblePillSize() {
-        let window = NotchWindow()
-
-        window.resizeToFitCollapse(contentWidth: 180, contentHeight: 32)
-
-        // 高度 = max(内容高度, 收起态高度) + windowTopExtension（窗口向上延伸使屏幕顶端在窗口内部）
-        let expectedHeight = max(32, IslandSizeCalculator.collapsedShapeHeight) + NotchWindow.windowTopExtension
-        XCTAssertEqual(window.frame.width, 180, accuracy: 0.5)
-        XCTAssertEqual(window.frame.height, expectedHeight, accuracy: 0.5)
+    /// 临时固定收起高度。此前两个用例用 IslandSizeCalculator.collapsedShapeHeight 表达期望，
+    /// 而它读的正是被测实现同一个 UserDefaults 键——断言退化成恒等式，还随本机设置漂移。
+    private func withCollapsedHeight(_ height: Double, _ body: () -> Void) {
+        let defaults = UserDefaults.standard
+        let previous = defaults.double(forKey: "islandHeight")
+        defaults.set(height, forKey: "islandHeight")
+        defer {
+            if previous > 0 {
+                defaults.set(previous, forKey: "islandHeight")
+            } else {
+                defaults.removeObject(forKey: "islandHeight")
+            }
+        }
+        body()
     }
 
+    /// 内容高于收起态高度时，取内容高度
+    func testCollapsedWindowFrameUsesContentHeightWhenTallerThanPill() {
+        withCollapsedHeight(30) {
+            let window = NotchWindow()
+            defer { window.orderOut(nil) }
+
+            window.resizeToFitCollapse(contentWidth: 180, contentHeight: 32)
+
+            XCTAssertEqual(window.frame.width, 180, accuracy: 0.5)
+            // 32 > 30，取 32，再加上向上延伸的 windowTopExtension
+            XCTAssertEqual(window.frame.height, 32 + NotchWindow.windowTopExtension, accuracy: 0.5)
+        }
+    }
+
+    /// 内容高度过小时钳到收起态高度——这正是本用例要验证的语义
     func testResizeToFitClampsTinyHeights() {
-        let window = NotchWindow()
+        withCollapsedHeight(40) {
+            let window = NotchWindow()
+            defer { window.orderOut(nil) }
 
-        window.resizeToFit(contentWidth: 180, contentHeight: 1)
+            window.resizeToFit(contentWidth: 180, contentHeight: 1)
 
-        let expectedHeight = max(32, IslandSizeCalculator.collapsedShapeHeight) + NotchWindow.windowTopExtension
-        XCTAssertEqual(window.frame.height, expectedHeight, accuracy: 0.5)
+            XCTAssertEqual(window.frame.height, 40 + NotchWindow.windowTopExtension, accuracy: 0.5)
+        }
     }
 
     func testShouldTriggerScrollExpandAcceptsCollapsedPreciseDownwardScrollInsideHitFrame() {
@@ -121,13 +143,19 @@ final class NotchWindowTests: XCTestCase {
         XCTAssertNil(NotchWindow.indexOfScreen(bestOverlapping: CGRect(x: 0, y: 0, width: 100, height: 100), in: []))
     }
 
-    func testActiveScreenReturnsAnAvailableScreen() {
+    func testActiveScreenReturnsAnAvailableScreen() throws {
+        // 无显示器的 CI 上 NSScreen.screens 为空，bestScreen() 只能返回一个空 NSScreen()
+        try XCTSkipIf(NSScreen.screens.isEmpty, "无可用显示器")
+
         let active = NotchWindow.activeScreen()
         XCTAssertTrue(NSScreen.screens.contains { $0.frame == active.frame })
     }
 
-    func testShowAtActiveScreenPositionsOnAnAvailableScreenAndShows() {
+    func testShowAtActiveScreenPositionsOnAnAvailableScreenAndShows() throws {
+        try XCTSkipIf(NSScreen.screens.isEmpty, "无可用显示器")
+
         let window = NotchWindow()
+        defer { window.orderOut(nil) }
         window.orderOut(nil)
         XCTAssertFalse(window.isVisible)
 
