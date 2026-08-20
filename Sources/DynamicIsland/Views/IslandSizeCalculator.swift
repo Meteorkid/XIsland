@@ -23,13 +23,10 @@ enum IslandSizeCalculator {
 
     // MARK: - Collapsed
 
-    static func pillWidth(
-        islandObscuredByNotch: Bool,
-        visibleSessionCount: Int
-    ) -> CGFloat {
-        // 始终使用用户设置的宽度（参考 xnook），未设置时回落到默认值
-        return collapsedPillWidth
-    }
+    /// 始终使用用户设置的宽度（参考 xnook），未设置时回落到默认值。
+    /// 曾接收 islandObscuredByNotch / visibleSessionCount 两个参数，但函数体从不读它们，
+    /// 调用方却还在为此计算会话数——形参已删除，免得读代码的人以为宽度随这些因素变化。
+    static var pillWidth: CGFloat { collapsedPillWidth }
 
     // MARK: - Expanded
 
@@ -65,8 +62,7 @@ enum IslandSizeCalculator {
     ) -> (width: CGFloat, height: CGFloat) {
         switch state {
         case .collapsed:
-            return (pillWidth(islandObscuredByNotch: false, visibleSessionCount: visibleSessionCount),
-                    collapsedShapeHeight)
+            return (pillWidth, collapsedShapeHeight)
         case .expanded, .permission, .question, .planReview:
             let listH = min(CGFloat(visibleSessionCount) * 80 + 30, panelMaxHeight)
             return (panelWidth,

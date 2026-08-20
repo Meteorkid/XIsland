@@ -716,12 +716,7 @@ struct NotchContentView: View {
     /// Spans slightly past the camera housing; kept compact (competitor-style bar).
     private static let collapsedPillWidthNotched: CGFloat = 276
     /// Bottom-only rounding when docked under the notch (top edge flush with screen).
-    private var pillWidth: CGFloat {
-        IslandSizeCalculator.pillWidth(
-            islandObscuredByNotch: islandObscuredByNotch,
-            visibleSessionCount: manager.visibleSessions.count
-        )
-    }
+    private var pillWidth: CGFloat { IslandSizeCalculator.pillWidth }
 
     @ViewBuilder
     private var expandedContent: some View {

@@ -12,8 +12,6 @@ final class NotchWindow: NSPanel {
     /// 双指下滑展开的最小滚动距离，过滤触控板惯性残余
     static let scrollExpandMinDelta: CGFloat = 2
 
-    static func islandTopOffset(for _: NSScreen) -> CGFloat { 0 }
-
     /// 窗口向上延伸的像素数，使屏幕顶端在窗口内部而非边缘。
     /// 避免 setFrame 偏差或抗锯齿导致顶部出现 1px 缝隙；内容顶部 padding 会覆盖此越界量，可见区无空隙。
     static let windowTopExtension: CGFloat = 6
@@ -91,7 +89,7 @@ final class NotchWindow: NSPanel {
         let width: CGFloat = 220
         let height = IslandSizeCalculator.collapsedShapeHeight
         let x = screen.frame.origin.x + (screen.frame.width - width) / 2
-        let y = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen) - height
+        let y = screen.frame.maxY - height
 
         super.init(
             contentRect: NSRect(x: x, y: y, width: width, height: height),
@@ -177,7 +175,7 @@ final class NotchWindow: NSPanel {
         } else {
             x = screen.frame.origin.x + (screen.frame.width - currentFrame.width) / 2
         }
-        let screenTop = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen)
+        let screenTop = screen.frame.maxY
         // 窗口向上延伸 windowTopExtension，使屏幕顶端在窗口内部
         let y = screenTop - currentFrame.height + Self.windowTopExtension
         setFrameDirect(NSRect(x: x, y: y, width: currentFrame.width, height: currentFrame.height), display: true)
@@ -271,7 +269,7 @@ final class NotchWindow: NSPanel {
         } else {
             x = screen.frame.origin.x + (screen.frame.width - w) / 2
         }
-        let screenTop = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen)
+        let screenTop = screen.frame.maxY
         let yComputed = screenTop - h + Self.windowTopExtension
         let rect = Self.safeFrame(NSRect(x: x, y: yComputed, width: w, height: h), screen: screen)
         CATransaction.begin()
@@ -292,7 +290,7 @@ final class NotchWindow: NSPanel {
         } else {
             targetX = screen.frame.origin.x + (screen.frame.width - targetW) / 2
         }
-        let screenTop = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen)
+        let screenTop = screen.frame.maxY
         let targetY = screenTop - targetH + Self.windowTopExtension
 
         isDragging = false
@@ -488,7 +486,7 @@ final class NotchWindow: NSPanel {
         } else {
             x = screen.frame.origin.x + (screen.frame.width - frame.width) / 2
         }
-        let screenTop = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen)
+        let screenTop = screen.frame.maxY
         // 窗口向上延伸
         let y = screenTop - frame.height + Self.windowTopExtension
         setFrameDirect(NSRect(x: x, y: y, width: frame.width, height: frame.height), display: true)
@@ -521,7 +519,7 @@ final class NotchWindow: NSPanel {
                                min(dragStartWindowX + dx,
                                    screen.frame.origin.x + screen.frame.width - frame.width))
                 // 窗口向上延伸
-                let topY = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen) - frame.height + Self.windowTopExtension
+                let topY = screen.frame.maxY - frame.height + Self.windowTopExtension
                 setFrameDirect(NSRect(x: newX, y: topY, width: frame.width, height: frame.height))
             } else {
                 super.sendEvent(event)
@@ -628,13 +626,16 @@ final class NotchWindow: NSPanel {
         super.setFrame(normalized, display: display)
     }
 
-    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
-        guard frameRect.width.isFinite, frameRect.height.isFinite else { return }
+    /// 把外部请求的 frame 归一化成「贴屏幕顶端、按 customX 或居中、经 safeFrame 钳制」的最终 frame。
+    /// 两个 setFrame 重载此前各自维护一份完全相同的 21 行定位逻辑，改一处漏一处的风险高，故合并。
+    /// 返回 nil 表示 frameRect 含 NaN/Inf，应直接忽略这次 setFrame。
+    private func pinnedFrame(for frameRect: NSRect) -> NSRect? {
+        guard frameRect.width.isFinite, frameRect.height.isFinite else { return nil }
         let clampedHeight = max(frameRect.height, Self.collapsedHitHeight)
         // 向上延伸窗口，使屏幕顶端在窗口内部
         let windowHeight = clampedHeight + Self.windowTopExtension
         let screen = layoutScreen()
-        let topY = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen) - clampedHeight
+        let topY = screen.frame.maxY - clampedHeight
         let x: CGFloat
         if isDragging || dragTracking {
             x = frame.origin.x
@@ -645,34 +646,19 @@ final class NotchWindow: NSPanel {
         } else {
             x = screen.frame.origin.x + (screen.frame.width - frameRect.width) / 2
         }
-        let pinned = Self.safeFrame(
+        return Self.safeFrame(
             NSRect(x: x, y: topY, width: frameRect.width, height: windowHeight),
             screen: screen
         )
+    }
+
+    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        guard let pinned = pinnedFrame(for: frameRect) else { return }
         super.setFrame(pinned, display: flag)
     }
 
     override func setFrame(_ frameRect: NSRect, display displayFlag: Bool, animate animateFlag: Bool) {
-        guard frameRect.width.isFinite, frameRect.height.isFinite else { return }
-        let clampedHeight = max(frameRect.height, Self.collapsedHitHeight)
-        // 向上延伸窗口，使屏幕顶端在窗口内部
-        let windowHeight = clampedHeight + Self.windowTopExtension
-        let screen = layoutScreen()
-        let topY = screen.frame.origin.y + screen.frame.height - Self.islandTopOffset(for: screen) - clampedHeight
-        let x: CGFloat
-        if isDragging || dragTracking {
-            x = frame.origin.x
-        } else if let cx = customX, cx.isFinite {
-            x = max(screen.frame.origin.x,
-                    min(cx - frameRect.width / 2,
-                        screen.frame.origin.x + screen.frame.width - frameRect.width))
-        } else {
-            x = screen.frame.origin.x + (screen.frame.width - frameRect.width) / 2
-        }
-        let pinned = Self.safeFrame(
-            NSRect(x: x, y: topY, width: frameRect.width, height: windowHeight),
-            screen: screen
-        )
+        guard let pinned = pinnedFrame(for: frameRect) else { return }
         super.setFrame(pinned, display: displayFlag, animate: animateFlag)
     }
 
