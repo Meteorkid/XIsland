@@ -1,89 +1,103 @@
 import SwiftUI
 
+/// 轻量 Markdown 渲染器：仅支持计划/说明中会用到的标题、段落、代码块、
+/// 列表项与分隔线，行内文本交给 `AttributedString(markdown:)` 处理。
 struct MarkdownView: View {
     let markdown: String
+
     @Environment(ThemeManager.self) private var themeManager
-    private let blocks: [Block]
+
+    private let elements: [MarkdownBlock]
 
     private var scheme: ColorScheme { themeManager.resolvedScheme }
 
     init(markdown: String) {
         self.markdown = markdown
-        self.blocks = Self.parseBlocks(markdown)
+        self.elements = Self.parse(markdown)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(blocks, id: \.self) { block in
-                renderBlock(block)
+            ForEach(elements, id: \.self) { element in
+                render(element)
             }
         }
     }
 
-    private enum Block: Hashable {
-        case heading(Int, String)
+    // MARK: - 块模型
+
+    private enum MarkdownBlock: Hashable {
+        case heading(level: Int, text: String)
         case paragraph(String)
         case code(String)
         case listItem(String)
         case divider
     }
 
-    private static func parseBlocks(_ markdown: String) -> [Block] {
-        var blocks: [Block] = []
-        var inCodeBlock = false
-        var codeLines: [String] = []
+    // MARK: - 解析
 
-        for line in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
-            let str = String(line)
+    private static func parse(_ markdown: String) -> [MarkdownBlock] {
+        var result: [MarkdownBlock] = []
+        var inFence = false
+        var codeBuffer: [String] = []
 
-            if str.hasPrefix("```") {
-                if inCodeBlock {
-                    blocks.append(.code(codeLines.joined(separator: "\n")))
-                    codeLines = []
-                    inCodeBlock = false
+        for rawLine in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = String(rawLine)
+
+            if line.hasPrefix("```") {
+                if inFence {
+                    result.append(.code(codeBuffer.joined(separator: "\n")))
+                    codeBuffer.removeAll(keepingCapacity: true)
+                    inFence = false
                 } else {
-                    inCodeBlock = true
+                    inFence = true
                 }
                 continue
             }
 
-            if inCodeBlock {
-                codeLines.append(str)
+            if inFence {
+                codeBuffer.append(line)
                 continue
             }
 
-            if str.hasPrefix("### ") {
-                blocks.append(.heading(3, String(str.dropFirst(4))))
-            } else if str.hasPrefix("## ") {
-                blocks.append(.heading(2, String(str.dropFirst(3))))
-            } else if str.hasPrefix("# ") {
-                blocks.append(.heading(1, String(str.dropFirst(2))))
-            } else if str.hasPrefix("- ") || str.hasPrefix("* ") {
-                blocks.append(.listItem(String(str.dropFirst(2))))
-            } else if str.hasPrefix("---") || str.hasPrefix("***") {
-                blocks.append(.divider)
-            } else if !str.trimmingCharacters(in: .whitespaces).isEmpty {
-                blocks.append(.paragraph(str))
+            if let block = classify(line) {
+                result.append(block)
             }
         }
 
-        if !codeLines.isEmpty {
-            blocks.append(.code(codeLines.joined(separator: "\n")))
+        // 未闭合的围栏：把剩余缓冲行整体收作一个代码块（为空则忽略，保持与原行为一致）。
+        if !codeBuffer.isEmpty {
+            result.append(.code(codeBuffer.joined(separator: "\n")))
         }
 
-        return blocks
+        return result
     }
 
+    /// 将一行普通文本归类为对应块；空行 / 纯空白行返回 nil 表示跳过。
+    private static func classify(_ line: String) -> MarkdownBlock? {
+        if line.hasPrefix("### ") { return .heading(level: 3, text: String(line.dropFirst(4))) }
+        if line.hasPrefix("## ")  { return .heading(level: 2, text: String(line.dropFirst(3))) }
+        if line.hasPrefix("# ")   { return .heading(level: 1, text: String(line.dropFirst(2))) }
+        if line.hasPrefix("- ") || line.hasPrefix("* ") {
+            return .listItem(String(line.dropFirst(2)))
+        }
+        if line.hasPrefix("---") || line.hasPrefix("***") { return .divider }
+        if line.trimmingCharacters(in: .whitespaces).isEmpty { return nil }
+        return .paragraph(line)
+    }
+
+    // MARK: - 渲染
+
     @ViewBuilder
-    private func renderBlock(_ block: Block) -> some View {
+    private func render(_ block: MarkdownBlock) -> some View {
         switch block {
         case .heading(let level, let text):
             Text(text)
-                .font(.system(size: headingSize(level), weight: .bold))
+                .font(.system(size: headingFontSize(level), weight: .bold))
                 .foregroundStyle(IslandStyle.primaryText)
 
         case .paragraph(let text):
-            Text(inlineMarkdown(text))
+            Text(inlineText(text))
                 .font(.system(size: 11))
                 .foregroundStyle(IslandStyle.secondaryText)
 
@@ -101,17 +115,18 @@ struct MarkdownView: View {
                 Text("•")
                     .font(.system(size: 11))
                     .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
-                Text(inlineMarkdown(text))
+                Text(inlineText(text))
                     .font(.system(size: 11))
                     .foregroundStyle(IslandStyle.secondaryText)
             }
 
         case .divider:
-            Divider().background(IslandStyle.divider(for: scheme).opacity(IslandStyle.dividerOpacity(for: scheme)))
+            Divider()
+                .background(IslandStyle.divider(for: scheme).opacity(IslandStyle.dividerOpacity(for: scheme)))
         }
     }
 
-    private func headingSize(_ level: Int) -> CGFloat {
+    private func headingFontSize(_ level: Int) -> CGFloat {
         switch level {
         case 1: return 15
         case 2: return 13
@@ -119,7 +134,7 @@ struct MarkdownView: View {
         }
     }
 
-    private func inlineMarkdown(_ text: String) -> AttributedString {
+    private func inlineText(_ text: String) -> AttributedString {
         (try? AttributedString(markdown: text)) ?? AttributedString(text)
     }
 }

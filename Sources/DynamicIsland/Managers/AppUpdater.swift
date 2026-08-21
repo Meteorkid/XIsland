@@ -3,12 +3,16 @@ import CryptoKit
 import Dispatch
 import Foundation
 
+// MARK: - 更新阶段
+
 enum AppUpdaterStage: Equatable {
     case downloading
     case mounting
     case installing
     case relaunching
 }
+
+// MARK: - 更新错误
 
 enum AppUpdaterError: LocalizedError, Equatable {
     case downloadFailed
@@ -39,7 +43,11 @@ enum AppUpdaterError: LocalizedError, Equatable {
     }
 }
 
+// MARK: - 更新器
+
 struct AppUpdater {
+
+    // 依赖注入所用的类型别名，便于测试中替换实现
     typealias CommandRunner = @Sendable (_ launchPath: String, _ arguments: [String]) throws -> String
     typealias Downloader = @Sendable (_ sourceURL: URL, _ destinationURL: URL) async throws -> Void
     typealias RelaunchHook = @Sendable (_ appPath: String) throws -> Void
@@ -55,6 +63,7 @@ struct AppUpdater {
         _ onStage: @escaping @MainActor (AppUpdaterStage) -> Void
     ) async throws -> Void
 
+    /// 命令执行失败时抛出的错误，携带进程退出码与合并后的输出。
     struct CommandExecutionError: Error, Equatable {
         let launchPath: String
         let arguments: [String]
@@ -62,29 +71,7 @@ struct AppUpdater {
         let output: String
     }
 
-    private final class CommandOutputBuffer: @unchecked Sendable {
-        private let lock = NSLock()
-        private var data = Data()
-        private var readError: Error?
-
-        func append(_ chunk: Data) {
-            lock.lock()
-            data.append(chunk)
-            lock.unlock()
-        }
-
-        func store(readError: Error) {
-            lock.lock()
-            self.readError = readError
-            lock.unlock()
-        }
-
-        func snapshot() -> (data: Data, readError: Error?) {
-            lock.lock()
-            defer { lock.unlock() }
-            return (data, readError)
-        }
-    }
+    // MARK: 依赖
 
     let runCommand: CommandRunner
     let downloadFile: Downloader
@@ -95,28 +82,76 @@ struct AppUpdater {
     let fileExists: FileExistenceChecker
     let installImpl: InstallHandler?
 
+    init(
+        runCommand: @escaping CommandRunner = Self.defaultRunCommand,
+        downloadFile: @escaping Downloader = Self.defaultDownloadFile,
+        relaunchApp: @escaping RelaunchHook = Self.defaultRelaunchApp,
+        launchInstallerHelper: @escaping HelperLauncher = Self.defaultLaunchInstallerHelper,
+        terminateApp: @escaping TerminationHook = Self.defaultTerminateApp,
+        temporaryDirectoryProvider: @escaping TemporaryDirectoryProvider = Self.defaultTemporaryDirectoryProvider,
+        fileExists: @escaping FileExistenceChecker = Self.defaultFileExists,
+        installImpl: InstallHandler? = nil
+    ) {
+        self.runCommand = runCommand
+        self.downloadFile = downloadFile
+        self.relaunchApp = relaunchApp
+        self.launchInstallerHelper = launchInstallerHelper
+        self.terminateApp = terminateApp
+        self.temporaryDirectoryProvider = temporaryDirectoryProvider
+        self.fileExists = fileExists
+        self.installImpl = installImpl
+    }
+
+    // MARK: - 命令执行
+
+    /// 跨线程安全地累积子进程的标准输出 / 错误输出。
+    private final class CommandOutputCollector: @unchecked Sendable {
+        private let lock = NSLock()
+        private var accumulated = Data()
+        private var readFailure: Error?
+
+        func append(_ chunk: Data) {
+            lock.lock()
+            accumulated.append(chunk)
+            lock.unlock()
+        }
+
+        func recordReadFailure(_ error: Error) {
+            lock.lock()
+            readFailure = error
+            lock.unlock()
+        }
+
+        func snapshot() -> (data: Data, readError: Error?) {
+            lock.lock()
+            defer { lock.unlock() }
+            return (accumulated, readFailure)
+        }
+    }
+
+    /// 同步执行外部命令，合并标准输出与错误输出。
     private static func executeCommand(launchPath: String, arguments: [String]) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: launchPath)
         process.arguments = arguments
 
-        let outputPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = outputPipe
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
 
-        let outputBuffer = CommandOutputBuffer()
-        let readerGroup = DispatchGroup()
-        readerGroup.enter()
+        // 后台线程持续排空管道，避免子进程输出超过管道缓冲时发生死锁
+        let collector = CommandOutputCollector()
+        let drainer = DispatchGroup()
+        drainer.enter()
         DispatchQueue.global(qos: .utility).async {
-            defer { readerGroup.leave() }
-
-            let readHandle = outputPipe.fileHandleForReading
+            defer { drainer.leave() }
+            let handle = pipe.fileHandleForReading
             do {
-                while let chunk = try readHandle.read(upToCount: 4096), !chunk.isEmpty {
-                    outputBuffer.append(chunk)
+                while let chunk = try handle.read(upToCount: 4096), !chunk.isEmpty {
+                    collector.append(chunk)
                 }
             } catch {
-                outputBuffer.store(readError: error)
+                collector.recordReadFailure(error)
             }
         }
 
@@ -124,16 +159,17 @@ struct AppUpdater {
             try process.run()
             process.waitUntilExit()
         } catch {
-            outputPipe.fileHandleForWriting.closeFile()
-            readerGroup.wait()
+            // 启动失败时关闭写端，让读取线程自然结束
+            pipe.fileHandleForWriting.closeFile()
+            drainer.wait()
             throw error
         }
 
-        readerGroup.wait()
+        drainer.wait()
 
-        let snapshot = outputBuffer.snapshot()
-        if let readError = snapshot.readError {
-            throw readError
+        let snapshot = collector.snapshot()
+        if let readFailure = snapshot.readError {
+            throw readFailure
         }
 
         let output = String(decoding: snapshot.data, as: UTF8.self)
@@ -148,6 +184,8 @@ struct AppUpdater {
 
         return output
     }
+
+    // MARK: - 默认实现
 
     static let defaultRunCommand: CommandRunner = { launchPath, arguments in
         try Self.executeCommand(launchPath: launchPath, arguments: arguments)
@@ -198,47 +236,46 @@ struct AppUpdater {
         FileManager.default.fileExists(atPath: path)
     }
 
-    init(
-        runCommand: @escaping CommandRunner = Self.defaultRunCommand,
-        downloadFile: @escaping Downloader = Self.defaultDownloadFile,
-        relaunchApp: @escaping RelaunchHook = Self.defaultRelaunchApp,
-        launchInstallerHelper: @escaping HelperLauncher = Self.defaultLaunchInstallerHelper,
-        terminateApp: @escaping TerminationHook = Self.defaultTerminateApp,
-        temporaryDirectoryProvider: @escaping TemporaryDirectoryProvider = Self.defaultTemporaryDirectoryProvider,
-        fileExists: @escaping FileExistenceChecker = Self.defaultFileExists,
-        installImpl: InstallHandler? = nil
-    ) {
-        self.runCommand = runCommand
-        self.downloadFile = downloadFile
-        self.relaunchApp = relaunchApp
-        self.launchInstallerHelper = launchInstallerHelper
-        self.terminateApp = terminateApp
-        self.temporaryDirectoryProvider = temporaryDirectoryProvider
-        self.fileExists = fileExists
-        self.installImpl = installImpl
-    }
+    // MARK: - 静态辅助
 
     static func dmgFilename(for version: String) -> String {
         let normalizedVersion = version.hasPrefix("v") ? String(version.dropFirst()) : version
         return "XIsland-\(normalizedVersion).dmg"
     }
 
+    /// 从 `hdiutil attach` 的输出中解析挂载点。
     static func mountDirectory(from output: String) -> String? {
-        output
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .reversed()
-            .compactMap { line -> String? in
-                let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
-                guard let mountPath = parts.last?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      mountPath.hasPrefix("/Volumes/"),
-                      !mountPath.isEmpty else {
-                    return nil
-                }
-                return mountPath
+        let lines = output.split(separator: "\n", omittingEmptySubsequences: false)
+        for line in lines.reversed() {
+            let columns = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard let candidate = columns.last?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  candidate.hasPrefix("/Volumes/"),
+                  !candidate.isEmpty else {
+                continue
             }
-            .first
+            return candidate
+        }
+        return nil
+    }
+
+    /// 分块计算文件的 SHA256，避免一次性读入整个 DMG。
+    static func computeSHA256(of url: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { handle.closeFile() }
+
+        var hasher = SHA256()
+        let chunkSize = 64 * 1024
+        while true {
+            let chunk = autoreleasepool { handle.readData(ofLength: chunkSize) }
+            guard !chunk.isEmpty else { break }
+            hasher.update(data: chunk)
+        }
+
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 }
+
+// MARK: - 安装流程
 
 extension AppUpdater {
     func install(
@@ -290,7 +327,7 @@ extension AppUpdater {
             throw AppUpdaterError.appNotFound
         }
 
-        // 验证挂载应用的代码签名
+        // 校验挂载应用的代码签名
         do {
             _ = try runCommand("/usr/bin/codesign", ["--verify", "--deep", "--strict", mountedAppPath])
         } catch {
@@ -321,22 +358,9 @@ extension AppUpdater {
 
         terminateApp()
     }
-
-    static func computeSHA256(of url: URL) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { handle.closeFile() }
-
-        var hasher = SHA256()
-        while autoreleasepool(invoking: {
-            let data = handle.readData(ofLength: 65536)
-            guard !data.isEmpty else { return false }
-            hasher.update(data: data)
-            return true
-        }) {}
-        let digest = hasher.finalize()
-        return digest.map { String(format: "%02x", $0) }.joined()
-    }
 }
+
+// MARK: - 安装脚本生成
 
 private extension AppUpdater {
     static func writeInstallerScript(
@@ -347,32 +371,52 @@ private extension AppUpdater {
         mountDirectory: String,
         tempDirectory: String
     ) throws {
-        let script = """
-        #!/bin/sh
-        set -eu
-
-        TEMP_DIR=\(shellQuoted(tempDirectory))
-        trap 'rm -rf "$TEMP_DIR"' EXIT
-
-        while kill -0 \(currentPID) 2>/dev/null; do
-          sleep 0.2
-        done
-
-        rm -rf \(shellQuoted(appPath))
-        cp -R \(shellQuoted(mountedAppPath)) \(shellQuoted(appPath))
-        xattr -cr \(shellQuoted(appPath)) || true
-
-        codesign --verify --deep --strict \(shellQuoted(appPath))
-
-        hdiutil detach \(shellQuoted(mountDirectory)) -quiet >/dev/null 2>&1 || true
-        open \(shellQuoted(appPath))
-        """
+        let script = makeInstallerScript(
+            currentPID: currentPID,
+            mountedAppPath: mountedAppPath,
+            appPath: appPath,
+            mountDirectory: mountDirectory,
+            tempDirectory: tempDirectory
+        )
 
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
     }
 
+    private static func makeInstallerScript(
+        currentPID: Int32,
+        mountedAppPath: String,
+        appPath: String,
+        mountDirectory: String,
+        tempDirectory: String
+    ) -> String {
+        let lines = [
+            "#!/bin/sh",
+            "set -eu",
+            "",
+            "TEMP_DIR=\(shellQuoted(tempDirectory))",
+            "trap 'rm -rf \"$TEMP_DIR\"' EXIT",
+            "",
+            "while kill -0 \(currentPID) 2>/dev/null; do",
+            "  sleep 0.2",
+            "done",
+            "",
+            "rm -rf \(shellQuoted(appPath))",
+            "cp -R \(shellQuoted(mountedAppPath)) \(shellQuoted(appPath))",
+            "xattr -cr \(shellQuoted(appPath)) || true",
+            "",
+            "codesign --verify --deep --strict \(shellQuoted(appPath))",
+            "",
+            "hdiutil detach \(shellQuoted(mountDirectory)) -quiet >/dev/null 2>&1 || true",
+            "open \(shellQuoted(appPath))",
+        ]
+        return lines.joined(separator: "\n")
+    }
+
+    /// 用单引号包裹并转义，防止路径中的特殊字符破坏 shell 命令。
     static func shellQuoted(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+        // POSIX 单引号转义：把每个 ' 替换为 '\''
+        let escaped = value.replacingOccurrences(of: "'", with: #"'\''"#)
+        return "'\(escaped)'"
     }
 }

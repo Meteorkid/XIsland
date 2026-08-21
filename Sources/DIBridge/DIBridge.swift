@@ -1,31 +1,36 @@
 import Foundation
 import DIShared
 
+/// `di-bridge` 命令行工具：被各 AI 工具的 hook 以一次性子进程方式拉起。
+///
+/// 职责：
+/// 1. 从命令行参数与 stdin 读取 hook 事件；
+/// 2. 组装成 `DIMessage` 并编码为带帧边界的 JSON；
+/// 3. 通过 Unix domain socket 发送给常驻的 `DynamicIsland`；
+/// 4. 对权限 / 问答 / 计划评审这类需要用户裁决的事件，等待服务端写回结果，
+///    再按对应工具期望的 stdout 约定打印，并以退出码表达通过 / 拒绝。
 @main
 struct DIBridge {
+    /// 单条消息（含帧边界）的最大字节数，用于防御异常输入撑爆内存。
     static let maxMessageBytes = 16 * 1024 * 1024
+
+    // MARK: - 入口
 
     static func main() {
         let args = parseArgs()
         let agentType = args["agent"] ?? "unknown"
         let hookType = args["hook"] ?? "notification"
-
         let explicitTool = args["tool"]
         let stdinData = readStdin()
 
-        let sessionId: String
-        if let explicit = args["session"] {
-            sessionId = explicit
-        } else if let envId = ProcessInfo.processInfo.environment["DI_SESSION_ID"] {
-            sessionId = envId
-        } else if let nativeId = stdinData?["conversation_id"] as? String ?? stdinData?["session_id"] as? String,
-                  !nativeId.isEmpty {
-            sessionId = "\(agentType)-\(nativeId)"
-        } else {
-            sessionId = stableSessionId(agent: agentType)
-        }
+        let sessionId = resolveSessionId(
+            agentType: agentType,
+            explicitSession: args["session"],
+            stdinData: stdinData
+        )
 
         dumpStdin(hook: hookType, data: stdinData)
+
         var message = buildMessage(
             agentType: agentType,
             hookType: hookType,
@@ -35,8 +40,8 @@ struct DIBridge {
         )
         message.agentType = agentType
 
-        /// Hooks spawn `di-bridge` as a one-shot child; we must exit so the parent script continues
-        /// and can read stdout / exit status (e.g. allow=0, deny≠0 for permission tools).
+        // hook 以一次性子进程方式拉起 `di-bridge`，必须及时退出，好让父脚本
+        // 继续读取 stdout 与退出码（例如权限类 hook 用 0 表示允许、非 0 表示拒绝）。
         let isInteractive = message.type == .permissionRequest
             || message.type == .question
             || message.type == .planReview
@@ -48,17 +53,13 @@ struct DIBridge {
 
         let fd = connectSocket()
         guard fd >= 0 else {
-            if needsJsonOutput(hookType) {
-                print("{}")
-            }
+            printJsonPlaceholderIfNeeded(hookType)
             exit(0)
         }
 
         guard sendAll(fd: fd, data: encoded) else {
             close(fd)
-            if needsJsonOutput(hookType) {
-                print("{}")
-            }
+            printJsonPlaceholderIfNeeded(hookType)
             exit(1)
         }
         shutdown(fd, SHUT_WR)
@@ -66,68 +67,92 @@ struct DIBridge {
         if isInteractive {
             dumpStdin(hook: "AWAIT_RESPONSE", data: ["type": message.type.rawValue, "fd": "\(fd)"])
             let response = receiveResponse(fd)
-            dumpStdin(hook: "RECV_DONE", data: ["got": response != nil ? response!.type.rawValue : "nil"])
+            dumpStdin(hook: "RECV_DONE", data: ["got": response.map { $0.type.rawValue } ?? "nil"])
             close(fd)
 
-            if let response {
-                switch response.type {
-                case .permissionResponse:
-                    let approved = response.approved ?? false
-                    // Claude Code reads the PermissionRequest outcome from stdout JSON (hookSpecificOutput),
-                    // not from exit status alone. See hooks.md § PermissionRequest decision control.
-                    if usesClaudeCodePermissionStdout(agentType: agentType) {
-                        print(Self.buildClaudeCodePermissionResponse(approved: approved))
-                    }
-                    dumpStdin(hook: "PERM_EXIT", data: ["approved": "\(approved)"])
-                    exit(approved ? 0 : 1)
-
-                case .questionResponse:
-                    let answer = response.answer ?? ""
-                    if agentType == "cursor" {
-                        let jsonObj: [String: Any] = [
-                            "permission": "deny",
-                            "agent_message": "The user already answered this question via X Island. User selected: \(answer). Do NOT ask the same question again. Continue with the conversation using this answer."
-                        ]
-                        if let data = try? JSONSerialization.data(withJSONObject: jsonObj),
-                           let str = String(data: data, encoding: .utf8) {
-                            print(str)
-                        }
-                    } else if isClaudeCodeQuestion(hookType: hookType, stdinData: stdinData) {
-                        let json = buildClaudeCodeQuestionResponse(
-                            answer: answer,
-                            stdinData: stdinData,
-                            hookType: hookType
-                        )
-                        print(json)
-                    } else {
-                        print(answer)
-                    }
-                    exit(0)
-
-                case .planResponse:
-                    let approved = response.planApproved ?? false
-                    if let feedback = response.feedback {
-                        print(feedback)
-                    }
-                    exit(approved ? 0 : 1)
-
-                default:
-                    exit(0)
-                }
-            } else {
+            guard let response else {
                 fputs("[di-bridge] No response received\n", stderr)
                 exit(1)
             }
+
+            switch response.type {
+            case .permissionResponse:
+                let approved = response.approved ?? false
+                // Claude Code 通过 stdout 的 JSON（hookSpecificOutput）读取权限结果，
+                // 仅靠退出码不够，见 hooks.md 关于 PermissionRequest 决策控制的说明。
+                if usesClaudeCodePermissionStdout(agentType: agentType) {
+                    print(Self.buildClaudeCodePermissionResponse(approved: approved))
+                }
+                dumpStdin(hook: "PERM_EXIT", data: ["approved": "\(approved)"])
+                exit(approved ? 0 : 1)
+
+            case .questionResponse:
+                let answer = response.answer ?? ""
+                if agentType == "cursor" {
+                    let payload: [String: Any] = [
+                        "permission": "deny",
+                        "agent_message": "The user already answered this question via X Island. User selected: \(answer). Do NOT ask the same question again. Continue with the conversation using this answer."
+                    ]
+                    if let data = try? JSONSerialization.data(withJSONObject: payload),
+                       let text = String(data: data, encoding: .utf8) {
+                        print(text)
+                    }
+                } else if isClaudeCodeQuestion(hookType: hookType, stdinData: stdinData) {
+                    print(buildClaudeCodeQuestionResponse(
+                        answer: answer,
+                        stdinData: stdinData,
+                        hookType: hookType
+                    ))
+                } else {
+                    print(answer)
+                }
+                exit(0)
+
+            case .planResponse:
+                let approved = response.planApproved ?? false
+                if let feedback = response.feedback {
+                    print(feedback)
+                }
+                exit(approved ? 0 : 1)
+
+            default:
+                exit(0)
+            }
         } else {
             close(fd)
-            if needsJsonOutput(hookType) {
-                print("{}")
-            }
+            printJsonPlaceholderIfNeeded(hookType)
             exit(0)
         }
     }
 
-    // MARK: - Socket Communication
+    /// 解析会话标识：命令行参数 > 环境变量 > stdin 里的原生会话 ID > 稳定哈希。
+    private static func resolveSessionId(
+        agentType: String,
+        explicitSession: String?,
+        stdinData: [String: Any]?
+    ) -> String {
+        if let explicit = explicitSession {
+            return explicit
+        }
+        if let envId = ProcessInfo.processInfo.environment["DI_SESSION_ID"] {
+            return envId
+        }
+        if let nativeId = stdinData?["conversation_id"] as? String ?? stdinData?["session_id"] as? String,
+           !nativeId.isEmpty {
+            return "\(agentType)-\(nativeId)"
+        }
+        return stableSessionId(agent: agentType)
+    }
+
+    /// 某些 hook（如 stop / sessionstart / userpromptsubmit）期望一个 JSON 输出，
+    /// 即便桥接未连接上服务端也要回一个 `{}`，避免父脚本解析失败。
+    private static func printJsonPlaceholderIfNeeded(_ hookType: String) {
+        if needsJsonOutput(hookType) {
+            print("{}")
+        }
+    }
+
+    // MARK: - Socket 通信
 
     static func socketPath(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
         if let override = environment["DI_SOCKET_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -143,7 +168,7 @@ struct DIBridge {
             return home
         }
         if path.hasPrefix("~/") {
-            return "\(home)/\(path.dropFirst(2))"
+            return home + "/" + path.dropFirst(2)
         }
         return path.replacingOccurrences(of: "$HOME", with: home)
     }
@@ -152,25 +177,24 @@ struct DIBridge {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return -1 }
 
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let path = socketPath()
-        let pathBytes = path.utf8CString
-        withUnsafeMutablePointer(to: &addr.sun_path) { sunPath in
-            pathBytes.withUnsafeBufferPointer { src in
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        let pathBytes = socketPath().utf8CString
+        withUnsafeMutablePointer(to: &address.sun_path) { sunPath in
+            pathBytes.withUnsafeBufferPointer { source in
                 UnsafeMutableRawPointer(sunPath)
-                    .copyMemory(from: src.baseAddress!, byteCount: min(src.count, 104))
+                    .copyMemory(from: source.baseAddress!, byteCount: min(source.count, 104))
             }
         }
 
-        let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
-        let result = withUnsafePointer(to: &addr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-                connect(fd, sockPtr, addrLen)
+        let length = socklen_t(MemoryLayout<sockaddr_un>.size)
+        let connected = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPointer in
+                connect(fd, sockPointer, length)
             }
         }
 
-        if result != 0 {
+        guard connected == 0 else {
             close(fd)
             return -1
         }
@@ -179,13 +203,13 @@ struct DIBridge {
 
     @discardableResult
     static func sendAll(fd: Int32, data: Data) -> Bool {
-        data.withUnsafeBytes { ptr -> Bool in
-            guard let base = ptr.baseAddress else { return true }
-            var sent = 0
-            while sent < ptr.count {
-                let n = send(fd, base.advanced(by: sent), ptr.count - sent, 0)
-                guard n > 0 else { return false }
-                sent += n
+        data.withUnsafeBytes { bytes -> Bool in
+            guard let base = bytes.baseAddress else { return true }
+            var offset = 0
+            while offset < bytes.count {
+                let written = send(fd, base.advanced(by: offset), bytes.count - offset, 0)
+                guard written > 0 else { return false }
+                offset += written
             }
             return true
         }
@@ -197,37 +221,33 @@ struct DIBridge {
     }
 
     static func readFramedMessage(_ fd: Int32) -> Data? {
-        var data = Data()
-        let bufSize = 65536
-        let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: bufSize)
-        defer { buf.deallocate() }
+        let chunkSize = 65536
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: chunkSize)
+        defer { buffer.deallocate() }
 
-        let timeout = timeval(tv_sec: 300, tv_usec: 0)
-        var tv = timeout
-        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        var timeout = timeval(tv_sec: 300, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
 
+        var accumulated = Data()
         while true {
-            let n = recv(fd, buf, bufSize, 0)
-            if n > 0 {
-                data.append(buf, count: n)
-                if data.count > maxMessageBytes { return nil }
-                if let newline = data.firstIndex(of: 0x0A) {
-                    return Data(data.prefix(through: newline))
-                }
-            } else {
-                break
+            let received = recv(fd, buffer, chunkSize, 0)
+            guard received > 0 else { break }
+            accumulated.append(buffer, count: received)
+            if accumulated.count > maxMessageBytes { return nil }
+            if let newline = accumulated.firstIndex(of: 0x0A) {
+                return Data(accumulated.prefix(through: newline))
             }
         }
 
-        return data.isEmpty ? nil : data
+        return accumulated.isEmpty ? nil : accumulated
     }
 
     static func needsJsonOutput(_ hookType: String) -> Bool {
-        let h = hookType.lowercased()
-        return h == "stop" || h == "sessionstart" || h == "session_start" || h == "userpromptsubmit"
+        let hook = hookType.lowercased()
+        return hook == "stop" || hook == "sessionstart" || hook == "session_start" || hook == "userpromptsubmit"
     }
 
-    // MARK: - Session ID
+    // MARK: - 会话标识
 
     static var currentTermSessionId: String {
         if let id = ProcessInfo.processInfo.environment["ITERM_SESSION_ID"], !id.isEmpty { return "iterm:\(id)" }
@@ -243,59 +263,65 @@ struct DIBridge {
         let termProgram = ProcessInfo.processInfo.environment["TERM_PROGRAM"] ?? "unknown"
         let termSession = currentTermSessionId
         let seed = "\(agent)-\(cwd)-\(termProgram)-\(termSession)"
+
+        // djb2：一个稳定、跨进程一致的哈希，用于把「无原生会话 ID」的事件归到同一会话。
         var hash: UInt64 = 5381
-        for byte in seed.utf8 { hash = hash &* 33 &+ UInt64(byte) }
+        for byte in seed.utf8 {
+            hash = hash &* 33 &+ UInt64(byte)
+        }
         return "\(agent)-\(String(hash, radix: 16))"
     }
 
-    // MARK: - Argument Parsing
+    // MARK: - 参数解析
 
     static func parseArgs() -> [String: String] {
-        var result: [String: String] = [:]
-        let args = CommandLine.arguments
-        var i = 1
-        while i < args.count {
-            let arg = args[i]
-            if arg.hasPrefix("--"), i + 1 < args.count {
-                let key = String(arg.dropFirst(2))
-                result[key] = args[i + 1]
-                i += 2
+        var parsed: [String: String] = [:]
+        let tokens = CommandLine.arguments
+        var cursor = 1
+        while cursor < tokens.count {
+            let token = tokens[cursor]
+            if token.hasPrefix("--"), cursor + 1 < tokens.count {
+                parsed[String(token.dropFirst(2))] = tokens[cursor + 1]
+                cursor += 2
             } else {
-                i += 1
+                cursor += 1
             }
         }
-        return result
+        return parsed
     }
 
-    // MARK: - Stdin
+    // MARK: - 标准输入
 
     static func readStdin() -> [String: Any]? {
-        if isatty(STDIN_FILENO) != 0 { return nil }
-        var input = ""
+        guard isatty(STDIN_FILENO) == 0 else { return nil }
+
+        var text = ""
         while let line = readLine(strippingNewline: false) {
-            input += line
+            text += line
         }
-        guard !input.isEmpty,
-              let data = input.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+        guard !text.isEmpty,
+              let payload = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any]
         else { return nil }
-        return json
+        return object
     }
 
-    // MARK: - Token Extraction
+    // MARK: - Token 提取
 
     static func extractTokens(_ data: [String: Any]?, into msg: inout DIMessage) {
         guard let data else { return }
 
-        // Try multiple key conventions used by different agents
+        // 各 AI 工具使用不同的字段约定，逐一尝试兼容。
+        let usage = data["usage"] as? [String: Any]
         msg.tokensIn = data["tokens_in"] as? Int
             ?? data["input_tokens"] as? Int
-            ?? (data["usage"] as? [String: Any])?["input_tokens"] as? Int
+            ?? usage?["input_tokens"] as? Int
         msg.tokensOut = data["tokens_out"] as? Int
             ?? data["output_tokens"] as? Int
-            ?? (data["usage"] as? [String: Any])?["output_tokens"] as? Int
+            ?? usage?["output_tokens"] as? Int
         msg.totalTokens = data["total_tokens"] as? Int
-            ?? (data["usage"] as? [String: Any])?["total_tokens"] as? Int
+            ?? usage?["total_tokens"] as? Int
 
         if let cost = data["cost_usd"] as? Double {
             msg.costUSD = cost
@@ -306,9 +332,15 @@ struct DIBridge {
         msg.model = data["model"] as? String
     }
 
-    // MARK: - Message Building
+    // MARK: - 消息构建
 
-    static func buildMessage(agentType: String, hookType: String, sessionId: String, stdinData: [String: Any]?, explicitTool: String? = nil) -> DIMessage {
+    static func buildMessage(
+        agentType: String,
+        hookType: String,
+        sessionId: String,
+        stdinData: [String: Any]?,
+        explicitTool: String? = nil
+    ) -> DIMessage {
         let hook = hookType.lowercased()
 
         if hook.contains("pretooluse") || hook.contains("tool_use") || hook == "tooluse" {
@@ -361,22 +393,27 @@ struct DIBridge {
     static func buildSessionStart(sessionId: String, agentType: String, data: [String: Any]?) -> DIMessage {
         var msg = DIMessage(type: .sessionStart, sessionId: sessionId)
         msg.agentType = agentType
-        // 空字符串也要走 fallback，否则 ?? 链被截断，TERM_PROGRAM 不会被使用
-        let termFromData = data?["terminal"] as? String
-        msg.terminal = (termFromData?.isEmpty == false ? termFromData : nil)
+
+        // 空字符串视同缺失：否则 ?? 链会被空串截断，TERM_PROGRAM 永远用不上。
+        let terminalFromData = data?["terminal"] as? String
+        msg.terminal = (terminalFromData?.isEmpty == false ? terminalFromData : nil)
             ?? ProcessInfo.processInfo.environment["TERM_PROGRAM"]
             ?? "Terminal"
-        let tsid = currentTermSessionId
-        if !tsid.isEmpty { msg.termSessionId = tsid }
+
+        let termSession = currentTermSessionId
+        if !termSession.isEmpty { msg.termSessionId = termSession }
+
         let cwdFromData = data?["working_dir"] as? String
             ?? data?["cwd"] as? String
             ?? data?["projectPath"] as? String
             ?? data?["workspace"] as? String
             ?? data?["workspaceFolder"] as? String
             ?? (data?["workspace_roots"] as? [String])?.first
-        // 不 fallback 到 FileManager.default.currentDirectoryPath——那是 DIBridge 自身的 cwd，不是用户项目
+        // 不回退到 FileManager.default.currentDirectoryPath——那是 di-bridge 自身的
+        // 工作目录，而非用户项目根目录。
         msg.workingDir = (cwdFromData?.isEmpty == false ? cwdFromData : nil)
             ?? ProcessInfo.processInfo.environment["PROJECT_DIR"]
+
         msg.prompt = extractUserPrompt(data)
         extractTokens(data, into: &msg)
         return msg
@@ -384,18 +421,18 @@ struct DIBridge {
 
     static func extractUserPrompt(_ data: [String: Any]?) -> String {
         guard let raw = data?["prompt"] as? String, !raw.isEmpty else { return "" }
-        // Codex UserPromptSubmit may include system instructions before the user message.
-        // If it looks like a system prompt, extract just the last user turn or truncate.
+
+        // Codex 的 UserPromptSubmit 可能在用户消息前塞入系统指令。
+        // 若形如系统提示，则只摘出最后一轮用户消息，必要时截断。
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("You are a") || trimmed.hasPrefix("You will be") || trimmed.hasPrefix("System:") {
-            // Try to find the actual user message after system instructions
             for separator in ["\n\nUser:", "\nUser:", "\n\n> ", "\n---\n"] {
                 if let range = trimmed.range(of: separator, options: .backwards) {
                     let userPart = trimmed[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
                     if !userPart.isEmpty { return String(userPart) }
                 }
             }
-            // Last resort: take the last line if it's short enough to be a user message
+            // 兜底：若最后一行足够短，则把它当作用户消息。
             if let lastLine = trimmed.split(separator: "\n").last, lastLine.count < 500 {
                 return String(lastLine)
             }
@@ -407,11 +444,12 @@ struct DIBridge {
     static func buildToolStart(sessionId: String, data: [String: Any]?, explicitTool: String? = nil) -> DIMessage {
         var msg = DIMessage(type: .toolStart, sessionId: sessionId)
         msg.tool = explicitTool ?? data?["tool_name"] as? String ?? data?["tool"] as? String ?? "unknown"
-        // Codex sends tool_input as {"command": "..."}, others send it as a string
+
+        // Codex 的 tool_input 形如 {"command": "..."}，其他工具则直接给字符串。
         if let input = data?["tool_input"] as? String {
             msg.toolInput = input
-        } else if let inputObj = data?["tool_input"] as? [String: Any] {
-            msg.toolInput = inputObj["command"] as? String ?? inputObj.values.first as? String
+        } else if let inputObject = data?["tool_input"] as? [String: Any] {
+            msg.toolInput = inputObject["command"] as? String ?? inputObject.values.first as? String
         } else {
             msg.toolInput = data?["input"] as? String
         }
@@ -421,7 +459,8 @@ struct DIBridge {
     static func buildToolComplete(sessionId: String, data: [String: Any]?, explicitTool: String? = nil) -> DIMessage {
         var msg = DIMessage(type: .toolComplete, sessionId: sessionId)
         msg.tool = explicitTool ?? data?["tool_name"] as? String ?? data?["tool"] as? String ?? "unknown"
-        // Codex uses "tool_response", Claude Code uses "tool_result"
+
+        // Codex 用 "tool_response"，Claude Code 用 "tool_result"。
         msg.toolResult = data?["tool_result"] as? String
             ?? data?["tool_response"] as? String
             ?? data?["result"] as? String
@@ -455,16 +494,18 @@ struct DIBridge {
 
     static func descriptionFromToolInput(_ input: [String: Any]?) -> String? {
         guard let input else { return nil }
+
         let interestingKeys = ["command", "query", "content", "code", "url", "pattern", "text"]
         for key in interestingKeys {
-            if let val = input[key] as? String, !val.isEmpty {
-                return val
+            if let value = input[key] as? String, !value.isEmpty {
+                return value
             }
         }
+
         if input.count <= 3 {
-            let parts = input.compactMap { k, v -> String? in
-                guard let s = v as? String, !s.isEmpty else { return nil }
-                return "\(k): \(s)"
+            let parts = input.compactMap { key, value -> String? in
+                guard let text = value as? String, !text.isEmpty else { return nil }
+                return "\(key): \(text)"
             }
             if !parts.isEmpty { return parts.joined(separator: "\n") }
         }
@@ -482,27 +523,27 @@ struct DIBridge {
         var msg = DIMessage(type: .question, sessionId: sessionId)
 
         let inputDict = extractToolInput(data)
-        let questionObj = (inputDict?["questions"] as? [[String: Any]])?.first
-        let sources: [[String: Any]?] = [questionObj, inputDict, data]
+        let questionObject = (inputDict?["questions"] as? [[String: Any]])?.first
+        let sources: [[String: Any]?] = [questionObject, inputDict, data]
 
         var header = ""
-        if let h = questionObj?["header"] as? String, !h.isEmpty { header = h + ": " }
-        let qText = findString(in: sources, keys: ["question", "text", "message", "description", "prompt"])
-        msg.questionText = qText.map { header + $0 } ?? toolName
+        if let h = questionObject?["header"] as? String, !h.isEmpty { header = h + ": " }
+        let questionText = findString(in: sources, keys: ["question", "text", "message", "description", "prompt"])
+        msg.questionText = questionText.map { header + $0 } ?? toolName
 
-        for src in sources {
-            guard let src else { continue }
-            if let opts = src["options"] as? [String] {
-                msg.options = opts; break
+        for source in sources {
+            guard let source else { continue }
+            if let options = source["options"] as? [String] {
+                msg.options = options; break
             }
-            if let opts = src["options"] as? [[String: Any]] {
-                msg.options = extractLabels(from: opts); break
+            if let options = source["options"] as? [[String: Any]] {
+                msg.options = extractLabels(from: options); break
             }
-            if let opts = src["choices"] as? [String] {
-                msg.options = opts; break
+            if let choices = source["choices"] as? [String] {
+                msg.options = choices; break
             }
-            if let opts = src["choices"] as? [[String: Any]] {
-                msg.options = extractLabels(from: opts); break
+            if let choices = source["choices"] as? [[String: Any]] {
+                msg.options = extractLabels(from: choices); break
             }
         }
 
@@ -515,17 +556,19 @@ struct DIBridge {
     }
 
     private static func findString(in sources: [[String: Any]?], keys: [String]) -> String? {
-        for src in sources {
-            guard let src else { continue }
+        for source in sources {
+            guard let source else { continue }
             for key in keys {
-                if let val = src[key] as? String, !val.isEmpty { return val }
+                if let value = source[key] as? String, !value.isEmpty { return value }
             }
         }
         return nil
     }
 
     private static func extractLabels(from dicts: [[String: Any]]) -> [String] {
-        dicts.compactMap { $0["label"] as? String ?? $0["value"] as? String ?? $0["text"] as? String ?? $0["description"] as? String }
+        dicts.compactMap {
+            $0["label"] as? String ?? $0["value"] as? String ?? $0["text"] as? String ?? $0["description"] as? String
+        }
     }
 
     static func extractToolInput(_ data: [String: Any]?) -> [String: Any]? {
@@ -533,8 +576,8 @@ struct DIBridge {
             if let input = data?[key] as? [String: Any] {
                 return input
             }
-            if let inputStr = data?[key] as? String,
-               let inputData = inputStr.data(using: .utf8),
+            if let inputText = data?[key] as? String,
+               let inputData = inputText.data(using: .utf8),
                let parsed = try? JSONSerialization.jsonObject(with: inputData) as? [String: Any] {
                 return parsed
             }
@@ -595,6 +638,8 @@ struct DIBridge {
         return msg
     }
 
+    // MARK: - Claude Code 兼容
+
     static func isClaudeCodeQuestion(hookType: String, stdinData: [String: Any]?) -> Bool {
         let hook = hookType.lowercased()
         guard hook.contains("pretooluse") || hook.contains("tool_use")
@@ -603,14 +648,14 @@ struct DIBridge {
         return isQuestionTool(toolName)
     }
 
-    /// Stdout JSON for `PermissionRequest` hooks (Claude Code). Exit code alone is not sufficient.
+    /// 是否为需要走 Claude Code 风格 stdout 的 `PermissionRequest` hook（退出码本身不够）。
     static func usesClaudeCodePermissionStdout(agentType: String) -> Bool {
         let agent = agentType.lowercased()
         return agent == "claude_code" || agent == "trae"
     }
 
     static func buildClaudeCodePermissionResponse(approved: Bool) -> String {
-        let jsonObj: [String: Any] = [
+        let payload: [String: Any] = [
             "hookSpecificOutput": [
                 "hookEventName": "PermissionRequest",
                 "decision": [
@@ -618,11 +663,11 @@ struct DIBridge {
                 ] as [String: Any]
             ] as [String: Any]
         ]
-        guard let data = try? JSONSerialization.data(withJSONObject: jsonObj),
-              let str = String(data: data, encoding: .utf8) else {
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let text = String(data: data, encoding: .utf8) else {
             return "{}"
         }
-        return str
+        return text
     }
 
     static func buildClaudeCodeQuestionResponse(
@@ -664,19 +709,21 @@ struct DIBridge {
         let lowerHook = hookType.lowercased()
         let hookEventName = lowerHook.contains("permission") ? "PermissionRequest" : "PreToolUse"
 
-        let jsonObj: [String: Any] = [
+        let payload: [String: Any] = [
             "hookSpecificOutput": [
                 "hookEventName": hookEventName,
                 "permissionDecision": "allow",
                 "updatedInput": updatedInput
             ] as [String: Any]
         ]
-        guard let data = try? JSONSerialization.data(withJSONObject: jsonObj),
-              let str = String(data: data, encoding: .utf8) else {
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let text = String(data: data, encoding: .utf8) else {
             return "{}"
         }
-        return str
+        return text
     }
+
+    // MARK: - 调试日志
 
     static func dumpStdin(hook: String, data: [String: Any]?) {
         guard shouldWriteDebugLog() else { return }
@@ -687,9 +734,9 @@ struct DIBridge {
         )
         let line = logLine(hook: hook, data: data)
         if let handle = FileHandle(forWritingAtPath: logPath),
-           let data = line.data(using: .utf8) {
+           let bytes = line.data(using: .utf8) {
             handle.seekToEndOfFile()
-            handle.write(data)
+            handle.write(bytes)
             handle.closeFile()
         } else {
             FileManager.default.createFile(atPath: logPath, contents: line.data(using: .utf8))
@@ -697,17 +744,17 @@ struct DIBridge {
     }
 
     static func shouldWriteDebugLog(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
-        guard let raw = environment["DI_BRIDGE_DEBUG_LOG"]?.lowercased() else { return false }
-        return raw == "1" || raw == "true" || raw == "yes"
+        guard let flag = environment["DI_BRIDGE_DEBUG_LOG"]?.lowercased() else { return false }
+        return flag == "1" || flag == "true" || flag == "yes"
     }
 
     static func logLine(hook: String, data: [String: Any]?) -> String {
         var line = "[\(ISO8601DateFormatter().string(from: Date()))] hook=\(hook)"
         if let data {
-            let redacted = redactedForLog(data) as? [String: Any] ?? [:]
-            if let json = try? JSONSerialization.data(withJSONObject: redacted, options: [.prettyPrinted]),
-               let str = String(data: json, encoding: .utf8) {
-                line += "\n\(str)"
+            let sanitized = redactedForLog(data) as? [String: Any] ?? [:]
+            if let json = try? JSONSerialization.data(withJSONObject: sanitized, options: [.prettyPrinted]),
+               let text = String(data: json, encoding: .utf8) {
+                line += "\n\(text)"
             } else {
                 line += " keys=\(data.keys.sorted())"
             }
@@ -719,29 +766,31 @@ struct DIBridge {
     }
 
     static func redactedForLog(_ value: Any) -> Any {
-        if let dict = value as? [String: Any] {
-            return dict.reduce(into: [String: Any]()) { result, pair in
-                result[pair.key] = isSensitiveLogKey(pair.key) ? "[redacted]" : redactedForLog(pair.value)
+        if let dictionary = value as? [String: Any] {
+            var output: [String: Any] = [:]
+            for (key, child) in dictionary {
+                output[key] = isSensitiveLogKey(key) ? "[redacted]" : redactedForLog(child)
             }
+            return output
         }
         if let array = value as? [Any] {
             return array.map(redactedForLog)
         }
-        if let string = value as? String, string.count > 500 {
-            return "\(string.prefix(500))...[truncated \(string.count - 500) chars]"
+        if let text = value as? String, text.count > 500 {
+            return "\(text.prefix(500))...[truncated \(text.count - 500) chars]"
         }
         return value
     }
 
     private static func isSensitiveLogKey(_ key: String) -> Bool {
-        let lower = key.lowercased()
-        return lower.contains("token")
-            || lower.contains("secret")
-            || lower.contains("password")
-            || lower.contains("api_key")
-            || lower.contains("apikey")
-            || lower.contains("authorization")
-            || lower.contains("cookie")
-            || lower.contains("private_key")
+        let normalized = key.lowercased()
+        return normalized.contains("token")
+            || normalized.contains("secret")
+            || normalized.contains("password")
+            || normalized.contains("api_key")
+            || normalized.contains("apikey")
+            || normalized.contains("authorization")
+            || normalized.contains("cookie")
+            || normalized.contains("private_key")
     }
 }

@@ -1,23 +1,32 @@
 import SwiftUI
 
+/// 展开态会话详情：标题、用户提示词、以及最近的活动事件流。
 struct ExpandedSessionView: View {
-    @Environment(ThemeManager.self) private var themeManager
     let session: AgentSession
     var onDismiss: (() -> Void)?
+
+    @Environment(ThemeManager.self) private var themeManager
 
     private var scheme: ColorScheme { themeManager.resolvedScheme }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sessionHeader
-            Divider().background(IslandStyle.divider(for: scheme).opacity(IslandStyle.dividerOpacity(for: scheme)))
+            headerBar
+            separator
             promptSection
-            Divider().background(IslandStyle.divider(for: scheme).opacity(IslandStyle.dividerOpacity(for: scheme)))
+            separator
             activityFeed
         }
     }
 
-    private var sessionHeader: some View {
+    private var separator: some View {
+        Divider()
+            .background(IslandStyle.divider(for: scheme).opacity(IslandStyle.dividerOpacity(for: scheme)))
+    }
+
+    // MARK: - 标题栏
+
+    private var headerBar: some View {
         HStack(spacing: 10) {
             AgentIcon(agentType: session.agentType, size: 28, status: session.status)
 
@@ -39,27 +48,33 @@ struct ExpandedSessionView: View {
 
             statusBadge
 
-            Button {
-                TerminalJumpManager.jump(to: session)
-                onDismiss?()
-            } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: "arrow.up.right.square")
-                        .font(.system(size: 10))
-                    Text(L10n.jumpTitle)
-                        .font(.system(size: 10, weight: .medium))
-                }
-                .foregroundStyle(IslandStyle.primaryText)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(IslandStyle.insetFill(for: scheme))
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
+            jumpButton
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
+
+    private var jumpButton: some View {
+        Button {
+            TerminalJumpManager.jump(to: session)
+            onDismiss?()
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "arrow.up.right.square")
+                    .font(.system(size: 10))
+                Text(L10n.jumpTitle)
+                    .font(.system(size: 10, weight: .medium))
+            }
+            .foregroundStyle(IslandStyle.primaryText)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(IslandStyle.insetFill(for: scheme))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 提示词
 
     private var promptSection: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -75,6 +90,8 @@ struct ExpandedSessionView: View {
         .padding(.vertical, 8)
     }
 
+    // MARK: - 活动流
+
     private var activityFeed: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 4) {
@@ -82,16 +99,7 @@ struct ExpandedSessionView: View {
                     AgentActivityView(event: event)
                 }
                 if let tool = session.currentTool {
-                    HStack(spacing: 6) {
-                        ProgressView()
-                            .scaleEffect(0.5)
-                            .frame(width: 12, height: 12)
-                        Text("Running \(tool)...")
-                            .font(.system(size: 11))
-                            .foregroundStyle(IslandStyle.secondaryText)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 2)
+                    runningIndicator(tool)
                 }
             }
             .padding(.vertical, 6)
@@ -99,37 +107,48 @@ struct ExpandedSessionView: View {
         .frame(maxHeight: 200)
     }
 
-    @ViewBuilder
+    private func runningIndicator(_ tool: String) -> some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .scaleEffect(0.5)
+                .frame(width: 12, height: 12)
+            Text("Running \(tool)...")
+                .font(.system(size: 11))
+                .foregroundStyle(IslandStyle.secondaryText)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 2)
+    }
+
+    // MARK: - 状态徽章
+
     private var statusBadge: some View {
+        let (label, tint) = statusDescriptor
+        return badgeLabel(label, tint: tint)
+    }
+
+    /// 状态 → (文案, 颜色) 的映射。
+    private var statusDescriptor: (text: String, tint: Color) {
         switch session.status {
-        case .active:
-            badgeLabel(L10n.running, color: .blue)
-        case .thinking:
-            badgeLabel(L10n.thinking, color: .blue)
-        case .compacting:
-            badgeLabel(L10n.compacting, color: .yellow)
-        case .waitingPermission:
-            badgeLabel(L10n.permission, color: .orange)
-        case .waitingAnswer:
-            badgeLabel(L10n.question, color: .blue)
-        case .waitingPlanReview:
-            badgeLabel(L10n.review, color: .purple)
-        case .idle:
-            badgeLabel(L10n.idle, color: .green)
-        case .completed:
-            badgeLabel(L10n.done, color: .green)
-        case .error:
-            badgeLabel(L10n.error, color: .red)
+        case .active:            (L10n.running, .blue)
+        case .thinking:          (L10n.thinking, .blue)
+        case .compacting:        (L10n.compacting, .yellow)
+        case .waitingPermission: (L10n.permission, .orange)
+        case .waitingAnswer:     (L10n.question, .blue)
+        case .waitingPlanReview: (L10n.review, .purple)
+        case .idle:              (L10n.idle, .green)
+        case .completed:         (L10n.done, .green)
+        case .error:             (L10n.error, .red)
         }
     }
 
-    private func badgeLabel(_ text: String, color: Color) -> some View {
+    private func badgeLabel(_ text: String, tint: Color) -> some View {
         Text(text)
             .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(color)
+            .foregroundStyle(tint)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(color.opacity(0.15))
+            .background(tint.opacity(0.15))
             .clipShape(Capsule())
     }
 }

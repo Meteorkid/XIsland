@@ -1,6 +1,8 @@
 import AVFoundation
 import Observation
 
+// MARK: - 声音事件
+
 enum SoundEvent: String, CaseIterable, Identifiable {
     case sessionStart = "session_start"
     case sessionEnd = "session_end"
@@ -58,58 +60,60 @@ enum SoundEvent: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - 音频引擎
+
 @Observable
 final class AudioEngine {
-    private var _manualMute = false
+
+    // MARK: 静音状态
+
+    private var manualMute = false
+
     var isMuted: Bool {
-        get { _manualMute || isQuietHoursActive }
+        get { manualMute || isQuietHoursActive }
         set {
-            _manualMute = newValue
+            manualMute = newValue
             UserDefaults.standard.set(newValue, forKey: "audio.isMuted")
         }
     }
+
+    /// 当前是否处于免打扰时段（quiet hours）。
     var isQuietHoursActive: Bool {
         guard UserDefaults.standard.bool(forKey: "audio.quietHoursEnabled") else { return false }
-        guard let start = UserDefaults.standard.string(forKey: "audio.quietHoursStart"),
-              let end = UserDefaults.standard.string(forKey: "audio.quietHoursEnd") else { return false }
-        let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
-        guard let startDate = fmt.date(from: start), let endDate = fmt.date(from: end) else { return false }
-        let now = Date()
-        let cal = Calendar.current
-        let nowComp = cal.dateComponents([.hour, .minute], from: now)
-        let startComp = cal.dateComponents([.hour, .minute], from: startDate)
-        let endComp = cal.dateComponents([.hour, .minute], from: endDate)
-        guard let nowMin = cal.date(from: nowComp),
-              let startMin = cal.date(from: startComp),
-              let endMin = cal.date(from: endComp) else { return false }
-        if startMin <= endMin {
-            return nowMin >= startMin && nowMin < endMin
-        } else {
-            return nowMin >= startMin || nowMin < endMin
+        guard let start = Self.minutesOfDay(from: UserDefaults.standard.string(forKey: "audio.quietHoursStart")),
+              let end = Self.minutesOfDay(from: UserDefaults.standard.string(forKey: "audio.quietHoursEnd")) else {
+            return false
         }
+
+        let now = Self.currentMinutesOfDay()
+        if start <= end {
+            return now >= start && now < end
+        }
+        // 跨午夜时段（如 22:00 ~ 06:00）
+        return now >= start || now < end
     }
+
+    // MARK: 音量
+
     var volume: Float = 0.5 {
         didSet { UserDefaults.standard.set(volume, forKey: "audio.volume") }
     }
 
+    // MARK: 事件开关与声音包
+
     private(set) var eventEnabled: [SoundEvent: Bool] = [:]
     private var customSounds: [SoundEvent: URL] = [:]
     private(set) var soundPackName: String?
-    private let queue = DispatchQueue(label: "dev.towerisland.audio")
+
+    private let audioQueue = DispatchQueue(label: "dev.xisland.audio")
 
     init() {
-        _manualMute = UserDefaults.standard.bool(forKey: "audio.isMuted")
-        let savedVol = UserDefaults.standard.float(forKey: "audio.volume")
-        volume = savedVol > 0 ? savedVol : 0.5
+        manualMute = UserDefaults.standard.bool(forKey: "audio.isMuted")
 
-        for event in SoundEvent.allCases {
-            let key = "audio.event.\(event.rawValue)"
-            if UserDefaults.standard.object(forKey: key) != nil {
-                eventEnabled[event] = UserDefaults.standard.bool(forKey: key)
-            } else {
-                eventEnabled[event] = event.enabledByDefault
-            }
-        }
+        let savedVolume = UserDefaults.standard.float(forKey: "audio.volume")
+        volume = savedVolume > 0 ? savedVolume : 0.5
+
+        restoreEventPreferences()
 
         if let path = UserDefaults.standard.string(forKey: "audio.soundPackPath") {
             loadSoundPack(from: URL(fileURLWithPath: path))
@@ -125,6 +129,8 @@ final class AudioEngine {
         UserDefaults.standard.set(enabled, forKey: "audio.event.\(event.rawValue)")
     }
 
+    // MARK: 静音规则
+
     var muteRules: [MuteRule] {
         get {
             guard let data = UserDefaults.standard.data(forKey: "audio.muteRules") else { return [] }
@@ -137,12 +143,16 @@ final class AudioEngine {
         }
     }
 
+    // MARK: 播放
+
     func play(_ event: SoundEvent, session: AgentSession? = nil) {
         guard !isMuted, isEnabled(event) else { return }
+
         if let session, muteRules.contains(where: { $0.matches(session: session, event: event) }) {
             return
         }
-        queue.async { [weak self] in
+
+        audioQueue.async { [weak self] in
             guard let self else { return }
             if let customURL = self.customSounds[event] {
                 if !self.playFile(customURL) {
@@ -154,6 +164,8 @@ final class AudioEngine {
         }
     }
 
+    // MARK: 声音包管理
+
     func loadSoundPack(from directory: URL) {
         customSounds.removeAll()
         soundPackName = nil
@@ -162,21 +174,20 @@ final class AudioEngine {
             at: directory, includingPropertiesForKeys: nil
         ) else { return }
 
-        let validExtensions: Set<String> = ["wav", "aiff", "aif", "mp3", "m4a", "caf"]
-        for file in files where validExtensions.contains(file.pathExtension.lowercased()) {
-            let name = file.deletingPathExtension().lastPathComponent.lowercased()
-                .replacingOccurrences(of: " ", with: "_")
-                .replacingOccurrences(of: "-", with: "_")
-            if let event = SoundEvent(rawValue: name) {
+        let supportedExtensions: Set<String> = ["wav", "aiff", "aif", "mp3", "m4a", "caf"]
+
+        for file in files where supportedExtensions.contains(file.pathExtension.lowercased()) {
+            let eventName = normalizedBaseName(of: file)
+            if let event = SoundEvent(rawValue: eventName) {
                 customSounds[event] = file
             }
         }
 
-        if !customSounds.isEmpty {
+        if customSounds.isEmpty {
+            UserDefaults.standard.removeObject(forKey: "audio.soundPackPath")
+        } else {
             soundPackName = directory.lastPathComponent
             UserDefaults.standard.set(directory.path, forKey: "audio.soundPackPath")
-        } else {
-            UserDefaults.standard.removeObject(forKey: "audio.soundPackPath")
         }
     }
 
@@ -192,145 +203,242 @@ final class AudioEngine {
         customSounds[event] != nil
     }
 
-    // MARK: - Shared Engine
+    // MARK: 引擎生命周期
 
-    private var _engine: AVAudioEngine?
-    private var _player: AVAudioPlayerNode?
-    private var _currentFormat: AVAudioFormat?
+    private var engine: AVAudioEngine?
+    private var playerNode: AVAudioPlayerNode?
+    private var currentFormat: AVAudioFormat?
 
-    private func ensureEngine(format: AVAudioFormat) -> (AVAudioEngine, AVAudioPlayerNode)? {
-        if let engine = _engine, let player = _player, _currentFormat == format, engine.isRunning {
-            player.stop()
-            return (engine, player)
+    private func prepareEngine(format: AVAudioFormat) -> (AVAudioEngine, AVAudioPlayerNode)? {
+        if let engine, let playerNode, currentFormat == format, engine.isRunning {
+            playerNode.stop()
+            return (engine, playerNode)
         }
 
-        tearDownEngine()
+        disposeEngine()
 
-        let engine = AVAudioEngine()
-        let player = AVAudioPlayerNode()
-        engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: format)
-        engine.mainMixerNode.outputVolume = volume
+        let newEngine = AVAudioEngine()
+        let newPlayer = AVAudioPlayerNode()
+        newEngine.attach(newPlayer)
+        newEngine.connect(newPlayer, to: newEngine.mainMixerNode, format: format)
+        newEngine.mainMixerNode.outputVolume = volume
 
         do {
-            try engine.start()
+            try newEngine.start()
         } catch {
-            print("[AudioEngine] Engine start failed: \(error)")
+            print("[AudioEngine] 引擎启动失败: \(error)")
             return nil
         }
 
-        _engine = engine
-        _player = player
-        _currentFormat = format
-        return (engine, player)
+        engine = newEngine
+        playerNode = newPlayer
+        currentFormat = format
+        return (newEngine, newPlayer)
     }
 
-    private func tearDownEngine() {
-        _player?.stop()
-        _engine?.stop()
-        _player = nil
-        _engine = nil
-        _currentFormat = nil
+    private func disposeEngine() {
+        playerNode?.stop()
+        engine?.stop()
+        playerNode = nil
+        engine = nil
+        currentFormat = nil
     }
 
-    // MARK: - File Playback
+    // MARK: 文件播放
 
-    /// Returns false if the file could not be opened or the engine failed so callers can fall back to synthesis.
+    /// 播放音频文件；失败返回 false，由调用方回退到合成音效。
     private func playFile(_ url: URL) -> Bool {
         guard let file = try? AVAudioFile(forReading: url) else {
             return false
         }
-
-        guard let (_, player) = ensureEngine(format: file.processingFormat) else {
+        guard let (_, player) = prepareEngine(format: file.processingFormat) else {
             return false
         }
 
         player.scheduleFile(file, at: nil) { [weak self, weak player] in
-            // completionHandler fires on an internal thread; bounce back to the serial audio queue.
-            self?.queue.async { player?.stop() }
+            self?.audioQueue.async { player?.stop() }
         }
         player.play()
         return true
     }
 
-    // MARK: - 8-bit Synthesis
+    // MARK: 8-bit 合成
 
-    private func synthesize(_ event: SoundEvent) {
-        let tones: [(frequency: Double, duration: Double)]
-
-        switch event {
-        case .sessionStart:
-            tones = [(523.25, 0.08), (659.25, 0.08), (783.99, 0.12)]
-        case .sessionEnd:
-            tones = [(783.99, 0.1), (659.25, 0.1), (523.25, 0.15)]
-        case .permissionRequest:
-            tones = [(880.0, 0.06), (0, 0.04), (880.0, 0.06), (0, 0.04), (1108.73, 0.1)]
-        case .question:
-            tones = [(659.25, 0.1), (783.99, 0.15)]
-        case .planReview:
-            tones = [(440.0, 0.08), (523.25, 0.08), (659.25, 0.12)]
-        case .approved:
-            tones = [(523.25, 0.06), (783.99, 0.12)]
-        case .denied:
-            tones = [(440.0, 0.1), (349.23, 0.15)]
-        case .answered:
-            tones = [(659.25, 0.08), (523.25, 0.1)]
-        case .toolStart:
-            tones = [(587.33, 0.05), (698.46, 0.07)]
-        case .contextCompacting:
-            tones = [(392.0, 0.06), (523.25, 0.06), (392.0, 0.06)]
-        case .error:
-            tones = [(220.0, 0.15), (0, 0.05), (220.0, 0.15)]
-        }
-
-        playToneSequence(tones)
+    private struct SynthNote {
+        let frequency: Double
+        let duration: Double
     }
 
-    private func playToneSequence(_ tones: [(frequency: Double, duration: Double)]) {
-        let sampleRate: Double = 44100
-        var allSamples: [Float] = []
+    private func synthesize(_ event: SoundEvent) {
+        playToneSequence(synthNotes(for: event))
+    }
 
-        for tone in tones {
-            let frameCount = Int(sampleRate * tone.duration)
-            if tone.frequency == 0 {
-                allSamples.append(contentsOf: [Float](repeating: 0, count: frameCount))
+    private func synthNotes(for event: SoundEvent) -> [SynthNote] {
+        switch event {
+        case .sessionStart:
+            return [
+                SynthNote(frequency: 523.25, duration: 0.08),
+                SynthNote(frequency: 659.25, duration: 0.08),
+                SynthNote(frequency: 783.99, duration: 0.12),
+            ]
+        case .sessionEnd:
+            return [
+                SynthNote(frequency: 783.99, duration: 0.1),
+                SynthNote(frequency: 659.25, duration: 0.1),
+                SynthNote(frequency: 523.25, duration: 0.15),
+            ]
+        case .permissionRequest:
+            return [
+                SynthNote(frequency: 880.0, duration: 0.06),
+                SynthNote(frequency: 0, duration: 0.04),
+                SynthNote(frequency: 880.0, duration: 0.06),
+                SynthNote(frequency: 0, duration: 0.04),
+                SynthNote(frequency: 1108.73, duration: 0.1),
+            ]
+        case .question:
+            return [
+                SynthNote(frequency: 659.25, duration: 0.1),
+                SynthNote(frequency: 783.99, duration: 0.15),
+            ]
+        case .planReview:
+            return [
+                SynthNote(frequency: 440.0, duration: 0.08),
+                SynthNote(frequency: 523.25, duration: 0.08),
+                SynthNote(frequency: 659.25, duration: 0.12),
+            ]
+        case .approved:
+            return [
+                SynthNote(frequency: 523.25, duration: 0.06),
+                SynthNote(frequency: 783.99, duration: 0.12),
+            ]
+        case .denied:
+            return [
+                SynthNote(frequency: 440.0, duration: 0.1),
+                SynthNote(frequency: 349.23, duration: 0.15),
+            ]
+        case .answered:
+            return [
+                SynthNote(frequency: 659.25, duration: 0.08),
+                SynthNote(frequency: 523.25, duration: 0.1),
+            ]
+        case .toolStart:
+            return [
+                SynthNote(frequency: 587.33, duration: 0.05),
+                SynthNote(frequency: 698.46, duration: 0.07),
+            ]
+        case .contextCompacting:
+            return [
+                SynthNote(frequency: 392.0, duration: 0.06),
+                SynthNote(frequency: 523.25, duration: 0.06),
+                SynthNote(frequency: 392.0, duration: 0.06),
+            ]
+        case .error:
+            return [
+                SynthNote(frequency: 220.0, duration: 0.15),
+                SynthNote(frequency: 0, duration: 0.05),
+                SynthNote(frequency: 220.0, duration: 0.15),
+            ]
+        }
+    }
+
+    private func playToneSequence(_ notes: [SynthNote]) {
+        let sampleRate = 44100.0
+        let frameCount = notes.reduce(0) { $0 + Int(sampleRate * $1.duration) }
+
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount)) else {
+            return
+        }
+        buffer.frameLength = AVAudioFrameCount(frameCount)
+
+        render(notes, into: buffer, sampleRate: sampleRate)
+
+        guard let (_, player) = prepareEngine(format: format) else { return }
+
+        player.scheduleBuffer(buffer) { [weak self, weak player] in
+            self?.audioQueue.async { player?.stop() }
+        }
+        player.play()
+    }
+
+    /// 将音符序列渲染为单声道 8-bit 方波 PCM 样本。
+    private func render(_ notes: [SynthNote], into buffer: AVAudioPCMBuffer, sampleRate: Double) {
+        guard let samples = buffer.floatChannelData?[0] else { return }
+
+        var writeIndex = 0
+        for note in notes {
+            let frameCount = Int(sampleRate * note.duration)
+
+            guard note.frequency > 0 else {
+                for _ in 0..<frameCount {
+                    samples[writeIndex] = 0
+                    writeIndex += 1
+                }
                 continue
             }
 
+            let fadeLength = min(100, frameCount / 4)
             for i in 0..<frameCount {
                 let t = Double(i) / sampleRate
-                let phase = 2.0 * Double.pi * tone.frequency * t
-                let square = sin(phase) > 0 ? 1.0 : -1.0
-
-                let fadeLen = min(100, frameCount / 4)
-                var envelope = 1.0
-                if i < fadeLen {
-                    envelope = Double(i) / Double(fadeLen)
-                } else if i > frameCount - fadeLen {
-                    envelope = Double(frameCount - i) / Double(fadeLen)
-                }
-
-                allSamples.append(Float(square * envelope * Double(volume) * 0.25))
+                let phase = 2.0 * Double.pi * note.frequency * t
+                let square: Double = sin(phase) > 0 ? 1.0 : -1.0
+                let envelope = Self.envelope(at: i, frameCount: frameCount, fadeLength: fadeLength)
+                samples[writeIndex] = Float(square * envelope * Double(volume) * 0.25)
+                writeIndex += 1
             }
         }
+    }
 
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
-        guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: format, frameCapacity: AVAudioFrameCount(allSamples.count)
-        ) else { return }
-        buffer.frameLength = AVAudioFrameCount(allSamples.count)
-        let channelData = buffer.floatChannelData![0]
-        for (i, sample) in allSamples.enumerated() {
-            channelData[i] = sample
+    /// 计算单个样本的线性淡入淡出包络。
+    private static func envelope(at index: Int, frameCount: Int, fadeLength: Int) -> Double {
+        if index < fadeLength {
+            return Double(index) / Double(fadeLength)
         }
+        if index > frameCount - fadeLength {
+            return Double(frameCount - index) / Double(fadeLength)
+        }
+        return 1.0
+    }
 
-        guard let (_, player) = ensureEngine(format: format) else {
-            return
-        }
+    // MARK: 时间解析
 
-        player.scheduleBuffer(buffer) { [weak self, weak player] in
-            self?.queue.async { player?.stop() }
+    private static func minutesOfDay(from text: String?) -> Int? {
+        guard let text else { return nil }
+
+        let parts = text.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 2,
+              parts[0].count == 2,
+              parts[1].count == 2,
+              let hour = Int(parts[0]),
+              let minute = Int(parts[1]),
+              (0..<24).contains(hour),
+              (0..<60).contains(minute) else {
+            return nil
         }
-        player.play()
+        return hour * 60 + minute
+    }
+
+    private static func currentMinutesOfDay() -> Int {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: Date())
+        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
+    }
+
+    // MARK: 声音包文件名归一化
+
+    private func normalizedBaseName(of file: URL) -> String {
+        file.deletingPathExtension().lastPathComponent.lowercased()
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "-", with: "_")
+    }
+
+    private func restoreEventPreferences() {
+        for event in SoundEvent.allCases {
+            let key = "audio.event.\(event.rawValue)"
+            if UserDefaults.standard.object(forKey: key) != nil {
+                eventEnabled[event] = UserDefaults.standard.bool(forKey: key)
+            } else {
+                eventEnabled[event] = event.enabledByDefault
+            }
+        }
     }
 }

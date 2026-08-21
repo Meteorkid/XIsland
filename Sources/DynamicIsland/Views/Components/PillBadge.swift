@@ -1,13 +1,25 @@
 import SwiftUI
 
+/// 会话状态徽章：紧凑态为圆形图标，展开态为带文字的药丸。
 struct PillBadge: View {
     let session: AgentSession
     var compact: Bool = false
+
     @Environment(ThemeManager.self) private var themeManager
 
     private var scheme: ColorScheme { themeManager.resolvedScheme }
 
-    private var statusColor: Color {
+    var body: some View {
+        if compact {
+            compactPill
+        } else {
+            fullPill
+        }
+    }
+
+    // MARK: - 状态色
+
+    private var statusTint: Color {
         switch session.status {
         case .active, .thinking: .blue
         case .idle, .completed: .green
@@ -17,40 +29,44 @@ struct PillBadge: View {
         }
     }
 
-    var body: some View {
-        if compact {
-            compactBadge
-        } else {
-            expandedBadge
-        }
+    private var showsAlertDot: Bool {
+        session.status == .waitingPermission || session.status == .waitingAnswer
     }
 
-    private var compactBadge: some View {
+    // MARK: - 紧凑态
+
+    private var compactPill: some View {
         ZStack {
             Circle()
                 .fill(session.agentType.color.opacity(0.15))
                 .frame(width: 24, height: 24)
                 .overlay {
-                    Circle().strokeBorder(statusColor.opacity(0.8), lineWidth: 1.5)
+                    Circle().strokeBorder(statusTint.opacity(0.8), lineWidth: 1.5)
                 }
 
             Image(systemName: session.agentType.iconSymbol)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(session.agentType.color)
 
-            if session.status == .waitingPermission || session.status == .waitingAnswer {
-                Circle()
-                    .fill(.orange)
-                    .frame(width: 7, height: 7)
-                    .overlay {
-                        Circle().strokeBorder(.black, lineWidth: 1.5)
-                    }
-                    .offset(x: 8, y: -8)
+            if showsAlertDot {
+                alertDot
             }
         }
     }
 
-    private var expandedBadge: some View {
+    private var alertDot: some View {
+        Circle()
+            .fill(.orange)
+            .frame(width: 7, height: 7)
+            .overlay {
+                Circle().strokeBorder(.black, lineWidth: 1.5)
+            }
+            .offset(x: 8, y: -8)
+    }
+
+    // MARK: - 展开态
+
+    private var fullPill: some View {
         HStack(spacing: 6) {
             Image(systemName: session.agentType.iconSymbol)
                 .font(.system(size: 11, weight: .semibold))
