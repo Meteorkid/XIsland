@@ -283,6 +283,14 @@ All settings are accessible from the X Island Settings panel:
 3. **Real-time UI**: The main app receives messages via `SocketServer`, updates `SessionManager`, and the SwiftUI views react immediately
 4. **Interactive responses**: For permissions and questions, the bridge process stays alive waiting for the user's response, then writes it back to stdout for the agent to consume
 
+## Acknowledgments
+
+X Island is maintained, refactored, and continuously evolved by Meteorkid, based on the open-source project Tower Island (https://github.com/g535879/TowerIsland).
+
+Thanks to the original authors: guyubin, leeekyrie (Kunyang Lee), and greatbean/g535879.
+
+The upstream project was last updated on 2026-04-16; this repository has been maintained by Meteorkid since 2026-05-15.
+
 ## License
 
-MIT
+Source-Available, Non-Commercial License. Formerly MIT; adjusted as of 2026-08.

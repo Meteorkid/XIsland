@@ -283,6 +283,14 @@ bash Scripts/install-git-hooks.sh
 3. **实时 UI**：主应用通过 `SocketServer` 接收消息，更新 `SessionManager`，SwiftUI 视图即时响应
 4. **交互响应**：权限和问题场景下，bridge 进程保持存活等待用户响应，然后将结果写回 stdout 供 Agent 消费
 
+## 致谢
+
+本项目由 Meteorkid 在开源项目 Tower Island（https://github.com/g535879/TowerIsland）基础上接管、重构并持续演进。
+
+致谢原作者：guyubin、leeekyrie（Kunyang Lee）、greatbean/g535879。
+
+上游项目最后更新于 2026-04-16；本仓库自 2026-05-15 起由 Meteorkid 接管。
+
 ## 许可证
 
-MIT
+源码可用-非商业许可（Source-Available, Non-Commercial License）。原 MIT，2026-08 起调整。
