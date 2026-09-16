@@ -11,6 +11,8 @@
   Monitor Claude Code, Cursor, Codex, OpenCode, Gemini CLI and more — from a single floating panel.
 </p>
 
+> Downloads · docs · updates: <https://www.imagentx.top/en/products/xisland>
+
 ## Demo
 
 <p align="center">
