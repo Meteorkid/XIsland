@@ -214,7 +214,7 @@ struct PreferencesView: View {
                     row(L10n.language) {
                         Picker("", selection: Binding(
                             get: { L10n.effectiveLanguage },
-                            set: { UserDefaults.standard.set($0, forKey: "appLanguage") }
+                            set: { AppPreferences.defaults.set($0, forKey: "appLanguage") }
                         )) {
                             ForEach(L10n.availableLanguages, id: \.code) { lang in
                                 Text(lang.name).tag(lang.code)
@@ -863,6 +863,15 @@ struct PreferencesView: View {
 
     private var historyPane: some View {
         VStack(alignment: .leading, spacing: 20) {
+            if persistenceManager.lastSaveError != nil || !sessionManager.unsavedSessionIDs.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(L10n.historySaveFailed, systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.orange)
+                    Button(L10n.retryHistorySave) { sessionManager.retryPendingHistorySaves() }
+                        .disabled(persistenceManager.modelContainer == nil || sessionManager.unsavedSessionIDs.isEmpty)
+                }
+            }
             section(L10n.historyRetentionDays) {
                 card {
                     row(L10n.historyRetentionDays) {
@@ -946,8 +955,11 @@ struct PreferencesView: View {
             }
         }
         .task {
-            historySessions = persistenceManager.fetchHistory()
             persistenceManager.cleanup(olderThanDays: historyRetentionDays)
+            historySessions = persistenceManager.fetchHistory()
+        }
+        .onChange(of: persistenceManager.revision) { _, _ in
+            historySessions = persistenceManager.fetchHistory()
         }
     }
 
@@ -1510,7 +1522,7 @@ struct PreferencesView: View {
         }
     }
     private func applyPendingPaneSelectionIfNeeded(fallbackToAbout: Bool = false) {
-        let defaults = UserDefaults.standard
+        let defaults = AppPreferences.defaults
         let pending = defaults.string(forKey: PreferencesRouting.pendingPaneSelectionKey)
         if pending == PreferencesRouting.aboutPaneValue {
             selection = .about

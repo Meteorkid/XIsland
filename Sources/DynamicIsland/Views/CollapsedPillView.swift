@@ -13,10 +13,33 @@ struct CollapsedPillView: View {
     let onTap: () -> Void
 
     private var visible: [AgentSession] { manager.visibleSessions }
-    @AppStorage("reduceMotion") private var reduceMotion = false
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @AppStorage("reduceMotion") private var appReduceMotion = false
+    @AppStorage("disableAnimations") private var disableAnimations = false
     @AppStorage("showCollapsedAgentIcon") private var showCollapsedAgentIcon = true
     @AppStorage("showCollapsedSessionCount") private var showCollapsedSessionCount = true
     @AppStorage("showCollapsedQuota") private var showCollapsedQuota = true
+
+    private var reduceMotion: Bool {
+        !IslandMotionPolicy(
+            reduceMotion: appReduceMotion,
+            systemReduceMotion: systemReduceMotion,
+            disableAnimations: disableAnimations
+        ).allowsContinuousAnimation
+    }
+
+    enum CountKind {
+        case active
+        case total
+    }
+
+    static let countRotationInterval: TimeInterval = 5
+
+    static func countKind(isExpanded: Bool, at date: Date) -> CountKind {
+        if isExpanded { return .total }
+        let slot = Int(floor(date.timeIntervalSince1970 / countRotationInterval))
+        return slot % 2 == 0 ? .active : .total
+    }
 
     var body: some View {
         Button(action: onTap) {
@@ -32,6 +55,12 @@ struct CollapsedPillView: View {
         .accessibilityIdentifier(TestAccessibility.collapsedPill)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
+        .transaction { transaction in
+            if reduceMotion {
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+        }
     }
 
     private var obscuredBarContent: some View {
@@ -156,42 +185,51 @@ struct CollapsedPillView: View {
         .accessibilityLabel("X Island")
     }
 
-    @ViewBuilder
     private var activeCountLabel: some View {
+        countLabel(compact: false)
+    }
+
+    @ViewBuilder
+    private func countLabel(compact: Bool) -> some View {
         let trulyActiveCount = manager.trulyActiveSessions.count
         let totalCount = manager.sessions.count
         if isExpanded {
             // 展开面板时显示总会话数
             countPair(count: totalCount, label: L10n.total,
-                      accessibility: "\(totalCount) total agents")
-        } else if reduceMotion {
-            countPair(count: trulyActiveCount, label: L10n.active,
-                      accessibility: "\(trulyActiveCount) active agents")
+                      accessibility: "\(totalCount) total agents", compact: compact)
         } else {
-            // 折叠时交替显示活跃/总计
-            TimelineView(.periodic(from: .now, by: 5.0)) { timeline in
-                let tick = Int(timeline.date.timeIntervalSince1970)
-                let showTotal = tick % 2 == 1
+            // 计数轮换属于状态更新，减少动态效果时也保留低频刷新。
+            TimelineView(.periodic(from: .now, by: Self.countRotationInterval)) { timeline in
+                let showTotal = Self.countKind(isExpanded: false, at: timeline.date) == .total
                 let displayCount = showTotal ? totalCount : trulyActiveCount
                 let displayLabel = showTotal ? L10n.total : L10n.active
                 let a11y = showTotal
                     ? "\(totalCount) total agents"
                     : "\(trulyActiveCount) active agents"
-                countPair(count: displayCount, label: displayLabel, accessibility: a11y)
+                countPair(count: displayCount, label: displayLabel, accessibility: a11y, compact: compact)
             }
         }
     }
 
-    private func countPair(count: Int, label: String, accessibility: String) -> some View {
+    private func countPair(count: Int, label: String, accessibility: String, compact: Bool) -> some View {
         HStack(spacing: 3) {
-            Text("\(count)")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(IslandStyle.primaryText)
-                .monospacedDigit()
-            Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+            ZStack(alignment: .trailing) {
+                Text("\(max(manager.sessions.count, count))").hidden()
+                Text("\(count)")
+            }
+            .font(.system(size: compact ? 10 : 13, weight: .semibold, design: .rounded))
+            .foregroundStyle(IslandStyle.primaryText)
+            .monospacedDigit()
+            ZStack {
+                Text(L10n.active).hidden()
+                Text(L10n.total).hidden()
+                Text(label)
+            }
+            .font(.system(size: compact ? 9 : 10, weight: .medium))
+            .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
         }
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibility)
     }
 
@@ -235,11 +273,7 @@ struct CollapsedPillView: View {
     }
 
     private var compactCountBadge: some View {
-        let count = manager.trulyActiveSessions.count
-        return Text("\(count)")
-            .font(.system(size: 10, weight: .semibold, design: .rounded))
-            .foregroundStyle(IslandStyle.primaryText)
-            .monospacedDigit()
+        countLabel(compact: true)
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
             .background(

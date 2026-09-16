@@ -71,6 +71,229 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertEqual(results.count, 1)
     }
 
+    func testResaveUpdatesToolResultsAndAppendsChildrenWithoutDuplicates() throws {
+        let manager = makeManager(container: try makeContainer())
+        let session = makeTestSession()
+        session.events = (0..<10).map { ToolEvent(tool: "read", input: "file-\($0).swift") }
+        session.chatHistory = [ChatMessage(timestamp: Date(), role: .user, content: "Inspect files")]
+        manager.save(session: session)
+
+        session.events[0].result = "File contents"
+        session.events[0].isComplete = true
+        session.events[0].linesRead = 42
+        session.events.append(contentsOf: (10..<15).map {
+            ToolEvent(tool: "read", input: "file-\($0).swift")
+        })
+        session.chatHistory.append(ChatMessage(timestamp: Date(), role: .assistant, content: "Done"))
+        for _ in 0..<3 {
+            manager.save(session: session)
+        }
+
+        let stored = try XCTUnwrap(manager.fetchHistory().first)
+        XCTAssertEqual(stored.toolEvents.count, 15)
+        XCTAssertEqual(stored.chatMessages.count, 2)
+        let completedTool = try XCTUnwrap(stored.toolEvents.first { $0.input == "file-0.swift" })
+        XCTAssertEqual(completedTool.result, "File contents")
+        XCTAssertTrue(completedTool.isComplete)
+        XCTAssertEqual(completedTool.linesRead, 42)
+    }
+
+    func testDistinctChildrenWithIdenticalContentKeepTheirIdentities() throws {
+        let manager = makeManager(container: try makeContainer())
+        let session = makeTestSession()
+        let timestamp = Date()
+        session.events = [ToolEvent(tool: "read", input: "same.swift"), ToolEvent(tool: "read", input: "same.swift")]
+        session.chatHistory = [
+            ChatMessage(timestamp: timestamp, role: .user, content: "Same text"),
+            ChatMessage(timestamp: timestamp, role: .user, content: "Same text"),
+        ]
+
+        XCTAssertTrue(manager.save(session: session))
+        XCTAssertTrue(manager.save(session: session))
+
+        let stored = try XCTUnwrap(manager.fetchHistory().first)
+        XCTAssertEqual(Set(stored.toolEvents.compactMap(\.eventId)), Set(session.events.map(\.id)))
+        XCTAssertEqual(Set(stored.chatMessages.compactMap(\.messageId)), Set(session.chatHistory.map(\.id)))
+        XCTAssertEqual(stored.toolEvents.count, 2)
+        XCTAssertEqual(stored.chatMessages.count, 2)
+    }
+
+    func testSaveFailureIsReportedAndRetryClearsError() throws {
+        let manager = SessionPersistenceManager()
+        let session = makeTestSession()
+        session.events = [ToolEvent(tool: "read", input: "important.swift")]
+
+        XCTAssertFalse(manager.save(session: session))
+        XCTAssertNotNil(manager.lastSaveError)
+        XCTAssertEqual(session.events.count, 1)
+
+        XCTAssertTrue(manager.setupContainer(isStoredInMemoryOnly: true))
+        XCTAssertTrue(manager.save(session: session))
+        XCTAssertNil(manager.lastSaveError)
+        XCTAssertEqual(manager.fetchHistory().first?.toolEvents.count, 1)
+    }
+
+    func testReadOnlySaveFailureDoesNotPublishUnsavedHistoryAndCanRetry() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("xisland-readonly-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appendingPathComponent("history.store")
+        autoreleasepool {
+            let manager = SessionPersistenceManager()
+            XCTAssertTrue(manager.setupContainer(storeURL: storeURL))
+            XCTAssertTrue(manager.save(session: makeTestSession(id: "saved")))
+        }
+
+        let schema = Schema([StoredSession.self, StoredToolEvent.self, StoredChatMessage.self])
+        let readOnly = ModelConfiguration(schema: schema, url: storeURL, allowsSave: false)
+        let manager = makeManager(container: try ModelContainer(for: schema, configurations: [readOnly]))
+        let pending = makeTestSession(id: "pending")
+        pending.events = [ToolEvent(tool: "read")]
+
+        XCTAssertFalse(manager.save(session: pending))
+        XCTAssertNotNil(manager.lastSaveError)
+        XCTAssertEqual(manager.fetchHistory().map(\.sessionId), ["saved"])
+        XCTAssertFalse(try XCTUnwrap(manager.modelContainer).mainContext.hasChanges)
+
+        manager.modelContainer = nil
+        XCTAssertTrue(manager.setupContainer(storeURL: storeURL))
+        XCTAssertTrue(manager.save(session: pending))
+        XCTAssertTrue(manager.save(session: pending))
+        XCTAssertNil(manager.lastSaveError)
+        XCTAssertEqual(manager.totalCount(), 2)
+    }
+
+    func testLegacyDiskStoreMigratesWithoutMergingChildrenAndKeepsStableIDs() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("xisland-migration-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appendingPathComponent("history.store")
+        let timestamp = Date(timeIntervalSince1970: 1_700_000_000)
+
+        try autoreleasepool {
+            let schema = Schema([
+                LegacyHistorySchema.StoredSession.self,
+                LegacyHistorySchema.StoredToolEvent.self,
+                LegacyHistorySchema.StoredChatMessage.self,
+            ])
+            let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: storeURL)])
+            let session = LegacyHistorySchema.StoredSession()
+            session.toolEvents = (0..<2).map { _ in LegacyHistorySchema.StoredToolEvent(timestamp: timestamp) }
+            session.chatMessages = (0..<2).map { _ in LegacyHistorySchema.StoredChatMessage(timestamp: timestamp) }
+            container.mainContext.insert(session)
+            try container.mainContext.save()
+        }
+
+        var eventIDs: Set<UUID> = []
+        var messageIDs: Set<UUID> = []
+        try autoreleasepool {
+            let manager = SessionPersistenceManager()
+            XCTAssertTrue(manager.setupContainer(storeURL: storeURL), manager.lastSaveError ?? "")
+            let stored = try XCTUnwrap(manager.fetchHistory().first)
+            XCTAssertEqual(stored.sessionId, "legacy")
+            XCTAssertNil(stored.recapText)
+            XCTAssertNil(stored.completedAt)
+            XCTAssertEqual(stored.toolEvents.count, 2)
+            XCTAssertEqual(stored.chatMessages.count, 2)
+            XCTAssertTrue(stored.toolEvents.allSatisfy { $0.timestamp == timestamp && $0.tool == "read" && $0.input == nil })
+            XCTAssertTrue(stored.chatMessages.allSatisfy { $0.timestamp == timestamp && $0.content == "Same content" })
+            eventIDs = Set(stored.toolEvents.compactMap(\.eventId))
+            messageIDs = Set(stored.chatMessages.compactMap(\.messageId))
+            XCTAssertEqual(eventIDs.count, 2)
+            XCTAssertEqual(messageIDs.count, 2)
+
+            let newSession = makeTestSession(id: "legacy")
+            newSession.events = [ToolEvent(tool: "read")]
+            newSession.chatHistory = [ChatMessage(timestamp: timestamp, role: .user, content: "Same content")]
+            XCTAssertTrue(manager.save(session: newSession))
+            XCTAssertTrue(manager.save(session: newSession))
+            let updated = try XCTUnwrap(manager.fetchHistory().first)
+            XCTAssertEqual(updated.toolEvents.count, 3)
+            XCTAssertEqual(updated.chatMessages.count, 3)
+            eventIDs.insert(newSession.events[0].id)
+            messageIDs.insert(newSession.chatHistory[0].id)
+        }
+
+        let backupURL = HistoryStoreBackup.backupURL(for: storeURL)
+        let backupData = try Data(contentsOf: backupURL)
+        let restoredURL = directory.appendingPathComponent("restored-before-migration.store")
+        try FileManager.default.copyItem(at: backupURL, to: restoredURL)
+        try autoreleasepool {
+            let legacySchema = Schema([
+                LegacyHistorySchema.StoredSession.self,
+                LegacyHistorySchema.StoredToolEvent.self,
+                LegacyHistorySchema.StoredChatMessage.self,
+            ])
+            let restored = try ModelContainer(for: legacySchema, configurations: [
+                ModelConfiguration(schema: legacySchema, url: restoredURL, allowsSave: false),
+            ])
+            let original = try XCTUnwrap(restored.mainContext.fetch(FetchDescriptor<LegacyHistorySchema.StoredSession>()).first)
+            XCTAssertEqual(original.sessionId, "legacy")
+            XCTAssertEqual(original.prompt, "Legacy history")
+            XCTAssertEqual(original.toolEvents.count, 2)
+            XCTAssertEqual(original.chatMessages.count, 2)
+            XCTAssertTrue(original.toolEvents.allSatisfy { $0.timestamp == timestamp && $0.tool == "read" })
+            XCTAssertTrue(original.chatMessages.allSatisfy { $0.timestamp == timestamp && $0.content == "Same content" })
+        }
+
+        let reopened = SessionPersistenceManager()
+        XCTAssertTrue(reopened.setupContainer(storeURL: storeURL), reopened.lastSaveError ?? "")
+        let stored = try XCTUnwrap(reopened.fetchHistory().first)
+        XCTAssertEqual(Set(stored.toolEvents.compactMap(\.eventId)), eventIDs)
+        XCTAssertEqual(Set(stored.chatMessages.compactMap(\.messageId)), messageIDs)
+        XCTAssertEqual(stored.toolEvents.count, 3)
+        XCTAssertEqual(stored.chatMessages.count, 3)
+        XCTAssertEqual(try Data(contentsOf: backupURL), backupData)
+    }
+
+    func testBackupFailurePreventsOpeningAndMigratingLegacyStore() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("xisland-blocked-migration-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appendingPathComponent("history.store")
+        try autoreleasepool {
+            let schema = Schema([
+                LegacyHistorySchema.StoredSession.self,
+                LegacyHistorySchema.StoredToolEvent.self,
+                LegacyHistorySchema.StoredChatMessage.self,
+            ])
+            let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: storeURL)])
+            container.mainContext.insert(LegacyHistorySchema.StoredSession())
+            try container.mainContext.save()
+        }
+        let sourceData = try Data(contentsOf: storeURL)
+        let walURL = URL(fileURLWithPath: storeURL.path + "-wal")
+        let walData = FileManager.default.fileExists(atPath: walURL.path) ? try Data(contentsOf: walURL) : nil
+        try Data("blocks directory creation".utf8).write(to: directory.appendingPathComponent("HistoryBackups"))
+
+        let manager = SessionPersistenceManager()
+        XCTAssertFalse(manager.setupContainer(storeURL: storeURL))
+        XCTAssertNil(manager.modelContainer)
+        XCTAssertTrue(manager.lastSaveError?.contains("backup") == true)
+        XCTAssertEqual(try Data(contentsOf: storeURL), sourceData)
+        if let walData { XCTAssertEqual(try Data(contentsOf: walURL), walData) }
+    }
+
+    func testCorruptSourcePreventsMigrationAndInMemoryStoreSkipsBackup() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("xisland-corrupt-migration-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appendingPathComponent("history.store")
+        let corruptData = Data("not a sqlite database".utf8)
+        try corruptData.write(to: storeURL)
+
+        let manager = SessionPersistenceManager()
+        XCTAssertFalse(manager.setupContainer(storeURL: storeURL))
+        XCTAssertNil(manager.modelContainer)
+        XCTAssertTrue(manager.lastSaveError?.contains("backup") == true)
+        XCTAssertEqual(try Data(contentsOf: storeURL), corruptData)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: HistoryStoreBackup.backupURL(for: storeURL).path))
+
+        XCTAssertTrue(manager.setupContainer(isStoredInMemoryOnly: true, storeURL: storeURL))
+        XCTAssertNil(manager.lastSaveError)
+        XCTAssertEqual(try Data(contentsOf: storeURL), corruptData)
+    }
+
     func testToolEventsPersisted() throws {
         let container = try makeContainer()
         let manager = makeManager(container: container)
@@ -127,6 +350,7 @@ final class SessionPersistenceTests: XCTestCase {
         manager.save(session: recentSession)
 
         manager.cleanup(olderThanDays: 1)
+        XCTAssertNil(manager.lastSaveError)
 
         let results = manager.fetchHistory()
         XCTAssertEqual(results.count, 1)
@@ -176,5 +400,82 @@ final class SessionPersistenceTests: XCTestCase {
         manager.save(session: makeTestSession(id: "s3"))
 
         XCTAssertEqual(manager.totalCount(), 3)
+    }
+}
+
+// 固定升级前的真实字段和关系，确保测试的是磁盘 schema 迁移，而非新模型的 nil 字段。
+private enum LegacyHistorySchema {
+    @Model
+    final class StoredSession {
+        @Attribute(.unique) var sessionId: String
+        var agentTypeRaw: String
+        var startTime: Date
+        var completedAt: Date?
+        var prompt: String
+        var workingDirectory: String
+        var terminal: String
+        var statusRaw: String
+        var recapText: String?
+        var inputTokens: Int
+        var outputTokens: Int
+        var totalTokens: Int
+        var estimatedCostUSD: Double
+        var model: String
+        @Relationship(deleteRule: .cascade) var toolEvents: [StoredToolEvent] = []
+        @Relationship(deleteRule: .cascade) var chatMessages: [StoredChatMessage] = []
+
+        init() {
+            sessionId = "legacy"
+            agentTypeRaw = AgentType.claudeCode.rawValue
+            startTime = Date(timeIntervalSince1970: 1_700_000_000)
+            prompt = "Legacy history"
+            workingDirectory = "/tmp/project"
+            terminal = "ttys001"
+            statusRaw = SessionStatus.active.rawValue
+            inputTokens = 10
+            outputTokens = 20
+            totalTokens = 30
+            estimatedCostUSD = 0
+            model = ""
+        }
+    }
+
+    @Model
+    final class StoredToolEvent {
+        var tool: String
+        var input: String?
+        var result: String?
+        var timestamp: Date
+        var linesAdded: Int?
+        var linesRemoved: Int?
+        var isComplete: Bool
+        var linesRead: Int?
+        var testPassed: Int
+        var testFailed: Int
+        var testSkipped: Int
+        var session: StoredSession?
+
+        init(timestamp: Date) {
+            tool = "read"
+            self.timestamp = timestamp
+            isComplete = false
+            testPassed = 0
+            testFailed = 0
+            testSkipped = 0
+        }
+    }
+
+    @Model
+    final class StoredChatMessage {
+        var timestamp: Date
+        var role: String
+        var content: String
+        var session: StoredSession?
+
+        init(timestamp: Date) {
+            self.timestamp = timestamp
+            role = "user"
+            content = "Same content"
+        }
     }
 }

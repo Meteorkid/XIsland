@@ -11,13 +11,13 @@ enum IslandSizeCalculator {
 
     /// 读取用户设置的收起高度；未设置（0）时返回默认值
     static var collapsedShapeHeight: CGFloat {
-        let saved = UserDefaults.standard.double(forKey: "islandHeight")
+        let saved = AppPreferences.defaults.double(forKey: "islandHeight")
         return saved > 0 ? CGFloat(saved) : defaultCollapsedShapeHeight
     }
 
     /// 读取用户设置的收起宽度；未设置（0）时返回默认值
     static var collapsedPillWidth: CGFloat {
-        let saved = UserDefaults.standard.double(forKey: "islandWidth")
+        let saved = AppPreferences.defaults.double(forKey: "islandWidth")
         return saved > 0 ? CGFloat(saved) : defaultCollapsedPillWidth
     }
 

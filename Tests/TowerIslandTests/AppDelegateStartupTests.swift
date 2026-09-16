@@ -85,7 +85,8 @@ final class AppDelegateStartupTests: XCTestCase {
                 fixtureName: "session-list",
                 fixturePath: nil,
                 diagnosticsPath: diagnosticsURL.path,
-                disableAnimations: false
+                disableAnimations: false,
+                runtimeDirectory: diagnosticsURL.deletingLastPathComponent().path
             ),
             launchHooks: AppDelegate.LaunchHooks(
                 performInitialStartup: { _ in },
@@ -107,7 +108,8 @@ final class AppDelegateStartupTests: XCTestCase {
                 fixtureName: "permission-smoke",
                 fixturePath: nil,
                 diagnosticsPath: diagnosticsURL.path,
-                disableAnimations: false
+                disableAnimations: false,
+                runtimeDirectory: diagnosticsURL.deletingLastPathComponent().path
             ),
             launchHooks: AppDelegate.LaunchHooks(
                 performInitialStartup: { _ in },
@@ -129,7 +131,8 @@ final class AppDelegateStartupTests: XCTestCase {
                 fixtureName: "question-smoke",
                 fixturePath: nil,
                 diagnosticsPath: diagnosticsURL.path,
-                disableAnimations: false
+                disableAnimations: false,
+                runtimeDirectory: diagnosticsURL.deletingLastPathComponent().path
             ),
             launchHooks: AppDelegate.LaunchHooks(
                 performInitialStartup: { _ in },
@@ -151,7 +154,8 @@ final class AppDelegateStartupTests: XCTestCase {
                 fixtureName: "plan-smoke",
                 fixturePath: nil,
                 diagnosticsPath: diagnosticsURL.path,
-                disableAnimations: false
+                disableAnimations: false,
+                runtimeDirectory: diagnosticsURL.deletingLastPathComponent().path
             ),
             launchHooks: AppDelegate.LaunchHooks(
                 performInitialStartup: { _ in },
@@ -213,8 +217,8 @@ private final class StartupObserver {
 }
 
 private func makeDiagnosticsURL() -> URL {
-    FileManager.default.temporaryDirectory
-        .appendingPathComponent(UUID().uuidString)
+    URL(fileURLWithPath: "/tmp")
+        .appendingPathComponent("xi-startup-" + UUID().uuidString)
         .appendingPathComponent("diagnostics.json")
 }
 

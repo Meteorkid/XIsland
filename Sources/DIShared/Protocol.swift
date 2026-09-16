@@ -5,10 +5,57 @@ import Foundation
 /// `DIBridge`（各 AI 工具的 hook 子进程）与 `DynamicIsland`（常驻服务端）
 /// 共享的 Unix domain socket 路径约定。路径必须两端一致，否则事件无法投递。
 public enum DISocketConfig {
-    /// 运行时目录：存放 socket 文件与调试日志。
+    public enum ConfigurationError: LocalizedError {
+        case invalidTestRuntimeDirectory(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .invalidTestRuntimeDirectory(let directory):
+                return "Test runtime directory must be a short absolute path inside a temporary directory: \(directory)"
+            }
+        }
+    }
+
+    /// 运行时目录：生产使用用户目录，测试必须使用独立临时目录。
     public static var socketDir: String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return home + "/.xisland"
+        do {
+            return try resolvedSocketDirectory(
+                arguments: ProcessInfo.processInfo.arguments,
+                environment: ProcessInfo.processInfo.environment
+            )
+        } catch {
+            preconditionFailure(error.localizedDescription)
+        }
+    }
+
+    public static func resolvedSocketDirectory(
+        arguments: [String],
+        environment: [String: String],
+        homeDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path
+    ) throws -> String {
+        guard arguments.contains("--ui-test-mode") || environment["X_ISLAND_TEST_MODE"] == "1" else {
+            return homeDirectory + "/.xisland"
+        }
+
+        let directory = environment["X_ISLAND_TEST_RUNTIME_DIR"] ?? defaultTestRuntimeDirectory
+        try validateTestRuntimeDirectory(directory)
+        return directory
+    }
+
+    public static var defaultTestRuntimeDirectory: String {
+        "/tmp/xi-test-\(ProcessInfo.processInfo.processIdentifier)"
+    }
+
+    public static func validateTestRuntimeDirectory(_ directory: String) throws {
+        let path = URL(fileURLWithPath: directory).standardizedFileURL.resolvingSymlinksInPath().path
+        let temporaryRoots = [URL(fileURLWithPath: "/tmp"), FileManager.default.temporaryDirectory]
+            .map { $0.standardizedFileURL.resolvingSymlinksInPath().path }
+        // Darwin 的 sockaddr_un.sun_path 只有 104 字节，末尾还需保留 NUL。
+        guard directory.hasPrefix("/"), !directory.contains("\0"),
+              (directory + "/di.sock").utf8.count < 104,
+              temporaryRoots.contains(where: { path.hasPrefix($0 + "/") }) else {
+            throw ConfigurationError.invalidTestRuntimeDirectory(directory)
+        }
     }
 
     /// 服务端监听的 Unix domain socket 绝对路径。

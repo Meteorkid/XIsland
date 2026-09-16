@@ -40,7 +40,12 @@ struct NotchContentView: View {
     @State var activityLogExpanded = false
     @State private var notificationTokens: [NSObjectProtocol] = []
     @AppStorage("disableAnimations") private var disableAnimations = false
-    @AppStorage("reduceMotion") private var reduceMotion = false
+    @AppStorage("reduceMotion") private var appReduceMotion = false
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    private var reduceMotion: Bool {
+        !IslandMotionPolicy(reduceMotion: appReduceMotion, systemReduceMotion: systemReduceMotion,
+                            disableAnimations: disableAnimations).allowsContinuousAnimation
+    }
     @AppStorage("animationIntensity") private var animationIntensity = IslandAnimationIntensity.defaultValue.rawValue
     @AppStorage("jellyIntensity") private var jellyIntensity = IslandJellyIntensity.defaultValue.rawValue
     @AppStorage("autoCollapseDelay") private var autoCollapseDelay = 3.0
@@ -426,6 +431,7 @@ struct NotchContentView: View {
                 .clipped()
                 .opacity(showContent ? 1 : 0)
                 .allowsHitTesting(showContent)
+                .accessibilityHidden(!showContent)
                 .zIndex(1)
 
             ZStack(alignment: .top) {
@@ -442,6 +448,7 @@ struct NotchContentView: View {
             .offset(magneticOffset)
             .opacity(showContent ? 0 : 1)
             .allowsHitTesting(!showContent)
+            .accessibilityHidden(showContent)
             .zIndex(0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -558,6 +565,13 @@ struct NotchContentView: View {
             }
             notificationTokens = []
         }
+        .onChange(of: reduceMotion) { _, reduced in
+            if reduced { clearHoverJellyState(animated: false) }
+        }
+        .onChange(of: manager.focusedInteraction) { _, focus in
+            guard focus != nil else { return }
+            if isExpanded { state = manager.currentIslandState; reportSize() }
+        }
         .onChange(of: manager.hasInteraction) { _, hasInteraction in
             if hasInteraction {
                 if collapseAnimating {
@@ -568,6 +582,9 @@ struct NotchContentView: View {
                 } else {
                     autoExpandForInteraction()
                 }
+                cancelExpandedAutoHide()
+            } else {
+                collapseAfterDelay()
             }
         }
     }
@@ -988,10 +1005,10 @@ struct NotchContentView: View {
         cancelExpandedAutoHide()
         guard isExpanded else { return }
         let delay = expandedInactivityAutoHideDelay
-        guard delay > 0 else { return }
+        guard delay > 0, !manager.protectsInteraction else { return }
 
         let workItem = DispatchWorkItem {
-            guard self.isExpanded else { return }
+            guard self.isExpanded, !self.manager.protectsInteraction else { return }
             let elapsed = Date().timeIntervalSince(self.lastExpandedInteractionAt)
             guard elapsed >= delay else {
                 self.scheduleExpandedAutoHide()
@@ -1069,7 +1086,7 @@ struct NotchContentView: View {
             previousMouseY: previousMouseY,
             currentMouseY: mouse.y
         ) {
-            if !isHoveringPill, !disableAnimations {
+            if !isHoveringPill, !reduceMotion {
                 isHoveringPill = true
                 jellySettled = false
                 jellyGeneration += 1
@@ -1097,7 +1114,7 @@ struct NotchContentView: View {
             isExpanded: isExpanded,
             collapseAnimating: collapseAnimating
         )
-        if disableAnimations {
+        if reduceMotion {
             magneticOffset = .zero
         } else if abs(targetMagneticOffset.width - magneticOffset.width) > 0.5 {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -1136,7 +1153,7 @@ struct NotchContentView: View {
             } else {
                 withAnimation(.easeInOut(duration: 0.2)) { isHovering = false }
             }
-        } else if ExpandedAutoCollapsePolicy.shouldCollapseOnMouseExit(
+        } else if !manager.protectsInteraction && ExpandedAutoCollapsePolicy.shouldCollapseOnMouseExit(
             isPointerInside: inside,
             state: state,
             expandedByHover: expandedByHover,

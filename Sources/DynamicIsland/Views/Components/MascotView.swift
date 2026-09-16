@@ -9,7 +9,17 @@ import SwiftUI
 struct MascotView: View {
     let status: SessionStatus
     var size: CGFloat = 24
-    @AppStorage("reduceMotion") private var reduceMotion = false
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @AppStorage("reduceMotion") private var appReduceMotion = false
+    @AppStorage("disableAnimations") private var disableAnimations = false
+
+    private var reduceMotion: Bool {
+        !IslandMotionPolicy(
+            reduceMotion: appReduceMotion,
+            systemReduceMotion: systemReduceMotion,
+            disableAnimations: disableAnimations
+        ).allowsContinuousAnimation
+    }
 
     var body: some View {
         Group {

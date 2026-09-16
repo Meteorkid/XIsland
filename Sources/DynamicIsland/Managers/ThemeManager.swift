@@ -30,7 +30,7 @@ final class ThemeManager {
 
     var mode: AppearanceMode {
         didSet {
-            UserDefaults.standard.set(mode.rawValue, forKey: Self.storageKey)
+            AppPreferences.defaults.set(mode.rawValue, forKey: Self.storageKey)
             updateResolvedScheme()
             syncAppAppearance()
             onSchemeChange?()
@@ -49,7 +49,7 @@ final class ThemeManager {
 
     init() {
         let initialMode: AppearanceMode = {
-            if let raw = UserDefaults.standard.string(forKey: Self.storageKey),
+            if let raw = AppPreferences.defaults.string(forKey: Self.storageKey),
                let saved = AppearanceMode(rawValue: raw) {
                 return saved
             }

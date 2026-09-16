@@ -55,6 +55,7 @@ struct SessionGroup: Identifiable {
 final class SessionManager {
     var sessions: [AgentSession] = []
     var selectedSessionId: String?
+    var focusedInteraction: InteractionFocus?
     /// O(1) 查找索引：session ID → sessions 数组下标
     private var sessionIndex: [String: Int] = [:]
     /// 缓存 mirrored session 后缀，避免重复字符串解析
@@ -63,26 +64,26 @@ final class SessionManager {
     private var subagentMap: [String: [AgentSession]] = [:]
     var audioEngine: AudioEngine?
     var persistenceManager: SessionPersistenceManager?
+    private(set) var unsavedSessionIDs: Set<String> = []
     var currentIslandState: IslandState = .collapsed
     /// 会话分组模式，持久化到 UserDefaults
     var grouping: SessionGrouping {
         get {
-            SessionGrouping(rawValue: UserDefaults.standard.string(forKey: "sessionGrouping") ?? "") ?? .none
+            SessionGrouping(rawValue: AppPreferences.defaults.string(forKey: "sessionGrouping") ?? "") ?? .none
         }
         set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: "sessionGrouping")
+            AppPreferences.defaults.set(newValue.rawValue, forKey: "sessionGrouping")
         }
     }
     var activeFilter: SessionFilter = .all
     var searchText: String = ""
 
     var bypassMode: Bool {
-        get { UserDefaults.standard.bool(forKey: "bypassMode") }
-        set { UserDefaults.standard.set(newValue, forKey: "bypassMode") }
+        get { AppPreferences.defaults.bool(forKey: "bypassMode") }
+        set { AppPreferences.defaults.set(newValue, forKey: "bypassMode") }
     }
 
-    /// 从 xnook 被中断的次数（用于审批完成后恢复），用计数器处理快速连续审批
-    private var approvalInterruptCount = 0
+    private var approvalInterruption = ApprovalInterruptionState()
 
     /// Incremented to force SwiftUI to re-evaluate `visibleSessions` after linger expires.
     var visibleSessionsVersion: Int = 0
@@ -108,7 +109,7 @@ final class SessionManager {
     static let idleTimeout: TimeInterval = 120
 
     var completedLingerDuration: TimeInterval {
-        let val = UserDefaults.standard.double(forKey: "completedLingerDuration")
+        let val = AppPreferences.defaults.double(forKey: "completedLingerDuration")
         if val == 0 || val < 0 { return .infinity }  // 「永久」选项（兼容旧版 -1.0）
         return val
     }
@@ -368,16 +369,91 @@ final class SessionManager {
         return sessions.first { $0.id == id }
     }
 
-    var hasInteraction: Bool {
-        activeSessions.contains {
-            $0.status == .waitingPermission || $0.status == .waitingAnswer || $0.status == .waitingPlanReview
+    var pendingInteractionSessions: [AgentSession] {
+        sessions.filter(\.hasPendingInteraction).sorted {
+            if $0.status.statusPriority != $1.status.statusPriority {
+                return $0.status.statusPriority < $1.status.statusPriority
+            }
+            if $0.lastActivityTime != $1.lastActivityTime { return $0.lastActivityTime < $1.lastActivityTime }
+            return $0.id < $1.id
         }
     }
 
+    var hasInteraction: Bool { sessions.contains(where: \.hasPendingInteraction) }
+
+    var protectsInteraction: Bool { hasInteraction }
+
     var prioritizedInteractionSession: AgentSession? {
-        activeSessions.first {
-            $0.status == .waitingPermission || $0.status == .waitingAnswer || $0.status == .waitingPlanReview
+        if let focus = focusedInteraction,
+           let session = sessions.first(where: { $0.id == focus.sessionID }),
+           requestID(in: session, kind: focus.kind) == focus.requestID { return session }
+        return pendingInteractionSessions.first
+    }
+
+    func focusInteraction(session: AgentSession, kind: InteractionKind) {
+        guard let id = requestID(in: session, kind: kind) else { return }
+        focusedInteraction = InteractionFocus(sessionID: session.id, kind: kind, requestID: id)
+        selectedSessionId = session.id
+        switch kind {
+        case .permission: currentIslandState = .permission(session.id)
+        case .question: currentIslandState = .question(session.id)
+        case .plan: currentIslandState = .planReview(session.id)
         }
+        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+    }
+
+    private func requestID(in session: AgentSession, kind: InteractionKind) -> UUID? {
+        switch kind {
+        case .permission: return session.pendingPermission?.id
+        case .question: return session.pendingQuestion?.id
+        case .plan: return session.pendingPlanReview?.id
+        }
+    }
+
+    @discardableResult
+    func handleInteractionShortcut(_ key: String) -> Bool {
+        selectNextInteraction()
+        guard let focus = focusedInteraction,
+              let session = sessions.first(where: { $0.id == focus.sessionID }) else { return false }
+        switch (focus.kind, key) {
+        case (.permission, "y"), (.permission, "n"):
+            submitPermission(session: session, approved: key == "y", requestID: focus.requestID)
+        case (.plan, "y"), (.plan, "n"):
+            let draft = session.pendingPlanReview?.state.draftFeedback ?? ""
+            respondToPlan(session: session, approved: key == "y", feedback: draft.isEmpty ? nil : draft,
+                          requestID: focus.requestID)
+        case (.question, "1"), (.question, "2"), (.question, "3"):
+            guard let digit = Int(key), let question = session.pendingQuestion,
+                  question.options.indices.contains(digit - 1) else { return false }
+            answerQuestion(session: session, answer: question.options[digit - 1], requestID: focus.requestID)
+        default: return false
+        }
+        return true
+    }
+
+    func collapseFocusedInteractionDetail() -> Bool {
+        guard let focus = focusedInteraction,
+              let session = sessions.first(where: { $0.id == focus.sessionID }) else { return false }
+        let state: InteractionRequestState?
+        switch focus.kind {
+        case .permission: state = session.pendingPermission?.state
+        case .question: state = session.pendingQuestion?.state
+        case .plan: state = session.pendingPlanReview?.state
+        }
+        guard let state, state.isExpanded else { return false }
+        state.isExpanded = false
+        return true
+    }
+
+    private func selectNextInteraction() {
+        if let focus = focusedInteraction,
+           let session = sessions.first(where: { $0.id == focus.sessionID }),
+           requestID(in: session, kind: focus.kind) == focus.requestID { return }
+        focusedInteraction = nil
+        guard let session = pendingInteractionSessions.first else { return }
+        let kind: InteractionKind = session.pendingPermission != nil ? .permission
+            : session.pendingQuestion != nil ? .question : .plan
+        focusInteraction(session: session, kind: kind)
     }
 
     var diagnosticsIslandState: String {
@@ -515,7 +591,7 @@ final class SessionManager {
         return sessions.first { suffixCache[$0.id] == suffix && $0.id != sessionId }
     }
 
-    func handlePermissionRequest(_ message: DIMessage, respond: @escaping @Sendable (Bool) -> Void) {
+    func handlePermissionRequest(_ message: DIMessage, delivery: InteractionDelivery? = nil, cancel: (@Sendable () -> Void)? = nil, respond: @escaping @Sendable (Bool) -> Void) {
         if bypassMode {
             respond(true)
             return
@@ -542,15 +618,18 @@ final class SessionManager {
 
         let session = findOrCreateSessionForInteraction(message)
         session.status = .waitingPermission
+        session.pendingPermission?.cancel?()
         session.pendingPermission = PendingPermission(
             requestingAgent: realAgent,
             tool: message.tool ?? "unknown",
             description: message.permDescription ?? "",
             diff: message.diff,
             filePath: message.filePath,
-            respond: respond
+            respond: respond,
+            delivery: delivery,
+            cancel: cancel
         )
-        selectedSessionId = session.id
+        selectNextInteraction()
         audioEngine?.play(.permissionRequest, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
 
@@ -558,7 +637,7 @@ final class SessionManager {
         forceToShowForApproval()
     }
 
-    func handleQuestionRequest(_ message: DIMessage, respond: @escaping @Sendable (String) -> Void, cancel: (@Sendable () -> Void)? = nil) {
+    func handleQuestionRequest(_ message: DIMessage, delivery: InteractionDelivery? = nil, respond: @escaping @Sendable (String) -> Void, cancel: (@Sendable () -> Void)? = nil) {
         if bypassMode, let firstOption = message.options?.first {
             respond(firstOption)
             return
@@ -582,6 +661,7 @@ final class SessionManager {
         // sequential flow can advance to the next question.
         if let recent = recentAnswers[session.id],
            !options.isEmpty,
+           recent.options == Set(options), options.contains(recent.answer),
            Date().timeIntervalSince(recent.timestamp) < 2.0,
            (trimmed == recent.questionText
             || trimmed.contains(recent.questionText)
@@ -598,9 +678,10 @@ final class SessionManager {
             text: text,
             options: options,
             respond: respond,
-            cancel: cancel
+            cancel: cancel,
+            delivery: delivery
         )
-        selectedSessionId = session.id
+        selectNextInteraction()
         audioEngine?.play(.question, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
 
@@ -608,7 +689,7 @@ final class SessionManager {
         forceToShowForApproval()
     }
 
-    func handlePlanReview(_ message: DIMessage, respond: @escaping @Sendable (Bool, String?) -> Void) {
+    func handlePlanReview(_ message: DIMessage, delivery: InteractionDelivery? = nil, cancel: (@Sendable () -> Void)? = nil, respond: @escaping @Sendable (Bool, String?) -> Void) {
         if bypassMode {
             respond(true, nil)
             return
@@ -617,12 +698,15 @@ final class SessionManager {
         let realAgent = resolvedAgentType(for: message)
         let session = findOrCreateSessionForInteraction(message)
         session.status = .waitingPlanReview
+        session.pendingPlanReview?.cancel?()
         session.pendingPlanReview = PendingPlanReview(
             requestingAgent: realAgent,
             markdown: message.planMarkdown ?? "",
-            respond: respond
+            respond: respond,
+            delivery: delivery,
+            cancel: cancel
         )
-        selectedSessionId = session.id
+        selectNextInteraction()
         audioEngine?.play(.planReview, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
 
@@ -630,61 +714,92 @@ final class SessionManager {
         forceToShowForApproval()
     }
 
-    func approvePermission(session: AgentSession) {
-        session.pendingPermission?.respond(true)
-        session.pendingPermission = nil
-        session.status = .active
-        audioEngine?.play(.approved, session: session)
-        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
-
-        // 审批完成后恢复到 xnook
-        restoreToXnookIfNeeded()
+    func approvePermission(session: AgentSession, requestID: UUID? = nil) {
+        submitPermission(session: session, approved: true, requestID: requestID)
     }
 
-    func denyPermission(session: AgentSession) {
-        session.pendingPermission?.respond(false)
-        session.pendingPermission = nil
-        session.status = .active
-        audioEngine?.play(.denied, session: session)
-        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
-
-        // 审批完成后恢复到 xnook
-        restoreToXnookIfNeeded()
+    func denyPermission(session: AgentSession, requestID: UUID? = nil) {
+        submitPermission(session: session, approved: false, requestID: requestID)
     }
 
-    func answerQuestion(session: AgentSession, answer: String) {
-        // Cache for deduplication of follow-up duplicate events.
-        if let pq = session.pendingQuestion {
-            recentAnswers[session.id] = RecentAnswer(
-                answer: answer,
-                questionText: pq.text.trimmingCharacters(in: .whitespacesAndNewlines),
-                options: Set(pq.options),
-                timestamp: Date()
-            )
+    private func submitPermission(session: AgentSession, approved: Bool, requestID: UUID?) {
+        guard let request = session.pendingPermission, requestID == nil || request.id == requestID else { return }
+        submitInteraction(session: session, kind: .permission, requestID: request.id,
+                          state: request.state, delivery: request.delivery,
+                          decision: .permission(approved), sound: approved ? .approved : .denied) {
+            request.respond(approved)
         }
-        session.pendingQuestion?.respond(answer)
-        session.pendingQuestion = nil
-        session.status = .active
-        audioEngine?.play(.answered, session: session)
-        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
-
-        // 审批完成后恢复到 xnook
-        restoreToXnookIfNeeded()
     }
 
-    func respondToPlan(session: AgentSession, approved: Bool, feedback: String?) {
-        session.pendingPlanReview?.respond(approved, feedback)
-        session.pendingPlanReview = nil
-        session.status = .active
-        audioEngine?.play(approved ? .approved : .denied, session: session)
-        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+    func answerQuestion(session: AgentSession, answer: String, requestID: UUID? = nil) {
+        guard let request = session.pendingQuestion, requestID == nil || request.id == requestID,
+              !request.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              request.options.contains(answer) else { return }
+        submitInteraction(session: session, kind: .question, requestID: request.id,
+                          state: request.state, delivery: request.delivery,
+                          decision: .question(answer), sound: .answered,
+                          onSuccess: { [weak self] in
+            self?.recentAnswers[session.id] = RecentAnswer(
+                answer: answer, questionText: request.text.trimmingCharacters(in: .whitespacesAndNewlines),
+                options: Set(request.options), timestamp: Date())
+        }) {
+            request.respond(answer)
+        }
+    }
 
-        // 审批完成后恢复到 xnook
-        restoreToXnookIfNeeded()
+    func respondToPlan(session: AgentSession, approved: Bool, feedback: String?, requestID: UUID? = nil) {
+        guard let request = session.pendingPlanReview, requestID == nil || request.id == requestID else { return }
+        submitInteraction(session: session, kind: .plan, requestID: request.id,
+                          state: request.state, delivery: request.delivery,
+                          decision: .plan(approved, feedback), sound: approved ? .approved : .denied) {
+            request.respond(approved, feedback)
+        }
+    }
+
+    private func submitInteraction(
+        session: AgentSession, kind: InteractionKind, requestID: UUID,
+        state: InteractionRequestState, delivery: InteractionDelivery?,
+        decision: InteractionDecision, sound: SoundEvent,
+        onSuccess: @escaping () -> Void = {}, legacyResponse: () -> Void
+    ) {
+        guard state.canSubmit else { return }
+        focusInteraction(session: session, kind: kind)
+        state.phase = .sending
+        let finish: @MainActor (Bool) -> Void = { [weak self, weak session] success in
+            guard let self, let session,
+                  self.sessions.contains(where: { $0 === session }),
+                  self.requestID(in: session, kind: kind) == requestID else { return }
+            state.phase = success ? .sent : .failed
+            guard success else {
+                AppDelegate.shared?.refreshDiagnostics(islandState: self.diagnosticsIslandState)
+                return
+            }
+            onSuccess()
+            switch kind {
+            case .permission: session.pendingPermission = nil
+            case .question: session.pendingQuestion = nil
+            case .plan: session.pendingPlanReview = nil
+            }
+            session.status = session.pendingPermission != nil ? .waitingPermission
+                : session.pendingQuestion != nil ? .waitingAnswer
+                : session.pendingPlanReview != nil ? .waitingPlanReview : .active
+            self.audioEngine?.play(sound, session: session)
+            self.selectNextInteraction()
+            AppDelegate.shared?.refreshDiagnostics(islandState: self.diagnosticsIslandState)
+            if !self.hasInteraction { self.restoreToXnookIfNeeded() }
+        }
+        if let delivery {
+            Task { finish(await delivery(decision)) }
+        } else {
+            // 测试fixture/进程内回调同步完成；真实socket必须提供异步delivery。
+            legacyResponse()
+            finish(true)
+        }
     }
 
     func dismissSession(_ session: AgentSession) {
-        // markCompleted 已负责持久化，这里不再重复 save
+        guard !session.hasPendingInteraction else { return }
+        guard persistSession(session) else { return }
         sessions.removeAll { $0.id == session.id }
         rebuildSessionIndex()
         lastAssistantReplySoundAt.removeValue(forKey: session.id)
@@ -702,14 +817,16 @@ final class SessionManager {
             ?? sessionMatchingMirroredSuffix(of: message.sessionId)
             ?? createNewSession(from: message)
 
+        cancelPendingInteractions(session)
+        recentAnswers.removeValue(forKey: session.id)
         session.lastActivityTime = Date()
         session.status = .active
         session.statusText = ""
-        clearStaleInteraction(session)
         if let t = message.terminal, !t.isEmpty { session.terminal = t }
         if let w = message.workingDir, !w.isEmpty { session.workingDirectory = w }
         if let p = message.prompt, !p.isEmpty {
             session.prompt = p
+            session.agentResponse = ""
             session.chatHistory.append(ChatMessage(timestamp: Date(), role: .user, content: p))
             audioEngine?.play(.sessionStart, session: session)
         }
@@ -720,6 +837,7 @@ final class SessionManager {
         }
         updateTokenUsage(session: session, message: message)
         selectedSessionId = session.id
+        selectNextInteraction()
     }
 
     private func endSession(_ message: DIMessage) {
@@ -727,6 +845,8 @@ final class SessionManager {
 
         guard let session = sessionForEndMessage(message) else { return }
         let alreadyCompleted = session.status == .completed
+        cancelPendingInteractions(session)
+        selectNextInteraction()
         updateTokenUsage(session: session, message: message)
 
         if let responseText = message.status, !responseText.isEmpty {
@@ -735,9 +855,9 @@ final class SessionManager {
         }
 
         if !session.agentResponse.isEmpty {
-            if let lastIdx = session.chatHistory.lastIndex(where: { $0.role == .assistant }) {
+            if let lastIdx = session.chatHistory.indices.last, session.chatHistory[lastIdx].role == .assistant {
                 session.chatHistory[lastIdx] = ChatMessage(
-                    timestamp: Date(), role: .assistant, content: session.agentResponse
+                    id: session.chatHistory[lastIdx].id, timestamp: Date(), role: .assistant, content: session.agentResponse
                 )
             } else {
                 session.chatHistory.append(
@@ -765,12 +885,43 @@ final class SessionManager {
         }
     }
 
+    private func cancelPendingInteractions(_ session: AgentSession) {
+        session.pendingPermission?.cancel?()
+        session.pendingQuestion?.cancel?()
+        session.pendingPlanReview?.cancel?()
+        session.pendingPermission = nil
+        session.pendingQuestion = nil
+        session.pendingPlanReview = nil
+        if focusedInteraction?.sessionID == session.id { focusedInteraction = nil }
+        approvalInterruption.cancelIfFinished(hasPendingInteractions: hasInteraction)
+    }
+
     private func markCompleted(_ session: AgentSession) {
+        // 进程结束后旧连接不能继续审批，也不能阻止面板收起。
+        cancelPendingInteractions(session)
         session.status = .completed
         session.currentTool = nil
         session.completedAt = Date()
-        persistenceManager?.save(session: session)
+        persistSession(session)
+        selectNextInteraction()
         scheduleLingerCleanup()
+    }
+
+    @discardableResult
+    private func persistSession(_ session: AgentSession) -> Bool {
+        guard let persistenceManager else { return true }
+        if persistenceManager.save(session: session) {
+            unsavedSessionIDs.remove(session.id)
+            return true
+        }
+        unsavedSessionIDs.insert(session.id)
+        return false
+    }
+
+    func retryPendingHistorySaves() {
+        for session in sessions where unsavedSessionIDs.contains(session.id) {
+            persistSession(session)
+        }
     }
 
     private var hasPendingLingerCleanup = false
@@ -796,7 +947,7 @@ final class SessionManager {
         }
         let now = Date()
         let completedSessions = sessions
-            .filter { $0.status == .completed }
+            .filter { $0.status == .completed && !unsavedSessionIDs.contains($0.id) }
             .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
         let expiredIds = completedSessions.compactMap { session -> String? in
             guard let completedAt = session.completedAt else { return nil }
@@ -855,9 +1006,9 @@ final class SessionManager {
         session.statusText = text
         if !text.isEmpty {
             session.agentResponse = text
-            if let lastIdx = session.chatHistory.lastIndex(where: { $0.role == .assistant }) {
+            if let lastIdx = session.chatHistory.indices.last, session.chatHistory[lastIdx].role == .assistant {
                 session.chatHistory[lastIdx] = ChatMessage(
-                    timestamp: Date(), role: .assistant, content: text
+                    id: session.chatHistory[lastIdx].id, timestamp: Date(), role: .assistant, content: text
                 )
             } else {
                 session.chatHistory.append(
@@ -950,21 +1101,24 @@ final class SessionManager {
 
         switch session.status {
         case .waitingPermission:
+            session.pendingPermission?.cancel?()
             session.pendingPermission = nil
             session.status = .active
         case .waitingAnswer:
+            session.pendingQuestion?.cancel?()
             session.pendingQuestion = nil
             session.status = .active
         case .waitingPlanReview:
+            session.pendingPlanReview?.cancel?()
             session.pendingPlanReview = nil
             session.status = .active
         default:
             break
         }
 
-        // 交互被外部清除时，重置中断标志，防止误触发恢复
+        // 最后一个交互被外部清除时取消恢复；其他待办仍保留本轮显示权。
         if hadPendingInteraction {
-            approvalInterruptCount = 0
+            approvalInterruption.cancelIfFinished(hasPendingInteractions: hasInteraction)
         }
     }
 
@@ -978,11 +1132,9 @@ final class SessionManager {
 
     /// Interactive requests fold mirrored hook ids (`cursor-*` / `claude_code-*` same suffix) like `findOrCreateSession`.
     private func findOrCreateSessionForInteraction(_ message: DIMessage) -> AgentSession {
-        let agentType = resolvedAgentType(for: message)
         let session = activeSessionById(message.sessionId)
             ?? mirroredCursorSession(for: message.sessionId)
             ?? sessionMatchingMirroredSuffix(of: message.sessionId)
-            ?? activeSessions.first(where: { $0.agentType == agentType })
             ?? sessionById(message.sessionId)
             ?? createNewSession(from: message)
 
@@ -1077,9 +1229,10 @@ final class SessionManager {
 
     /// 有审批时强制置顶显示灵动岛（即使 xnook 在前台）
     private func forceToShowForApproval() {
+        guard !AppTestConfiguration.current().isEnabled else { return }
         // 精确检查 xnook 是否正在运行（而非任意其他灵动岛应用）
         if AppSwitcher.shared.isIslandRunning(named: "xnook") {
-            approvalInterruptCount += 1
+            approvalInterruption.markInterrupted()
         }
 
         // 强制显示灵动岛窗口（重新定位到当前主界面所在屏幕，避免多桌面/多显示器时展开到错误位置）
@@ -1090,8 +1243,8 @@ final class SessionManager {
 
     /// 审批完成后恢复到 xnook（如果之前是从 xnook 被中断的）
     private func restoreToXnookIfNeeded() {
-        approvalInterruptCount = max(0, approvalInterruptCount - 1)
-        guard approvalInterruptCount == 0 else { return }
+        guard !AppTestConfiguration.current().isEnabled else { return }
+        guard approvalInterruption.takeRestorationIfReady(hasPendingInteractions: hasInteraction) else { return }
 
         // 精确检查 xnook 是否仍然运行
         guard AppSwitcher.shared.isIslandRunning(named: "xnook") else { return }

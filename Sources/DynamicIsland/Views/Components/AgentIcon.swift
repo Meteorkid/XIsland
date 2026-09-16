@@ -5,7 +5,17 @@ struct AgentIcon: View {
     var size: CGFloat = 24
     var status: SessionStatus = .active
     var showMascot: Bool = true
-    @AppStorage("reduceMotion") private var reduceMotion = false
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @AppStorage("reduceMotion") private var appReduceMotion = false
+    @AppStorage("disableAnimations") private var disableAnimations = false
+
+    private var reduceMotion: Bool {
+        !IslandMotionPolicy(
+            reduceMotion: appReduceMotion,
+            systemReduceMotion: systemReduceMotion,
+            disableAnimations: disableAnimations
+        ).allowsContinuousAnimation
+    }
 
     private var statusColor: Color {
         status.uiColor

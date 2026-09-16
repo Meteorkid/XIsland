@@ -22,7 +22,7 @@ enum L10n {
     // MARK: - Language detection
 
     static var effectiveLanguage: String {
-        if let manual = UserDefaults.standard.string(forKey: "appLanguage"),
+        if let manual = AppPreferences.defaults.string(forKey: "appLanguage"),
            manual != "auto",
            availableLanguages.contains(where: { $0.code == manual }) {
             return manual
@@ -51,6 +51,19 @@ enum L10n {
     }
 
     // MARK: - UI strings
+
+    static var historySaveFailed: String {
+        localized("historySaveFailed", zh: "历史暂未保存，相关会话将保留供重试。",
+                  ko: "기록이 저장되지 않았습니다. 재시도를 위해 세션을 유지합니다.",
+                  ja: "履歴は未保存です。再試行できるようセッションを保持します。",
+                  fr: "Historique non enregistré. Les sessions sont conservées pour réessayer.",
+                  en: "History is not saved. Sessions are retained so you can retry.")
+    }
+
+    static var retryHistorySave: String {
+        localized("retryHistorySave", zh: "重试保存", ko: "저장 재시도", ja: "保存を再試行",
+                  fr: "Réessayer l’enregistrement", en: "Retry saving")
+    }
 
     static var activeSessions: String {
         localized("activeSessions",
@@ -86,6 +99,54 @@ enum L10n {
         localized("planFeedback",
             zh: "反馈意见...", ko: "피드백...", ja: "フィードバック...", fr: "Commentaires...",
             en: "Feedback...")
+    }
+
+    static var viewFullPlan: String {
+        localized("viewFullPlan",
+            zh: "查看完整计划", ko: "전체 계획 보기", ja: "計画の全文を表示", fr: "Voir le plan complet",
+            en: "View full plan")
+    }
+
+    static var viewPermissionDetails: String {
+        localized("viewPermissionDetails",
+            zh: "查看完整请求", ko: "전체 요청 보기", ja: "リクエスト全体を表示", fr: "Voir la demande complète",
+            en: "View full request")
+    }
+
+    static var interactionSending: String {
+        localized("interactionSending",
+            zh: "正在发送…", ko: "전송 중…", ja: "送信中…", fr: "Envoi en cours…",
+            en: "Sending…")
+    }
+
+    static var interactionSent: String {
+        localized("interactionSent",
+            zh: "已发送，等待 Agent 更新", ko: "전송됨 · 에이전트 업데이트 대기 중", ja: "送信済み · エージェントの更新を待機中", fr: "Envoyé · en attente de l’agent",
+            en: "Sent · waiting for the agent to update")
+    }
+
+    static var interactionFailed: String {
+        localized("interactionFailed",
+            zh: "发送失败，请前往 Agent 重新发起", ko: "전송 실패. 에이전트에서 요청을 다시 시작하세요.", ja: "送信できませんでした。エージェントでリクエストをやり直してください。", fr: "Échec de l’envoi. Relancez la demande dans l’agent.",
+            en: "Sending failed. Start a new request in the agent.")
+    }
+
+    static var interactionOpenAgent: String {
+        localized("interactionOpenAgent",
+            zh: "前往 Agent 处理", ko: "에이전트에서 처리", ja: "エージェントで操作", fr: "Ouvrir dans l’agent",
+            en: "Continue in agent")
+    }
+
+    static var questionUnavailable: String {
+        localized("questionUnavailable",
+            zh: "问题或选项不完整，请前往 Agent 处理", ko: "질문 또는 선택지가 불완전합니다. 에이전트에서 처리하세요.", ja: "質問または選択肢が不完全です。エージェントで操作してください。", fr: "Question ou choix incomplets. Continuez dans l’agent.",
+            en: "The question or choices are incomplete. Continue in the agent.")
+    }
+
+    static var permissionDiffAvailable: String {
+        localized("permissionDiffAvailable",
+            zh: "包含文件改动，展开查看完整 diff", ko: "파일 변경 사항이 있습니다. 펼쳐서 전체 diff를 확인하세요.", ja: "ファイル変更があります。展開して差分全体を確認してください。", fr: "Modifications incluses. Développez pour voir le diff complet.",
+            en: "Includes file changes. Expand to read the full diff.")
     }
 
     static var jumpTitle: String {

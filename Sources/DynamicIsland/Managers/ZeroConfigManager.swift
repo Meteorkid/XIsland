@@ -257,14 +257,14 @@ enum ZeroConfigManager {
     }
 
     static func isAutoConfigEnabled(for agent: AgentType) -> Bool {
-        let defaults = UserDefaults.standard
+        let defaults = AppPreferences.defaults
         let key = autoConfigKey(for: agent)
         if defaults.object(forKey: key) == nil { return true }
         return defaults.bool(forKey: key)
     }
 
     static func setAutoConfigEnabled(_ enabled: Bool, for agent: AgentType) {
-        UserDefaults.standard.set(enabled, forKey: autoConfigKey(for: agent))
+        AppPreferences.defaults.set(enabled, forKey: autoConfigKey(for: agent))
         if enabled {
             configure(agent)
         } else {

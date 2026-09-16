@@ -3,6 +3,7 @@ import SwiftData
 
 @Model
 final class StoredChatMessage {
+    var messageId: UUID? = nil
     var timestamp: Date
     var role: String
     var content: String
@@ -10,9 +11,17 @@ final class StoredChatMessage {
     var session: StoredSession?
 
     init(from message: ChatMessage) {
+        self.messageId = message.id
         self.timestamp = message.timestamp
         self.role = message.role.rawValue
         self.content = message.content
+    }
+
+    func update(from message: ChatMessage) {
+        messageId = message.id
+        timestamp = message.timestamp
+        role = message.role.rawValue
+        content = message.content
     }
 
     /// Internal initializer for SwiftData (all stored properties).

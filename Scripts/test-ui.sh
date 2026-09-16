@@ -7,16 +7,24 @@ BUILD_SCRIPT="$PROJECT_DIR/Scripts/build.sh"
 APP_BUNDLE="$PROJECT_DIR/.build/X Island.app"
 UI_DRIVER="$PROJECT_DIR/.build/release/XIslandUITestDriver"
 MODE="${1:-smoke}"
-TEST_HOME="$PROJECT_DIR/.build/test-home"
-TEST_BIN_DIR="$TEST_HOME/.xisland/bin"
+ANIMATION_PROFILE="${X_ISLAND_TEST_ANIMATION_PROFILE:-deterministic}"
+TEST_BIN_DIR="$PROJECT_DIR/.build/ui-test-bin"
+
+case "$ANIMATION_PROFILE" in
+    deterministic|normal) ;;
+    *)
+        echo "ERROR: X_ISLAND_TEST_ANIMATION_PROFILE must be deterministic or normal"
+        exit 1
+        ;;
+esac
 
 cd "$PROJECT_DIR"
 
 mkdir -p "$TEST_BIN_DIR"
 
 env \
-    HOME="$TEST_HOME" \
     X_ISLAND_BIN_DIR="$TEST_BIN_DIR" \
+    X_ISLAND_SKIP_BRIDGE_INSTALL=1 \
     X_ISLAND_SKIP_PATH_CONFIGURE=1 \
     bash "$BUILD_SCRIPT"
 
@@ -42,4 +50,4 @@ case "$MODE" in
         ;;
 esac
 
-"$UI_DRIVER" --app-path "$APP_BUNDLE" "$MODE"
+X_ISLAND_TEST_ANIMATION_PROFILE="$ANIMATION_PROFILE" "$UI_DRIVER" --app-path "$APP_BUNDLE" "$MODE"

@@ -73,15 +73,15 @@ final class AudioEngine {
         get { manualMute || isQuietHoursActive }
         set {
             manualMute = newValue
-            UserDefaults.standard.set(newValue, forKey: "audio.isMuted")
+            AppPreferences.defaults.set(newValue, forKey: "audio.isMuted")
         }
     }
 
     /// 当前是否处于免打扰时段（quiet hours）。
     var isQuietHoursActive: Bool {
-        guard UserDefaults.standard.bool(forKey: "audio.quietHoursEnabled") else { return false }
-        guard let start = Self.minutesOfDay(from: UserDefaults.standard.string(forKey: "audio.quietHoursStart")),
-              let end = Self.minutesOfDay(from: UserDefaults.standard.string(forKey: "audio.quietHoursEnd")) else {
+        guard AppPreferences.defaults.bool(forKey: "audio.quietHoursEnabled") else { return false }
+        guard let start = Self.minutesOfDay(from: AppPreferences.defaults.string(forKey: "audio.quietHoursStart")),
+              let end = Self.minutesOfDay(from: AppPreferences.defaults.string(forKey: "audio.quietHoursEnd")) else {
             return false
         }
 
@@ -96,7 +96,7 @@ final class AudioEngine {
     // MARK: 音量
 
     var volume: Float = 0.5 {
-        didSet { UserDefaults.standard.set(volume, forKey: "audio.volume") }
+        didSet { AppPreferences.defaults.set(volume, forKey: "audio.volume") }
     }
 
     // MARK: 事件开关与声音包
@@ -108,14 +108,14 @@ final class AudioEngine {
     private let audioQueue = DispatchQueue(label: "dev.xisland.audio")
 
     init() {
-        manualMute = UserDefaults.standard.bool(forKey: "audio.isMuted")
+        manualMute = AppPreferences.defaults.bool(forKey: "audio.isMuted")
 
-        let savedVolume = UserDefaults.standard.float(forKey: "audio.volume")
+        let savedVolume = AppPreferences.defaults.float(forKey: "audio.volume")
         volume = savedVolume > 0 ? savedVolume : 0.5
 
         restoreEventPreferences()
 
-        if let path = UserDefaults.standard.string(forKey: "audio.soundPackPath") {
+        if let path = AppPreferences.defaults.string(forKey: "audio.soundPackPath") {
             loadSoundPack(from: URL(fileURLWithPath: path))
         }
     }
@@ -126,19 +126,19 @@ final class AudioEngine {
 
     func setEnabled(_ event: SoundEvent, _ enabled: Bool) {
         eventEnabled[event] = enabled
-        UserDefaults.standard.set(enabled, forKey: "audio.event.\(event.rawValue)")
+        AppPreferences.defaults.set(enabled, forKey: "audio.event.\(event.rawValue)")
     }
 
     // MARK: 静音规则
 
     var muteRules: [MuteRule] {
         get {
-            guard let data = UserDefaults.standard.data(forKey: "audio.muteRules") else { return [] }
+            guard let data = AppPreferences.defaults.data(forKey: "audio.muteRules") else { return [] }
             return (try? JSONDecoder().decode([MuteRule].self, from: data)) ?? []
         }
         set {
             if let data = try? JSONEncoder().encode(newValue) {
-                UserDefaults.standard.set(data, forKey: "audio.muteRules")
+                AppPreferences.defaults.set(data, forKey: "audio.muteRules")
             }
         }
     }
@@ -184,17 +184,17 @@ final class AudioEngine {
         }
 
         if customSounds.isEmpty {
-            UserDefaults.standard.removeObject(forKey: "audio.soundPackPath")
+            AppPreferences.defaults.removeObject(forKey: "audio.soundPackPath")
         } else {
             soundPackName = directory.lastPathComponent
-            UserDefaults.standard.set(directory.path, forKey: "audio.soundPackPath")
+            AppPreferences.defaults.set(directory.path, forKey: "audio.soundPackPath")
         }
     }
 
     func clearSoundPack() {
         customSounds.removeAll()
         soundPackName = nil
-        UserDefaults.standard.removeObject(forKey: "audio.soundPackPath")
+        AppPreferences.defaults.removeObject(forKey: "audio.soundPackPath")
     }
 
     var hasCustomSoundPack: Bool { !customSounds.isEmpty }
@@ -434,8 +434,8 @@ final class AudioEngine {
     private func restoreEventPreferences() {
         for event in SoundEvent.allCases {
             let key = "audio.event.\(event.rawValue)"
-            if UserDefaults.standard.object(forKey: key) != nil {
-                eventEnabled[event] = UserDefaults.standard.bool(forKey: key)
+            if AppPreferences.defaults.object(forKey: key) != nil {
+                eventEnabled[event] = AppPreferences.defaults.bool(forKey: key)
             } else {
                 eventEnabled[event] = event.enabledByDefault
             }

@@ -7,7 +7,7 @@ struct MarkdownView: View {
 
     @Environment(ThemeManager.self) private var themeManager
 
-    private let elements: [MarkdownBlock]
+    let elements: [MarkdownBlock]
 
     private var scheme: ColorScheme { themeManager.resolvedScheme }
 
@@ -18,7 +18,7 @@ struct MarkdownView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(elements, id: \.self) { element in
+            ForEach(Array(elements.enumerated()), id: \.offset) { _, element in
                 render(element)
             }
         }
@@ -26,7 +26,7 @@ struct MarkdownView: View {
 
     // MARK: - 块模型
 
-    private enum MarkdownBlock: Hashable {
+    enum MarkdownBlock: Hashable {
         case heading(level: Int, text: String)
         case paragraph(String)
         case code(String)

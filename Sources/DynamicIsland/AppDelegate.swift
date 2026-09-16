@@ -90,10 +90,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !Self.exitingAsDuplicateInstance else { return }
+        do {
+            try testConfiguration.validateIsolation()
+            if let runtimeURL = testConfiguration.runtimeURL {
+                try FileManager.default.createDirectory(at: runtimeURL, withIntermediateDirectories: true)
+            }
+        } catch {
+            preconditionFailure("Invalid test isolation: \(error.localizedDescription)")
+        }
         Self.shared = self
         NSApp.setActivationPolicy(.accessory)
 
-        UserDefaults.standard.register(defaults: [
+        AppPreferences.defaults.register(defaults: [
             "showOnAllSpaces": true,
             "autoCollapseDelay": 3.0,
             "expandedInactivityAutoHideDelay": 10.0,
@@ -138,7 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 监听跨进程通知：对方应用请求本应用隐藏
         // 通知名格式：island.switch.hide.{targetAppName}
-        if let appName = AppSwitcher.shared.currentAppName {
+        if !testConfiguration.isEnabled, let appName = AppSwitcher.shared.currentAppName {
             let hideNotification = "\(hideNotificationPrefix)\(appName)"
             islandHideObserver = DistributedNotificationCenter.default().addObserver(
                 forName: Notification.Name(hideNotification),
@@ -237,6 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .environment(quotaTracker)
             .environment(persistenceManager)
             .environment(themeManager)
+            .defaultAppStorage(AppPreferences.defaults)
         )
         hostView.frame = window.contentView!.bounds
         hostView.autoresizingMask = [.width, .height]
@@ -245,6 +254,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         window.contentView?.addSubview(hostView)
         notchWindow = window
+        window.allowsAutomaticScreenChange = { [weak self] in self?.sessionManager.protectsInteraction != true }
         themeManager.onSchemeChange = { [weak self] in
             guard let self, let w = self.notchWindow else { return }
             self.updateWindowAppearance(w)
@@ -260,51 +270,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             if isCommand, let chars = chars {
                 switch chars {
-                case "y":
-                    switch self.sessionManager.currentIslandState {
-                    case .permission(let id):
-                        if let session = self.sessionManager.sessions.first(where: { $0.id == id }) {
-                            self.sessionManager.approvePermission(session: session)
-                            NotificationCenter.default.post(name: .xislandCollapse, object: nil)
-                            return true
-                        }
-                    case .planReview(let id):
-                        if let session = self.sessionManager.sessions.first(where: { $0.id == id }) {
-                            self.sessionManager.respondToPlan(session: session, approved: true, feedback: nil)
-                            NotificationCenter.default.post(name: .xislandCollapse, object: nil)
-                            return true
-                        }
-                    default:
-                        break
-                    }
-                case "n":
-                    switch self.sessionManager.currentIslandState {
-                    case .permission(let id):
-                        if let session = self.sessionManager.sessions.first(where: { $0.id == id }) {
-                            self.sessionManager.denyPermission(session: session)
-                            NotificationCenter.default.post(name: .xislandCollapse, object: nil)
-                            return true
-                        }
-                    case .planReview(let id):
-                        if let session = self.sessionManager.sessions.first(where: { $0.id == id }) {
-                            self.sessionManager.respondToPlan(session: session, approved: false, feedback: nil)
-                            NotificationCenter.default.post(name: .xislandCollapse, object: nil)
-                            return true
-                        }
-                    default:
-                        break
-                    }
-                case "1", "2", "3":
-                    if case .question(let id) = self.sessionManager.currentIslandState,
-                       let session = self.sessionManager.sessions.first(where: { $0.id == id }),
-                       let question = session.pendingQuestion,
-                       let digit = Int(chars),
-                       digit >= 1, digit <= question.options.count {
-                        let option = question.options[digit - 1]
-                        self.sessionManager.answerQuestion(session: session, answer: option)
-                        NotificationCenter.default.post(name: .xislandCollapse, object: nil)
-                        return true
-                    }
+                case "y", "n", "1", "2", "3":
+                    return self.sessionManager.handleInteractionShortcut(chars)
                 case "o":
                     NotificationCenter.default.post(name: .xislandToggleActivityLog, object: nil)
                     return true
@@ -329,7 +296,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             // Escape 收起展开的面板
-            if chars == "\u{1b}" && self.sessionManager.currentIslandState == .expanded {
+            if chars == "\u{1b}" {
+                if self.sessionManager.collapseFocusedInteractionDetail() { return true }
                 NotificationCenter.default.post(name: .xislandCollapse, object: nil)
                 return true
             }
@@ -386,7 +354,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         guard NotchWindow.shouldTriggerScrollExpand(
-            isEnabled: UserDefaults.standard.bool(forKey: "scrollDownToExpandPanel"),
+            isEnabled: AppPreferences.defaults.bool(forKey: "scrollDownToExpandPanel"),
             isVisible: window.isVisible,
             isCollapsed: window.islandState == .collapsed,
             isPrecise: event.hasPreciseScrollingDeltas,
@@ -442,19 +410,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func performInitialStartup() {
         sessionManager.audioEngine = audioEngine
-        persistenceManager.setupContainer()
+        persistenceManager.setupContainer(storeURL: testConfiguration.storageURL)
         sessionManager.persistenceManager = persistenceManager
         setupNotchWindow()
         setupMenuBarItem()
-        setupScrollMonitor()
-        scheduleInitialVisibilityResolution()
+        if testConfiguration.isEnabled {
+            // fixture窗口不监听全局输入、不隐藏其他岛体，也不访问真实Agent配置。
+            audioEngine.isMuted = true
+            notchWindow?.showWindow()
+        } else {
+            setupScrollMonitor()
+            scheduleInitialVisibilityResolution()
+        }
         DispatchQueue.main.async { [weak self] in
             self?.installApplicationMenuItems()
         }
         observeUpdateState()
-        sessionManager.startCleanupTimer()
-        // 启动自动检查更新
-        updateManager.startAutoCheck()
+        if !testConfiguration.isEnabled {
+            sessionManager.startCleanupTimer()
+            updateManager.startAutoCheck()
+        }
     }
 
     private func performProductionGlobalStartup() {
@@ -587,7 +562,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func checkForUpdatesFromMenu() {
-        UserDefaults.standard.set(
+        AppPreferences.defaults.set(
             PreferencesRouting.aboutPaneValue,
             forKey: PreferencesRouting.pendingPaneSelectionKey
         )
@@ -645,6 +620,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .environment(quotaTracker)
                 .environment(persistenceManager)
                 .environment(themeManager)
+            .defaultAppStorage(AppPreferences.defaults)
         )
 
         settingsWindow = w

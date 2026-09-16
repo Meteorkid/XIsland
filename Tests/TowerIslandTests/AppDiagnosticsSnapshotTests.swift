@@ -37,9 +37,10 @@ final class AppDiagnosticsSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.visibleSessions.first?.workingDirectory, "/tmp/demo")
         XCTAssertEqual(snapshot.visibleAccessibilityIdentifiers, [
             TestAccessibility.islandRoot,
-            TestAccessibility.questionPanel,
-            TestAccessibility.questionOption(index: 0),
-            TestAccessibility.questionOption(index: 1),
+            TestAccessibility.sessionList,
+            TestAccessibility.interactionControl(TestAccessibility.questionPanel, sessionID: session.id, requestID: session.pendingQuestion!.id),
+            TestAccessibility.interactionControl(TestAccessibility.questionOption(index: 0), sessionID: session.id, requestID: session.pendingQuestion!.id),
+            TestAccessibility.interactionControl(TestAccessibility.questionOption(index: 1), sessionID: session.id, requestID: session.pendingQuestion!.id),
         ])
     }
 

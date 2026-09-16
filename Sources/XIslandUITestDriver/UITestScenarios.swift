@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 
 enum UITestAccessibility {
@@ -10,10 +11,18 @@ enum UITestAccessibility {
     static let questionPanel = "island.question-panel"
     static let planPanel = "island.plan-panel"
     static let planApproveButton = "island.plan-approve"
+    static let planDetailsButton = "island.plan-details"
+    static let planFeedbackField = "island.plan-feedback"
     static let preferencesRoot = "preferences.root"
     static let updateCheckButton = "preferences.update-check"
     static let updateInstallButton = "preferences.update-install"
     static let updateStatusLabel = "preferences.update-status"
+
+    static func usesRequestScope(_ identifier: String) -> Bool {
+        [permissionPanel, permissionApproveButton, questionPanel, planPanel,
+         planApproveButton, planDetailsButton, planFeedbackField].contains(identifier)
+            || identifier.hasPrefix("island.question-option.")
+    }
 
     static func sessionCard(id: String) -> String {
         "island.session-card.\(id)"
@@ -41,6 +50,33 @@ struct UITestDiagnosticsSnapshot: Decodable {
     let visibleSessions: [SessionSnapshot]
     let visibleAccessibilityIdentifiers: [String]
     let update: UpdateSnapshot
+
+    func containsIdentifier(_ identifier: String) -> Bool {
+        visibleAccessibilityIdentifiers.contains { actual in
+            actual == identifier
+                || (UITestAccessibility.usesRequestScope(identifier) && actual.hasPrefix(identifier + "."))
+        }
+    }
+
+    func resolvedIdentifier(_ identifier: String, requiringScopedInteraction: Bool = false) throws -> String {
+        if UITestAccessibility.usesRequestScope(identifier), let selectedSessionId {
+            let prefix = identifier + "." + selectedSessionId + "."
+            let matches = visibleAccessibilityIdentifiers.filter {
+                $0.hasPrefix(prefix) && UUID(uuidString: String($0.dropFirst(prefix.count))) != nil
+            }
+            guard matches.count <= 1 else {
+                throw UITestDriverError.actionFailed("Ambiguous inline accessibility identifier: \(identifier)")
+            }
+            if let match = matches.first { return match }
+        }
+        // 旧标识只可用于存在性检查，实际操作必须指向当前会话的唯一请求。
+        if (!requiringScopedInteraction || !UITestAccessibility.usesRequestScope(identifier)),
+           visibleAccessibilityIdentifiers.contains(identifier) {
+            return identifier
+        }
+        throw UITestDriverError.missingElement(identifier)
+    }
+
 }
 
 struct UITestDriverConfiguration {
@@ -183,6 +219,7 @@ struct UITestScenario {
                 opensPreferencesOnLaunch: false,
                 requiredIdentifiers: [
                     UITestAccessibility.planPanel,
+                    UITestAccessibility.planDetailsButton,
                     UITestAccessibility.planApproveButton,
                 ],
                 expectedInitialIslandState: "planReview"
@@ -194,6 +231,11 @@ struct UITestScenario {
                     $0.pendingInteraction == "planReview"
                         && $0.selectedSessionId == "fixture-plan"
                 }
+                try context.pressElement(UITestAccessibility.planDetailsButton)
+                try context.setText(
+                    "请保留现有配置。\n完成后运行测试并报告结果。",
+                    in: UITestAccessibility.planFeedbackField
+                )
                 try context.pressElement(UITestAccessibility.planApproveButton)
                 _ = try context.waitForSnapshot(
                     description: "Timed out waiting for plan approval to clear diagnostics"
@@ -268,19 +310,45 @@ struct UITestScenarioContext {
     }
 
     func waitForElement(_ identifier: String) throws -> AXUIElement {
-        _ = try waitForSnapshot(
+        try waitForResolvedElement(identifier).element
+    }
+
+    private func waitForResolvedElement(
+        _ identifier: String,
+        requiringScopedInteraction: Bool = false
+    ) throws -> (element: AXUIElement, identifier: String) {
+        let snapshot = try waitForSnapshot(
             description: "Timed out waiting for diagnostics to expose accessibility identifier \(identifier)"
         ) {
-            $0.visibleAccessibilityIdentifiers.contains(identifier)
+            $0.containsIdentifier(identifier)
         }
+        let actualIdentifier = try snapshot.resolvedIdentifier(
+            identifier, requiringScopedInteraction: requiringScopedInteraction
+        )
+        let element = try AXUIHelpers.waitForElement(
+            in: application, identifier: actualIdentifier, timeout: timeout
+        )
+        return (element, actualIdentifier)
+    }
 
-        return try AXUIHelpers.waitForElement(in: application, identifier: identifier, timeout: timeout)
+    private func actionElement(_ identifier: String) throws -> (element: AXUIElement, identifier: String) {
+        try activate()
+        let resolved = try waitForResolvedElement(identifier, requiringScopedInteraction: true)
+        let latestIdentifier = try currentSnapshot().resolvedIdentifier(identifier, requiringScopedInteraction: true)
+        guard latestIdentifier == resolved.identifier else {
+            throw UITestDriverError.actionFailed("Interaction changed before activating \(identifier)")
+        }
+        return resolved
     }
 
     func pressElement(_ identifier: String) throws {
-        try activate()
-        let element = try waitForElement(identifier)
-        try AXUIHelpers.press(element, identifier: identifier)
+        let resolved = try actionElement(identifier)
+        try AXUIHelpers.press(resolved.element, identifier: resolved.identifier)
+    }
+
+    func setText(_ text: String, in identifier: String) throws {
+        let resolved = try actionElement(identifier)
+        try AXUIHelpers.setText(text, in: resolved.element, identifier: resolved.identifier)
     }
 
     func waitForPrimaryWindow(
@@ -332,8 +400,22 @@ struct UITestScenarioRunner {
     let timeout: TimeInterval
 
     func run(_ scenario: UITestScenario) throws {
-        let context = try launch(scenario: scenario)
-
+        // 短路径避免超过 Darwin Unix socket 的路径长度上限。
+        let runtimeURL = URL(fileURLWithPath: "/tmp/xi-ui-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: runtimeURL, withIntermediateDirectories: false)
+        defer {
+            try? FileManager.default.removeItem(at: runtimeURL)
+        }
+        let request = makeLaunchRequest(
+            for: scenario,
+            diagnosticsURL: runtimeURL.appendingPathComponent("diagnostics.json")
+        )
+        defer {
+            if let suite = request.environment["X_ISLAND_TEST_DEFAULTS_SUITE"] {
+                UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+            }
+        }
+        let context = try launch(request: request)
         defer {
             terminate(process: context.process)
         }
@@ -351,39 +433,25 @@ struct UITestScenarioRunner {
         try scenario.run(context)
     }
 
-    private func launch(scenario: UITestScenario) throws -> UITestScenarioContext {
-        let diagnosticsURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("xisland-ui-tests")
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathComponent("diagnostics.json")
-        try FileManager.default.createDirectory(
-            at: diagnosticsURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-
-        let request = makeLaunchRequest(for: scenario, diagnosticsURL: diagnosticsURL)
-        guard Bundle(url: request.bundleURL) != nil else {
-            throw UITestDriverError.launchFailed("X Island app bundle not found at \(request.bundleURL.path)")
+    private func launch(request: UITestLaunchRequest) throws -> UITestScenarioContext {
+        guard let executableURL = Bundle(url: request.bundleURL)?.executableURL,
+              FileManager.default.isExecutableFile(atPath: executableURL.path),
+              let diagnosticsPath = request.environment["X_ISLAND_TEST_DIAGNOSTICS_PATH"] else {
+            throw UITestDriverError.launchFailed("X Island executable not found in \(request.bundleURL.path)")
         }
 
+        // 直接管理自己创建的应用进程，不根据 bundle ID 猜测或终止其他实例。
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = openArguments(for: request)
+        process.executableURL = executableURL
+        process.arguments = request.arguments
         process.environment = request.environment
-
+        process.currentDirectoryURL = URL(fileURLWithPath: diagnosticsPath).deletingLastPathComponent()
         try process.run()
 
-        let applicationPID = try waitForApplicationPID(
-            bundleURL: request.bundleURL,
-            diagnosticsURL: diagnosticsURL,
-            scenario: scenario
-        )
-
-        let application = AXUIHelpers.applicationElement(pid: applicationPID)
         return UITestScenarioContext(
             process: process,
-            application: application,
-            diagnosticsURL: diagnosticsURL,
+            application: AXUIHelpers.applicationElement(pid: process.processIdentifier),
+            diagnosticsURL: URL(fileURLWithPath: diagnosticsPath),
             timeout: timeout
         )
     }
@@ -408,8 +476,13 @@ struct UITestScenarioRunner {
         var environment = ProcessInfo.processInfo.environment
         environment["X_ISLAND_TEST_MODE"] = "1"
         environment["X_ISLAND_TEST_FIXTURE"] = scenario.fixtureName
+        environment.removeValue(forKey: "X_ISLAND_TEST_FIXTURE_PATH")
         environment["X_ISLAND_TEST_DIAGNOSTICS_PATH"] = diagnosticsURL.path
-        environment["X_ISLAND_DISABLE_ANIMATIONS"] = "1"
+        environment["X_ISLAND_TEST_RUNTIME_DIR"] = diagnosticsURL.deletingLastPathComponent().path
+        environment["X_ISLAND_TEST_DEFAULTS_SUITE"] = "dev.xisland.tests.\(UUID().uuidString)"
+        let animationProfile = environment["X_ISLAND_TEST_ANIMATION_PROFILE"] ?? "deterministic"
+        environment["X_ISLAND_TEST_ANIMATION_PROFILE"] = animationProfile
+        environment["X_ISLAND_DISABLE_ANIMATIONS"] = animationProfile == "normal" ? "0" : "1"
         if scenario.opensPreferencesOnLaunch {
             environment["X_ISLAND_TEST_OPEN_PREFERENCES"] = "1"
         } else {
@@ -418,47 +491,23 @@ struct UITestScenarioRunner {
         return environment
     }
 
-    private func openArguments(for request: UITestLaunchRequest) -> [String] {
-        ["-n", request.bundleURL.path, "--args"] + request.arguments
-    }
-
-    private func waitForApplicationPID(
-        bundleURL: URL,
-        diagnosticsURL: URL,
-        scenario: UITestScenario
-    ) throws -> pid_t {
-        let bundleIdentifier = try bundleIdentifier(for: bundleURL)
-
-        return try AXUIHelpers.waitUntil(
-            timeout: timeout,
-            description: "Timed out waiting for X Island to launch for \(scenario.name)"
-        ) {
-            guard FileManager.default.fileExists(atPath: diagnosticsURL.path) else {
-                return nil
-            }
-
-            let candidates = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
-            if let match = candidates.sorted(by: { $0.launchDate ?? .distantPast > $1.launchDate ?? .distantPast }).first {
-                return match.processIdentifier
-            }
-
-            return nil
-        }
-    }
-
-    private func bundleIdentifier(for bundleURL: URL) throws -> String {
-        guard let bundle = Bundle(url: bundleURL),
-              let bundleIdentifier = bundle.bundleIdentifier,
-              !bundleIdentifier.isEmpty else {
-            throw UITestDriverError.launchFailed("X Island bundle identifier not found at \(bundleURL.path)")
-        }
-        return bundleIdentifier
-    }
-
     private func terminate(process: Process) {
+        guard process.isRunning else { return }
+        _ = NSRunningApplication(processIdentifier: process.processIdentifier)?.terminate()
+        let gracefulDeadline = Date().addingTimeInterval(2)
+        while process.isRunning && Date() < gracefulDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
         if process.isRunning {
             process.terminate()
-            process.waitUntilExit()
+            let forcedDeadline = Date().addingTimeInterval(1)
+            while process.isRunning && Date() < forcedDeadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            }
         }
+        if process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
+        }
+        process.waitUntilExit()
     }
 }

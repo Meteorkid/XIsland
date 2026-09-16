@@ -117,6 +117,14 @@ enum AXUIHelpers {
         }
     }
 
+    static func setText(_ text: String, in element: AXUIElement, identifier: String) throws {
+        let result = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, text as CFTypeRef)
+        guard result == .success,
+              stringValue(of: element, attribute: kAXValueAttribute) == text else {
+            throw UITestDriverError.actionFailed("Failed to set text for \(identifier): \(result.rawValue)")
+        }
+    }
+
     static func findElement(in application: AXUIElement, identifier: String) -> AXUIElement? {
         for window in windows(of: application) {
             if matchesIdentifier(window, identifier: identifier) {

@@ -69,10 +69,17 @@ enum SessionStatus: String, Codable, Sendable {
 }
 
 struct ChatMessage: Identifiable, Sendable {
-    let id = UUID()
+    let id: UUID
     let timestamp: Date
     let role: ChatRole
     let content: String
+
+    init(id: UUID = UUID(), timestamp: Date, role: ChatRole, content: String) {
+        self.id = id
+        self.timestamp = timestamp
+        self.role = role
+        self.content = content
+    }
 
     enum ChatRole: String, Sendable {
         case user
@@ -143,6 +150,10 @@ final class AgentSession: Identifiable {
     var pendingQuestion: PendingQuestion?
     var pendingPlanReview: PendingPlanReview?
 
+    var hasPendingInteraction: Bool {
+        pendingPermission != nil || pendingQuestion != nil || pendingPlanReview != nil
+    }
+
     var workspaceName: String {
         if workingDirectory.isEmpty { return agentType.shortName }
         var name = (workingDirectory as NSString).lastPathComponent
@@ -200,16 +211,20 @@ final class AgentSession: Identifiable {
 
 struct PendingPermission {
     let id = UUID()
+    let state = InteractionRequestState()
     let requestingAgent: AgentType
     let tool: String
     let description: String
     let diff: String?
     let filePath: String?
     let respond: @Sendable (Bool) -> Void
+    var delivery: InteractionDelivery? = nil
+    var cancel: (@Sendable () -> Void)? = nil
 }
 
 struct PendingQuestion {
     let id = UUID()
+    let state = InteractionRequestState()
     let requestingAgent: AgentType
     let text: String
     let options: [String]
@@ -217,11 +232,15 @@ struct PendingQuestion {
     /// Closes the socket fd without sending a response (used when this question is
     /// superseded by a newer event or filtered as a stub).
     let cancel: (@Sendable () -> Void)?
+    var delivery: InteractionDelivery? = nil
 }
 
 struct PendingPlanReview {
     let id = UUID()
+    let state = InteractionRequestState()
     let requestingAgent: AgentType
     let markdown: String
     let respond: @Sendable (Bool, String?) -> Void
+    var delivery: InteractionDelivery? = nil
+    var cancel: (@Sendable () -> Void)? = nil
 }

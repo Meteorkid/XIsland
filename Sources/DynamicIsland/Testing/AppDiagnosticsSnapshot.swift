@@ -89,8 +89,15 @@ public struct AppDiagnosticsSnapshot: Codable, Equatable {
 
         identifiers.append(islandState == "collapsed" ? TestAccessibility.collapsedPill : TestAccessibility.islandRoot)
 
-        if let session = sessionManager.prioritizedInteractionSession ?? sessionManager.selectedSession {
-            identifiers.append(contentsOf: interactionIdentifiers(for: session))
+        if islandState != "collapsed" {
+            identifiers.append(TestAccessibility.sessionList)
+            for session in sessionManager.sessions {
+                if session.hasPendingInteraction {
+                    identifiers.append(contentsOf: interactionIdentifiers(for: session))
+                } else {
+                    identifiers.append(TestAccessibility.sessionCard(id: session.id))
+                }
+            }
         }
 
         if preferencesVisible {
@@ -102,25 +109,25 @@ public struct AppDiagnosticsSnapshot: Codable, Equatable {
 
     /// 针对等待中的交互，追加对应的面板与按钮标识符。
     private static func interactionIdentifiers(for session: AgentSession) -> [String] {
-        switch interactionKind(for: session) {
-        case "permission":
-            return [
-                TestAccessibility.permissionPanel,
-                TestAccessibility.permissionDenyButton,
-                TestAccessibility.permissionApproveButton,
-            ]
-        case "question":
-            let options = session.pendingQuestion?.options.indices.map(TestAccessibility.questionOption(index:)) ?? []
-            return [TestAccessibility.questionPanel] + options
-        case "planReview":
-            return [
-                TestAccessibility.planPanel,
-                TestAccessibility.planRejectButton,
-                TestAccessibility.planApproveButton,
-            ]
-        default:
-            return []
+        var identifiers: [String] = []
+        func append(_ bases: [String], requestID: UUID) {
+            identifiers += bases.map { TestAccessibility.interactionControl($0, sessionID: session.id, requestID: requestID) }
         }
+        if let permission = session.pendingPermission {
+            append([TestAccessibility.permissionPanel, TestAccessibility.permissionDenyButton,
+                    TestAccessibility.permissionApproveButton, "island.permission-details"], requestID: permission.id)
+        }
+        if let question = session.pendingQuestion {
+            append([TestAccessibility.questionPanel] + question.options.indices.map(TestAccessibility.questionOption(index:)),
+                   requestID: question.id)
+        }
+        if let plan = session.pendingPlanReview {
+            var bases = [TestAccessibility.planPanel, TestAccessibility.planRejectButton,
+                         TestAccessibility.planApproveButton, "island.plan-details"]
+            bases.append(TestAccessibility.planFeedbackField)
+            append(bases, requestID: plan.id)
+        }
+        return identifiers
     }
 
     /// 偏好设置窗口可见时追加的标识符；只有存在可下载安装包时才追加安装按钮。

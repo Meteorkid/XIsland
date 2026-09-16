@@ -155,8 +155,8 @@ final class AppDiagnosticsRefreshTests: XCTestCase {
             NSApp.setActivationPolicy(previousPolicy)
         }
 
-        let diagnosticsURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
+        let diagnosticsURL = URL(fileURLWithPath: "/tmp")
+            .appendingPathComponent("xi-refresh-" + UUID().uuidString)
             .appendingPathComponent("diagnostics.json")
 
         let appDelegate = AppDelegate(
@@ -165,7 +165,8 @@ final class AppDiagnosticsRefreshTests: XCTestCase {
                 fixtureName: nil,
                 fixturePath: nil,
                 diagnosticsPath: diagnosticsURL.path,
-                disableAnimations: false
+                disableAnimations: false,
+                runtimeDirectory: diagnosticsURL.deletingLastPathComponent().path
             ),
             launchHooks: AppDelegate.LaunchHooks(
                 performInitialStartup: { _ in },

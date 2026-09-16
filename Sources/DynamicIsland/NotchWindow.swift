@@ -3,6 +3,7 @@ import Combine
 import QuartzCore
 
 final class NotchWindow: NSPanel {
+    var allowsAutomaticScreenChange: () -> Bool = { true }
     static let maxExpandedWidth: CGFloat = 520
     static let maxExpandedHeight: CGFloat = 600
 
@@ -137,7 +138,7 @@ final class NotchWindow: NSPanel {
 
     private func followMouseIfScreenChanged() {
         // 锚定期间不跟随鼠标，否则审批面板展开后会被拽回鼠标所在屏
-        guard pinnedScreenID == nil else { return }
+        guard pinnedScreenID == nil, allowsAutomaticScreenChange() else { return }
         let mouseLocation = NSEvent.mouseLocation
         guard let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }),
               let screenID = mouseScreen.deviceDescription[NSDeviceDescriptionKey(rawValue: "NSScreenNumber")] as? CGDirectDisplayID
@@ -182,7 +183,7 @@ final class NotchWindow: NSPanel {
     }
 
     func applySpaceBehavior() {
-        let allSpaces = UserDefaults.standard.bool(forKey: "showOnAllSpaces")
+        let allSpaces = AppPreferences.defaults.bool(forKey: "showOnAllSpaces")
         if allSpaces {
             collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         } else {
@@ -194,7 +195,7 @@ final class NotchWindow: NSPanel {
         // 切换应用期间不自动显示窗口
         guard !isSwitchingApps, !isHiddenByIslandSwitch else { return }
 
-        let hideInFullscreen = UserDefaults.standard.bool(forKey: "hideInFullscreen")
+        let hideInFullscreen = AppPreferences.defaults.bool(forKey: "hideInFullscreen")
         guard hideInFullscreen else {
             // 不再自动显示窗口——窗口只在明确命令时显示
             return
@@ -545,7 +546,7 @@ final class NotchWindow: NSPanel {
             }
 
             if Self.shouldTriggerScrollExpand(
-                isEnabled: UserDefaults.standard.bool(forKey: "scrollDownToExpandPanel"),
+                isEnabled: AppPreferences.defaults.bool(forKey: "scrollDownToExpandPanel"),
                 isVisible: true,
                 isCollapsed: islandState == .collapsed,
                 isPrecise: event.hasPreciseScrollingDeltas,

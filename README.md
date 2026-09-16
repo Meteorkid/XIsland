@@ -131,7 +131,7 @@ export PATH="$HOME/.xisland/bin:$PATH"
 
 ### Option 2: Build from Source
 
-**Prerequisites:** macOS 14.0+, Swift 5.9+
+**Prerequisites:** macOS 14.0+, Xcode 16+ (Swift 6 toolchain; Swift 5 language mode)
 
 ```bash
 git clone https://github.com/Meteorkid/XIsland.git

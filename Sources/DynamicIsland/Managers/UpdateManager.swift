@@ -76,8 +76,8 @@ final class UpdateManager {
 
     /// 是否开启自动检查更新
     var autoCheckForUpdates: Bool {
-        get { UserDefaults.standard.bool(forKey: "autoCheckForUpdates") }
-        set { UserDefaults.standard.set(newValue, forKey: "autoCheckForUpdates") }
+        get { AppPreferences.defaults.bool(forKey: "autoCheckForUpdates") }
+        set { AppPreferences.defaults.set(newValue, forKey: "autoCheckForUpdates") }
     }
 
     @ObservationIgnored private let fetchReleaseData: ReleaseFetcher
@@ -98,7 +98,7 @@ final class UpdateManager {
         self.fetchReleaseData = fetchReleaseData
         self.updater = updater
         // 注册默认设置
-        UserDefaults.standard.register(defaults: [
+        AppPreferences.defaults.register(defaults: [
             "autoCheckForUpdates": true
         ])
     }

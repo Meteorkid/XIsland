@@ -129,7 +129,7 @@ export PATH="$HOME/.xisland/bin:$PATH"
 
 ### 方式二：从源码构建
 
-**环境要求：** macOS 14.0+、Swift 5.9+
+**环境要求：** macOS 14.0+、Xcode 16+（Swift 6 工具链，Swift 5 语言模式）
 
 ```bash
 git clone https://github.com/Meteorkid/XIsland.git

@@ -1,6 +1,9 @@
 import Foundation
 
 public enum TestAccessibility {
+    public static func interactionControl(_ base: String, sessionID: String, requestID: UUID) -> String {
+        "\(base).\(sessionID).\(requestID.uuidString)"
+    }
     public static let islandRoot = "island.root"
     public static let collapsedPill = "island.collapsed-pill"
     public static let sessionList = "island.session-list"

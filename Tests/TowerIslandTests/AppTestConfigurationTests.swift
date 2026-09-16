@@ -1,7 +1,133 @@
+import DIShared
 import XCTest
 @testable import XIsland
 
 final class AppTestConfigurationTests: XCTestCase {
+    func testProductionModeIgnoresAllTestEnvironmentOverrides() {
+        let configuration = AppTestConfiguration.make(
+            arguments: ["XIsland", "--fixture", "test-fixture", "--open-preferences"],
+            environment: [
+                "X_ISLAND_TEST_FIXTURE_PATH": "/tmp/fixture.json",
+                "X_ISLAND_TEST_DIAGNOSTICS_PATH": "/tmp/diagnostics.json",
+                "X_ISLAND_DISABLE_ANIMATIONS": "1",
+            ]
+        )
+
+        XCTAssertFalse(configuration.isEnabled)
+        XCTAssertNil(configuration.fixtureName)
+        XCTAssertNil(configuration.fixturePath)
+        XCTAssertNil(configuration.diagnosticsPath)
+        XCTAssertFalse(configuration.disableAnimations)
+        XCTAssertFalse(configuration.opensPreferencesOnLaunch)
+    }
+
+    func testNormalAnimationProfileDoesNotReduceOrDisableAnimations() {
+        let suiteName = "dev.xisland.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let configuration = AppTestConfiguration.make(
+            arguments: ["XIsland", "--ui-test-mode"],
+            environment: [
+                "X_ISLAND_TEST_ANIMATION_PROFILE": "normal",
+                "X_ISLAND_DISABLE_ANIMATIONS": "1",
+            ]
+        )
+
+        configuration.applyDefaults(defaults)
+
+        XCTAssertFalse(defaults.bool(forKey: "reduceMotion"))
+        XCTAssertFalse(defaults.bool(forKey: "disableAnimations"))
+    }
+
+    func testTestStorageUsesExplicitRuntimeDirectory() throws {
+        let configuration = isolatedConfiguration()
+        try configuration.validateIsolation()
+
+        XCTAssertEqual(configuration.runtimeURL?.path, "/tmp/xi-tests-config")
+        XCTAssertEqual(configuration.storageURL?.path, "/tmp/xi-tests-config/history.store")
+    }
+
+    func testInvalidTestPathsAndProductionPreferenceDomainsAreRejected() {
+        for directory in ["relative/path", "/", "/tmp", "/Users/example/.xisland", "/tmp/" + String(repeating: "x", count: 100)] {
+            let configuration = isolatedConfiguration(runtimeDirectory: directory)
+            XCTAssertThrowsError(try configuration.validateIsolation(), directory)
+        }
+        for suite in ["", "dev.xisland.app", "dev.xisland.tests.", "dev.xisland.tests.bad/path"] {
+            let configuration = isolatedConfiguration(defaultsSuiteName: suite)
+            XCTAssertThrowsError(try configuration.makeUserDefaults(), suite)
+        }
+    }
+
+    func testDiagnosticsCannotEscapeRuntimeDirectory() {
+        let configuration = AppTestConfiguration.make(
+            arguments: ["XIsland", "--ui-test-mode"],
+            environment: [
+                "X_ISLAND_TEST_RUNTIME_DIR": "/tmp/xi-tests-config",
+                "X_ISLAND_TEST_DIAGNOSTICS_PATH": "/tmp/xi-tests-config/../outside.json",
+            ]
+        )
+        XCTAssertThrowsError(try configuration.validateIsolation())
+    }
+
+    func testIndependentDefaultsDoNotWriteStandardDomain() throws {
+        let suite = "dev.xisland.tests.\(UUID().uuidString)"
+        let configuration = isolatedConfiguration(defaultsSuiteName: suite)
+        let defaults = try configuration.makeUserDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let key = "test-isolation-\(UUID().uuidString)"
+
+        defaults.set("isolated", forKey: key)
+        configuration.applyDefaults(defaults)
+
+        XCTAssertEqual(defaults.string(forKey: key), "isolated")
+        XCTAssertNil(UserDefaults.standard.object(forKey: key))
+        XCTAssertEqual(defaults.persistentDomain(forName: suite)?[key] as? String, "isolated")
+    }
+
+    func testSocketConfigurationKeepsProductionDefaultAndSupportsIndependentTestPath() throws {
+        let environment = ["X_ISLAND_TEST_RUNTIME_DIR": "/tmp/xi-tests-config"]
+        XCTAssertEqual(
+            try DISocketConfig.resolvedSocketDirectory(arguments: [], environment: environment, homeDirectory: "/Users/example"),
+            "/Users/example/.xisland"
+        )
+        XCTAssertEqual(
+            try DISocketConfig.resolvedSocketDirectory(arguments: ["--ui-test-mode"], environment: environment),
+            "/tmp/xi-tests-config"
+        )
+        XCTAssertThrowsError(try DISocketConfig.resolvedSocketDirectory(
+            arguments: ["--ui-test-mode"], environment: ["X_ISLAND_TEST_RUNTIME_DIR": "/Users/example/.xisland"]
+        ))
+    }
+
+    func testDisabledModeIgnoresInvalidIsolationConfiguration() throws {
+        let configuration = AppTestConfiguration.make(
+            arguments: ["XIsland"],
+            environment: [
+                "X_ISLAND_TEST_RUNTIME_DIR": "invalid",
+                "X_ISLAND_TEST_DEFAULTS_SUITE": "dev.xisland.app",
+                "X_ISLAND_TEST_ANIMATION_PROFILE": "invalid",
+            ]
+        )
+        try configuration.validateIsolation()
+        XCTAssertNil(configuration.runtimeURL)
+        XCTAssertNil(configuration.storageURL)
+        XCTAssertNil(configuration.defaultsSuiteName)
+        XCTAssertTrue(try configuration.makeUserDefaults() === UserDefaults.standard)
+    }
+
+    private func isolatedConfiguration(
+        runtimeDirectory: String = "/tmp/xi-tests-config",
+        defaultsSuiteName: String = "dev.xisland.tests.config"
+    ) -> AppTestConfiguration {
+        AppTestConfiguration.make(
+            arguments: ["XIsland", "--ui-test-mode"],
+            environment: [
+                "X_ISLAND_TEST_RUNTIME_DIR": runtimeDirectory,
+                "X_ISLAND_TEST_DEFAULTS_SUITE": defaultsSuiteName,
+            ]
+        )
+    }
+
     func testParsesUITestModeAndFixtureName() {
         let config = AppTestConfiguration.make(
             arguments: ["XIsland", "--ui-test-mode", "--fixture", "permission-smoke"],

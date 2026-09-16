@@ -128,90 +128,59 @@ final class SocketServer: @unchecked Sendable {
         logger.debug("Message: type=\(message.type.rawValue) session=\(message.sessionId) agent=\(message.agentType ?? "nil") tool=\(message.tool ?? "nil") desc=\(message.permDescription ?? "nil") question=\(message.questionText ?? "nil") options=\(message.options?.joined(separator: ",") ?? "nil") status=\(statusPreview)")
 
         switch message.type {
-        case .permissionRequest:
+        case .permissionRequest, .question, .planReview:
+            let channel = SocketResponseChannel(fd: fd)
+            let delivery: InteractionDelivery = { decision in
+                await channel.send(decision, sessionID: message.sessionId)
+            }
             Task { @MainActor in
-                self.sessionManager.handlePermissionRequest(message) { [weak self] approved in
-                    self?.sendResponse(fd: fd, approved: approved, sessionId: message.sessionId)
+                switch message.type {
+                case .permissionRequest:
+                    self.sessionManager.handlePermissionRequest(
+                        message, delivery: delivery, cancel: { channel.cancel() },
+                        respond: { approved in Task { _ = await delivery(.permission(approved)) } })
+                case .question:
+                    self.sessionManager.handleQuestionRequest(
+                        message, delivery: delivery,
+                        respond: { answer in Task { _ = await delivery(.question(answer)) } },
+                        cancel: { channel.cancel() })
+                case .planReview:
+                    self.sessionManager.handlePlanReview(
+                        message, delivery: delivery, cancel: { channel.cancel() },
+                        respond: { approved, feedback in Task { _ = await delivery(.plan(approved, feedback)) } })
+                default: break
                 }
-                logger.debug("Sessions count: \(self.sessionManager.sessions.count)")
             }
-
-        case .question:
-            Task { @MainActor in
-                self.sessionManager.handleQuestionRequest(
-                    message,
-                    respond: { [weak self] answer in
-                        self?.sendQuestionResponse(fd: fd, answer: answer, sessionId: message.sessionId)
-                    },
-                    cancel: { close(fd) }
-                )
-                logger.debug("Sessions count: \(self.sessionManager.sessions.count)")
-            }
-
-        case .planReview:
-            Task { @MainActor in
-                self.sessionManager.handlePlanReview(message) { [weak self] approved, feedback in
-                    self?.sendPlanResponse(fd: fd, approved: approved, feedback: feedback, sessionId: message.sessionId)
-                }
-                logger.debug("Sessions count: \(self.sessionManager.sessions.count)")
-            }
-
         default:
-            Task { @MainActor in
-                self.sessionManager.handleMessage(message)
-                logger.debug("Sessions count: \(self.sessionManager.sessions.count)")
-            }
+            Task { @MainActor in self.sessionManager.handleMessage(message) }
             close(fd)
         }
     }
 
-    private func sendResponse(fd: Int32, approved: Bool, sessionId: String) {
-        var msg = DIMessage(type: .permissionResponse, sessionId: sessionId)
-        msg.approved = approved
-        writeAndClose(fd: fd, message: msg)
-    }
-
-    private func sendQuestionResponse(fd: Int32, answer: String, sessionId: String) {
-        var msg = DIMessage(type: .questionResponse, sessionId: sessionId)
-        msg.answer = answer
-        writeAndClose(fd: fd, message: msg)
-    }
-
-    private func sendPlanResponse(fd: Int32, approved: Bool, feedback: String?, sessionId: String) {
-        var msg = DIMessage(type: .planResponse, sessionId: sessionId)
-        msg.planApproved = approved
-        msg.feedback = feedback
-        writeAndClose(fd: fd, message: msg)
-    }
-
-    private func writeAndClose(fd: Int32, message: DIMessage) {
-        guard let data = try? DIProtocol.encode(message) else {
-            close(fd)
-            return
-        }
-        _ = Self.sendAll(fd: fd, data: data)
-        close(fd)
-    }
-
-    static func sendAll(fd: Int32, data: Data) -> Bool {
+    /// 整个响应共用一个截止时间，避免部分写入把单次超时无限延长。
+    static func sendAll(fd: Int32, data: Data, timeout: TimeInterval = 3) -> Bool {
+        guard timeout > 0, timeout.isFinite else { return false }
         var noSigPipe: Int32 = 1
-        guard setsockopt(
-            fd,
-            SOL_SOCKET,
-            SO_NOSIGPIPE,
-            &noSigPipe,
-            socklen_t(MemoryLayout<Int32>.size)
-        ) == 0 else {
-            return false
-        }
-
-        return data.withUnsafeBytes { ptr -> Bool in
-            guard let base = ptr.baseAddress else { return true }
+        guard setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe,
+                         socklen_t(MemoryLayout<Int32>.size)) == 0 else { return false }
+        let flags = fcntl(fd, F_GETFL)
+        guard flags >= 0, fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0 else { return false }
+        defer { _ = fcntl(fd, F_SETFL, flags) }
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
+        return data.withUnsafeBytes { buffer in
+            guard let base = buffer.baseAddress else { return true }
             var sent = 0
-            while sent < ptr.count {
-                let n = send(fd, base.advanced(by: sent), ptr.count - sent, 0)
-                guard n > 0 else { return false }
-                sent += n
+            while sent < buffer.count {
+                let remaining = deadline - ProcessInfo.processInfo.systemUptime
+                guard remaining > 0 else { return false }
+                var descriptor = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+                let ready = poll(&descriptor, 1, Int32(min(remaining * 1000 + 1, Double(Int32.max))))
+                if ready < 0 && errno == EINTR { continue }
+                guard ready > 0 else { return false }
+                let count = send(fd, base.advanced(by: sent), buffer.count - sent, 0)
+                if count < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) { continue }
+                guard count > 0 else { return false }
+                sent += count
             }
             return true
         }

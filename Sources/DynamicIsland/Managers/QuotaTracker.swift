@@ -21,7 +21,7 @@ final class QuotaTracker {
     }
 
     func fetchAll() {
-        let defaults = UserDefaults.standard
+        let defaults = AppPreferences.defaults
         let providers: [(String, String)] = [
             (Self.anthropicEnabledKey, "anthropic"),
             (Self.openAIEnabledKey, "openai"),
