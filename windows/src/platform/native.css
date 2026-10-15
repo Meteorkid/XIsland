@@ -1,0 +1,6 @@
+.native-dragging .island-shell {
+  scale: 1 !important;
+  translate: 0 0 !important;
+  transition: none !important;
+  cursor: grabbing;
+}

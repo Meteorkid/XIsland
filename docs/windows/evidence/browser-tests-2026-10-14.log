@@ -1,0 +1,31 @@
+[WebServer] (node:78381) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+
+Running 20 tests using 1 worker
+
+(node:78709) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/20] tests/ui.spec.ts:20:1 › 收起与展开沿用尺寸，搜索和主题通过真实点击生效
+[2/20] tests/ui.spec.ts:44:1 › 权限请求可见且允许后才移除待办
+[3/20] tests/ui.spec.ts:55:1 › 自由问答支持中文输入，提交清除当前请求
+[4/20] tests/ui.spec.ts:65:1 › 计划反馈与详情可操作，批准后移除对应请求
+[5/20] tests/ui.spec.ts:123:1 › IME 组合输入期间消息更新不替换文本框，结束后保留中文草稿
+[6/20] tests/ui.spec.ts:143:1 › 多选与失败回传保持请求；重复点击不会重复发送
+[7/20] tests/ui.spec.ts:160:1 › IME 期间请求断开，旧输入卡片不能发送已经失效的请求
+[8/20] tests/ui.spec.ts:177:1 › 成功响应等待平台确认，未确认前待办保持发送中
+[9/20] tests/ui.spec.ts:190:1 › 五种语言立即切换并持久化，不翻译 Agent 原文
+[10/20] tests/ui.spec.ts:209:1 › 系统语言匹配日语，显式语言覆盖后可回到系统
+[11/20] tests/ui.spec.ts:221:1 › 独立设置调用不放大主岛，副窗口关闭与广播更新不回写
+[12/20] tests/ui.spec.ts:242:1 › 设置平台写入失败时不显示为已保存
+[13/20] tests/ui.spec.ts:251:1 › 强度设置与果冻磁吸实际生效，减少动效关闭持续运动
+[14/20] tests/ui.spec.ts:276:1 › 独立设置副本不响应审批快捷键，也不在新待办时播放通知
+[15/20] tests/ui.spec.ts:285:1 › 关闭动画立即切换并持久化，界面状态仍继续更新
+[16/20] tests/ui.spec.ts:301:1 › Agents接入先预览路径与备份，再确认应用并刷新真实状态
+[17/20] tests/ui.spec.ts:329:1 › 配置冲突保留错误并禁用旧确认，重新预览才能再次提交
+[18/20] tests/ui.spec.ts:347:1 › 普通浏览器预览不会假装能够安装接入
+[19/20] tests/ui.spec.ts:355:1 › 运行时不可用时配置状态保持未知，不误报为未配置
+[20/20] tests/ui.spec.ts:363:1 › 独立设置按小屏可用区域适配，工具栏可横滚且关闭按钮始终可用
+  20 passed (1.4m)

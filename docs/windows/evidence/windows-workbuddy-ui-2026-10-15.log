@@ -1,0 +1,14 @@
+[WebServer] (node:61495) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 5 tests using 1 worker
+
+(node:61520) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/ui.spec.ts:358:1 › Agents接入先预览路径与备份，再确认应用并刷新真实状态 (1.0s)
+  ✓  2 tests/ui.spec.ts:386:1 › 配置冲突保留错误并禁用旧确认，重新预览才能再次提交 (451ms)
+  ✓  3 tests/ui.spec.ts:404:1 › 普通浏览器预览不会假装能够安装接入 (644ms)
+  ✓  4 tests/ui.spec.ts:413:1 › WorkBuddy导出不假装安装，TraeWork与TRAE国内版只有一个配置入口 (409ms)
+  ✓  5 tests/ui.spec.ts:429:1 › 运行时不可用时配置状态保持未知，不误报为未配置 (285ms)
+
+  5 passed (8.8s)

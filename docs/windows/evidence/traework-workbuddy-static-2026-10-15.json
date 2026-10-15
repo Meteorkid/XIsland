@@ -1,0 +1,71 @@
+{
+  "date": "2026-10-15",
+  "scope": "Read-only public installed application resources; no user config, credentials, client execution or trust changes",
+  "windowsClientVerified": false,
+  "clients": [
+    {
+      "application": "WorkBuddy.app",
+      "version": "5.7.7",
+      "bundleID": "com.tencent.workbuddy.mac",
+      "files": [
+        {
+          "resource": "app.asar.unpacked/cli/dist/codebuddy-lite-wb.mjs",
+          "size": 8567937,
+          "sha256": "11707578579941ac5434c0d72180a4ef6d8dc988432d8eae62c1f9c6ed3f50de"
+        },
+        {
+          "resource": "app.asar.unpacked/cli/dist/codebuddy-headless.js",
+          "size": 11939250,
+          "sha256": "76b75e8513c70f696148278cf5621cd0a9bc9a8105318a451fbed7e63bae38c5"
+        }
+      ]
+    },
+    {
+      "application": "TRAE SOLO CN.app",
+      "version": "0.2.2",
+      "bundleID": "cn.trae.solo.app",
+      "files": [
+        {
+          "resource": "app/product.json",
+          "size": 91786,
+          "sha256": "fdd42c5def77777a85467d241347d8c74ed03cda67850f9fe932e05d76d94f93"
+        },
+        {
+          "resource": "app/out/vs/workbench/workbench.desktop.main.js",
+          "size": 16099463,
+          "sha256": "27e556ab102b5de760ed502cb44255ac7bc84c196d0286fc04a90e4e9cd9f906"
+        },
+        {
+          "resource": "app/modules/ai-agent/libai_agent.dylib",
+          "size": 200357296,
+          "sha256": "ba515f362ed7184624c030dbd1b1d2ec3185addd29816c90b5f94eae90dd5209"
+        }
+      ],
+      "product": {
+        "nameAlias": "TraeWork CN",
+        "packageType": "SOLO_CN",
+        "appVersion": "0.2.2",
+        "dataFolderName": ".trae-cn",
+        "win32NameVersion": "TraeWork CN",
+        "win32AppUserModelId": "ByteDance.TraeSoloCN"
+      },
+      "publicCodeContainsSharedGlobalAndProjectHookPaths": true,
+      "nativeLibraryEventMarkers": {
+        "SessionStart": true,
+        "UserPromptSubmit": true,
+        "PreToolUse": true,
+        "PostToolUse": true,
+        "Stop": true,
+        "Notification": true,
+        "hook_event_name": true,
+        "session_id": true,
+        "tool_use_id": true,
+        "tool_input": true,
+        "tool_response": true,
+        "notification_type": true,
+        "last_assistant_message": true
+      },
+      "evidenceLimit": "Mac public bundle static markers and official domestic hook reference; not Windows execution or proof of per-client origin."
+    }
+  ]
+}

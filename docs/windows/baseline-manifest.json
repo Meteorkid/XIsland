@@ -1,0 +1,588 @@
+{
+  "capturedDate": "2026-10-13",
+  "basis": "current working tree including uncommitted changes",
+  "head": "90fdc0af202a86cabe94d59c6f1328314bf55cee",
+  "files": [
+    {
+      "path": "Sources/DIBridge/ACPConfigurationCommand.swift",
+      "sha256": "d55f0a632a0b4ff34f8752f9c735e8dfe7e3c2118505406806c9f88b97976e76"
+    },
+    {
+      "path": "Sources/DIBridge/ACPEventObserver.swift",
+      "sha256": "d3b64fb5db420752f2d3db6cbfa79ef70bd80328ae723bd53d7189af6b00f09b"
+    },
+    {
+      "path": "Sources/DIBridge/ACPRunner.swift",
+      "sha256": "997056c9629fc650493ad8daa5e4b87689d8a729021d08b97fb3721ba0f2585e"
+    },
+    {
+      "path": "Sources/DIBridge/AiderLauncher.swift",
+      "sha256": "8a96f816759e715575029fffc1695dbeaee92f1f01b304bc5efde21d73984d7e"
+    },
+    {
+      "path": "Sources/DIBridge/AmazonQAgentConfiguration.swift",
+      "sha256": "9cf821bb4db3047334c590abc95e1d58e375b5d393d605a26d200068d8f88b96"
+    },
+    {
+      "path": "Sources/DIBridge/AmazonQHookAdapter.swift",
+      "sha256": "12f2b2efd4431bf986ffc993c5469e6cf240cde5df0dc8c68757083823411e3e"
+    },
+    {
+      "path": "Sources/DIBridge/AmazonQLauncher.swift",
+      "sha256": "874cb3b2ad31f9268bb240d49977eeb7e3d9dabd72eaa260c873ae9134fe7ff8"
+    },
+    {
+      "path": "Sources/DIBridge/AmazonQSessionLease.swift",
+      "sha256": "4b6c5b45728797bb838a9c37080991852b862e5773aebc005f1ddff74df1e92b"
+    },
+    {
+      "path": "Sources/DIBridge/AmazonQVersionProbe.swift",
+      "sha256": "8a78033ef3fd98c72cb496775587559891214e28db672e01cb0b90c98bbab4c2"
+    },
+    {
+      "path": "Sources/DIBridge/AmpHookAdapter.swift",
+      "sha256": "d2b00a3aab2de589f41b39cce5fd6f81d463e1b1274d07f2c68cdbac3cff4580"
+    },
+    {
+      "path": "Sources/DIBridge/ClineHookAdapter.swift",
+      "sha256": "86c1e7303e0d6dab12fa1c13b7864b37ad716ee080efb549546ee22fadc6d9f2"
+    },
+    {
+      "path": "Sources/DIBridge/CodeBuddyHookAdapter.swift",
+      "sha256": "cb345245b446421f7909638a893b687a4c7bb65dbe6e3992acad578e7442fbda"
+    },
+    {
+      "path": "Sources/DIBridge/CodyEventObserver.swift",
+      "sha256": "e08fcbbd354bd00338404fb77a9817377a29166070341dec1f3ea0e53676c18f"
+    },
+    {
+      "path": "Sources/DIBridge/CodyMessageFramer.swift",
+      "sha256": "591fb5635bfd7d4c6aef411b18f5a2439c69d69291b284acb5c71da3031d8c0e"
+    },
+    {
+      "path": "Sources/DIBridge/ContinueStateObserver.swift",
+      "sha256": "f320de4938504110151756103e1adbf6f86111abdf25fd39d3e8c6a9449fc401"
+    },
+    {
+      "path": "Sources/DIBridge/ContinueStateWatcher.swift",
+      "sha256": "57c48944021d614a2ea0a58b9b29a526d7b1bf53450f723231abcf4e7f72b8d4"
+    },
+    {
+      "path": "Sources/DIBridge/CopilotCliHookAdapter.swift",
+      "sha256": "2a9fd40f3e14a0715ff7ea494c0c8730953af0631e9711813e47ce34db065950"
+    },
+    {
+      "path": "Sources/DIBridge/CursorHookAdapter.swift",
+      "sha256": "4a3b5dcde90f8b0ca972bc30af2e3d596101698b2e5cdc5c5516fd9fee5ace42"
+    },
+    {
+      "path": "Sources/DIBridge/DIBridge.swift",
+      "sha256": "1b0d59ff6b783d5f274c4829ed874d7fdfa1156f0e43f810a91637b272b8dbdf"
+    },
+    {
+      "path": "Sources/DIBridge/DeepSeekHookAdapter.swift",
+      "sha256": "9a9a5532e04e7edf522257a05c5e4b660a29d05c7f0cb9ec3c15f1556f3da04c"
+    },
+    {
+      "path": "Sources/DIBridge/DevinHookAdapter.swift",
+      "sha256": "a7bed49fe0ac0b2280c5895b52b4828cf0c663972b0554287aec4d3ec2a76707"
+    },
+    {
+      "path": "Sources/DIBridge/KimiCodeHookAdapter.swift",
+      "sha256": "03e4c0079c6a9bcdd4ecdf08f1bf8679719f570a79f3b86387d57457a6880850"
+    },
+    {
+      "path": "Sources/DIBridge/KimiHookAdapter.swift",
+      "sha256": "25ae6a49c9967b130372e67cfaff8419ccc1e2f308efa86c57456a6e96658902"
+    },
+    {
+      "path": "Sources/DIBridge/KimiWireApproval.swift",
+      "sha256": "967c5086c49ee3c1c2fa24ef7cdb10bbeeb7f77da1f6142c6426fbd7d0d32e51"
+    },
+    {
+      "path": "Sources/DIBridge/KimiWireApprovalLedger.swift",
+      "sha256": "498a6199124cc384421b91e3386e1aa8b58336b92333740bd1e70a0e5e0c44b8"
+    },
+    {
+      "path": "Sources/DIBridge/KimiWireApprovalSession.swift",
+      "sha256": "d9ba7018ffb9cb4f15a2552d1cb0a2ea2a682f28aadaaaed5fc261945b7be5fc"
+    },
+    {
+      "path": "Sources/DIBridge/KimiWireConnectionState.swift",
+      "sha256": "f43139ac79e304a9e164d2049e62f8cc9c18b456c9bfd385b3296120a012bac3"
+    },
+    {
+      "path": "Sources/DIBridge/KiroHookAdapter.swift",
+      "sha256": "43caaeae55c17683709584ec6945d3250ceb4814222d8a2ee38de608ae1fcdca"
+    },
+    {
+      "path": "Sources/DIBridge/ObservationSender.swift",
+      "sha256": "34101119498438dbd58576c94eccf425b0453435c5df4ff3a1b7943f2530ed71"
+    },
+    {
+      "path": "Sources/DIBridge/OpenCodeHookAdapter.swift",
+      "sha256": "468f7d68ffd27bc2c20c30105ae0d06c670d51b4edbc91b50bcf62ea17db9466"
+    },
+    {
+      "path": "Sources/DIBridge/PiHookAdapter.swift",
+      "sha256": "7b7bf96656f6290f819627a18a1e136acd25f3ab66ef1f4e1e918e5699b9aca2"
+    },
+    {
+      "path": "Sources/DIBridge/TerminalProcessSupervisor.swift",
+      "sha256": "d3a67b0f747d112246b24bad211931a44e2fda54b0e243e7f6de61a8c422dd98"
+    },
+    {
+      "path": "Sources/DIBridge/TraeHookAdapter.swift",
+      "sha256": "792d857f20c6bf2dd6058f635767fdfed68d4e2a0987eb6213342744bf429305"
+    },
+    {
+      "path": "Sources/DIBridge/VSCodeHookAdapter.swift",
+      "sha256": "78c149a726bb1520820762a016b1292599f7e4dae727e42d5bc335d1fca0f102"
+    },
+    {
+      "path": "Sources/DIBridge/WindsurfHookAdapter.swift",
+      "sha256": "ddf45a655aa3414ca815766d8e15ff60a904fa1e7fa98feb226878cecd52e2ac"
+    },
+    {
+      "path": "Sources/DIBridge/WorkBuddyHookAdapter.swift",
+      "sha256": "eae901c6c4bbbd0202fad31dabd496a8d6b96285b0e44e82682aea1ef36f952a"
+    },
+    {
+      "path": "Sources/DIBridge/WorkBuddyPluginExport.swift",
+      "sha256": "b6e97a0ac8e260f6f7f7103db40c442876a06f08b89ccbad8deef2fc0370abc2"
+    },
+    {
+      "path": "Sources/DIShared/ACPCustomAgentConfiguration.swift",
+      "sha256": "6af107cb8c03f2c25ee2472043fe25b517072b98621b6b61292622ce8e08a6b5"
+    },
+    {
+      "path": "Sources/DIShared/Protocol.swift",
+      "sha256": "cefbf99a3bfd1d854e27b74cca7d0146d2235fcbb57a9617fb510d90ae0fb232"
+    },
+    {
+      "path": "Sources/DynamicIsland/AppDelegate.swift",
+      "sha256": "e763a7d8a0abe334bded2a34d0d5f92d58428acb9aa90975434e2085424b7604"
+    },
+    {
+      "path": "Sources/DynamicIsland/AppSwitcher.swift",
+      "sha256": "cd4e27fb035d019dad75acb5222719dd7f39938435de7f2fa326c73bb7fa7cf1"
+    },
+    {
+      "path": "Sources/DynamicIsland/DynamicIslandApp.swift",
+      "sha256": "7b9d778f9ca49f27ac9f4c0a3eab4ee7fd145e7f6929b77b51ed8563528a232d"
+    },
+    {
+      "path": "Sources/DynamicIsland/IslandIntegrationSettings.swift",
+      "sha256": "dd19d6b81c7d16e6d4c5b8368a48b4c6da0b2f9b0ee4534ac4b0eb864919210d"
+    },
+    {
+      "path": "Sources/DynamicIsland/IslandWindowOwnership.swift",
+      "sha256": "8e4d6d5f6d42002250d4e5848fa70354c8141fffeac79e4d44ccb25f39a46069"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/AppUpdater.swift",
+      "sha256": "4e12a2a7c9da492f51bdd6dbd041e5aa30e3d0c5e5439b6f3ca09d8bdd3c2341"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/AudioEngine.swift",
+      "sha256": "20252198728fbcc9c24628d8388b489fd09350568174ca3cc3b839af6156c576"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/GitCheckpointManager.swift",
+      "sha256": "07df7643b9534de3bffb74d485708ab16ef85ddd739e63a068d7447bf1806127"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/HistoryStoreBackup.swift",
+      "sha256": "096c6b4cf5b07c79d8ca75e0e142438f892f31489b353df5be1f459ffbc670b7"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/L10n.swift",
+      "sha256": "255d1c831b3f831b48139f7a34c3c565882b74e1f1b20bcd05c25caf7a1995db"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/QuotaTracker.swift",
+      "sha256": "64d64e91af27fa41e56aed048522d04de930e1ccb7b3773b3fe2e645fc9e9239"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/SSHRemoteManager.swift",
+      "sha256": "757fd47d3117a31da00c7c5b00256109a5fd82fcc039fb1ee5f05840e45e4faf"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/SessionManager.swift",
+      "sha256": "20846cdfcc87a94d43dcdd6db1cd5d41fc2462beaf41d5e4c0db21e2e9d1d90b"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/SessionPersistenceManager.swift",
+      "sha256": "3b1394374c07a181007068d38ce890c18c27c306cd107d2b56db07734dcde33a"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/SocketResponseChannel.swift",
+      "sha256": "24e5efc31df68c2d9a6bcc3c2861bc566f7a93d0d33ddb3894e86e3ea43db097"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/SocketServer.swift",
+      "sha256": "17b688d9bc31d28ef0ae1de58d6a35318f2735d6660b653cc8ebfb6790596316"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/TerminalJumpManager.swift",
+      "sha256": "77a60f7befd5d6c70d6d154e283ada7300bba5b35a7a04bd3f54ebacf0508bee"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/ThemeManager.swift",
+      "sha256": "5a0b185d809e8e2656181faa1467e4e4f32ff4604d7e55de04954220b684a842"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/UpdateManager.swift",
+      "sha256": "547c856f8494f5e5055be1662cdce8b632abbd026f100f3e606abe91b227835b"
+    },
+    {
+      "path": "Sources/DynamicIsland/Managers/ZeroConfigManager.swift",
+      "sha256": "786a9add94cf4dcb4b158f69a4088298fd6e4fec6426243da06bac2da10697d4"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/AgentFlow.swift",
+      "sha256": "3ca1f3aa139c72fade3c077f7dbe09228a0ecc3262b713a60cb65ffad85358d6"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/AgentRegistry.swift",
+      "sha256": "42dc4f6d9cb9183caf608f0246ede091d91f3a5c370cabc60f0d248a1037c921"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/AgentSession.swift",
+      "sha256": "425ae858dbd28210218e77c76079e60b398ff317e02db8d09dd9a474195d6a73"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/AgentType.swift",
+      "sha256": "50173ce50e30c8de309dd2186b32d5a47b469f5d0503f37a6d6c809167ca8167"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/AiderWrapperConfiguration.swift",
+      "sha256": "25cdea2255aadf3a27bd533d923c970f54fa43e9dc96f14e5cf83f41ea98c1c6"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/AmpPluginConfiguration.swift",
+      "sha256": "e7c9c02e9e550119a6bfd42a447f8b25feff2a4155dcaab3c5b207279ceef9e3"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/ApprovalInterruptionState.swift",
+      "sha256": "4d336c14be0d15bd4b09116c042e5792f1411a4c5acf27f620a40d4d9735e308"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/ClineHookConfiguration.swift",
+      "sha256": "5cda4f8ea35dd47ab12c59bc891d67bb1702922671634cc89a90b5bafa5e5edf"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/CodeBuddyHookConfiguration.swift",
+      "sha256": "8b931f3d5ce25a121f0e98142a38ecf0a39cc461be9ee45c7a787f02fecbb51a"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/CollapsedTickerContentMode.swift",
+      "sha256": "502dc17c3e66e25a9ff67b1594e90e56a672fd748d886d560736fcf4d0c4851c"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/CopilotCliHookConfiguration.swift",
+      "sha256": "340e7f6dea33c2f4aba68ac8311ed51eb1c07d1744604d62543f38a5f8d43983"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/CursorHookConfiguration.swift",
+      "sha256": "4d4da4634e8db27fae507b61984fb27261e493c4bda92579a778bd92d4af670d"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/DeepSeekHookConfiguration.swift",
+      "sha256": "1ba16b02c4a419cd4f08421e756fbee82a5f6357788a5bc58e17398dde965cd0"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/DeepSeekHookInstallation.swift",
+      "sha256": "f27f1c34ad0847fd6314945e551a7e2fefb49bccc89882ecc36fc928439f8ba5"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/DevinHookConfiguration.swift",
+      "sha256": "9e0546bac09fe93a4c5cc387bb7be49219e68a35664fc1858f20b17e0354c61c"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/ExpandedAutoCollapsePolicy.swift",
+      "sha256": "755ae7ba3ac4ddf98f59a682ea064c8b203ad4027680b3551e2460f15a23670a"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/HistoryUsageSummary.swift",
+      "sha256": "f5a1308b0a2e1b6c57a2ff960b86f17e0d0b94e38edb8f203fd3ba1ddef3a872"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/HookConfigurationFile.swift",
+      "sha256": "49c7980e15d589488e6a37a7fcd8fdfad72b49604ed7b6a6a9325134e14a3e11"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/InteractionRequestState.swift",
+      "sha256": "f33261d12edbe4c3c8203515f02d7acec9cb2328dfdb204dad0515e094922751"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/IslandAnimationIntensity.swift",
+      "sha256": "6059a51c656f2e5190dded2039d92a5e64605a106e0cc7bc0655c700d6d1f12e"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/IslandJellyIntensity.swift",
+      "sha256": "5a2dbf819215d542f316fcc60d82482f73ac3ab994ce1edb63198f7481002bf4"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/IslandMotionPolicy.swift",
+      "sha256": "1f9eea40c5ba8126391e6514b51fbeeb4c7ebc678733cd777319438b1698f85a"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/KimiCodeApprovalObservation.swift",
+      "sha256": "fb44fb9827670e4d4bd5504cb89cfe42b1c0efc984f4bab303f7ece9ebff37d3"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/KimiHookConfiguration.swift",
+      "sha256": "b27884de9180ef0d083bbe3a02114a8548eae33f39e8c0a624b11dafbd9c4193"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/KimiHookInstallation.swift",
+      "sha256": "ac41ef273f6bf436806a153f8001a21b69c452cd9d45427a8fd8a0499d8abf5c"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/MuteRule.swift",
+      "sha256": "5079b06a191f84a10ef56a57f49d89e0f1305259261f3bcbe91de1f7b6d34946"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/NativeHookProfile.swift",
+      "sha256": "31af03c79cfd6772a2bf85829b87a3e2fde46641f8d837d48fc173d8d36a22f5"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/NotchShapeGeometry.swift",
+      "sha256": "aa3e8b94c4feb9fa43f9f95e8730dd303ababa26f468d927a9f2fa131f3bee81"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/ObservationLease.swift",
+      "sha256": "3f7eeabcc50c91e05350cbfa6ed277d2b0e4a14d8fccac30c3ee52540583c528"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/OpenCodePluginConfiguration.swift",
+      "sha256": "9d7e7a0c5e6ab1e6002f6444e636cffec08a03ab8e05cdda902dd91920624cad"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/PiPluginConfiguration.swift",
+      "sha256": "be4186e3a3ab12aa5de29f416ad29ec876543fd6f4656d13065c8f708f3b054a"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/QuotaInfo.swift",
+      "sha256": "035d843b2f3e72c1d8cbe39f0ac636ab4da21802a44ba8bb177a232cf3df4b5e"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/StoredChatMessage.swift",
+      "sha256": "425327dce875b770141d588655560eb1815e1ca52c2ed6838f67c0f1743fbf4a"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/StoredSession.swift",
+      "sha256": "83e737545458e724300d35c6dba32f9807d0be0b51a630b992e5bc5068365d98"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/StoredToolEvent.swift",
+      "sha256": "9e5698a735ffe06aa923b8550710c7e3534d71dac3d2814f8d9e41921ed7f6b9"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/ToolEvent.swift",
+      "sha256": "c3c524bb1574c17f99d72e16e6fb1071521610fef2f5e12b3e6556cabba4538e"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/TraeHookConfiguration.swift",
+      "sha256": "f26db2ca34bffc14768e7fa8926d0ea10ef426c3ed7a1039112dda441fbed673"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/VSCodeHookConfiguration.swift",
+      "sha256": "144f43596519d03568529add9d979df24bcf16d6f99277bde125c2a427ee5faf"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/VSCodeHookInstallation.swift",
+      "sha256": "4ccd0f454ff88b74b77480e2666d8f02fae14ac7dc59b5e7947567d86d19dc98"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/VSCodeHookSettings.swift",
+      "sha256": "50d9ca0ba970a2ec0a52134e4e8d714d227d30b67980adf271069903bcfee4ff"
+    },
+    {
+      "path": "Sources/DynamicIsland/Models/WindsurfHookConfiguration.swift",
+      "sha256": "322f75966681521585f9e8ae26a15c214b8f619163a85660910341b25ea7761c"
+    },
+    {
+      "path": "Sources/DynamicIsland/NotchWindow.swift",
+      "sha256": "7c8069be4d6c0309db01f9ff0a740f8ad2436e8c2cdd8e928f0d7d0c4d4f31cd"
+    },
+    {
+      "path": "Sources/DynamicIsland/SingleInstanceLock.swift",
+      "sha256": "a3c6a7d8060783c240d682dbcca3bbd2b6cc2655aab4118cf43a397e9127f297"
+    },
+    {
+      "path": "Sources/DynamicIsland/SwipeGestureRecognizer.swift",
+      "sha256": "36977f399506f7d840293eb99751edc787c2dd54eee1b79852f6f359f86e9cf0"
+    },
+    {
+      "path": "Sources/DynamicIsland/Testing/AppDiagnosticsSnapshot.swift",
+      "sha256": "38c909604761c69431bfdfeda46c334c6c11fb06bd11743a4898e3222e439b14"
+    },
+    {
+      "path": "Sources/DynamicIsland/Testing/AppDiagnosticsWriter.swift",
+      "sha256": "012073cf42a4cba67bbffda9a90fb9d89c07f46bd3403582a04b6717bf0e233a"
+    },
+    {
+      "path": "Sources/DynamicIsland/Testing/AppTestConfiguration.swift",
+      "sha256": "44188983b9cd8ca672ba736f7e844237968507620081d4ac8443fb41cec64105"
+    },
+    {
+      "path": "Sources/DynamicIsland/Testing/AppTestFixture.swift",
+      "sha256": "1cd60425a8c31b26615af555e81ae704bf7d048b767885edbbeaa5f38ec1412f"
+    },
+    {
+      "path": "Sources/DynamicIsland/Testing/AppTestFixtureLoader.swift",
+      "sha256": "6870ab31c51bd76cf838f16e5beac2a8de430c3cac5cf7942118b7e0521d92a1"
+    },
+    {
+      "path": "Sources/DynamicIsland/Testing/TestAccessibility.swift",
+      "sha256": "e2105b0d6b1a13cfd9bec403ee7fbb390aaf38c20d9659c4bf54d0bbbfdb8fd8"
+    },
+    {
+      "path": "Sources/DynamicIsland/Utilities/SystemPrivacySettings.swift",
+      "sha256": "2a550fa6b6b9af180d92f6e59e032db5a47d7ea70cc034aca3b1889bd5e600bd"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/AgentActivityView.swift",
+      "sha256": "0fdf2e132adb600f41d42b66ae8275ef6ff91fe798cf0f784eec30f812531601"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/AgentFlowView.swift",
+      "sha256": "89e8fb5a1e539a8f748e5026e0299ea440019d7bc2117ea1238ef97c2fc50d7b"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/ChatHistoryView.swift",
+      "sha256": "18396f9807b4de4545094782ee6f50fd372586a4899f495a3d1e43a67273a281"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/CollapsedPillView.swift",
+      "sha256": "71144155f0875ca4b5c1d8c2095d2329019b897238bf76d0e80545ba793b9561"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/Components/AgentIcon.swift",
+      "sha256": "d35f71814c8ae6dc5d2a576d7a6690b8180452bfdd83f6c9973e83c687e7e473"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/Components/AnimationEffects.swift",
+      "sha256": "02f6ce9beaf8b56168535e74303cf6c6f7c6ec58817b79495f8606bf5764fec9"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/Components/MarkdownView.swift",
+      "sha256": "cf1c3501e757c8dc842c29057f16210e3599ef1e27f57ef4d1a81ba1074d22bb"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/Components/MascotView.swift",
+      "sha256": "c604ff5d5d914682271759f3145e1977ab488af7bfa1b58f2ffb6f0416713eba"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/Components/PillBadge.swift",
+      "sha256": "7cd6fd398ae340b83d9b5cdfdde779f3cdebdbdcf54a411a8b141c42e6c79a5b"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/Components/SettingsComponents.swift",
+      "sha256": "5b6770ff673f51c8053c591bf8385eb6f4014da9008b71842c557d498597e3b9"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/CustomQuestionInputView.swift",
+      "sha256": "a81be70c4dab20c5c6f829554dc4aca7901086b168c374ab2fcc6f83e4bb3d99"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/ExpandedSessionView.swift",
+      "sha256": "6552ca50c78b231149b3dce13be90f3fe260aba8ea3186b640abcb5c6189e98d"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/ExportView.swift",
+      "sha256": "3c66cddc0a99aa7c692bfbb67bdb8d3424026b297510807b32642585897eef87"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/IslandSizeCalculator.swift",
+      "sha256": "6c090359c65aab035d84ed3584f58ceb10768da11f87c2a9b3ecb358abf2e891"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/IslandStyle.swift",
+      "sha256": "fdbdd3f91ec2bfa6768281fcfc3d6c28248c840d0f913e5315a04d81fd48fdec"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/MarqueeText.swift",
+      "sha256": "54fead996efd278049179e72c905438559fe9274b0ccd3be73725f8498276da8"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/MultipleQuestionInputView.swift",
+      "sha256": "22c41ad3155bcc91e60516d7a0192e21c643b3584514f39ab47b4626c4da9f4d"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/NotchContentView.swift",
+      "sha256": "2f182d096d4141e3bbc56d5a46b6368278ce5170d6fa2c3031c29bd7ec6dac32"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/PendingTaskCardView.swift",
+      "sha256": "74e23111cf9628a9a36e044e758995ec4ca0e6170a907ab81bec2ddeaa3b069b"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/PermissionApprovalView.swift",
+      "sha256": "2eefc3d9628968508937b0f086cab6ef2e8a28d0999f84778cea699ad42b6b2a"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/PlanReviewView.swift",
+      "sha256": "c1c04c895ff8cfe8f8967c310a8add9d157d928a4adff06ac549a7f62c543d7d"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/PreferencesView.swift",
+      "sha256": "9c8cf1fa70cd9ca829b09eaca077e9dca164e1681df1cb902255507c22bb5d10"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/QuestionAnswerView.swift",
+      "sha256": "0f0b805ec5b34024b697874e51d93504016c0e640e3fc9c689e0a807b3674175"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/SessionFilterBar.swift",
+      "sha256": "5ada9e1fbdb09568def18e1c8a4c248b30eec59f71cfaa91c3f357d88723737d"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/SessionListView.swift",
+      "sha256": "c72f47ad779530783c5f47002a4b23a4ba55926e8a97989927d39f81cd12dc39"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/StatisticsView.swift",
+      "sha256": "9797b98e6e4164bac65eafe0521f2f55625c160fce373181242e97c267881ae5"
+    },
+    {
+      "path": "Sources/DynamicIsland/Views/ThemePickerView.swift",
+      "sha256": "f3571d43e6ac125ebd905890c89bcf72de620484716d22b28c1d662f6643a432"
+    },
+    {
+      "path": "Tests/Fixtures/app/empty-interaction.json",
+      "sha256": "5febf385f707a488f2d15c881cca6b4b044dfde65632de46691235b2d296ebb3"
+    },
+    {
+      "path": "Tests/Fixtures/app/permission-smoke.json",
+      "sha256": "651e9a4cb5c06096801e91461930a69e2b6dd90e1a9ab53fb83b025a2a4de3a1"
+    },
+    {
+      "path": "Tests/Fixtures/app/plan-smoke.json",
+      "sha256": "28bc01263fb820eb992a2a0d4aa056343a277664f01136b3a4ed9bd6fec35266"
+    },
+    {
+      "path": "Tests/Fixtures/app/question-custom.json",
+      "sha256": "9fb1c14c5f9429481ff588724febd37e490560b5494bd7dc8efd1c1f1c67a363"
+    },
+    {
+      "path": "Tests/Fixtures/app/question-focus.json",
+      "sha256": "4eb20df38b33ec77dd9c07514d4cb24a3d161e242300facc9a72b95c3c3b3952"
+    },
+    {
+      "path": "Tests/Fixtures/app/question-smoke.json",
+      "sha256": "24298159223dff85df5d47733687da4a3f41ca6fda30c63cc3c71df60ce6e974"
+    },
+    {
+      "path": "Tests/Fixtures/app/session-list.json",
+      "sha256": "e82ad367aba33d8e71f54b1fc30960fddb5193ab730dce15722cc7bd9f4783ff"
+    },
+    {
+      "path": "Tests/Fixtures/app/update-available.json",
+      "sha256": "64c1987e48830110d461fcd07c102d41f5f5accafb664af95281bb8ec62419b9"
+    }
+  ],
+  "snapshotDirectory": ".build/windows-baseline-2026-10-13"
+}

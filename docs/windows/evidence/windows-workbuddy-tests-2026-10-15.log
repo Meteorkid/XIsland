@@ -1,0 +1,956 @@
+
+> xisland-windows@0.1.2 test
+> tsx --test tests/*.test.ts
+
+TAP version 13
+# Subtest: all eleven sound melodies match the current macOS source including silence and duration
+ok 1 - all eleven sound melodies match the current macOS source including silence and duration
+  ---
+  duration_ms: 3.191834
+  type: 'test'
+  ...
+# Subtest: PCM is mono 44.1 kHz square wave with bounded fade and explicit silent notes
+ok 2 - PCM is mono 44.1 kHz square wave with bounded fade and explicit silent notes
+  ---
+  duration_ms: 4.54325
+  type: 'test'
+  ...
+# Subtest: audio preferences preserve zero volume, default event switches and independent objects
+ok 3 - audio preferences preserve zero volume, default event switches and independent objects
+  ---
+  duration_ms: 0.150833
+  type: 'test'
+  ...
+# Subtest: reused audio engine updates mixer volume and never initializes until explicitly primed
+ok 4 - reused audio engine updates mixer volume and never initializes until explicitly primed
+  ---
+  duration_ms: 2.325625
+  type: 'test'
+  ...
+# Subtest: native lifecycle retains identity, terminal context and user prompt
+ok 5 - native lifecycle retains identity, terminal context and user prompt
+  ---
+  duration_ms: 0.644792
+  type: 'test'
+  ...
+# Subtest: missing native session identity is rejected rather than fabricated
+ok 6 - missing native session identity is rejected rather than fabricated
+  ---
+  duration_ms: 0.273125
+  type: 'test'
+  ...
+# Subtest: Stop never manufactures final completion, SessionEnd does
+ok 7 - Stop never manufactures final completion, SessionEnd does
+  ---
+  duration_ms: 1.698958
+  type: 'test'
+  ...
+# Subtest: native child identity ignores misleading legacy parent and subagent fields
+ok 8 - native child identity ignores misleading legacy parent and subagent fields
+  ---
+  duration_ms: 0.144958
+  type: 'test'
+  ...
+# Subtest: tool input and results retain structured data and call identity
+ok 9 - tool input and results retain structured data and call identity
+  ---
+  duration_ms: 0.639541
+  type: 'test'
+  ...
+# Subtest: notification and compaction preserve observation semantics
+ok 10 - notification and compaction preserve observation semantics
+  ---
+  duration_ms: 0.143708
+  type: 'test'
+  ...
+# Subtest: permission decisions use structured allow/deny JSON and successful hook exit
+ok 11 - permission decisions use structured allow/deny JSON and successful hook exit
+  ---
+  duration_ms: 0.239875
+  type: 'test'
+  ...
+# Subtest: no decision falls back to native processing without an implicit allow
+ok 12 - no decision falls back to native processing without an implicit allow
+  ---
+  duration_ms: 0.140167
+  type: 'test'
+  ...
+# Subtest: AskUserQuestion options and custom answers follow the Swift single-question response
+ok 13 - AskUserQuestion options and custom answers follow the Swift single-question response
+  ---
+  duration_ms: 0.358667
+  type: 'test'
+  ...
+# Subtest: PermissionRequest question preserves the existing Swift output event shape
+ok 14 - PermissionRequest question preserves the existing Swift output event shape
+  ---
+  duration_ms: 0.277375
+  type: 'test'
+  ...
+# Subtest: single question object and empty options allow a custom answer
+ok 15 - single question object and empty options allow a custom answer
+  ---
+  duration_ms: 0.088208
+  type: 'test'
+  ...
+# Subtest: multiple questions and multi-select explicitly remain in the native client
+ok 16 - multiple questions and multi-select explicitly remain in the native client
+  ---
+  duration_ms: 0.176167
+  type: 'test'
+  ...
+# Subtest: invalid or mismatched responses never emit an allow
+ok 17 - invalid or mismatched responses never emit an allow
+  ---
+  duration_ms: 0.142541
+  type: 'test'
+  ...
+# Subtest: Codex compaction observations validate native identities and trigger without inventing completion
+ok 18 - Codex compaction observations validate native identities and trigger without inventing completion
+  ---
+  duration_ms: 2.125
+  type: 'test'
+  ...
+# Subtest: unknown or retired Codex turns cannot clear a newer turn or revive terminal sessions
+ok 19 - unknown or retired Codex turns cannot clear a newer turn or revive terminal sessions
+  ---
+  duration_ms: 1.656625
+  type: 'test'
+  ...
+# Subtest: native observations preserve pending approvals and compaction does not auto-complete on a timer
+ok 20 - native observations preserve pending approvals and compaction does not auto-complete on a timer
+  ---
+  duration_ms: 0.596167
+  type: 'test'
+  ...
+# Subtest: turn identity is memory-scoped and legacy hooks remain usable after restoration
+ok 21 - turn identity is memory-scoped and legacy hooks remain usable after restoration
+  ---
+  duration_ms: 0.511584
+  type: 'test'
+  ...
+# Subtest: owner identity uses getRandomValues when randomUUID is unavailable in a WebView context
+ok 22 - owner identity uses getRandomValues when randomUUID is unavailable in a WebView context
+  ---
+  duration_ms: 1.765459
+  type: 'test'
+  ...
+# Subtest: Codex supports the native profile including turn-bound interruption and compaction
+ok 23 - Codex supports the native profile including turn-bound interruption and compaction
+  ---
+  duration_ms: 1.583666
+  type: 'test'
+  ...
+# Subtest: Codex requires native session identity and never derives it from a shared directory
+ok 24 - Codex requires native session identity and never derives it from a shared directory
+  ---
+  duration_ms: 0.26575
+  type: 'test'
+  ...
+# Subtest: Codex prompt extraction retains the last user portion and injectable terminal context
+ok 25 - Codex prompt extraction retains the last user portion and injectable terminal context
+  ---
+  duration_ms: 1.908416
+  type: 'test'
+  ...
+# Subtest: Codex Stop and SessionEnd reproduce native finality fixtures
+ok 26 - Codex Stop and SessionEnd reproduce native finality fixtures
+  ---
+  duration_ms: 2.215709
+  type: 'test'
+  ...
+# Subtest: Codex structured tools retain complete input, output and native call IDs
+ok 27 - Codex structured tools retain complete input, output and native call IDs
+  ---
+  duration_ms: 0.501042
+  type: 'test'
+  ...
+# Subtest: Codex AskUserQuestion remains a tool observation and has no invented answer contract
+ok 28 - Codex AskUserQuestion remains a tool observation and has no invented answer contract
+  ---
+  duration_ms: 0.170667
+  type: 'test'
+  ...
+# Subtest: Codex subagents require native child/type identities for both start and provisional stop
+ok 29 - Codex subagents require native child/type identities for both start and provisional stop
+  ---
+  duration_ms: 0.232833
+  type: 'test'
+  ...
+# Subtest: Codex allow and deny responses match the existing structured stdout fixture
+ok 30 - Codex allow and deny responses match the existing structured stdout fixture
+  ---
+  duration_ms: 0.229875
+  type: 'test'
+  ...
+# Subtest: Codex neutral fallback never grants permission and rejects foreign/malformed decisions
+ok 31 - Codex neutral fallback never grants permission and rejects foreign/malformed decisions
+  ---
+  duration_ms: 1.131666
+  type: 'test'
+  ...
+# Subtest: all wire event types and full optional field families round trip
+ok 32 - all wire event types and full optional field families round trip
+  ---
+  duration_ms: 4.961584
+  type: 'test'
+  ...
+# Subtest: strict decoder rejects missing, mistyped, unsafe fields and ignores unknown keys
+ok 33 - strict decoder rejects missing, mistyped, unsafe fields and ignores unknown keys
+  ---
+  duration_ms: 2.022084
+  type: 'test'
+  ...
+# Subtest: snapshot and subscriptions cannot mutate stored state
+ok 34 - snapshot and subscriptions cannot mutate stored state
+  ---
+  duration_ms: 0.8905
+  type: 'test'
+  ...
+# Subtest: same suffix from independent agents never merges, exact IDs win
+ok 35 - same suffix from independent agents never merges, exact IDs win
+  ---
+  duration_ms: 0.332208
+  type: 'test'
+  ...
+# Subtest: mirrored Claude interactive response retains the original wire session ID
+ok 36 - mirrored Claude interactive response retains the original wire session ID
+  ---
+  duration_ms: 0.703792
+  type: 'test'
+  ...
+# Subtest: rejected mirrors do not mutate ownership and foreign child events cannot attach
+ok 37 - rejected mirrors do not mutate ownership and foreign child events cannot attach
+  ---
+  duration_ms: 1.127084
+  type: 'test'
+  ...
+# Subtest: stream replacements retain native identity and replay cannot restart completed session
+ok 38 - stream replacements retain native identity and replay cannot restart completed session
+  ---
+  duration_ms: 0.404542
+  type: 'test'
+  ...
+# Subtest: late tool results and Stop preserve terminal state, fresh tool resumes
+ok 39 - late tool results and Stop preserve terminal state, fresh tool resumes
+  ---
+  duration_ms: 0.276334
+  type: 'test'
+  ...
+# Subtest: tool completion with unrelated ID or missing name cannot end pending tool
+ok 40 - tool completion with unrelated ID or missing name cannot end pending tool
+  ---
+  duration_ms: 0.2595
+  type: 'test'
+  ...
+# Subtest: child identity, provisional finality and unrelated parent stay isolated
+ok 41 - child identity, provisional finality and unrelated parent stay isolated
+  ---
+  duration_ms: 0.5185
+  type: 'test'
+  ...
+# Subtest: cumulative usage never doubles or regresses and incremental total is replacement
+ok 42 - cumulative usage never doubles or regresses and incremental total is replacement
+  ---
+  duration_ms: 0.169875
+  type: 'test'
+  ...
+# Subtest: separate child session joins its known parent without linking a foreign agent
+ok 43 - separate child session joins its known parent without linking a foreign agent
+  ---
+  duration_ms: 0.141208
+  type: 'test'
+  ...
+# Subtest: approval is scoped to a live channel and only resolves after successful confirmation
+ok 44 - approval is scoped to a live channel and only resolves after successful confirmation
+  ---
+  duration_ms: 0.235125
+  type: 'test'
+  ...
+# Subtest: replacement cancels old request and stale confirmation cannot approve replacement
+ok 45 - replacement cancels old request and stale confirmation cannot approve replacement
+  ---
+  duration_ms: 0.104042
+  type: 'test'
+  ...
+# Subtest: failed delivery, expiration and transport end never auto-approve or allow retry
+ok 46 - failed delivery, expiration and transport end never auto-approve or allow retry
+  ---
+  duration_ms: 0.158375
+  type: 'test'
+  ...
+# Subtest: native tool activity and foreign resolutions cannot clear unrelated interactions
+ok 47 - native tool activity and foreign resolutions cannot clear unrelated interactions
+  ---
+  duration_ms: 0.191958
+  type: 'test'
+  ...
+# Subtest: free text is explicit, UTF-8 bounded and rejects empty/NUL input
+ok 48 - free text is explicit, UTF-8 bounded and rejects empty/NUL input
+  ---
+  duration_ms: 0.276916
+  type: 'test'
+  ...
+# Subtest: multi-select validates UTF-8 total, custom capability and stable selection order
+ok 49 - multi-select validates UTF-8 total, custom capability and stable selection order
+  ---
+  duration_ms: 0.153875
+  type: 'test'
+  ...
+# Subtest: sequential questions sharing native ID receive distinct local tokens and channels
+ok 50 - sequential questions sharing native ID receive distinct local tokens and channels
+  ---
+  duration_ms: 0.140042
+  type: 'test'
+  ...
+# Subtest: history round trip preserves finality and strips live transport credentials
+ok 51 - history round trip preserves finality and strips live transport credentials
+  ---
+  duration_ms: 0.762791
+  type: 'test'
+  ...
+# Subtest: closed history cannot be revived by late results after restore or dismissal
+ok 52 - closed history cannot be revived by late results after restore or dismissal
+  ---
+  duration_ms: 0.20275
+  type: 'test'
+  ...
+# Subtest: restored running history remains unconfirmed until fresh business events
+ok 53 - restored running history remains unconfirmed until fresh business events
+  ---
+  duration_ms: 0.167625
+  type: 'test'
+  ...
+# Subtest: all existing app JSON fixtures load atomically with explicit preview channels
+ok 54 - all existing app JSON fixtures load atomically with explicit preview channels
+  ---
+  duration_ms: 1.799584
+  type: 'test'
+  ...
+# Subtest: compiled observer fixture reproduces two isolated unavailable sessions without completing them
+ok 55 - compiled observer fixture reproduces two isolated unavailable sessions without completing them
+  ---
+  duration_ms: 1.846292
+  type: 'test'
+  ...
+# Subtest: observation sequence, age, source and expiration cannot be bypassed
+ok 56 - observation sequence, age, source and expiration cannot be bypassed
+  ---
+  duration_ms: 0.255208
+  type: 'test'
+  ...
+# Subtest: malformed cross-source child and unsafe sequence rejected without advancing ledger
+ok 57 - malformed cross-source child and unsafe sequence rejected without advancing ledger
+  ---
+  duration_ms: 0.092292
+  type: 'test'
+  ...
+# Subtest: Cursor exports only the nine observation and three validated approval events
+ok 58 - Cursor exports only the nine observation and three validated approval events
+  ---
+  duration_ms: 0.492667
+  type: 'test'
+  ...
+# Subtest: Cursor uses conversation identity across turns and preserves the selected model
+ok 59 - Cursor uses conversation identity across turns and preserves the selected model
+  ---
+  duration_ms: 1.585459
+  type: 'test'
+  ...
+# Subtest: Cursor rejects missing identity, foreign session, mismatched event and unknown schema
+ok 60 - Cursor rejects missing identity, foreign session, mismatched event and unknown schema
+  ---
+  duration_ms: 0.512209
+  type: 'test'
+  ...
+# Subtest: generic Cursor tools retain their ID and structured input/result
+ok 61 - generic Cursor tools retain their ID and structured input/result
+  ---
+  duration_ms: 0.508416
+  type: 'test'
+  ...
+# Subtest: question-looking generic tools remain observation, not guessed question takeover
+ok 62 - question-looking generic tools remain observation, not guessed question takeover
+  ---
+  duration_ms: 0.116916
+  type: 'test'
+  ...
+# Subtest: assistant text, loop completion and session end stay distinct
+ok 63 - assistant text, loop completion and session end stay distinct
+  ---
+  duration_ms: 0.194334
+  type: 'test'
+  ...
+# Subtest: tool cancellation is distinct from failure and compaction is observation
+ok 64 - tool cancellation is distinct from failure and compaction is observation
+  ---
+  duration_ms: 0.073125
+  type: 'test'
+  ...
+# Subtest: shell and MCP dedicated hooks use their distinct documented payloads
+ok 65 - shell and MCP dedicated hooks use their distinct documented payloads
+  ---
+  duration_ms: 0.152667
+  type: 'test'
+  ...
+# Subtest: file access approval retains path without persisting complete file contents
+ok 66 - file access approval retains path without persisting complete file contents
+  ---
+  duration_ms: 0.203583
+  type: 'test'
+  ...
+# Subtest: allow and deny use Cursor JSON, never Claude hookSpecificOutput or exit one
+ok 67 - allow and deny use Cursor JSON, never Claude hookSpecificOutput or exit one
+  ---
+  duration_ms: 0.383875
+  type: 'test'
+  ...
+# Subtest: unavailable observation output preserves existing Mac hook semantics
+ok 68 - unavailable observation output preserves existing Mac hook semantics
+  ---
+  duration_ms: 0.058083
+  type: 'test'
+  ...
+# Subtest: unanswered dedicated approvals never silently become allow
+ok 69 - unanswered dedicated approvals never silently become allow
+  ---
+  duration_ms: 0.054167
+  type: 'test'
+  ...
+# Subtest: unknown fallback and mismatched responses do not invent successful native decisions
+ok 70 - unknown fallback and mismatched responses do not invent successful native decisions
+  ---
+  duration_ms: 0.073125
+  type: 'test'
+  ...
+# Subtest: Gemini supports exactly the eight NativeHookProfile observation events
+ok 71 - Gemini supports exactly the eight NativeHookProfile observation events
+  ---
+  duration_ms: 1.26825
+  type: 'test'
+  ...
+# Subtest: Gemini invalid native identities never collapse into one cwd-derived session
+ok 72 - Gemini invalid native identities never collapse into one cwd-derived session
+  ---
+  duration_ms: 0.281875
+  type: 'test'
+  ...
+# Subtest: Gemini BeforeAgent carries prompt, terminal and Windows paths from explicit context
+ok 73 - Gemini BeforeAgent carries prompt, terminal and Windows paths from explicit context
+  ---
+  duration_ms: 1.256375
+  type: 'test'
+  ...
+# Subtest: Gemini AfterAgent follows prompt_response fixture without declaring completion
+ok 74 - Gemini AfterAgent follows prompt_response fixture without declaring completion
+  ---
+  duration_ms: 0.125875
+  type: 'test'
+  ...
+# Subtest: Gemini permission notifications remain noninteractive and unknown idle notices prove no finality
+ok 75 - Gemini permission notifications remain noninteractive and unknown idle notices prove no finality
+  ---
+  duration_ms: 1.21025
+  type: 'test'
+  ...
+# Subtest: Gemini BeforeTool never converts a question-like tool into local question handling
+ok 76 - Gemini BeforeTool never converts a question-like tool into local question handling
+  ---
+  duration_ms: 0.401959
+  type: 'test'
+  ...
+# Subtest: Gemini structured output and usage are preserved without borrowing Tabnine error semantics
+ok 77 - Gemini structured output and usage are preserved without borrowing Tabnine error semantics
+  ---
+  duration_ms: 0.186
+  type: 'test'
+  ...
+# Subtest: Gemini output is neutral and rejects every attempted local decision
+ok 78 - Gemini output is neutral and rejects every attempted local decision
+  ---
+  duration_ms: 0.192
+  type: 'test'
+  ...
+# Subtest: WorkBuddy subprocess observes lifecycle, rejects invalid input and never emits a native decision
+ok 79 - WorkBuddy subprocess observes lifecycle, rejects invalid input and never emits a native decision
+  ---
+  duration_ms: 214.352458
+  type: 'test'
+  ...
+# Subtest: WorkBuddy observation bridge deadline returns neutral output instead of holding the native task
+ok 80 - WorkBuddy observation bridge deadline returns neutral output instead of holding the native task
+  ---
+  duration_ms: 2036.586542
+  type: 'test'
+  ...
+# Subtest: real hook subprocess routes all four native event dialects to the bridge
+ok 81 - real hook subprocess routes all four native event dialects to the bridge
+  ---
+  duration_ms: 253.0585
+  type: 'test'
+  ...
+# Subtest: actual subprocess denial returns the correct Claude, Codex and Cursor schemas
+ok 82 - actual subprocess denial returns the correct Claude, Codex and Cursor schemas
+  ---
+  duration_ms: 168.46425
+  type: 'test'
+  ...
+# Subtest: Windsurf and Trae CN installed hook commands reach their specific observation adapters
+ok 83 - Windsurf and Trae CN installed hook commands reach their specific observation adapters
+  ---
+  duration_ms: 169.064083
+  type: 'test'
+  ...
+# Subtest: UTF-8 split inside a multibyte answer survives the real stdout pipe
+ok 84 - UTF-8 split inside a multibyte answer survives the real stdout pipe
+  ---
+  duration_ms: 85.1935
+  type: 'test'
+  ...
+# Subtest: bridge failure preserves each dialect fallback without leaking bridge stderr
+ok 85 - bridge failure preserves each dialect fallback without leaking bridge stderr
+  ---
+  duration_ms: 223.56175
+  type: 'test'
+  ...
+# Subtest: Cursor observation fallback remains allow but unavailable file approval is deny
+ok 86 - Cursor observation fallback remains allow but unavailable file approval is deny
+  ---
+  duration_ms: 111.01375
+  type: 'test'
+  ...
+# Subtest: unsupported Cursor event and unknown agent preserve non-success exit
+ok 87 - unsupported Cursor event and unknown agent preserve non-success exit
+  ---
+  duration_ms: 58.209208
+  type: 'test'
+  ...
+# Subtest: invalid, mismatched and oversized bridge responses never grant permission
+ok 88 - invalid, mismatched and oversized bridge responses never grant permission
+  ---
+  duration_ms: 169.209666
+  type: 'test'
+  ...
+# Subtest: invalid or oversized stdin is rejected before bridge spawn, with event-aware fallback
+ok 89 - invalid or oversized stdin is rejected before bridge spawn, with event-aware fallback
+  ---
+  duration_ms: 98.411125
+  type: 'test'
+  ...
+# Subtest: test bridge override cannot run outside explicit test mode
+ok 90 - test bridge override cannot run outside explicit test mode
+  ---
+  duration_ms: 29.935541
+  type: 'test'
+  ...
+# Subtest: stdin limit is enforced while the producer keeps its stream open
+ok 91 - stdin limit is enforced while the producer keeps its stream open
+  ---
+  duration_ms: 35.776166
+  type: 'test'
+  ...
+# Subtest: plan CLI prints no user credentials or nextConfig and writes no real configuration
+ok 92 - plan CLI prints no user credentials or nextConfig and writes no real configuration
+  ---
+  duration_ms: 31.380875
+  type: 'test'
+  ...
+# Subtest: all registered installers read, plan, write, and repeat without duplicate handlers
+ok 93 - all registered installers read, plan, write, and repeat without duplicate handlers
+  ---
+  duration_ms: 108.1135
+  type: 'test'
+  ...
+# Subtest: existing file is backed up byte-for-byte and summaries contain no secret values
+ok 94 - existing file is backed up byte-for-byte and summaries contain no secret values
+  ---
+  duration_ms: 17.4195
+  type: 'test'
+  ...
+# Subtest: uninstall removes only managed entries even when the bridge was removed
+ok 95 - uninstall removes only managed entries even when the bridge was removed
+  ---
+  duration_ms: 28.348209
+  type: 'test'
+  ...
+# Subtest: stale plan revision prevents overwriting intervening user changes
+ok 96 - stale plan revision prevents overwriting intervening user changes
+  ---
+  duration_ms: 2.835208
+  type: 'test'
+  ...
+# Subtest: revision is checked again immediately before replacement
+ok 97 - revision is checked again immediately before replacement
+  ---
+  duration_ms: 14.350917
+  type: 'test'
+  ...
+# Subtest: Windows-style rename failure leaves the original file and its recoverable backup
+ok 98 - Windows-style rename failure leaves the original file and its recoverable backup
+  ---
+  duration_ms: 14.561709
+  type: 'test'
+  ...
+# Subtest: backup rollback is explicit, checks revision, and saves the replaced state
+ok 99 - backup rollback is explicit, checks revision, and saves the replaced state
+  ---
+  duration_ms: 26.981625
+  type: 'test'
+  ...
+# Subtest: malformed JSON, invalid UTF-8 and oversized configurations are never rewritten
+ok 100 - malformed JSON, invalid UTF-8 and oversized configurations are never rewritten
+  ---
+  duration_ms: 5.282875
+  type: 'test'
+  ...
+# Subtest: install refuses missing runtime and apply requires a revision
+ok 101 - install refuses missing runtime and apply requires a revision
+  ---
+  duration_ms: 2.478208
+  type: 'test'
+  ...
+# Subtest: concurrent installation requests cannot write through the same application lock
+ok 102 - concurrent installation requests cannot write through the same application lock
+  ---
+  duration_ms: 8.973
+  type: 'test'
+  ...
+# Subtest: test paths cannot use the temporary root or escape to real installed Node
+ok 103 - test paths cannot use the temporary root or escape to real installed Node
+  ---
+  duration_ms: 1.610709
+  type: 'test'
+  ...
+# Subtest: symlinked configuration directories are rejected without touching the destination
+ok 104 - symlinked configuration directories are rejected without touching the destination
+  ---
+  duration_ms: 2.406292
+  type: 'test'
+  ...
+# Subtest: all registered clients use their own file structure and installation is idempotent
+ok 105 - all registered clients use their own file structure and installation is idempotent
+  ---
+  duration_ms: 14.3475
+  type: 'test'
+  ...
+# Subtest: Windsurf uses native PowerShell fields and preserves foreign or mixed-platform entries
+ok 106 - Windsurf uses native PowerShell fields and preserves foreign or mixed-platform entries
+  ---
+  duration_ms: 0.671833
+  type: 'test'
+  ...
+# Subtest: Trae profile is explicitly CN, nested command handlers retain matcher and loop metadata
+ok 107 - Trae profile is explicitly CN, nested command handlers retain matcher and loop metadata
+  ---
+  duration_ms: 0.538041
+  type: 'test'
+  ...
+# Subtest: mixed matcher groups keep third-party handlers and every unrelated setting
+ok 108 - mixed matcher groups keep third-party handlers and every unrelated setting
+  ---
+  duration_ms: 0.313541
+  type: 'test'
+  ...
+# Subtest: uninstall recognizes exact generated commands, not similar names or altered scripts
+ok 109 - uninstall recognizes exact generated commands, not similar names or altered scripts
+  ---
+  duration_ms: 0.146958
+  type: 'test'
+  ...
+# Subtest: Gemini milliseconds, disabled metadata and feature toggle are preserved
+ok 110 - Gemini milliseconds, disabled metadata and feature toggle are preserved
+  ---
+  duration_ms: 0.193042
+  type: 'test'
+  ...
+# Subtest: Cursor flat entries and Codex Windows command override retain native schema
+ok 111 - Cursor flat entries and Codex Windows command override retain native schema
+  ---
+  duration_ms: 0.544333
+  type: 'test'
+  ...
+# Subtest: Windows launcher quotes paths without exposing shell metacharacters to the outer shell
+ok 112 - Windows launcher quotes paths without exposing shell metacharacters to the outer shell
+  ---
+  duration_ms: 0.140167
+  type: 'test'
+  ...
+# Subtest: malformed known hooks or unsafe paths reject the plan without mutation
+ok 113 - malformed known hooks or unsafe paths reject the plan without mutation
+  ---
+  duration_ms: 0.314834
+  type: 'test'
+  ...
+# Subtest: new file needs no backup, existing changes require exclusive backup intent
+ok 114 - new file needs no backup, existing changes require exclusive backup intent
+  ---
+  duration_ms: 0.661958
+  type: 'test'
+  ...
+# Subtest: Kimi task terminal failure survives late starts and receives missing metadata
+ok 115 - Kimi task terminal failure survives late starts and receives missing metadata
+  ---
+  duration_ms: 0.650959
+  type: 'test'
+  ...
+# Subtest: running facts after session end become unconfirmed and conflicting kinds cannot replace a task
+ok 116 - running facts after session end become unconfirmed and conflicting kinds cannot replace a task
+  ---
+  duration_ms: 0.203084
+  type: 'test'
+  ...
+# Subtest: native result-before-request stays resolved, while mismatched identities never resolve pending approval
+ok 117 - native result-before-request stays resolved, while mismatched identities never resolve pending approval
+  ---
+  duration_ms: 0.382375
+  type: 'test'
+  ...
+# Subtest: unidentified approval remains unconfirmed until session end instead of fabricating a channel
+ok 118 - unidentified approval remains unconfirmed until session end instead of fabricating a channel
+  ---
+  duration_ms: 0.12125
+  type: 'test'
+  ...
+# Subtest: only running agent tasks can establish visibility and failed projections never look successful
+ok 119 - only running agent tasks can establish visibility and failed projections never look successful
+  ---
+  duration_ms: 0.157584
+  type: 'test'
+  ...
+# Subtest: ledger snapshots are isolated and malformed duplicate identities are rejected atomically
+ok 120 - ledger snapshots are isolated and malformed duplicate identities are rejected atomically
+  ---
+  duration_ms: 0.20225
+  type: 'test'
+  ...
+# Subtest: an open preferences mirror follows a rebuilt owner and rejects late retired-owner snapshots
+ok 121 - an open preferences mirror follows a rebuilt owner and rejects late retired-owner snapshots
+  ---
+  duration_ms: 2.749
+  type: 'test'
+  ...
+# Subtest: failed history deletion does not remove the owner or mirrored record before durable acknowledgment
+ok 122 - failed history deletion does not remove the owner or mirrored record before durable acknowledgment
+  ---
+  duration_ms: 50.371917
+  type: 'test'
+  ...
+# Subtest: history deletion serializes writes and acknowledges only the matching durable result
+ok 123 - history deletion serializes writes and acknowledges only the matching durable result
+  ---
+  duration_ms: 18.6105
+  type: 'test'
+  ...
+# Subtest: initial ended channels cannot invalidate a new live replacement buffered during frontend_ready
+ok 124 - initial ended channels cannot invalidate a new live replacement buffered during frontend_ready
+  ---
+  duration_ms: 12.310208
+  type: 'test'
+  ...
+# Subtest: business updates received during a durable delete survive transaction completion
+ok 125 - business updates received during a durable delete survive transaction completion
+  ---
+  duration_ms: 10.914292
+  type: 'test'
+  ...
+# Subtest: UI approval while delete is awaiting disk cannot queue a snapshot that resurrects the deleted record
+ok 126 - UI approval while delete is awaiting disk cannot queue a snapshot that resurrects the deleted record
+  ---
+  duration_ms: 9.82975
+  type: 'test'
+  ...
+# Subtest: TraeWork CN shares one domestic observation namespace and cannot enable a tool gate
+ok 127 - TraeWork CN shares one domestic observation namespace and cannot enable a tool gate
+  ---
+  duration_ms: 1.599291
+  type: 'test'
+  ...
+# Subtest: Trae CN dialect has exactly six documented events and rejects international/SOLO selection
+ok 128 - Trae CN dialect has exactly six documented events and rejects international/SOLO selection
+  ---
+  duration_ms: 2.590833
+  type: 'test'
+  ...
+# Subtest: Trae CN requires real session and cwd, preserves empty user prompts and explicit context
+ok 129 - Trae CN requires real session and cwd, preserves empty user prompts and explicit context
+  ---
+  duration_ms: 0.164875
+  type: 'test'
+  ...
+# Subtest: Trae generic tools retain native call IDs and structured outputs without intercepting questions
+ok 130 - Trae generic tools retain native call IDs and structured outputs without intercepting questions
+  ---
+  duration_ms: 0.202875
+  type: 'test'
+  ...
+# Subtest: Trae notifications retain observed waiting states with no locally actionable request
+ok 131 - Trae notifications retain observed waiting states with no locally actionable request
+  ---
+  duration_ms: 1.2115
+  type: 'test'
+  ...
+# Subtest: Trae Stop is provisional regardless of other hook loop flags
+ok 132 - Trae Stop is provisional regardless of other hook loop flags
+  ---
+  duration_ms: 1.105542
+  type: 'test'
+  ...
+# Subtest: default Trae observations emit neutral JSON and reject unsupported local decisions
+ok 133 - default Trae observations emit neutral JSON and reject unsupported local decisions
+  ---
+  duration_ms: 0.443542
+  type: 'test'
+  ...
+# Subtest: explicit Trae CN pre-tool gates return documented allow/deny, fallback ask, and never rewrite input
+ok 134 - explicit Trae CN pre-tool gates return documented allow/deny, fallback ask, and never rewrite input
+  ---
+  duration_ms: 0.303791
+  type: 'test'
+  ...
+# Subtest: Trae explicit tool gate does not convert AskUserQuestion into an answered native question
+ok 135 - Trae explicit tool gate does not convert AskUserQuestion into an answered native question
+  ---
+  duration_ms: 0.329042
+  type: 'test'
+  ...
+# Subtest: 语言匹配地区及系统优先顺序，显式选择不被系统覆盖
+ok 136 - 语言匹配地区及系统优先顺序，显式选择不被系统覆盖
+  ---
+  duration_ms: 0.388708
+  type: 'test'
+  ...
+# Subtest: 语言字典覆盖界面文案，四种翻译均存在且模板参数保留
+ok 137 - 语言字典覆盖界面文案，四种翻译均存在且模板参数保留
+  ---
+  duration_ms: 2.276542
+  type: 'test'
+  ...
+# Subtest: 旧设置迁移、非法枚举与超范围尺寸使用受控默认值
+ok 138 - 旧设置迁移、非法枚举与超范围尺寸使用受控默认值
+  ---
+  duration_ms: 0.166625
+  type: 'test'
+  ...
+# Subtest: 减少动态效果采用low离散过渡，关闭动画停止全部过渡
+ok 139 - 减少动态效果采用low离散过渡，关闭动画停止全部过渡
+  ---
+  duration_ms: 0.089375
+  type: 'test'
+  ...
+# Subtest: 磁吸有范围与有界输出，弹簧从零收敛到目标
+ok 140 - 磁吸有范围与有界输出，弹簧从零收敛到目标
+  ---
+  duration_ms: 0.081459
+  type: 'test'
+  ...
+# Subtest: 跨午夜勿扰、同时间空时段与开关状态
+ok 141 - 跨午夜勿扰、同时间空时段与开关状态
+  ---
+  duration_ms: 0.657667
+  type: 'test'
+  ...
+# Subtest: preferences receive live state without restoring it as stale history
+ok 142 - preferences receive live state without restoring it as stale history
+  ---
+  duration_ms: 2.65725
+  type: 'test'
+  ...
+# Subtest: read-only windows cannot retain channels, submit approvals or delete authoritative history
+ok 143 - read-only windows cannot retain channels, submit approvals or delete authoritative history
+  ---
+  duration_ms: 0.396417
+  type: 'test'
+  ...
+# Subtest: invalid live snapshots do not replace the last validated preferences state
+ok 144 - invalid live snapshots do not replace the last validated preferences state
+  ---
+  duration_ms: 0.479417
+  type: 'test'
+  ...
+# Subtest: Cascade supports the ten Swift events and rejects transcript/worktree and invented lifecycle hooks
+ok 145 - Cascade supports the ten Swift events and rejects transcript/worktree and invented lifecycle hooks
+  ---
+  duration_ms: 1.72925
+  type: 'test'
+  ...
+# Subtest: trajectory identifies a conversation across turns; execution is never a tool-call ID
+ok 146 - trajectory identifies a conversation across turns; execution is never a tool-call ID
+  ---
+  duration_ms: 0.109708
+  type: 'test'
+  ...
+# Subtest: native ISO timestamps and explicit terminal context are retained without guessed project roots
+ok 147 - native ISO timestamps and explicit terminal context are retained without guessed project roots
+  ---
+  duration_ms: 0.139792
+  type: 'test'
+  ...
+# Subtest: native tool_info is preserved and command/file events never invent output or user decisions
+ok 148 - native tool_info is preserved and command/file events never invent output or user decisions
+  ---
+  duration_ms: 0.260583
+  type: 'test'
+  ...
+# Subtest: MCP tools retain their real name and arbitrary JSON results without claiming question support
+ok 149 - MCP tools retain their real name and arbitrary JSON results without claiming question support
+  ---
+  duration_ms: 0.156917
+  type: 'test'
+  ...
+# Subtest: Cascade response ends the turn without permanently closing the conversation
+ok 150 - Cascade response ends the turn without permanently closing the conversation
+  ---
+  duration_ms: 1.328333
+  type: 'test'
+  ...
+# Subtest: missing native fields, mismatched events and malformed structured inputs are rejected
+ok 151 - missing native fields, mismatched events and malformed structured inputs are rejected
+  ---
+  duration_ms: 0.29825
+  type: 'test'
+  ...
+# Subtest: default observation never blocks and rejects attempted local approvals, questions or plans
+ok 152 - default observation never blocks and rejects attempted local approvals, questions or plans
+  ---
+  duration_ms: 0.102042
+  type: 'test'
+  ...
+# Subtest: explicit local pre-tool gates use exit 2 to block, never fake a native approval JSON
+ok 153 - explicit local pre-tool gates use exit 2 to block, never fake a native approval JSON
+  ---
+  duration_ms: 0.468709
+  type: 'test'
+  ...
+# Subtest: WorkBuddy has its own identity and every declared event maps to an observation
+ok 154 - WorkBuddy has its own identity and every declared event maps to an observation
+  ---
+  duration_ms: 2.304
+  type: 'test'
+  ...
+# Subtest: WorkBuddy tool preparation is not execution, missing IDs stay missing and conflicting IDs fail
+ok 155 - WorkBuddy tool preparation is not execution, missing IDs stay missing and conflicting IDs fail
+  ---
+  duration_ms: 0.163125
+  type: 'test'
+  ...
+# Subtest: WorkBuddy Stop and child end do not finish the parent, FinalStop uses native reason
+ok 156 - WorkBuddy Stop and child end do not finish the parent, FinalStop uses native reason
+  ---
+  duration_ms: 1.333458
+  type: 'test'
+  ...
+# Subtest: WorkBuddy marketplace exports exact neutral Windows commands and never overwrites
+ok 157 - WorkBuddy marketplace exports exact neutral Windows commands and never overwrites
+  ---
+  duration_ms: 11.189
+  type: 'test'
+  ...
+1..157
+# tests 157
+# suites 0
+# pass 157
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3986.979583

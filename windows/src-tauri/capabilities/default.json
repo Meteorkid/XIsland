@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Only the bundled XIsland frontend can use the desktop event bridge.",
+  "windows": ["main", "preferences"],
+  "permissions": ["core:event:default"]
+}

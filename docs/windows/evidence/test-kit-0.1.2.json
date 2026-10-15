@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-15",
+  "version": "0.1.2",
+  "path": ".build/XIsland-Windows-0.1.2-preview-test-kit.zip",
+  "size": 26256855,
+  "sha256": "269a455aea7e41615c3d5ef2189a59855e54ceb417b4e4eb886c95a3201ad309",
+  "crcPassed": true,
+  "artifactHashesPassed": true,
+  "packagedHookProcessChecks": [
+    {
+      "event": "SessionStart",
+      "deliveredType": "status_update",
+      "stdoutEmpty": true
+    },
+    {
+      "event": "UserPromptSubmit",
+      "deliveredType": "session_start",
+      "stdoutEmpty": true
+    },
+    {
+      "event": "PreToolUse",
+      "deliveredType": "status_update",
+      "stdoutEmpty": true
+    },
+    {
+      "event": "PostToolUse",
+      "deliveredType": "tool_complete",
+      "stdoutEmpty": true
+    },
+    {
+      "event": "PostToolUseFailure",
+      "deliveredType": "tool_complete",
+      "stdoutEmpty": true
+    },
+    {
+      "event": "Stop",
+      "deliveredType": "status_update",
+      "stdoutEmpty": true
+    },
+    {
+      "event": "FinalStop",
+      "deliveredType": "status_update",
+      "stdoutEmpty": true
+    },
+    {
+      "event": "SessionEnd",
+      "deliveredType": "status_update",
+      "stdoutEmpty": true
+    },
+    {
+      "event": "SubagentStart",
+      "deliveredType": "status_update",
+      "stdoutEmpty": true
+    },
+    {
+      "event": "SubagentStop",
+      "deliveredType": "status_update",
+      "stdoutEmpty": true
+    },
+    {
+      "event": "Notification",
+      "deliveredType": "status_update",
+      "stdoutEmpty": true
+    }
+  ],
+  "host": "macOS arm64, Node subprocess with isolated synthetic bridge",
+  "windowsRuntimeVerified": false,
+  "entries": [
+    "XIsland-Windows-test-kit/LICENSE-XIsland.txt",
+    "XIsland-Windows-test-kit/LICENSE-node.txt",
+    "XIsland-Windows-test-kit/README.md",
+    "XIsland-Windows-test-kit/Test-XIsland.ps1",
+    "XIsland-Windows-test-kit/Windows验收说明.md",
+    "XIsland-Windows-test-kit/XIsland-Windows-0.1.2-preview-x64-setup.exe",
+    "XIsland-Windows-test-kit/manifest.json"
+  ]
+}

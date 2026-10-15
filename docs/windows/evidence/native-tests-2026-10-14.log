@@ -1,0 +1,58 @@
+   Compiling errno v0.3.14
+   Compiling xisland-windows v0.1.0 (/Users/meteor/github/xisland/windows/src-tauri)
+   Compiling signal-hook-registry v1.4.8
+   Compiling tokio v1.53.2
+   Compiling tauri v2.12.3
+   Compiling tauri-plugin-fs v2.7.0
+   Compiling tauri-plugin-single-instance v2.5.3
+   Compiling tauri-plugin-dialog v2.8.2
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 24.49s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/xisland_windows-1212524429e9909a)
+
+running 23 tests
+test integrations::tests::rejects_unrecognized_agents_actions_and_operations ... ok
+test windowing::tests::dip_size_uses_target_dpi_without_scaling_negative_origin ... ok
+test windowing::tests::disconnected_drag_target_cancels_drag_and_falls_back_to_primary ... ok
+test windowing::tests::deferred_interaction_pins_primary_when_display_topology_returns ... ok
+test windowing::tests::custom_horizontal_center_survives_expansion_and_collapse ... ok
+test windowing::tests::disabled_follow_preserves_monitor_and_missing_cursor_uses_primary ... ok
+test integrations::tests::service_errors_do_not_echo_arbitrary_process_content ... ok
+test integrations::tests::node_must_report_a_stable_version_twenty_or_newer ... ok
+test integrations::tests::builds_only_fixed_cli_flags_without_shell_text ... ok
+test integrations::tests::apply_requires_exact_revision_and_other_actions_reject_it ... ok
+test integrations::tests::rejects_configuration_payloads_and_wrong_agent_in_summary ... ok
+test transport::tests::rejects_unknown_event_and_empty_identity ... ok
+test windowing::tests::drag_is_horizontal_dpi_aware_clamped_and_does_not_follow_other_screen ... ok
+test windowing::tests::disconnected_pinned_screen_falls_back_and_stays_pinned ... ok
+test windowing::tests::empty_topology_and_invalid_resize_do_not_fabricate_a_monitor ... ok
+test windowing::tests::fullscreen_is_monitor_specific_not_maximized_and_does_not_hide_interactions ... ok
+test windowing::tests::interaction_fallback_prefers_primary_over_mouse_monitor ... ok
+test windowing::tests::interaction_pins_foreground_monitor_until_collapse_finishes ... ok
+test windowing::tests::oversized_windows_fit_screen_and_invalid_values_fail ... ok
+test windowing::tests::point_boundaries_and_largest_foreground_overlap_are_correct ... ok
+test windowing::tests::screen_resize_and_dpi_change_keep_window_inside_monitor ... ok
+test transport::tests::response_is_bound_to_identity_and_one_shot ... ok
+test transport::tests::fragmented_frames_and_size_limit ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (src-tauri/target/debug/deps/xisland-b99506b1c37ed165)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/bridge.rs (src-tauri/target/debug/deps/xisland_bridge-a07cd379b939c619)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/transport_integration.rs (src-tauri/target/debug/deps/transport_integration-78a2d16b14b600c1)
+
+running 2 tests
+test transport_client_process ... ignored, 仅由真实 IPC 集成测试作为独立客户端进程启动
+test isolated_subprocess_transport_round_trips_and_rejects_invalid_decisions ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.36s
+

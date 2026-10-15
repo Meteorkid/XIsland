@@ -1,0 +1,100 @@
+[WebServer] (node:64974) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+
+Running 22 tests using 1 worker
+
+(node:64977) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/22] tests/ui.spec.ts:20:1 › 收起与展开沿用尺寸，搜索和主题通过真实点击生效
+[2/22] tests/ui.spec.ts:44:1 › 权限请求可见且允许后才移除待办
+[3/22] tests/ui.spec.ts:55:1 › 自由问答支持中文输入，提交清除当前请求
+[4/22] tests/ui.spec.ts:65:1 › 计划反馈与详情可操作，批准后移除对应请求
+[5/22] tests/ui.spec.ts:123:1 › IME 组合输入期间消息更新不替换文本框，结束后保留中文草稿
+[6/22] tests/ui.spec.ts:143:1 › 多选与失败回传保持请求；重复点击不会重复发送
+[7/22] tests/ui.spec.ts:160:1 › IME 期间请求断开，旧输入卡片不能发送已经失效的请求
+[8/22] tests/ui.spec.ts:177:1 › 成功响应等待平台确认，未确认前待办保持发送中
+[9/22] tests/ui.spec.ts:190:1 › 五种语言立即切换并持久化，不翻译 Agent 原文
+[10/22] tests/ui.spec.ts:209:1 › 系统语言匹配日语，显式语言覆盖后可回到系统
+[11/22] tests/ui.spec.ts:221:1 › 独立设置调用不放大主岛，副窗口关闭与广播更新不回写
+[12/22] tests/ui.spec.ts:242:1 › 设置平台写入失败时不显示为已保存
+[13/22] tests/ui.spec.ts:251:1 › 强度设置与果冻磁吸实际生效，减少动效关闭持续运动
+[14/22] tests/ui.spec.ts:276:1 › 独立设置副本不响应审批快捷键，也不在新待办时播放通知
+[15/22] tests/ui.spec.ts:285:1 › 声音页提供11事件开关和音量，独立设置试听只请求主窗口
+[16/22] tests/ui.spec.ts:317:1 › 顶部拖动只在超过阈值后调用原生层，拖动不触发普通展开点击
+[17/22] tests/ui.spec.ts:338:1 › 关闭动画立即切换并持久化，界面状态仍继续更新
+[18/22] tests/ui.spec.ts:354:1 › Agents接入先预览路径与备份，再确认应用并刷新真实状态
+[19/22] tests/ui.spec.ts:382:1 › 配置冲突保留错误并禁用旧确认，重新预览才能再次提交
+[20/22] tests/ui.spec.ts:400:1 › 普通浏览器预览不会假装能够安装接入
+  1) tests/ui.spec.ts:400:1 › 普通浏览器预览不会假装能够安装接入 ────────────────────────────────────────────────────
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  getByText('实际客户端未验收', { exact: true })
+    Expected: 4
+    Received: 6
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveCount" getByText('实际客户端未验收', { exact: true }) with timeout 5000ms
+      - waiting for getByText('实际客户端未验收', { exact: true })
+        14 × locator resolved to 6 elements
+           - unexpected value "6"
+
+
+      403 |   await expect(page.getByText('浏览器预览不安装或移除接入，请在 Windows 客户端操作。',{exact:true})).toBeVisible();
+      404 |   await expect(page.getByRole('button',{name:'启用接入…',exact:true})).toHaveCount(0);
+    > 405 |   await expect(page.getByText('实际客户端未验收',{exact:true})).toHaveCount(4);
+          |                                                         ^
+      406 | });
+      407 |
+      408 | test('运行时不可用时配置状态保持未知，不误报为未配置', async ({ page }) => {
+        at /Users/meteor/github/xisland/windows/tests/ui.spec.ts:405:57
+
+    Error Context: test-results/ui-普通浏览器预览不会假装能够安装接入/error-context.md
+
+
+(node:65894) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[21/22] tests/ui.spec.ts:408:1 › 运行时不可用时配置状态保持未知，不误报为未配置
+  2) tests/ui.spec.ts:408:1 › 运行时不可用时配置状态保持未知，不误报为未配置 ──────────────────────────────────────────────
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  getByText('运行时未就绪，配置状态未知', { exact: true })
+    Expected: 4
+    Received: 6
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveCount" getByText('运行时未就绪，配置状态未知', { exact: true }) with timeout 5000ms
+      - waiting for getByText('运行时未就绪，配置状态未知', { exact: true })
+        14 × locator resolved to 6 elements
+           - unexpected value "6"
+
+
+      409 |   await mountHarness(page,{preferencesWindow:true,integrations:true,unknownRuntime:true});
+      410 |   await page.getByRole('button',{name:'Agents',exact:true}).click();
+    > 411 |   await expect(page.getByText('运行时未就绪，配置状态未知',{exact:true})).toHaveCount(4);
+          |                                                              ^
+      412 |   await expect(page.getByText('未配置',{exact:true})).toHaveCount(0);
+      413 |   for(const agent of ['claude_code','codex','cursor','gemini_cli'])await expect(page.locator(`[data-integration-agent="${agent}"]`).getByRole('button',{name:'启用接入…',exact:true})).toBeDisabled();
+      414 | });
+        at /Users/meteor/github/xisland/windows/tests/ui.spec.ts:411:62
+
+    Error Context: test-results/ui-运行时不可用时配置状态保持未知，不误报为未配置/error-context.md
+
+
+(node:65949) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[22/22] tests/ui.spec.ts:416:1 › 独立设置按小屏可用区域适配，工具栏可横滚且关闭按钮始终可用
+  2 failed
+    tests/ui.spec.ts:400:1 › 普通浏览器预览不会假装能够安装接入 ─────────────────────────────────────────────────────
+    tests/ui.spec.ts:408:1 › 运行时不可用时配置状态保持未知，不误报为未配置 ───────────────────────────────────────────────
+  20 passed (36.3s)

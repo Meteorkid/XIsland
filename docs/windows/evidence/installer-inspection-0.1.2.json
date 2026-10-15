@@ -1,0 +1,48 @@
+{
+  "date": "2026-10-15",
+  "version": "0.1.2",
+  "inspection": "independent NSIS extraction with 7-Zip",
+  "installerSha256": "3020b1cec6b432a2a27a9f80382df300b0ad826511669c1855cad59caec91df5",
+  "packagedApplicationDifference": "Only verified Tauri bundle marker UNK -> NSS (3 bytes)",
+  "bundledNodeMatchesOfficialChecksum": true,
+  "hookContainsSevenAdaptersAndWorkBuddyExport": true,
+  "traeDomesticConfigurationShared": true,
+  "windowsExecutionVerified": false,
+  "files": [
+    {
+      "path": "xisland.exe",
+      "size": 10167808,
+      "sha256": "44e502e978eb2f3b8248d4f5016c36afa78ef34b9bc59117ef969c9f3e73fa44"
+    },
+    {
+      "path": "resources/xisland-bridge.exe",
+      "size": 646656,
+      "sha256": "6617f4ec80c6d7e240cf5a0b73f2c3ecbd43aec9a0f8831bdcc3be9016d9567b"
+    },
+    {
+      "path": "resources/xisland-hook.cjs",
+      "size": 96618,
+      "sha256": "79a9f213c048eeced062885ea553dd5888e58fdb0eab4d3feaec6fdf27735c21"
+    },
+    {
+      "path": "resources/node.exe",
+      "size": 93580104,
+      "sha256": "ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32"
+    },
+    {
+      "path": "resources/LICENSE-node.txt",
+      "size": 157609,
+      "sha256": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace"
+    },
+    {
+      "path": "resources/LICENSE-XIsland.txt",
+      "size": 2853,
+      "sha256": "d2cc6f0f8571ecf7d5407f2dc0b0a9b95c0221c95b2c547eb69b965f27a3d83b"
+    },
+    {
+      "path": "resources/node-runtime.json",
+      "size": 335,
+      "sha256": "0ad125c17c4946d30b3ac19d4819a3b0fa718e1a7670a58f0b8719b34d38f4fe"
+    }
+  ]
+}
