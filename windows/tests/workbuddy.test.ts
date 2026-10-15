@@ -59,10 +59,13 @@ test('WorkBuddy marketplace exports exact neutral Windows commands and never ove
   const hooks = JSON.parse(files['hooks/hooks.json']!).hooks;
   assert.deepEqual(Object.keys(hooks), [...WORKBUDDY_HOOK_EVENTS]);
   for (const event of WORKBUDDY_HOOK_EVENTS) {
-    const handler = hooks[event][0].hooks[0]; assert.equal(handler.timeout, 3);
+    const handler = hooks[event][0].hooks[0]; assert.equal(handler.timeout, 10);
     const command = Buffer.from(handler.command.split(' -EncodedCommand ')[1], 'base64').toString('utf16le');
     assert.ok(command.includes('"--agent" "workbuddy"')); assert.ok(command.includes(`"--hook" "${event}"`));
     assert.ok(command.endsWith('exit 0 }')); assert.ok(command.includes('BaseStream.CopyToAsync'));
+    assert.ok(command.includes('WaitForExit(4000)')); assert.ok(command.includes('$inputCopy.Wait(1000)'));
+    assert.ok(command.includes('[System.IO.Stream]::Null')); assert.ok(!command.includes('OpenStandardOutput'));
+    assert.ok(!command.includes('"async"')); assert.ok(!command.includes('$p.WaitForExit()'));
   }
   assert.equal(JSON.parse(files['.codebuddy-plugin/marketplace.json']!).plugins[0].source, './');
   const destination = join(parent, 'export'); await writeWorkBuddyPlugin(destination, files);

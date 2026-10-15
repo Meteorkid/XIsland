@@ -1,0 +1,17 @@
+{
+  "selectedSessionId": "fixture-custom-question",
+  "sessions": [{
+    "id": "fixture-custom-question",
+    "agentType": "opencode",
+    "workingDirectory": "/tmp/demo",
+    "prompt": "Free text fixture",
+    "status": "waitingAnswer",
+    "pendingQuestion": {
+      "requestingAgent": "opencode",
+      "text": "请输入项目目录",
+      "options": [],
+      "allowsCustomAnswer": true
+    }
+  }],
+  "update": { "state": "idle" }
+}

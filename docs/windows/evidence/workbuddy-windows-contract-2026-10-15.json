@@ -1,0 +1,273 @@
+{
+  "generatedAt": "2026-10-15T08:10:05.608Z",
+  "client": "WorkBuddy Windows x64 5.7.7.40774747-2e8619da",
+  "classification": "Windows official package static inspection plus isolated extracted-function checks; not Windows application execution or real-client acceptance",
+  "officialHistoryUrl": "https://www.codebuddy.cn/docs/workbuddy/Download-History",
+  "officialPluginDocumentationUrl": "https://www.codebuddy.cn/docs/workbuddy/Plugins",
+  "installerUrl": "https://acc-1258344699.cos.ap-guangzhou.myqcloud.com/workbuddy/saas/win32-x64-user/WorkBuddy-win32-x64-user-5.7.7.40774747-2e8619da.exe",
+  "artifacts": [
+    {
+      "name": "WorkBuddy-5.7.7.exe",
+      "path": "/tmp/xisland-workbuddy-public-audit/WorkBuddy-5.7.7.exe",
+      "bytes": 435848544,
+      "sha256": "42f2d8120ba3900b83a80ed0d9f318b3df7b5c84b58efa7b7860b83860578d2d"
+    },
+    {
+      "name": "codebuddy-lite-wb.mjs",
+      "path": "/tmp/xisland-workbuddy-public-audit/windows/resources/app.asar.unpacked/cli/dist/codebuddy-lite-wb.mjs",
+      "bytes": 8567703,
+      "sha256": "fd44e8c6250e056f9d360f5b46247a410e3aab5878e99cb09e354ab6d27949cc"
+    },
+    {
+      "name": "codebuddy-headless.js",
+      "path": "/tmp/xisland-workbuddy-public-audit/windows/resources/app.asar.unpacked/cli/dist/codebuddy-headless.js",
+      "bytes": 11938885,
+      "sha256": "24421091d73247294b2a6f3371baf1750a904cdf0e56e0373e8f17b211ded695"
+    }
+  ],
+  "repositoryInputs": [
+    {
+      "relative": "windows/src/integrations/workbuddy-plugin.ts",
+      "sha256": "d2970d947535c6c6bdff5c6212a2aae79d104431d350c1343ba659da4924f6a1"
+    },
+    {
+      "relative": "windows/src/integrations/plan.ts",
+      "sha256": "b8729d75dc65d3f2930fdba7390ce7424cb706d998ee5b214bf8c08bf34e4fff"
+    }
+  ],
+  "generatedPlugin": {
+    "name": "xisland-workbuddy-observer",
+    "version": "0.1.1",
+    "events": [
+      "SessionStart",
+      "UserPromptSubmit",
+      "PreToolUse",
+      "PostToolUse",
+      "PostToolUseFailure",
+      "Stop",
+      "FinalStop",
+      "SessionEnd",
+      "SubagentStart",
+      "SubagentStop",
+      "Notification"
+    ],
+    "timeoutSeconds": 10,
+    "fileHashes": {
+      ".codebuddy-plugin/plugin.json": "25ca99b6e075aa9caef9c95f87967f3f410d0f2a05dc89e44ce2b3ef8e1aadf9",
+      ".codebuddy-plugin/marketplace.json": "c5606106c3e8be6eec9f573d4ddbb45ffe7c1064982efa098ae26e7d9cd21fcc",
+      "hooks/hooks.json": "93a75e2e7e64061e81c7bd5fb921478747731ee85943402460174ca45b522eec",
+      "README.txt": "fa6bb78d60f1d48367130bbfa04481e7021581cd1436697e8e3efdb796fc3a10"
+    }
+  },
+  "extractedVendorFunctions": [
+    {
+      "name": "PluginValidator",
+      "startMarker": "let ez=class{",
+      "endMarker": ";ez=plugin_validator_decorate",
+      "byteOffsetZeroBased": 7128721,
+      "byteLength": 5302,
+      "sha256": "6d3046b05dd6045834a43b46fd87049681fa30d17626d0d3b6bf21480db9bee0"
+    },
+    {
+      "name": "HookExtensionLoader validators",
+      "startMarker": "isValidHooksConfig(t){",
+      "endMarker": ";hook_loader_decorate",
+      "byteOffsetZeroBased": 7214539,
+      "byteLength": 861,
+      "sha256": "893c44c8478719b56c12938b111d825700f7e597aac411703ffa9b9bf8d5f371"
+    },
+    {
+      "name": "Local path containment functions",
+      "startMarker": "function isPathContainedInRoot",
+      "endMarker": "function resolveMarketplaceInstallDir",
+      "byteOffsetZeroBased": 7093070,
+      "byteLength": 917,
+      "sha256": "e27ec4b337e2507910ae18a3a9951c7c74d3cab6ad77e34630c8870f9850313f"
+    },
+    {
+      "name": "LocalPluginInstaller",
+      "startMarker": "let rM=class{support(t){",
+      "endMarker": ";local_plugin_installer_decorate",
+      "byteOffsetZeroBased": 7441939,
+      "byteLength": 1589,
+      "sha256": "bdbcd377c2af95f56d8a4cca63bc0f659f032307c72baec4576e5262cdbe5da3"
+    },
+    {
+      "name": "HookExecutor",
+      "startMarker": "let Od=class{async execute(",
+      "endMarker": ";hook_executor_decorate",
+      "byteOffsetZeroBased": 3328527,
+      "byteLength": 6330,
+      "sha256": "b6121d906105b384069abf7a7b723b9a62cbc26096b8edc00cba7de161726817"
+    },
+    {
+      "name": "HookManager aggregateSettledResults",
+      "startMarker": "aggregateSettledResults(t){",
+      "endMarker": "mergeMessages(t)",
+      "byteOffsetZeroBased": 3340790,
+      "byteLength": 1812,
+      "sha256": "f1e9267abdd2626bfd76364416286e0002c56637fdd64982b5d9b3b61f43bb86"
+    }
+  ],
+  "staticAnchors": {
+    "metadataDirectories": {
+      "anchor": "R=[\".codebuddy-plugin\",\".workbuddy-plugin\",\".claude-plugin\"]",
+      "byteOffsetZeroBased": 7089706
+    },
+    "baseMarketplaceLoad": {
+      "anchor": "async loadManifest(){",
+      "byteOffsetZeroBased": 7135077
+    },
+    "directoryMarketplace": {
+      "anchor": "let eQ=class extends eJ{",
+      "byteOffsetZeroBased": 7137086
+    },
+    "sourceParser": {
+      "anchor": "async parseSource(t){",
+      "byteOffsetZeroBased": 7376129
+    },
+    "hookLoader": {
+      "anchor": "let t8=\"hooks/hooks.json\"",
+      "byteOffsetZeroBased": 7212489
+    },
+    "directPowerShell": {
+      "anchor": "function tryBuildDirectPowerShellHookCommand",
+      "byteOffsetZeroBased": 3328128
+    },
+    "hiddenArgs": {
+      "anchor": "function withHiddenPowerShellArgs",
+      "byteOffsetZeroBased": 3327772
+    },
+    "commandHook": {
+      "anchor": "async executeCommandHook(t,i,n,s,c){",
+      "byteOffsetZeroBased": 3345474
+    },
+    "localHookDispatch": {
+      "anchor": "async executeLocalHook(t,i,n,s,c){",
+      "byteOffsetZeroBased": 3344440
+    },
+    "sessionStart": {
+      "anchor": "async executeSessionStartHooks(t,i){",
+      "byteOffsetZeroBased": 6971992
+    },
+    "userPrompt": {
+      "anchor": "async executeUserPromptSubmitHooks(t,i){",
+      "byteOffsetZeroBased": 6970583
+    },
+    "preTool": {
+      "anchor": "async executePreToolUseHooks(t,i,n,s,c,p){",
+      "byteOffsetZeroBased": 5487102
+    },
+    "postTool": {
+      "anchor": "async executePostToolUseHooks(t,i,n,s,c,p,h){",
+      "byteOffsetZeroBased": 5488090
+    },
+    "postToolFailure": {
+      "anchor": "hook_event_name:\"PostToolUseFailure\"",
+      "byteOffsetZeroBased": 5489870
+    },
+    "stop": {
+      "anchor": "async executeStopHooks(t,i,n){",
+      "byteOffsetZeroBased": 6974511
+    },
+    "finalStop": {
+      "anchor": "async executeFinalStopHooks(t,i=\"completed\"){",
+      "byteOffsetZeroBased": 6986317
+    },
+    "sessionEnd": {
+      "anchor": "async executeSessionEndHooks(t,i){",
+      "byteOffsetZeroBased": 6973944
+    },
+    "subagentStart": {
+      "anchor": "async executeSubagentStartHooks(t){",
+      "byteOffsetZeroBased": 6978466
+    },
+    "subagentStop": {
+      "anchor": "async executeSubagentStopHooks(t,i){",
+      "byteOffsetZeroBased": 6976324
+    },
+    "notification": {
+      "anchor": "async executeNotificationHooks(t,i,n){",
+      "byteOffsetZeroBased": 6977803
+    }
+  },
+  "validation": {
+    "plugin": {
+      "success": true,
+      "errors": [],
+      "warnings": [],
+      "filePath": ".codebuddy-plugin/plugin.json",
+      "fileType": "plugin"
+    },
+    "marketplace": {
+      "success": true,
+      "errors": [],
+      "warnings": [],
+      "filePath": ".codebuddy-plugin/marketplace.json",
+      "fileType": "marketplace"
+    },
+    "hooks": true,
+    "localSource": "./",
+    "resolvedPluginPath": "C:\\XIsland-Plugins\\workbuddy-export",
+    "launcherStaticChecks": {
+      "allStdoutAndStderrDrainedToNull": true,
+      "allInputWaitBounded1000ms": true,
+      "allProcessWaitBounded4000ms": true,
+      "noUnboundedWaitForExit": true,
+      "noUnboundedGetResult": true,
+      "allNeutralExitOnCatch": true
+    }
+  },
+  "isolatedExecutorChecks": {
+    "emptyOutput": {
+      "allowed": true,
+      "exitCode": 0,
+      "command": "FAKE-NOT-EXECUTED",
+      "stdout": "",
+      "stderr": ""
+    },
+    "hostTimeout": {
+      "allowed": false,
+      "exitCode": -1,
+      "message": "Hook timed out after 20ms"
+    },
+    "asyncOutput": {
+      "allowed": true,
+      "exitCode": 0,
+      "stdout": "{\"async\":true,\"asyncTimeout\":100,\"suppressOutput\":true}\n",
+      "stderr": ""
+    },
+    "aggregatedAsync": {
+      "allowed": true,
+      "stdout": "{\"async\":true,\"asyncTimeout\":100,\"suppressOutput\":true}\n"
+    }
+  },
+  "findings": [
+    "Existing absolute local paths become Directory marketplaces; a string plugin source ./ resolves to the marketplace root.",
+    "The default hooks/hooks.json is loaded automatically; adding the same file as a manifest hooks entry risks duplicate loading.",
+    "timeout is seconds in command hook config. Synchronous host timeout returns allowed:false and can block UserPromptSubmit.",
+    "The command dispatch chain does not pass config async to HookExecutor. asyncRewake is passed but not consumed by that executor in this fixed bundle.",
+    "Streaming stdout async:true is implemented, but its early result retains the JSON stdout and ignores suppressOutput, so SessionStart/UserPromptSubmit can add the handshake to context.",
+    "Keep empty stdout and neutral exit. The generated 0.1.1 launcher statically bounds stdin/process/drain waits and the host timeout is 10 seconds."
+  ],
+  "isolation": {
+    "vendorModuleBootstrapExecuted": false,
+    "workBuddyApplicationExecuted": false,
+    "realTasksRun": false,
+    "userConfigurationRead": false,
+    "credentialsRead": false,
+    "trustOrConfigurationModified": false,
+    "networkRequestsInVerificationScript": false,
+    "vendorFilesystem": "readFile only reads the generated in-memory manifest map; pathExists only returns true for one fictional Windows export directory; no vendor filesystem methods have access to disk",
+    "vendorProcessExecution": "spawn replaced entirely with in-memory EventEmitter; process exposes only empty env and platform win32; no require/import/fetch/client initialization is supplied to the VM",
+    "sourceHandling": "Reads fixed public installer and extracted runtime to verify SHA and slices. Does not save or vendor extracted third-party function source. The repository pure generator is imported, but no export/install/apply function is called."
+  },
+  "limits": [
+    "No Windows PowerShell execution",
+    "No WorkBuddy UI market installation/enabling",
+    "No real event receipt from WorkBuddy",
+    "No actual Windows cold-start or failure timing measurement",
+    "Headless SHA pinned and relevant contract inspected statically; isolated VM checks use the lite runtime"
+  ],
+  "reproduction": "node --import /Users/meteor/github/xisland/windows/node_modules/tsx/dist/loader.mjs /Users/meteor/github/xisland/windows/scripts/verify-workbuddy-package.mjs /tmp/xisland-workbuddy-public-audit"
+}

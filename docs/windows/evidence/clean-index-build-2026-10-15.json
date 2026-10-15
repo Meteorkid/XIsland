@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-15",
+  "indexTree": "8c1c0288edaa24e53935ed964cf43984f228fe38",
+  "method": "Export tracked index to an empty temporary directory; reuse dependencies; check/test/build without unstaged macOS files",
+  "checks": [
+    {
+      "command": [
+        "npm",
+        "run",
+        "check"
+      ],
+      "exitCode": 0
+    },
+    {
+      "command": [
+        "npm",
+        "test"
+      ],
+      "exitCode": 0
+    },
+    {
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exitCode": 0
+    }
+  ],
+  "passed": true,
+  "windowsRuntimeVerified": false
+}

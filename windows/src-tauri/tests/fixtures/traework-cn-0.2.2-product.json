@@ -1,0 +1,11 @@
+{
+  "applicationName": "trae-solo-cn",
+  "nameAlias": "TraeWork CN",
+  "nameShort": "TRAE SOLO CN",
+  "packageType": "SOLO_CN",
+  "providerCode": "cn",
+  "dataFolderName": ".trae-cn",
+  "appVersion": "0.2.2",
+  "win32NameVersion": "TraeWork CN",
+  "win32AppUserModelId": "ByteDance.TraeSoloCN"
+}

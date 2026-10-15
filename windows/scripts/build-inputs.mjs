@@ -20,7 +20,6 @@ export async function collectBuildInputs() {
     }
   }
   await visit(projectRoot);
-  await visit(path.resolve(projectRoot, '../Tests/Fixtures/app'));
   const license = path.resolve(projectRoot, '../LICENSE');
   files.push({ path: '../LICENSE', sha256: sha256(await readFile(license)) });
   files.sort((a, b) => a.path.localeCompare(b.path, 'en'));

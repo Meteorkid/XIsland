@@ -1,0 +1,30 @@
+{
+  "selectedSessionId": "fixture-question-a",
+  "sessions": [
+    {
+      "id": "fixture-question-a",
+      "agentType": "opencode",
+      "workingDirectory": "/tmp/a",
+      "status": "waitingAnswer",
+      "pendingQuestion": {
+        "requestingAgent": "opencode",
+        "text": "Question A",
+        "options": ["A"],
+        "allowsCustomAnswer": true
+      }
+    },
+    {
+      "id": "fixture-question-b",
+      "agentType": "opencode",
+      "workingDirectory": "/tmp/b",
+      "status": "waitingAnswer",
+      "pendingQuestion": {
+        "requestingAgent": "opencode",
+        "text": "Question B",
+        "options": ["B"],
+        "allowsCustomAnswer": true
+      }
+    }
+  ],
+  "update": { "state": "idle" }
+}

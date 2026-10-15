@@ -62,12 +62,13 @@ export function icon(name: string): SVGSVGElement {
 const names: Record<string, string> = {
   claude_code: 'Claude', 'claude-code': 'Claude', claudeCode: 'Claude', claude: 'Claude', codex: 'Codex',
   cursor: 'Cursor', gemini_cli: 'Gemini', geminiCli: 'Gemini', 'gemini-cli': 'Gemini', opencode: 'OpenCode',
-  trae: 'TRAE CN / TraeWork CN', trae_cn: 'TRAE CN / TraeWork CN', workbuddy: 'WorkBuddy', copilot: 'Copilot', windsurf: 'Windsurf', deepseek: 'DeepSeek', kimi: 'Kimi',
+  trae: 'TRAE CN / TraeWork CN', trae_cn: 'TRAE CN / TraeWork CN', trae_ide_cn: 'Trae CN', traework_cn: 'TraeWork CN',
+  workbuddy: 'WorkBuddy', copilot: 'Copilot', windsurf: 'Windsurf', deepseek: 'DeepSeek', kimi: 'Kimi',
 };
 
 export function agentName(type: string): string { return names[type] ?? type; }
 export function agentColor(type: string): string {
-  if (type === 'trae' || type === 'trae_cn') return '#33b3f2';
+  if (['trae', 'trae_cn', 'trae_ide_cn', 'traework_cn'].includes(type)) return '#33b3f2';
   if (type === 'workbuddy') return '#2389e8';
   const name = agentName(type).toLowerCase();
   return ({ claude: '#d97340', codex: '#33cc66', cursor: '#9966e6', gemini: '#4d80f2', trae: '#33b3f2',

@@ -5,7 +5,7 @@ import { SessionStore, MESSAGE_TYPES, parseDIMessage, encodeMessage, decodeMessa
   type DIMessage, type Session } from '../src/core/index';
 import { ObservationLedger, taskSessionId } from '../src/core/observation';
 
-const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../../Tests/Fixtures/${name}`, import.meta.url), 'utf8'));
+const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../src/fixtures/${name}`, import.meta.url), 'utf8'));
 const epoch = Date.parse('2026-10-13T00:00:00Z');
 function setup() {
   let now = epoch, mono = 0, serial = 0;
@@ -55,8 +55,8 @@ test('snapshot and subscriptions cannot mutate stored state', () => {
 
 test('same suffix from independent agents never merges, exact IDs win', () => {
   const { apply, store } = setup();
-  for (const agent of ['cursor', 'roo_code', 'pearai', 'codex']) apply('session_start', { sessionId: `${agent}-same`, agentType: agent, prompt: agent });
-  assert.equal(store.snapshot().sessions.length, 4);
+  for (const agent of ['cursor', 'roo_code', 'pearai', 'codex', 'trae', 'trae_ide_cn', 'traework_cn']) apply('session_start', { sessionId: `${agent}-same`, agentType: agent, prompt: agent });
+  assert.equal(store.snapshot().sessions.length, 7);
   apply('status_update', { sessionId: 'codex-same', agentType: 'codex', status: 'codex only' });
   assert.equal(store.snapshot().sessions.find(session => session.agentType === 'cursor')!.agentResponse, '');
 });
@@ -70,6 +70,21 @@ test('mirrored Claude interactive response retains the original wire session ID'
   const prepared = store.prepareResponse('cursor-shared', request.id, { kind: 'permission', approved: true });
   assert.equal(prepared?.response.sessionId, 'claude_code-shared');
   assert.equal(prepared?.sessionId, 'cursor-shared');
+});
+
+test('WorkBuddy and identified domestic TRAE sources cannot gain interactive controls', () => {
+  const { store, apply } = setup();
+  for (const agent of ['workbuddy', 'trae_ide_cn', 'traework_cn']) {
+    apply('session_start', { sessionId: `${agent}-same`, agentType: agent });
+    for (const type of ['permission_request', 'question', 'plan_review'] as const) {
+      for (const agentType of [agent, undefined, 'claude_code']) {
+        const result = apply(type, { sessionId: `${agent}-same`, agentType }, `${agent}-${type}-${String(agentType)}`);
+        assert.equal(result.accepted, false);
+        assert.ok(result.cancelRequestIds.length > 0);
+      }
+    }
+  }
+  assert.ok(store.snapshot().sessions.every(session => session.pendingInteractions.length === 0));
 });
 
 test('rejected mirrors do not mutate ownership and foreign child events cannot attach', () => {

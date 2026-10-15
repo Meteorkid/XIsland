@@ -1,0 +1,32 @@
+{
+  "selectedSessionId": "fixture-session-1",
+  "sessions": [
+    {
+      "id": "fixture-session-1",
+      "agentType": "claude_code",
+      "workingDirectory": "/tmp/project-a",
+      "prompt": "Implement diagnostics",
+      "status": "active",
+      "statusText": "Working through the task"
+    },
+    {
+      "id": "fixture-session-2",
+      "agentType": "codex",
+      "workingDirectory": "/tmp/project-b",
+      "prompt": "Review update flow",
+      "status": "idle",
+      "statusText": "Done"
+    },
+    {
+      "id": "fixture-session-3",
+      "agentType": "cursor",
+      "workingDirectory": "/tmp/project-c",
+      "prompt": "Handle session list",
+      "status": "completed",
+      "completedAt": "2099-01-01T00:00:00Z"
+    }
+  ],
+  "update": {
+    "state": "idle"
+  }
+}

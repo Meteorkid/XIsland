@@ -1,0 +1,19 @@
+{
+  "selectedSessionId": "fixture-plan",
+  "sessions": [
+    {
+      "id": "fixture-plan",
+      "agentType": "claude_code",
+      "workingDirectory": "/tmp/demo",
+      "prompt": "Review this plan",
+      "status": "waitingPlanReview",
+      "pendingPlanReview": {
+        "requestingAgent": "claude_code",
+        "markdown": "# Plan\n\n1. Add tests\n2. Ship it"
+      }
+    }
+  ],
+  "update": {
+    "state": "idle"
+  }
+}

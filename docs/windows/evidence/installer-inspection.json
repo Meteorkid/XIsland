@@ -1,28 +1,28 @@
 {
   "date": "2026-10-15",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "inspection": "independent NSIS extraction with 7-Zip",
-  "installerSha256": "3020b1cec6b432a2a27a9f80382df300b0ad826511669c1855cad59caec91df5",
+  "installerSha256": "2c140bb4c6852652b528933bb7acfde2db664685808fb27fb63d0697fe997d71",
   "packagedApplicationDifference": "Only verified Tauri bundle marker UNK -> NSS (3 bytes)",
   "bundledNodeMatchesOfficialChecksum": true,
-  "hookContainsSevenAdaptersAndWorkBuddyExport": true,
-  "traeDomesticConfigurationShared": true,
+  "hookContainsBoundedWorkBuddyLauncher": true,
+  "bridgeContainsTraeOriginLabels": true,
   "windowsExecutionVerified": false,
   "files": [
     {
       "path": "xisland.exe",
-      "size": 10167808,
-      "sha256": "44e502e978eb2f3b8248d4f5016c36afa78ef34b9bc59117ef969c9f3e73fa44"
+      "size": 10226176,
+      "sha256": "78db71faec0e9eb25bae0385859eca627655b521e3f928ec550d9b689aaf9c09"
     },
     {
       "path": "resources/xisland-bridge.exe",
-      "size": 646656,
-      "sha256": "6617f4ec80c6d7e240cf5a0b73f2c3ecbd43aec9a0f8831bdcc3be9016d9567b"
+      "size": 745472,
+      "sha256": "7a0e31f836e3c47e0e3dd2ae8a305f700658fed10edfa99e8d5fece7bc8e8f7b"
     },
     {
       "path": "resources/xisland-hook.cjs",
-      "size": 96618,
-      "sha256": "79a9f213c048eeced062885ea553dd5888e58fdb0eab4d3feaec6fdf27735c21"
+      "size": 98088,
+      "sha256": "7a75ca1b45f569126d84d90f64e55ac0ff55db769be71c98fb70bdb9b9c0f169"
     },
     {
       "path": "resources/node.exe",

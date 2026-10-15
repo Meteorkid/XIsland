@@ -1,0 +1,51 @@
+{
+  "date": "2026-10-15",
+  "scope": "Freeze synthetic fixtures used by Windows builds/tests; source files are unchanged",
+  "fixtures": [
+    {
+      "source": "Tests/Fixtures/app/session-list.json",
+      "snapshot": "windows/src/fixtures/app/session-list.json",
+      "sha256": "e82ad367aba33d8e71f54b1fc30960fddb5193ab730dce15722cc7bd9f4783ff"
+    },
+    {
+      "source": "Tests/Fixtures/app/permission-smoke.json",
+      "snapshot": "windows/src/fixtures/app/permission-smoke.json",
+      "sha256": "651e9a4cb5c06096801e91461930a69e2b6dd90e1a9ab53fb83b025a2a4de3a1"
+    },
+    {
+      "source": "Tests/Fixtures/app/question-smoke.json",
+      "snapshot": "windows/src/fixtures/app/question-smoke.json",
+      "sha256": "24298159223dff85df5d47733687da4a3f41ca6fda30c63cc3c71df60ce6e974"
+    },
+    {
+      "source": "Tests/Fixtures/app/question-custom.json",
+      "snapshot": "windows/src/fixtures/app/question-custom.json",
+      "sha256": "9fb1c14c5f9429481ff588724febd37e490560b5494bd7dc8efd1c1f1c67a363"
+    },
+    {
+      "source": "Tests/Fixtures/app/question-focus.json",
+      "snapshot": "windows/src/fixtures/app/question-focus.json",
+      "sha256": "4eb20df38b33ec77dd9c07514d4cb24a3d161e242300facc9a72b95c3c3b3952"
+    },
+    {
+      "source": "Tests/Fixtures/app/plan-smoke.json",
+      "snapshot": "windows/src/fixtures/app/plan-smoke.json",
+      "sha256": "28bc01263fb820eb992a2a0d4aa056343a277664f01136b3a4ed9bd6fec35266"
+    },
+    {
+      "source": "Tests/Fixtures/companion/observation-events.json",
+      "snapshot": "windows/src/fixtures/companion/observation-events.json",
+      "sha256": "21fc320b0adf5abb3a5dc3b2d047c0c701fe606da234b388defcd138373da382"
+    },
+    {
+      "source": "Tests/Fixtures/app/empty-interaction.json",
+      "snapshot": "windows/src/fixtures/app/empty-interaction.json",
+      "sha256": "5febf385f707a488f2d15c881cca6b4b044dfde65632de46691235b2d296ebb3"
+    },
+    {
+      "source": "Tests/Fixtures/app/update-available.json",
+      "snapshot": "windows/src/fixtures/app/update-available.json",
+      "sha256": "64c1987e48830110d461fcd07c102d41f5f5accafb664af95281bb8ec62419b9"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # XIsland for Windows
 
-这是 XIsland 的 Windows 客户端，采用 Tauri 2、Rust 和 TypeScript。目标是对齐 macOS 版的功能、外观与交互；当前源码为 **0.1.2 开发预览，不是已经完成全部功能对齐的正式版**。
+这是 XIsland 的 Windows 客户端，采用 Tauri 2、Rust 和 TypeScript。目标是对齐 macOS 版的功能、外观与交互；当前源码为 **0.1.3 开发预览，不是已经完成全部功能对齐的正式版**。
 
 ## 当前进度
 
@@ -8,7 +8,7 @@
 - 已实现独立设置窗口、深浅/系统主题、中文/英文/日文/韩文/法文、动画强度、果冻/磁吸、减少动态效果、11 类 Mac 方波音效、逐事件声音开关和勿扰。
 - Windows 原生层包括命名管道、单实例/托盘、不抢焦点的定位、水平拖动、显示器跟随、交互期间固定显示器及可选全屏隐藏。这些 API 已通过 Windows 目标编译，真实焦点、DPI、输入法和多屏效果仍需 Windows 验收。
 - Claude、Codex、Cursor、Gemini 有专用 hook 入口和可审查的接入配置操作。**配置写入成功不等于该客户端已验收。** Gemini 当前只观察；Claude 多题/原生多选暂留给原客户端；其他工具能力见适配器测试与 `../docs/windows/`。
-- Windsurf、TRAE CN / TraeWork CN 采用观察模式。国内版 TRAE 两款客户端共用一个配置入口；当前不区分事件究竟来自 IDE 还是 Work，不重复安装两套命令。TraeWork 的协议证据来自 0.2.2 公开安装资源，Windows 本地任务待实测，云端任务不在当前接入范围。
+- Windsurf、TRAE CN / TraeWork CN 采用观察模式。国内版 TRAE 两款客户端共用一个配置入口；Windows 桥接通过父进程及公开产品信息分别标识 Trae CN / TraeWork CN；识别超时或信息不明时保留共享来源，不重复安装两套命令。TraeWork 0.2.2 官方 Windows 安装资源已核对，真实本地任务仍待实测，云端任务未接入。
 - WorkBuddy 新增独立观察适配和插件导出入口，覆盖 11 类事件；需要在 WorkBuddy 内安装并启用所导出的插件。完整目标矩阵、Kimi 原生观察接线、SSH、配额、自动更新、自定义静音规则等仍在后续阶段。
 
 ## 在 Windows 试用
@@ -25,7 +25,8 @@
 
 - **TraeWork CN**：在 Agents 页使用“TRAE CN / TraeWork CN”入口。两者共用 `%USERPROFILE%\.trae-cn\hooks.json`，只安装一次；在原客户端确认启用和信任后，新建本地任务。设置成功不代表已触发，需观察真实事件。卸载这个共享入口会同时影响两款客户端。
 - **WorkBuddy**：点击“导出 WorkBuddy 插件…”，在 WorkBuddy 的插件页面添加本地市场，选择显示的完整目录，再安装并启用 `xisland-workbuddy-observer`。生成目录位于 `%USERPROFILE%\XIsland-Plugins`；导出不会修改 WorkBuddy 配置或信任。若该版本不接受本地市场目录，请回传版本和错误提示。
-- WorkBuddy 观察合同依据 5.7.6 / 5.7.7。插件仅引用当前 XIsland 安装资源，移动/卸载 XIsland 后需要重新导出；卸载前应先在 WorkBuddy 停用并移除插件及本地市场。
+- WorkBuddy 观察合同依据 5.7.6 / 5.7.7，并已核对 5.7.7 官方 Windows 包；本轮导出插件版本为 0.1.1。插件仅引用当前 XIsland 安装资源，移动/卸载 XIsland 后需要重新导出。升级旧插件时，先在 WorkBuddy 移除旧观察插件和旧本地市场，再导入新目录；卸载前也应完成移除。
+- WorkBuddy 启动器对输入、子进程与输出分别限时，保持空 stdout 和中性退出；不使用可能进入模型上下文的异步控制输出。
 - 两者均不替用户批准操作或回答问题；Stop 只表示准备停止，不能据此宣布整个任务成功。Windows 原生客户端验收尚未完成。
 
 当前安装包尚未签名。若系统阻止启动，请记录系统提示并反馈，不要更改整台电脑的安全设置。尚未在 Windows 上确认安装与卸载流程；不要把安装包生成成功当作安装验收。

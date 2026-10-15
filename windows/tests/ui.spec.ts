@@ -427,6 +427,21 @@ test('WorkBuddy导出不假装安装，TraeWork与TRAE国内版只有一个配�
   await capture(page,'ui-workbuddy-export-mock.png');
 });
 
+test('识别后的TraeWork和Trae IDE在共享配置下分别显示来源', async ({ page }) => {
+  await mountHarness(page,{preferencesWindow:true,integrations:true});
+  await page.evaluate(() => {
+    const store=(window as unknown as {__islandTest:{store:{apply(value:unknown):unknown}}}).__islandTest.store;
+    for (const agent of ['trae_ide_cn','traework_cn']) store.apply({type:'session_start',agentType:agent,sessionId:`${agent}-same`,
+      timestamp:new Date().toISOString(),prompt:'来源识别样例'});
+  });
+  await page.getByRole('button',{name:'Agents',exact:true}).click();
+  await expect(page.locator('.agent-setting-row').getByText('Trae CN',{exact:true})).toBeVisible();
+  await expect(page.locator('.agent-setting-row').getByText('TraeWork CN',{exact:true})).toBeVisible();
+  await expect(page.locator('[data-integration-agent="trae_cn"]')).toHaveCount(1);
+  await page.locator('.agent-setting-row').getByText('TraeWork CN',{exact:true}).scrollIntoViewIfNeeded();
+  await capture(page,'ui-traework-origin-mock.png');
+});
+
 test('运行时不可用时配置状态保持未知，不误报为未配置', async ({ page }) => {
   await mountHarness(page,{preferencesWindow:true,integrations:true,unknownRuntime:true});
   await page.getByRole('button',{name:'Agents',exact:true}).click();

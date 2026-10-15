@@ -1,0 +1,137 @@
+{
+  "capturedAt": "2026-10-09T13:22:24.089Z",
+  "messages": [
+    {
+      "type": "session_start",
+      "sessionId": "roo_code-0123456789abcdef01234567-f5c55c50-dc6f-4acd-bb7c-7765332029ec-5ZCM5LiA5Lu75YqhL_CfmIA",
+      "agentType": "roo_code",
+      "nativeEvent": "taskStarted",
+      "nativeTaskId": "同一任务/😀",
+      "statusIsAssistantReply": false,
+      "sourceNamespace": "0123456789abcdef01234567",
+      "sourceInstanceId": "f5c55c50-dc6f-4acd-bb7c-7765332029ec",
+      "observationSequence": 1,
+      "timestamp": "2026-10-09T13:22:24Z"
+    },
+    {
+      "type": "status_update",
+      "sessionId": "roo_code-0123456789abcdef01234567-f5c55c50-dc6f-4acd-bb7c-7765332029ec-5ZCM5LiA5Lu75YqhL_CfmIA",
+      "agentType": "roo_code",
+      "nativeEvent": "taskPaused",
+      "nativeTaskId": "同一任务/😀",
+      "statusIsAssistantReply": false,
+      "observedState": "idle",
+      "status": "原应用暂停或等待后续操作",
+      "sourceNamespace": "0123456789abcdef01234567",
+      "sourceInstanceId": "f5c55c50-dc6f-4acd-bb7c-7765332029ec",
+      "observationSequence": 2,
+      "timestamp": "2026-10-09T13:22:24Z"
+    },
+    {
+      "type": "subagent_start",
+      "sessionId": "roo_code-0123456789abcdef01234567-f5c55c50-dc6f-4acd-bb7c-7765332029ec-5ZCM5LiA5Lu75YqhL_CfmIA",
+      "agentType": "roo_code",
+      "nativeEvent": "taskSpawned",
+      "nativeTaskId": "同一任务/😀",
+      "statusIsAssistantReply": false,
+      "parentSessionId": "roo_code-0123456789abcdef01234567-f5c55c50-dc6f-4acd-bb7c-7765332029ec-5ZCM5LiA5Lu75YqhL_CfmIA",
+      "subagentId": "roo_code-0123456789abcdef01234567-f5c55c50-dc6f-4acd-bb7c-7765332029ec-Y2hpbGQvJeS4reaWhw",
+      "sourceNamespace": "0123456789abcdef01234567",
+      "sourceInstanceId": "f5c55c50-dc6f-4acd-bb7c-7765332029ec",
+      "observationSequence": 3,
+      "timestamp": "2026-10-09T13:22:24Z"
+    },
+    {
+      "type": "subagent_end",
+      "sessionId": "roo_code-0123456789abcdef01234567-f5c55c50-dc6f-4acd-bb7c-7765332029ec-5ZCM5LiA5Lu75YqhL_CfmIA",
+      "agentType": "roo_code",
+      "nativeEvent": "taskDelegationCompleted",
+      "nativeTaskId": "同一任务/😀",
+      "statusIsAssistantReply": false,
+      "parentSessionId": "roo_code-0123456789abcdef01234567-f5c55c50-dc6f-4acd-bb7c-7765332029ec-5ZCM5LiA5Lu75YqhL_CfmIA",
+      "subagentId": "roo_code-0123456789abcdef01234567-f5c55c50-dc6f-4acd-bb7c-7765332029ec-Y2hpbGQvJeS4reaWhw",
+      "sourceNamespace": "0123456789abcdef01234567",
+      "sourceInstanceId": "f5c55c50-dc6f-4acd-bb7c-7765332029ec",
+      "observationSequence": 4,
+      "timestamp": "2026-10-09T13:22:24Z"
+    },
+    {
+      "type": "observation_heartbeat",
+      "sessionId": "roo_code-0123456789abcdef01234567-f5c55c50-dc6f-4acd-bb7c-7765332029ec",
+      "agentType": "roo_code",
+      "sourceNamespace": "0123456789abcdef01234567",
+      "sourceInstanceId": "f5c55c50-dc6f-4acd-bb7c-7765332029ec",
+      "observationSequence": 5,
+      "timestamp": "2026-10-09T13:22:24Z"
+    },
+    {
+      "type": "observation_ended",
+      "sessionId": "roo_code-0123456789abcdef01234567-f5c55c50-dc6f-4acd-bb7c-7765332029ec",
+      "agentType": "roo_code",
+      "sourceNamespace": "0123456789abcdef01234567",
+      "sourceInstanceId": "f5c55c50-dc6f-4acd-bb7c-7765332029ec",
+      "observationSequence": 6,
+      "timestamp": "2026-10-09T13:22:24Z"
+    },
+    {
+      "type": "session_start",
+      "sessionId": "pearai-0123456789abcdef01234567-fc228330-109a-4cb6-97e7-e54905981256-5ZCM5LiA5Lu75YqhL_CfmIA",
+      "agentType": "pearai",
+      "nativeEvent": "taskStarted",
+      "nativeTaskId": "同一任务/😀",
+      "statusIsAssistantReply": false,
+      "sourceNamespace": "0123456789abcdef01234567",
+      "sourceInstanceId": "fc228330-109a-4cb6-97e7-e54905981256",
+      "observationSequence": 1,
+      "timestamp": "2026-10-09T13:22:24Z"
+    },
+    {
+      "type": "status_update",
+      "sessionId": "pearai-0123456789abcdef01234567-fc228330-109a-4cb6-97e7-e54905981256-5ZCM5LiA5Lu75YqhL_CfmIA",
+      "agentType": "pearai",
+      "nativeEvent": "taskPaused",
+      "nativeTaskId": "同一任务/😀",
+      "statusIsAssistantReply": false,
+      "observedState": "idle",
+      "status": "原应用暂停或等待后续操作",
+      "sourceNamespace": "0123456789abcdef01234567",
+      "sourceInstanceId": "fc228330-109a-4cb6-97e7-e54905981256",
+      "observationSequence": 2,
+      "timestamp": "2026-10-09T13:22:24Z"
+    },
+    {
+      "type": "subagent_start",
+      "sessionId": "pearai-0123456789abcdef01234567-fc228330-109a-4cb6-97e7-e54905981256-5ZCM5LiA5Lu75YqhL_CfmIA",
+      "agentType": "pearai",
+      "nativeEvent": "taskSpawned",
+      "nativeTaskId": "同一任务/😀",
+      "statusIsAssistantReply": false,
+      "parentSessionId": "pearai-0123456789abcdef01234567-fc228330-109a-4cb6-97e7-e54905981256-5ZCM5LiA5Lu75YqhL_CfmIA",
+      "subagentId": "pearai-0123456789abcdef01234567-fc228330-109a-4cb6-97e7-e54905981256-Y2hpbGQvJeS4reaWhw",
+      "sourceNamespace": "0123456789abcdef01234567",
+      "sourceInstanceId": "fc228330-109a-4cb6-97e7-e54905981256",
+      "observationSequence": 3,
+      "timestamp": "2026-10-09T13:22:24Z"
+    },
+    {
+      "type": "observation_heartbeat",
+      "sessionId": "pearai-0123456789abcdef01234567-fc228330-109a-4cb6-97e7-e54905981256",
+      "agentType": "pearai",
+      "sourceNamespace": "0123456789abcdef01234567",
+      "sourceInstanceId": "fc228330-109a-4cb6-97e7-e54905981256",
+      "observationSequence": 4,
+      "timestamp": "2026-10-09T13:22:24Z"
+    },
+    {
+      "type": "observation_ended",
+      "sessionId": "pearai-0123456789abcdef01234567-fc228330-109a-4cb6-97e7-e54905981256",
+      "agentType": "pearai",
+      "sourceNamespace": "0123456789abcdef01234567",
+      "sourceInstanceId": "fc228330-109a-4cb6-97e7-e54905981256",
+      "observationSequence": 5,
+      "timestamp": "2026-10-09T13:22:24Z"
+    }
+  ],
+  "scope": "Synthetic events emitted by the compiled TS observer; not vendor-client traffic",
+  "producerSHA256": "257c1f34f200e300f7a63f3e8ce85b992772dc76ea7a135c5aaf0446576e1427"
+}

@@ -1,5 +1,5 @@
 use std::{io::{self, Read}, process::ExitCode};
-use xisland_windows::{runtime, transport};
+use xisland_windows::{client_origin, runtime, transport};
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -10,7 +10,8 @@ async fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     let result = async {
-        let message = serde_json::from_slice(&input).map_err(io::Error::other)?;
+        let mut message = serde_json::from_slice(&input).map_err(io::Error::other)?;
+        client_origin::attribute_observation(&mut message);
         let descriptor = runtime::read_descriptor()?;
         transport::send(&descriptor, message).await
     }.await;

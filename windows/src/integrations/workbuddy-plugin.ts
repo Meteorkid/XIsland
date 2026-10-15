@@ -10,10 +10,10 @@ export interface WorkBuddyExportResult {
 }
 
 export function workBuddyPluginFiles(nodeExecutable: string, hookScript: string): Record<string, string> {
-  const manifest = { name: 'xisland-workbuddy-observer', version: '0.1.0',
+  const manifest = { name: 'xisland-workbuddy-observer', version: '0.1.1',
     description: 'XIsland Windows observation hooks; no permission decisions. Windows client acceptance pending.' };
   const hooks = Object.fromEntries(WORKBUDDY_HOOK_EVENTS.map(event => [event, [{ hooks: [{ type: 'command',
-    command: windowsHookCommand(nodeExecutable, hookScript, 'workbuddy', event), timeout: 3 }] }]]));
+    command: windowsHookCommand(nodeExecutable, hookScript, 'workbuddy', event), timeout: 10 }] }]]));
   const json = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
   return {
     '.codebuddy-plugin/plugin.json': json(manifest),
@@ -28,6 +28,8 @@ export function workBuddyPluginFiles(nodeExecutable: string, hookScript: string)
       'Stop 仅表示准备停止；FinalStop 才按原生原因更新状态。子代理结束不结束父任务。',
       '仅限本地任务；云端任务不保证能连接此电脑的 XIsland。',
       '插件引用当前 XIsland 安装中的 Node、hook 与 bridge；移动或卸载应用后需重新导出。',
+      '从旧观察插件升级：在 WorkBuddy 移除旧插件和旧本地市场，再导入本次导出目录；不要只移动旧目录。',
+      '观察启动器会限时结束并保持空输出，不使用可能注入模型上下文的异步握手。',
       '卸载接入：在 WorkBuddy 中停用并卸载该插件，然后移除该本地市场。',
       '合同依据：WorkBuddy 5.7.6 / 5.7.7 的公开安装资源；其他版本需单独验证。',
       'https://www.codebuddy.cn/docs/workbuddy/Plugins', ''].join('\r\n'),

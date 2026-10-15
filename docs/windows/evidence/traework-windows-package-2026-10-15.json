@@ -1,0 +1,66 @@
+{
+  "date": "2026-10-15",
+  "client": "TraeWork CN Windows x64 0.2.2",
+  "officialSource": "https://forum.trae.cn/t/topic/183651/12",
+  "installerUrl": "https://lf-cdn.trae.com.cn/obj/trae-com-cn/pkg/app/releases/stable/2.3.91089/win32/TraeWork_CN-Setup-x64.exe",
+  "installerSHA256": "ddabf0a5b2f161c733347984f0c78dc9914561da81d48d11e23fcff836260218",
+  "extractionTool": {
+    "name": "innoextract",
+    "commit": "6e9e34ed0876014fdb46e684103ef8c3605e382e"
+  },
+  "product": {
+    "applicationName": "trae-solo-cn",
+    "nameAlias": "TraeWork CN",
+    "packageType": "SOLO_CN",
+    "providerCode": "cn",
+    "dataFolderName": ".trae-cn",
+    "appVersion": "0.2.2",
+    "win32NameVersion": "TraeWork CN",
+    "win32AppUserModelId": "ByteDance.TraeSoloCN"
+  },
+  "resources": [
+    {
+      "path": "product.json",
+      "size": 79744,
+      "sha256": "d0ea8e060c2f850743c01737996ad6998d30e8eade767faf08449a3c74bad55e"
+    },
+    {
+      "path": "out/vs/workbench/workbench.desktop.main.js",
+      "size": 16099460,
+      "sha256": "d3988a5a58cf77ca4f3f0da75829f8913236e884adf47c59de54d66f8300dd59"
+    },
+    {
+      "path": "modules/ai-agent/ai_agent.dll",
+      "size": 277899152,
+      "sha256": "f7e9bb70b7f6319dc05cd6ef8ec6049a3518ce79ba603ad24c9967258ddcc4df"
+    }
+  ],
+  "nativeMarkers": {
+    "SessionStart": 160723395,
+    "UserPromptSubmit": 160723379,
+    "PreToolUse": 160723337,
+    "PostToolUse": 160723347,
+    "Stop": 160634825,
+    "Notification": 160723407,
+    "hook_event_name": 160721099,
+    "session_id": 160641664,
+    "tool_use_id": 161657237,
+    "tool_input": 169651471,
+    "tool_response": 160870872,
+    "notification_type": 169651627,
+    "last_assistant_message": 169651593,
+    ".trae/hooks.json": 160792139,
+    "powershell.exe": 160725496
+  },
+  "sharedConfigurationPaths": {
+    "global": ".trae-cn/hooks.json",
+    "project": ".trae/hooks.json",
+    "uiGlobalMarker": 9742729,
+    "uiProjectMarker": 9742695
+  },
+  "windowsApplicationExecuted": false,
+  "userConfigurationRead": false,
+  "trustChanged": false,
+  "realClientVerified": false,
+  "scope": "Read-only official Windows installer extraction and fixed metadata/marker checks, not hook execution or source attribution runtime acceptance."
+}

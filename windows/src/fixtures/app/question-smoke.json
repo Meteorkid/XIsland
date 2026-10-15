@@ -1,0 +1,20 @@
+{
+  "selectedSessionId": "fixture-question",
+  "sessions": [
+    {
+      "id": "fixture-question",
+      "agentType": "claude_code",
+      "workingDirectory": "/tmp/demo",
+      "prompt": "Need an answer",
+      "status": "waitingAnswer",
+      "pendingQuestion": {
+        "requestingAgent": "claude_code",
+        "text": "Continue with the change?",
+        "options": ["yes", "no"]
+      }
+    }
+  ],
+  "update": {
+    "state": "idle"
+  }
+}

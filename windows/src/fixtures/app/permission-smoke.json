@@ -1,0 +1,22 @@
+{
+  "selectedSessionId": "fixture-permission",
+  "sessions": [
+    {
+      "id": "fixture-permission",
+      "agentType": "claude_code",
+      "workingDirectory": "/tmp/demo",
+      "prompt": "Review this command",
+      "status": "waitingPermission",
+      "pendingPermission": {
+        "requestingAgent": "claude_code",
+        "tool": "Bash",
+        "description": "List the workspace files",
+        "filePath": "/tmp/demo",
+        "diff": ""
+      }
+    }
+  ],
+  "update": {
+    "state": "idle"
+  }
+}

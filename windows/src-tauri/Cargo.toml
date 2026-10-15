@@ -1,6 +1,6 @@
 [package]
 name = "xisland-windows"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 description = "Windows client for XIsland"
 default-run = "xisland"
@@ -36,4 +36,4 @@ tauri-plugin-single-instance = { version = "2", optional = true }
 tauri-plugin-dialog = { version = "2", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }

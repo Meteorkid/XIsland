@@ -1,8 +1,8 @@
 {
   "product": "XIsland for Windows",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "channel": "development-preview",
-  "createdAt": "2026-10-15T07:19:48.941Z",
+  "createdAt": "2026-10-15T09:24:17.381Z",
   "target": "x86_64-pc-windows-msvc",
   "crossCompiled": true,
   "signed": false,
@@ -10,9 +10,9 @@
   "fullMacParityVerified": false,
   "artifacts": [
     {
-      "name": "XIsland-Windows-0.1.2-preview-x64-setup.exe",
-      "size": 26228152,
-      "sha256": "3020b1cec6b432a2a27a9f80382df300b0ad826511669c1855cad59caec91df5"
+      "name": "XIsland-Windows-0.1.3-preview-x64-setup.exe",
+      "size": 26289667,
+      "sha256": "2c140bb4c6852652b528933bb7acfde2db664685808fb27fb63d0697fe997d71"
     },
     {
       "name": "Test-XIsland.ps1",
@@ -21,13 +21,13 @@
     },
     {
       "name": "Windows验收说明.md",
-      "size": 4764,
-      "sha256": "fe5301784b4701252ae48dcc6429e77289cbd633ccb552302b497add2f01e201"
+      "size": 4971,
+      "sha256": "e6514c0da9d048875d7e2535b0371a7a28a361839efe8b1e550d572c311503d2"
     },
     {
       "name": "README.md",
-      "size": 6557,
-      "sha256": "6b658272c9776df1583e9de02bddf7870e63d4a97772ae37b2b37ad09352355c"
+      "size": 6926,
+      "sha256": "0292a0b9e642285dbae8db2a22f5a47df55da7b36ef5a821446be662598beb44"
     },
     {
       "name": "LICENSE-node.txt",
@@ -40,33 +40,33 @@
       "sha256": "d2cc6f0f8571ecf7d5407f2dc0b0a9b95c0221c95b2c547eb69b965f27a3d83b"
     }
   ],
-  "unbundledExecutableSha256": "312e0fe1d76502d15b801f304a0672c1533390b3061a218558c8da7c19c254c3",
-  "installedExecutableSha256": "44e502e978eb2f3b8248d4f5016c36afa78ef34b9bc59117ef969c9f3e73fa44",
+  "unbundledExecutableSha256": "8d10890b092689c30e04b1d9d1d16a587b9f706238a6d913fbb0032b222c8b4d",
+  "installedExecutableSha256": "78db71faec0e9eb25bae0385859eca627655b521e3f928ec550d9b689aaf9c09",
   "bundleInspection": {
     "date": "2026-10-15",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "inspection": "independent NSIS extraction with 7-Zip",
-    "installerSha256": "3020b1cec6b432a2a27a9f80382df300b0ad826511669c1855cad59caec91df5",
+    "installerSha256": "2c140bb4c6852652b528933bb7acfde2db664685808fb27fb63d0697fe997d71",
     "packagedApplicationDifference": "Only verified Tauri bundle marker UNK -> NSS (3 bytes)",
     "bundledNodeMatchesOfficialChecksum": true,
-    "hookContainsSevenAdaptersAndWorkBuddyExport": true,
-    "traeDomesticConfigurationShared": true,
+    "hookContainsBoundedWorkBuddyLauncher": true,
+    "bridgeContainsTraeOriginLabels": true,
     "windowsExecutionVerified": false,
     "files": [
       {
         "path": "xisland.exe",
-        "size": 10167808,
-        "sha256": "44e502e978eb2f3b8248d4f5016c36afa78ef34b9bc59117ef969c9f3e73fa44"
+        "size": 10226176,
+        "sha256": "78db71faec0e9eb25bae0385859eca627655b521e3f928ec550d9b689aaf9c09"
       },
       {
         "path": "resources/xisland-bridge.exe",
-        "size": 646656,
-        "sha256": "6617f4ec80c6d7e240cf5a0b73f2c3ecbd43aec9a0f8831bdcc3be9016d9567b"
+        "size": 745472,
+        "sha256": "7a0e31f836e3c47e0e3dd2ae8a305f700658fed10edfa99e8d5fece7bc8e8f7b"
       },
       {
         "path": "resources/xisland-hook.cjs",
-        "size": 96618,
-        "sha256": "79a9f213c048eeced062885ea553dd5888e58fdb0eab4d3feaec6fdf27735c21"
+        "size": 98088,
+        "sha256": "7a75ca1b45f569126d84d90f64e55ac0ff55db769be71c98fb70bdb9b9c0f169"
       },
       {
         "path": "resources/node.exe",
@@ -91,45 +91,13 @@
     ]
   },
   "buildInputs": {
-    "version": "0.1.2",
-    "capturedAt": "2026-10-15T07:16:32.226Z",
-    "digest": "66c9ba5a20f91c93fc9d15f3c504496629223b8364feb3abdb47255bb880b895",
+    "version": "0.1.3",
+    "capturedAt": "2026-10-15T09:21:20.510Z",
+    "digest": "c0d940f5ec3f609cd77c959daa095a66484a514425ef8ddf0a1e72b76afede59",
     "files": [
       {
         "path": "../LICENSE",
         "sha256": "d2cc6f0f8571ecf7d5407f2dc0b0a9b95c0221c95b2c547eb69b965f27a3d83b"
-      },
-      {
-        "path": "../Tests/Fixtures/app/empty-interaction.json",
-        "sha256": "5febf385f707a488f2d15c881cca6b4b044dfde65632de46691235b2d296ebb3"
-      },
-      {
-        "path": "../Tests/Fixtures/app/permission-smoke.json",
-        "sha256": "651e9a4cb5c06096801e91461930a69e2b6dd90e1a9ab53fb83b025a2a4de3a1"
-      },
-      {
-        "path": "../Tests/Fixtures/app/plan-smoke.json",
-        "sha256": "28bc01263fb820eb992a2a0d4aa056343a277664f01136b3a4ed9bd6fec35266"
-      },
-      {
-        "path": "../Tests/Fixtures/app/question-custom.json",
-        "sha256": "9fb1c14c5f9429481ff588724febd37e490560b5494bd7dc8efd1c1f1c67a363"
-      },
-      {
-        "path": "../Tests/Fixtures/app/question-focus.json",
-        "sha256": "4eb20df38b33ec77dd9c07514d4cb24a3d161e242300facc9a72b95c3c3b3952"
-      },
-      {
-        "path": "../Tests/Fixtures/app/question-smoke.json",
-        "sha256": "24298159223dff85df5d47733687da4a3f41ca6fda30c63cc3c71df60ce6e974"
-      },
-      {
-        "path": "../Tests/Fixtures/app/session-list.json",
-        "sha256": "e82ad367aba33d8e71f54b1fc30960fddb5193ab730dce15722cc7bd9f4783ff"
-      },
-      {
-        "path": "../Tests/Fixtures/app/update-available.json",
-        "sha256": "64c1987e48830110d461fcd07c102d41f5f5accafb664af95281bb8ec62419b9"
       },
       {
         "path": "index.html",
@@ -137,11 +105,11 @@
       },
       {
         "path": "package-lock.json",
-        "sha256": "44f714bb59cc54888ab2953e6ee57752ead5827be7eb83b68fe861708ed697a8"
+        "sha256": "4de838afec9275f91ac3289fbe4ea8835d7695c85f432ff2cf9a129230f7f86c"
       },
       {
         "path": "package.json",
-        "sha256": "9869bbddaefd770aed51644fabb965c5b2e54eedd6d66d7597a7217b9b3da6ff"
+        "sha256": "7f7ff1fe60d3330a5aa06b8760f6f4af7d88234272558991b6e269985f314909"
       },
       {
         "path": "playwright.config.ts",
@@ -153,7 +121,7 @@
       },
       {
         "path": "scripts/build-inputs.mjs",
-        "sha256": "acbe3f0d10d24b8e3f649050af1e89acfc88b0a4bbe8090650b0b4f2f6f66390"
+        "sha256": "7cfa73764c9bcc56f2a35c2581c51fe4576c19e42d7d5a8e5a810eae04094ff1"
       },
       {
         "path": "scripts/build-windows.ps1",
@@ -172,6 +140,10 @@
         "sha256": "d717b6d3676107914f8193bffcd049b01dd2875d413a1afc993d4061f080df1b"
       },
       {
+        "path": "scripts/verify-workbuddy-package.mjs",
+        "sha256": "69dda630ce1753e625c813d3b5ff51e041f66de9cabaee866c2f61505af9fcdd"
+      },
+      {
         "path": "scripts/with-local-toolchain.sh",
         "sha256": "7604dd6ad9fbc0c634c0f2895c20926cc360d9627efb681dafa1f34c3ba47f7d"
       },
@@ -185,11 +157,11 @@
       },
       {
         "path": "src-tauri/Cargo.lock",
-        "sha256": "81b1c020309451155b90924fc87434421b063f6f9ae582446a005a980d0ad870"
+        "sha256": "d8c45d6e8ffa7982918a98cf248a3510cd28ca0cc12d0c56b3ec49e361c3628d"
       },
       {
         "path": "src-tauri/Cargo.toml",
-        "sha256": "bdbb743bd397a944b6c94b84df0f564d6aa724aa22c1ec53088916048334dcdf"
+        "sha256": "398350285a13fdaf14db013cb099a0374cfea30ea2fc485b45471447f7701c89"
       },
       {
         "path": "src-tauri/icons/128x128.png",
@@ -237,11 +209,15 @@
       },
       {
         "path": "src-tauri/resources/xisland-bridge.exe",
-        "sha256": "6617f4ec80c6d7e240cf5a0b73f2c3ecbd43aec9a0f8831bdcc3be9016d9567b"
+        "sha256": "7a0e31f836e3c47e0e3dd2ae8a305f700658fed10edfa99e8d5fece7bc8e8f7b"
       },
       {
         "path": "src-tauri/src/bin/bridge.rs",
-        "sha256": "93acfb4c18f0406d33577acc38f902c5c1dc4153554cab209bc6bbb0a70e3a5e"
+        "sha256": "50f6ca787e56edcf5a95d7fd459a11288280f13487fb16c8239821b25208eaaa"
+      },
+      {
+        "path": "src-tauri/src/client_origin.rs",
+        "sha256": "8a8b2ef60e4ca6b26b78a8e90f619de5f940e98c2b15a72faffe654b8c02a265"
       },
       {
         "path": "src-tauri/src/desktop_sync.rs",
@@ -257,7 +233,7 @@
       },
       {
         "path": "src-tauri/src/lib.rs",
-        "sha256": "4a6e58f7fbcbd0bdfebb6484bafa3fab627e063da204d309a2829d042ea0a4b2"
+        "sha256": "5863f2ac509a6255fd9fdd7f4d1485aecf4261ce2af44cc039a59355750e2b43"
       },
       {
         "path": "src-tauri/src/main.rs",
@@ -277,7 +253,11 @@
       },
       {
         "path": "src-tauri/tauri.conf.json",
-        "sha256": "eafd0d5241d42f748654c4826663e1029c7b876854e4bb6abaab6e3220c07b41"
+        "sha256": "e166e44f8d31d13d6570499486f806aff357e3b5029401933909de18cca61a60"
+      },
+      {
+        "path": "src-tauri/tests/fixtures/traework-cn-0.2.2-product.json",
+        "sha256": "8d3e361db26d89a2f2900293417e841ac698bada9efd6e20e9b12bfb4d3e647f"
       },
       {
         "path": "src-tauri/tests/transport_integration.rs",
@@ -333,7 +313,7 @@
       },
       {
         "path": "src/core/session-store.ts",
-        "sha256": "8fa7ea28f1b0f5db343c065f6e6bd2b234145c8d3f3a4cad508a6a30961558ea"
+        "sha256": "0fb80825754b7d3ee12ddccaacc7d49efb104e813862236592cf15393c0188cd"
       },
       {
         "path": "src/core/types.ts",
@@ -341,7 +321,43 @@
       },
       {
         "path": "src/fixtures.ts",
-        "sha256": "e3b5cfd013f447c3725ea10f07963ec95d4051a3a0ccd80efa2097687d8a1f93"
+        "sha256": "65f6e9f38cd6907ae47c0b68e90984f4ddc20ade1fc0c92af4fcecd4d7c5e024"
+      },
+      {
+        "path": "src/fixtures/app/empty-interaction.json",
+        "sha256": "5febf385f707a488f2d15c881cca6b4b044dfde65632de46691235b2d296ebb3"
+      },
+      {
+        "path": "src/fixtures/app/permission-smoke.json",
+        "sha256": "651e9a4cb5c06096801e91461930a69e2b6dd90e1a9ab53fb83b025a2a4de3a1"
+      },
+      {
+        "path": "src/fixtures/app/plan-smoke.json",
+        "sha256": "28bc01263fb820eb992a2a0d4aa056343a277664f01136b3a4ed9bd6fec35266"
+      },
+      {
+        "path": "src/fixtures/app/question-custom.json",
+        "sha256": "9fb1c14c5f9429481ff588724febd37e490560b5494bd7dc8efd1c1f1c67a363"
+      },
+      {
+        "path": "src/fixtures/app/question-focus.json",
+        "sha256": "4eb20df38b33ec77dd9c07514d4cb24a3d161e242300facc9a72b95c3c3b3952"
+      },
+      {
+        "path": "src/fixtures/app/question-smoke.json",
+        "sha256": "24298159223dff85df5d47733687da4a3f41ca6fda30c63cc3c71df60ce6e974"
+      },
+      {
+        "path": "src/fixtures/app/session-list.json",
+        "sha256": "e82ad367aba33d8e71f54b1fc30960fddb5193ab730dce15722cc7bd9f4783ff"
+      },
+      {
+        "path": "src/fixtures/app/update-available.json",
+        "sha256": "64c1987e48830110d461fcd07c102d41f5f5accafb664af95281bb8ec62419b9"
+      },
+      {
+        "path": "src/fixtures/companion/observation-events.json",
+        "sha256": "21fc320b0adf5abb3a5dc3b2d047c0c701fe606da234b388defcd138373da382"
       },
       {
         "path": "src/hook.ts",
@@ -353,11 +369,11 @@
       },
       {
         "path": "src/integrations/plan.ts",
-        "sha256": "47b3abccead69fbbff5e9396f7c4acc0d7befd2b1dfc1163b038547ebbdec2c3"
+        "sha256": "b8729d75dc65d3f2930fdba7390ce7424cb706d998ee5b214bf8c08bf34e4fff"
       },
       {
         "path": "src/integrations/workbuddy-plugin.ts",
-        "sha256": "a88c9d5cc9e233e11906c2a0b482eb0af4af4eb7a5c1a13141d0f5d829a81a36"
+        "sha256": "d2970d947535c6c6bdff5c6212a2aae79d104431d350c1343ba659da4924f6a1"
       },
       {
         "path": "src/main.ts",
@@ -377,7 +393,7 @@
       },
       {
         "path": "src/ui/components.ts",
-        "sha256": "51cd0650e46cb553d1bedc45988b42c984859889079662ae9767ce31245c192c"
+        "sha256": "35c700be27359590717527295e5788f56f60c9963ee0042dba7d4c412a3787d5"
       },
       {
         "path": "src/ui/i18n.ts",
@@ -425,7 +441,7 @@
       },
       {
         "path": "tests/core.test.ts",
-        "sha256": "591bb0a834a31ca0fe9d9f4b2128d473bf6d0042d142cfe4057d71f3824c2d3c"
+        "sha256": "5152f66f5976d0cd7cf2405512bad6f65c90801a4bb9037d2f1490ca508dc0b3"
       },
       {
         "path": "tests/cursor.test.ts",
@@ -465,7 +481,7 @@
       },
       {
         "path": "tests/ui.spec.ts",
-        "sha256": "4557f05d52cd25fcfff2940b998987b7ed354a6b7e3e6686ba1a93f454337184"
+        "sha256": "1340a69ec5c40cdfee8998fcf4023a2368626bb588d560acb2537a39b342494c"
       },
       {
         "path": "tests/window-sync.test.ts",
@@ -477,7 +493,7 @@
       },
       {
         "path": "tests/workbuddy.test.ts",
-        "sha256": "3757c98efae9bbf0c3b7b19847d0c2c10e912c58f2888b74efc0c438a94ea93d"
+        "sha256": "152d9ff621103c56e9e901e529ac092d85c819e05b397bf68ca92d9ea94f7c2e"
       },
       {
         "path": "tsconfig.json",
@@ -490,7 +506,7 @@
     ]
   },
   "workingTreeSnapshot": {
-    "capturedAt": "2026-10-15T07:19:48.945Z",
+    "capturedAt": "2026-10-15T09:24:17.385Z",
     "artifactSourceMatchVerified": true,
     "files": [
       {
@@ -499,11 +515,11 @@
       },
       {
         "path": "package-lock.json",
-        "sha256": "44f714bb59cc54888ab2953e6ee57752ead5827be7eb83b68fe861708ed697a8"
+        "sha256": "4de838afec9275f91ac3289fbe4ea8835d7695c85f432ff2cf9a129230f7f86c"
       },
       {
         "path": "package.json",
-        "sha256": "9869bbddaefd770aed51644fabb965c5b2e54eedd6d66d7597a7217b9b3da6ff"
+        "sha256": "7f7ff1fe60d3330a5aa06b8760f6f4af7d88234272558991b6e269985f314909"
       },
       {
         "path": "playwright.config.ts",
@@ -515,7 +531,7 @@
       },
       {
         "path": "scripts/build-inputs.mjs",
-        "sha256": "acbe3f0d10d24b8e3f649050af1e89acfc88b0a4bbe8090650b0b4f2f6f66390"
+        "sha256": "7cfa73764c9bcc56f2a35c2581c51fe4576c19e42d7d5a8e5a810eae04094ff1"
       },
       {
         "path": "scripts/build-windows.ps1",
@@ -534,6 +550,10 @@
         "sha256": "d717b6d3676107914f8193bffcd049b01dd2875d413a1afc993d4061f080df1b"
       },
       {
+        "path": "scripts/verify-workbuddy-package.mjs",
+        "sha256": "69dda630ce1753e625c813d3b5ff51e041f66de9cabaee866c2f61505af9fcdd"
+      },
+      {
         "path": "scripts/with-local-toolchain.sh",
         "sha256": "7604dd6ad9fbc0c634c0f2895c20926cc360d9627efb681dafa1f34c3ba47f7d"
       },
@@ -547,7 +567,7 @@
       },
       {
         "path": "src-tauri/Cargo.toml",
-        "sha256": "bdbb743bd397a944b6c94b84df0f564d6aa724aa22c1ec53088916048334dcdf"
+        "sha256": "398350285a13fdaf14db013cb099a0374cfea30ea2fc485b45471447f7701c89"
       },
       {
         "path": "src-tauri/resources/node-runtime.json",
@@ -555,7 +575,11 @@
       },
       {
         "path": "src-tauri/src/bin/bridge.rs",
-        "sha256": "93acfb4c18f0406d33577acc38f902c5c1dc4153554cab209bc6bbb0a70e3a5e"
+        "sha256": "50f6ca787e56edcf5a95d7fd459a11288280f13487fb16c8239821b25208eaaa"
+      },
+      {
+        "path": "src-tauri/src/client_origin.rs",
+        "sha256": "8a8b2ef60e4ca6b26b78a8e90f619de5f940e98c2b15a72faffe654b8c02a265"
       },
       {
         "path": "src-tauri/src/desktop_sync.rs",
@@ -571,7 +595,7 @@
       },
       {
         "path": "src-tauri/src/lib.rs",
-        "sha256": "4a6e58f7fbcbd0bdfebb6484bafa3fab627e063da204d309a2829d042ea0a4b2"
+        "sha256": "5863f2ac509a6255fd9fdd7f4d1485aecf4261ce2af44cc039a59355750e2b43"
       },
       {
         "path": "src-tauri/src/main.rs",
@@ -591,7 +615,11 @@
       },
       {
         "path": "src-tauri/tauri.conf.json",
-        "sha256": "eafd0d5241d42f748654c4826663e1029c7b876854e4bb6abaab6e3220c07b41"
+        "sha256": "e166e44f8d31d13d6570499486f806aff357e3b5029401933909de18cca61a60"
+      },
+      {
+        "path": "src-tauri/tests/fixtures/traework-cn-0.2.2-product.json",
+        "sha256": "8d3e361db26d89a2f2900293417e841ac698bada9efd6e20e9b12bfb4d3e647f"
       },
       {
         "path": "src-tauri/tests/transport_integration.rs",
@@ -647,7 +675,7 @@
       },
       {
         "path": "src/core/session-store.ts",
-        "sha256": "8fa7ea28f1b0f5db343c065f6e6bd2b234145c8d3f3a4cad508a6a30961558ea"
+        "sha256": "0fb80825754b7d3ee12ddccaacc7d49efb104e813862236592cf15393c0188cd"
       },
       {
         "path": "src/core/types.ts",
@@ -655,7 +683,43 @@
       },
       {
         "path": "src/fixtures.ts",
-        "sha256": "e3b5cfd013f447c3725ea10f07963ec95d4051a3a0ccd80efa2097687d8a1f93"
+        "sha256": "65f6e9f38cd6907ae47c0b68e90984f4ddc20ade1fc0c92af4fcecd4d7c5e024"
+      },
+      {
+        "path": "src/fixtures/app/empty-interaction.json",
+        "sha256": "5febf385f707a488f2d15c881cca6b4b044dfde65632de46691235b2d296ebb3"
+      },
+      {
+        "path": "src/fixtures/app/permission-smoke.json",
+        "sha256": "651e9a4cb5c06096801e91461930a69e2b6dd90e1a9ab53fb83b025a2a4de3a1"
+      },
+      {
+        "path": "src/fixtures/app/plan-smoke.json",
+        "sha256": "28bc01263fb820eb992a2a0d4aa056343a277664f01136b3a4ed9bd6fec35266"
+      },
+      {
+        "path": "src/fixtures/app/question-custom.json",
+        "sha256": "9fb1c14c5f9429481ff588724febd37e490560b5494bd7dc8efd1c1f1c67a363"
+      },
+      {
+        "path": "src/fixtures/app/question-focus.json",
+        "sha256": "4eb20df38b33ec77dd9c07514d4cb24a3d161e242300facc9a72b95c3c3b3952"
+      },
+      {
+        "path": "src/fixtures/app/question-smoke.json",
+        "sha256": "24298159223dff85df5d47733687da4a3f41ca6fda30c63cc3c71df60ce6e974"
+      },
+      {
+        "path": "src/fixtures/app/session-list.json",
+        "sha256": "e82ad367aba33d8e71f54b1fc30960fddb5193ab730dce15722cc7bd9f4783ff"
+      },
+      {
+        "path": "src/fixtures/app/update-available.json",
+        "sha256": "64c1987e48830110d461fcd07c102d41f5f5accafb664af95281bb8ec62419b9"
+      },
+      {
+        "path": "src/fixtures/companion/observation-events.json",
+        "sha256": "21fc320b0adf5abb3a5dc3b2d047c0c701fe606da234b388defcd138373da382"
       },
       {
         "path": "src/hook.ts",
@@ -667,11 +731,11 @@
       },
       {
         "path": "src/integrations/plan.ts",
-        "sha256": "47b3abccead69fbbff5e9396f7c4acc0d7befd2b1dfc1163b038547ebbdec2c3"
+        "sha256": "b8729d75dc65d3f2930fdba7390ce7424cb706d998ee5b214bf8c08bf34e4fff"
       },
       {
         "path": "src/integrations/workbuddy-plugin.ts",
-        "sha256": "a88c9d5cc9e233e11906c2a0b482eb0af4af4eb7a5c1a13141d0f5d829a81a36"
+        "sha256": "d2970d947535c6c6bdff5c6212a2aae79d104431d350c1343ba659da4924f6a1"
       },
       {
         "path": "src/main.ts",
@@ -691,7 +755,7 @@
       },
       {
         "path": "src/ui/components.ts",
-        "sha256": "51cd0650e46cb553d1bedc45988b42c984859889079662ae9767ce31245c192c"
+        "sha256": "35c700be27359590717527295e5788f56f60c9963ee0042dba7d4c412a3787d5"
       },
       {
         "path": "src/ui/i18n.ts",
@@ -739,7 +803,7 @@
       },
       {
         "path": "tests/core.test.ts",
-        "sha256": "591bb0a834a31ca0fe9d9f4b2128d473bf6d0042d142cfe4057d71f3824c2d3c"
+        "sha256": "5152f66f5976d0cd7cf2405512bad6f65c90801a4bb9037d2f1490ca508dc0b3"
       },
       {
         "path": "tests/cursor.test.ts",
@@ -779,7 +843,7 @@
       },
       {
         "path": "tests/ui.spec.ts",
-        "sha256": "4557f05d52cd25fcfff2940b998987b7ed354a6b7e3e6686ba1a93f454337184"
+        "sha256": "1340a69ec5c40cdfee8998fcf4023a2368626bb588d560acb2537a39b342494c"
       },
       {
         "path": "tests/window-sync.test.ts",
@@ -791,7 +855,7 @@
       },
       {
         "path": "tests/workbuddy.test.ts",
-        "sha256": "3757c98efae9bbf0c3b7b19847d0c2c10e912c58f2888b74efc0c438a94ea93d"
+        "sha256": "152d9ff621103c56e9e901e529ac092d85c819e05b397bf68ca92d9ea94f7c2e"
       },
       {
         "path": "tsconfig.json",

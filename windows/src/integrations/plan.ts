@@ -53,6 +53,7 @@ export function windowsHookCommand(nodeExecutable: string, hookScript: string, a
   if (!/\.exe$/i.test(node) || !/\.[cm]?js$/i.test(script) || !adapterFor(agent).events.includes(event)) throw new Error('无效 hook 启动参数');
   const manifest = Buffer.from(JSON.stringify({ node, script, agent, event }), 'utf8').toString('base64');
   const args = [script, '--agent', agent, '--hook', event, '--managed-by', OWNER].map(windowsArgument).join(' ');
+  const observationOnly = agent === 'workbuddy';
   const source = [
     `${MARKER}${manifest}`,
     '$ErrorActionPreference = "Stop"',
@@ -66,8 +67,22 @@ export function windowsHookCommand(nodeExecutable: string, hookScript: string, a
     '$p.StartInfo.RedirectStandardOutput = $true',
     '$p.StartInfo.RedirectStandardError = $true',
     '$null = $p.Start()',
-    '$out = $p.StandardOutput.BaseStream.CopyToAsync([Console]::OpenStandardOutput())',
-    '$err = $p.StandardError.BaseStream.CopyToAsync([Console]::OpenStandardError())',
+    ...(observationOnly ? [
+      // WorkBuddy 宿主超时会阻断任务；观察启动器先自行限时退出，并始终丢弃控制输出。
+      '$out = $p.StandardOutput.BaseStream.CopyToAsync([System.IO.Stream]::Null)',
+      '$err = $p.StandardError.BaseStream.CopyToAsync([System.IO.Stream]::Null)',
+      '$inputCopy = [Console]::OpenStandardInput().CopyToAsync($p.StandardInput.BaseStream)',
+      'if (-not $inputCopy.Wait(1000)) { throw "input_timeout" }',
+      '$p.StandardInput.Close()',
+      'if (-not $p.WaitForExit(4000)) { $p.Kill(); $null = $p.WaitForExit(500) }',
+      '$null = $out.Wait(500)',
+      '$null = $err.Wait(500)',
+      '$p.Dispose()',
+      'exit 0',
+      '} catch { try { if ($p -and -not $p.HasExited) { $p.Kill() }; if ($p) { $p.Dispose() } } catch { }; exit 0 }',
+    ] : [
+      '$out = $p.StandardOutput.BaseStream.CopyToAsync([Console]::OpenStandardOutput())',
+      '$err = $p.StandardError.BaseStream.CopyToAsync([Console]::OpenStandardError())',
     // Node 可在达到输入上限时提前关闭管道；仍保留它已经生成的原生失败响应和退出码。
     'try { [Console]::OpenStandardInput().CopyTo($p.StandardInput.BaseStream) } catch { }',
     'try { $p.StandardInput.Close() } catch { }',
@@ -77,7 +92,8 @@ export function windowsHookCommand(nodeExecutable: string, hookScript: string, a
     '$code = $p.ExitCode',
     '$p.Dispose()',
     'exit $code',
-    `} catch { [Console]::Error.WriteLine("XIsland hook launcher failed"); exit ${agent === 'workbuddy' ? 0 : 1} }`,
+      '} catch { [Console]::Error.WriteLine("XIsland hook launcher failed"); exit 1 }',
+    ]),
   ].join('\n');
   const command = PREFIX + Buffer.from(source, 'utf16le').toString('base64');
   if (command.length > 8000) throw new Error('安装路径导致 Windows hook 命令超过安全长度，请缩短安装路径');
@@ -193,7 +209,7 @@ export function createIntegrationPlan(input: IntegrationPlanInput): IntegrationP
   }
   if (input.agent === 'codex') warnings.push('自定义 CODEX_HOME 或受管理 hooks 需由调用方核对；不修改 config.toml 或信任记录。');
   if (input.agent === 'windsurf') warnings.push('仅接入 Cascade 的 10 项观察事件；不接管原生审批，不读取 transcript，不适用于 Devin Local Agent。');
-  if (input.agent === 'trae_cn') warnings.push('Trae CN 与 TraeWork CN 共用此 6 事件观察入口和配置文件，只需安装一次。当前不能区分两款客户端来源；审批、提问和文档审阅仍在原客户端处理。',
+  if (input.agent === 'trae_cn') warnings.push('Trae CN 与 TraeWork CN 共用此 6 事件观察入口和配置文件，只需安装一次。Windows 桥接根据启动进程与公开产品信息区分来源；识别失败时保留共享标签。审批、提问和文档审阅仍在原客户端处理。',
     'TraeWork CN 依据 0.2.2 公开安装资源核对；Windows 本地任务尚待实测，云端任务、国际版及其他旧 SOLO 版本不在已核对范围。');
   return { agent: input.agent, operation: input.operation, configPath, nextConfig, changed,
     addedHandlers: changed ? addedHandlers : 0, removedHandlers: changed ? removedHandlers : 0,

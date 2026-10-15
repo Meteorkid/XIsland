@@ -127,6 +127,10 @@ export class SessionStore {
     if (transport && this.usedTransports.has(transport.requestId)) return reject('Duplicate transport request', false);
     const observed = hasObservationMetadata(message);
     let existing = this.findSession(message);
+    const observationOnlyAgents = ['workbuddy', 'trae_ide_cn', 'traework_cn'];
+    if (kind && observationOnlyAgents.some(agent => message.agentType === agent || existing?.agentType === agent || message.sessionId.startsWith(agent + '-'))) {
+      return reject('This client source only supports observations');
+    }
     if ((!observed && existing?.sourceInstanceId) || (kind && (observed || message.nativeMessageReplay))) return reject('Observation and replay cannot control live interactions');
     if (existing && !this.sameSource(existing, message)) return reject('Session source mismatch');
     const codex = (message.agentType ?? message.sessionId.split('-')[0]) === 'codex';
