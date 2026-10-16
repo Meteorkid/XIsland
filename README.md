@@ -53,43 +53,45 @@ X Island sits at the top of your screen as a compact pill. When your AI agents a
 - **Custom mute rules** — Regex-based mute rules matching agent type, tool name, or working directory
 - **Bypass/Auto mode** — Auto-approve all permissions, questions, and plan reviews
 - **Subagent nesting** — Visual indentation and expand/collapse for child agent sessions
-- **VS Code extension** — Direct terminal-tab jumping from the island
+- **Editor extension bridge** — Native task/message observation for pinned Roo Code and experimental PearAI fork versions
 - **Language switcher** — Manual language override in Preferences (auto-detect or pick from zh/en/ko/ja/fr)
 
-**Supported agents:**
+**AI integration targets:**
 
-| Agent | Hook System | Status |
-|-------|------------|--------|
-| Claude Code | Native hooks (settings.json) | Full support |
-| Cursor | Hooks API (hooks.json) | Full support |
-| Trae / Trae CN / TRAE SOLO CN | Hooks API (hooks.json) + IDE settings.json `claudeCode.hooks` | Full support |
-| Windsurf | Hooks API (hooks.json) | Full support |
-| Codex (OpenAI) | Native hooks | Full support |
-| Aider | Index-based signal file | Full support |
-| OpenCode | JS plugin | Full support |
-| GLM (Zhipu) | TOML hooks (config.toml) | Full support |
-| Kimi (Moonshot) | TOML hooks (config.toml) | Full support |
-| DeepSeek | TOML hooks (config.toml) | Full support |
-| Qwen Code | TOML hooks (config.toml) | Full support |
-| Kiro | Spec hook | Full support |
-| CodeBuddy | Config hook | Full support |
-| Amp (Sourcegraph) | Config hook | Full support |
-| Pi Agent | Config hook | Full support |
-| Gemini CLI | Config hook | Basic support |
-| Copilot (VS Code) | Config hook | Basic support |
-| Copilot CLI | Config hook | Basic support |
-| Cline | Config hook | Basic support |
-| Continue | Config hook | Basic support |
-| Cody (Sourcegraph) | Config hook | Basic support |
-| Tabnine | Config hook | Basic support |
-| Amazon Q Developer | Config hook | Basic support |
-| Devin (Cognition) | Config hook | Basic support |
-| Droid (Factory) | Config hook | Basic support |
-| Qoder | Config hook | Basic support |
-| Roo Code | Config hook | Basic support |
-| PearAI | Config hook | Basic support |
-| Zed AI | Config hook | Basic support |
-| JetBrains AI Assistant | Config hook | Basic support |
+These are the intended integration routes. See the [compatibility matrix](docs/compatibility/README.md) for implementation progress and capability limits. A configuration file does not prove that the client loads it or works end to end.
+
+| Agent | Target integration route | Current status |
+|---|---|---|
+| Claude Code | Native settings hooks | 2.1.234 isolated native Read and island denial verified with a local mock model; full client acceptance pending |
+| Codex CLI／桌面核心 | Native hooks.json | Contract tests passed; real client verification pending |
+| Gemini CLI | Native settings hooks; ACP planned | Contract tests passed; real client verification pending |
+| Cursor | Native Cursor hooks | Contract tests passed; real client verification pending |
+| Trae／Trae CN／Solo | Hooks per IDE edition | CN contract tests passed; other editions and real clients pending |
+| OpenCode | Plugin and same-instance SDK | Contract tests passed; client and remaining interaction verification pending |
+| Factory Droid | Native hooks.json or settings fallback | Contract tests passed; real client verification pending |
+| Qoder CLI／IDE | Native settings hooks | Contract tests passed; real client verification pending |
+| VS Code Copilot | Local-specific hooks; Agent Host separately | Local contracts passed; clients and other harnesses pending |
+| CodeBuddy Code | CLI native settings hooks | CLI contracts passed; IDE/WorkBuddy and clients pending |
+| Qwen Code | Native settings hooks | Contract tests passed; real client verification pending |
+| Kimi Code CLI | TOML hooks; Wire for interaction | Contract tests passed; client and remaining interaction verification pending |
+| DeepSeek-TUI／Codewhale | Codewhale 0.10.0 hooks; legacy releases separately | Pinned contracts passed; client and interactions pending |
+| Kiro CLI / IDE | Explicit Kiro CLI 2.31.0 V3 observer export | Contracts passed; native client and IDE acceptance pending |
+| Amp | Plugin API | Contract tests passed; real client verification pending |
+| Pi | TypeScript extensions | Contract tests passed; real client verification pending |
+| GLM models | Metadata via Claude Code, OpenCode, Cline and Pi | Model display, filtering and history contracts passed; provider acceptance pending |
+| Aider | Explicit xisland-aider launcher and native notifications | Offline/PTY contracts passed; real client and full interactions pending |
+| Windsurf／Cascade | Native Cascade hooks | Contract tests passed; real client verification pending |
+| Devin CLI；云端另列 | Native CLI hooks; cloud API separately | Contract tests passed; real client verification pending |
+| Amazon Q CLI／IDE | Explicit qchat 1.19.7 wrapper observation | Contract tested; native config/client acceptance pending |
+| Tabnine CLI／IDE／OpenCode插件 | JSON hooks; successor host plugin | CLI contract tests passed; real clients and other surfaces pending |
+| Cody IDE／experimental CLI | Explicit jsonrpc-stdio Agent observation | Contract tested; native clients and ordinary IDE sessions pending |
+| Cline VS Code／SDK CLI | VS Code event files; SDK plugins separately | Extension contracts passed; standalone CLI/SDK and clients pending |
+| Continue IDE／cn CLI | Explicit, time-limited cn serve observation | Contract tested; real client, TUI and IDE pending |
+| GitHub Copilot CLI | Native JSON hooks | CLI contract tests passed; real clients and other surfaces pending |
+| Roo Code | Pinned 3.54.0 native task API companion | Observation contracts passed; client and full interactions pending |
+| PearAI Agent／Continue fork | Experimental Roo-fork observer companion | Off by default; contracts passed, shipped host and other variants pending |
+| Zed external and built-in agents | Explicit external ACP v1/v2 wrapper | External observation contracts passed; built-in AI and clients pending |
+| JetBrains AI / Junie / external agents | Explicit external ACP v1/v2 wrapper | External observation contracts passed; built-in variants and clients pending |
 
 ## Install
 

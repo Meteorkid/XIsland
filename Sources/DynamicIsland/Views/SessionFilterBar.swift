@@ -102,14 +102,15 @@ struct SessionFilterBar: View {
 
     /// 只显示活跃会话中实际出现的 AgentType
     private var agentTypeFilters: [AgentType] {
-        let activeTypes = Set(manager.visibleSessions.map(\.agentType))
+        var activeTypes = Set(manager.visibleSessions.map(\.agentType))
+        if manager.visibleSessions.contains(where: \.usesGLMModel) { activeTypes.insert(.glm) }
         return AgentType.allCases.filter { activeTypes.contains($0) }
     }
 
     /// 只显示活跃会话中实际出现的 SessionStatus
     private var statusFilters: [SessionStatus] {
         let activeStatuses = Set(manager.visibleSessions.map(\.status))
-        return [.active, .thinking, .idle, .completed, .error, .compacting,
+        return [.active, .thinking, .idle, .completionUnconfirmed, .completed, .error, .compacting, .observationUnavailable,
                 .waitingPermission, .waitingAnswer, .waitingPlanReview]
             .filter { activeStatuses.contains($0) }
     }

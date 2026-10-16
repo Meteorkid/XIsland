@@ -1,11 +1,11 @@
 {
     "name": "xisland-vscode",
     "displayName": "X Island Bridge",
-    "description": "Bridge VS Code AI extensions (Copilot, Cline, Continue) to X Island Dynamic Island panel",
+    "description": "Observe verified Roo Code and experimental PearAI task events in X Island",
     "version": "1.0.0",
     "publisher": "meteorkid",
     "engines": {
-        "vscode": "^1.82.0"
+        "vscode": "^1.84.0"
     },
     "activationEvents": [
         "onStartupFinished"
@@ -17,11 +17,31 @@
     "scripts": {
         "vscode:prepublish": "tsc -p ./",
         "compile": "tsc -p ./",
-        "package": "npx vsce package"
+        "package": "python3 ../../Scripts/package-vscode-extension.py",
+        "test": "npm run compile && node --test test/*.test.cjs"
     },
     "devDependencies": {
         "@types/node": "^25.8.0",
         "@types/vscode": "^1.82.0",
         "typescript": "^5.3.0"
+    },
+    "contributes": {
+        "configuration": {
+            "title": "X Island",
+            "properties": {
+                "xisland.observeRooCode": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "machine",
+                    "description": "Observe events from already active Roo Code 3.54.0. Does not approve or answer requests."
+                },
+                "xisland.observePearAIExperimental": {
+                    "type": "boolean",
+                    "default": false,
+                    "scope": "machine",
+                    "description": "Experimental observation of PearAI Roo fork 3.15.3. Installed artifact and host still require verification; no approval or answer forwarding."
+                }
+            }
+        }
     }
 }

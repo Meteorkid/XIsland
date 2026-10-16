@@ -3,12 +3,24 @@ import Foundation
 struct ToolEvent: Identifiable, Sendable {
     let id: UUID
     let timestamp: Date
-    let tool: String
-    let input: String?
+    var tool: String
+    /// 会话内关联调用或子代理的 ID；子代理适配器可包含来源命名空间。
+    let toolCallId: String?
+    var input: String?
     var result: String?
     var linesAdded: Int?
     var linesRemoved: Int?
     var isComplete: Bool
+    /// 已收到停止提示或观察已结束，但尚无该调用的最终结果。
+    var completionUnconfirmed: Bool
+    /// 已核实来源给出的原生终态；完成事件不一定代表成功，旧记录保持 nil。
+    var nativeCompletionStatus: String?
+    var isRunning: Bool { !isComplete && !completionUnconfirmed }
+    var hasFailedOutcome: Bool { nativeCompletionStatus == "failed" }
+    var wasCancelled: Bool { ["cancelled", "interrupted"].contains(nativeCompletionStatus ?? "") }
+    var hasUnknownOutcome: Bool {
+        nativeCompletionStatus != nil && nativeCompletionStatus != "completed" && !hasFailedOutcome && !wasCancelled
+    }
     /// Number of lines read (for read operations).
     var linesRead: Int?
     /// Test results summary if this was a test runner.
@@ -45,6 +57,11 @@ struct ToolEvent: Identifiable, Sendable {
     }
 
     var summary: String {
+        if completionUnconfirmed { return L10n.completionUnconfirmed }
+        if let status = nativeCompletionStatus {
+            let preview = result?.split(separator: "\n").first.map { String($0.prefix(80)) } ?? ""
+            return preview.isEmpty ? status : "\(status): \(preview)"
+        }
         if let path = input, path.contains("/") {
             let file = (path as NSString).lastPathComponent
             if isComplete {
@@ -81,15 +98,20 @@ struct ToolEvent: Identifiable, Sendable {
 
     init(tool: String, input: String? = nil, result: String? = nil,
          linesAdded: Int? = nil, linesRemoved: Int? = nil, isComplete: Bool = false,
-         linesRead: Int? = nil, testResults: TestResults? = nil) {
-        self.id = UUID()
-        self.timestamp = Date()
+         linesRead: Int? = nil, testResults: TestResults? = nil, toolCallId: String? = nil,
+         completionUnconfirmed: Bool = false, nativeCompletionStatus: String? = nil,
+         id: UUID = UUID(), timestamp: Date = Date()) {
+        self.id = id
+        self.timestamp = timestamp
         self.tool = tool
+        self.toolCallId = toolCallId
         self.input = input
         self.result = result
         self.linesAdded = linesAdded
         self.linesRemoved = linesRemoved
         self.isComplete = isComplete
+        self.completionUnconfirmed = completionUnconfirmed
+        self.nativeCompletionStatus = nativeCompletionStatus
         self.linesRead = linesRead
         self.testResults = testResults
     }

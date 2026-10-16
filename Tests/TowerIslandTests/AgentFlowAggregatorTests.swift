@@ -12,15 +12,15 @@ final class AgentFlowAggregatorTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        previousAppLanguage = UserDefaults.standard.string(forKey: "appLanguage")
-        UserDefaults.standard.set("zh", forKey: "appLanguage")
+        previousAppLanguage = AppPreferences.defaults.string(forKey: "appLanguage")
+        AppPreferences.defaults.set("zh", forKey: "appLanguage")
     }
 
     override func tearDown() {
         if let previousAppLanguage {
-            UserDefaults.standard.set(previousAppLanguage, forKey: "appLanguage")
+            AppPreferences.defaults.set(previousAppLanguage, forKey: "appLanguage")
         } else {
-            UserDefaults.standard.removeObject(forKey: "appLanguage")
+            AppPreferences.defaults.removeObject(forKey: "appLanguage")
         }
         super.tearDown()
     }
@@ -248,7 +248,7 @@ final class AgentFlowAggregatorTests: XCTestCase {
     }
 
     func testBlockerKindDisplayNameUsesLocalizationOverride() {
-        UserDefaults.standard.set("en", forKey: "appLanguage")
+        AppPreferences.defaults.set("en", forKey: "appLanguage")
 
         XCTAssertEqual(AgentFlowBlockerKind.waitingHumanInput.displayName, "Needs input")
         XCTAssertEqual(AgentFlowBlockerKind.waitingPermission.displayName, "Needs approval")
@@ -502,7 +502,7 @@ final class AgentFlowAggregatorTests: XCTestCase {
     }
 
     func testReasonGenerationUsesLocalizationOverride() {
-        UserDefaults.standard.set("en", forKey: "appLanguage")
+        AppPreferences.defaults.set("en", forKey: "appLanguage")
 
         let answer = AgentFlowBlockerKind.reason(for: makeWaitingAnswerSession(questionText: "Ship it?"))
         let permission = AgentFlowBlockerKind.reason(for: makeWaitingPermissionSession(tool: "git push"))

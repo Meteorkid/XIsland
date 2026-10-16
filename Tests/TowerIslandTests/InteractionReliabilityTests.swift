@@ -134,7 +134,6 @@ final class InteractionReliabilityTests: XCTestCase {
 
     func testLingerCleanupRetainsCompletedSessionsThatFailedToSave() {
         let manager = SessionManager()
-        manager.persistenceManager = SessionPersistenceManager()
         let key = "completedLingerDuration"
         let original = AppPreferences.defaults.object(forKey: key)
         AppPreferences.defaults.set(0.01, forKey: key)
@@ -142,10 +141,14 @@ final class InteractionReliabilityTests: XCTestCase {
         var start = DIMessage(type: .sessionStart, sessionId: "unsaved-completed")
         start.agentType = AgentType.droid.rawValue
         manager.handleMessage(start)
+        // 此处模拟会话创建之后保存失败；历史读取失败的拒绝路径由归档测试覆盖。
+        manager.persistenceManager = SessionPersistenceManager()
         var end = DIMessage(type: .sessionEnd, sessionId: "unsaved-completed")
         end.agentType = AgentType.droid.rawValue
         manager.handleMessage(end)
         guard let session = manager.sessions.first else { XCTFail("Expected retained session"); return }
+        XCTAssertEqual(session.status, .completed)
+        XCTAssertNotNil(manager.persistenceManager?.lastSaveError)
         session.completedAt = Date().addingTimeInterval(-3600)
         manager.cleanupLingeredSessions()
         XCTAssertEqual(manager.sessions.map(\.id), ["unsaved-completed"])

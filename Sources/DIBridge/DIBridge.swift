@@ -17,11 +17,55 @@ struct DIBridge {
     // MARK: - 入口
 
     static func main() {
+        let command = CommandLine.arguments.dropFirst().first
+        if command == "kiro-config-v3" {
+            exit(KiroConfigurationCommand.run(arguments: Array(CommandLine.arguments.dropFirst(2)), bridgePath: CommandLine.arguments[0]))
+        }
+        if command == "workbuddy-plugin" {
+            exit(WorkBuddyPluginExport.run(arguments: Array(CommandLine.arguments.dropFirst(2)), bridgePath: CommandLine.arguments[0]))
+        }
+        if command == "amazonq-config-1-19-7" {
+            exit(AmazonQAgentConfiguration.run(arguments: Array(CommandLine.arguments.dropFirst(2)), bridgePath: CommandLine.arguments[0]))
+        }
+        if command == "amazonq-1-19-7" {
+            exit(AmazonQLauncher.run(arguments: Array(CommandLine.arguments.dropFirst(2)), bridgePath: CommandLine.arguments[0]))
+        }
+        if command == "amazonq-hook-1-19-7" {
+            AmazonQLauncher.hook(arguments: Array(CommandLine.arguments.dropFirst(2)))
+            exit(0)
+        }
+        if command == "continue-state" {
+            exit(ContinueStateWatcher.run(arguments: Array(CommandLine.arguments.dropFirst(2))))
+        }
+        if command == "acp-config" {
+            exit(ACPConfigurationCommand.run(arguments: Array(CommandLine.arguments.dropFirst(2)), bridgePath: CommandLine.arguments[0]))
+        }
+        if command == "cody-agent" {
+            exit(ACPRunner.run(arguments: Array(CommandLine.arguments.dropFirst(2)), bridgePath: CommandLine.arguments[0], cody: true))
+        }
+        if command == "acp" {
+            exit(ACPRunner.run(arguments: Array(CommandLine.arguments.dropFirst(2)), bridgePath: CommandLine.arguments[0]))
+        }
+        if command == "aider" {
+            exit(AiderLauncher.run(arguments: Array(CommandLine.arguments.dropFirst(2)), bridgePath: CommandLine.arguments[0]))
+        }
+        if command == "aider-notify" {
+            guard CommandLine.arguments.count == 3 else { exit(64) }
+            AiderLauncher.notify(statePath: CommandLine.arguments[2])
+            exit(0)
+        }
         let args = parseArgs()
         let agentType = args["agent"] ?? "unknown"
         let hookType = args["hook"] ?? "notification"
         let explicitTool = args["tool"]
         let stdinData = readStdin()
+        let hookOutputEvent = outputEvent(hookType: hookType, stdinData: stdinData)
+        if shouldSkipImportedClaudeHook(agentType: agentType, stdinData: stdinData,
+                                       environment: ProcessInfo.processInfo.environment) {
+            // Devin 继承 Claude hooks 时只保留其专用入口，避免重复会话和错误审批协议。
+            print("{}")
+            exit(0)
+        }
 
         let sessionId = resolveSessionId(
             agentType: agentType,
@@ -31,17 +75,18 @@ struct DIBridge {
 
         dumpStdin(hook: hookType, data: stdinData)
 
-        var message = buildMessage(
-            agentType: agentType,
-            hookType: hookType,
-            sessionId: sessionId,
-            stdinData: stdinData,
-            explicitTool: explicitTool
-        )
+        var message: DIMessage
+        do {
+            message = try makeMessage(agentType: agentType, hookType: hookType, sessionId: sessionId,
+                                      stdinData: stdinData, explicitTool: explicitTool, adapter: args["adapter"])
+        } catch {
+            fputs("[di-bridge] Invalid native hook payload\n", stderr)
+            if agentType == "devin", hookType == "PermissionRequest" { emitDevinUnavailablePermission() }
+            exit(agentType == "workbuddy" ? 0 : 1)
+        }
         message.agentType = agentType
 
-        // hook 以一次性子进程方式拉起 `di-bridge`，必须及时退出，好让父脚本
-        // 继续读取 stdout 与退出码（例如权限类 hook 用 0 表示允许、非 0 表示拒绝）。
+        // 不同工具的决定由 JSON、退出码或两者共同表达，不能统一把 exit 0 当作批准。
         let isInteractive = message.type == .permissionRequest
             || message.type == .question
             || message.type == .planReview
@@ -53,14 +98,16 @@ struct DIBridge {
 
         let fd = connectSocket()
         guard fd >= 0 else {
-            printJsonPlaceholderIfNeeded(hookType)
+            if agentType == "devin", message.type == .permissionRequest { emitDevinUnavailablePermission() }
+            printJsonPlaceholderIfNeeded(hookOutputEvent, agentType: agentType, adapter: args["adapter"])
             exit(0)
         }
 
         guard sendAll(fd: fd, data: encoded) else {
             close(fd)
-            printJsonPlaceholderIfNeeded(hookType)
-            exit(1)
+            if agentType == "devin", message.type == .permissionRequest { emitDevinUnavailablePermission() }
+            printJsonPlaceholderIfNeeded(hookOutputEvent, agentType: agentType, adapter: args["adapter"])
+            exit(agentType == "workbuddy" ? 0 : 1)
         }
         shutdown(fd, SHUT_WR)
 
@@ -72,23 +119,34 @@ struct DIBridge {
 
             guard let response else {
                 fputs("[di-bridge] No response received\n", stderr)
+                if agentType == "devin", message.type == .permissionRequest { emitDevinUnavailablePermission() }
                 exit(1)
             }
 
             switch response.type {
             case .permissionResponse:
                 let approved = response.approved ?? false
-                // Claude Code 通过 stdout 的 JSON（hookSpecificOutput）读取权限结果，
-                // 仅靠退出码不够，见 hooks.md 关于 PermissionRequest 决策控制的说明。
-                if usesClaudeCodePermissionStdout(agentType: agentType) {
-                    print(Self.buildClaudeCodePermissionResponse(approved: approved))
-                }
+                if args["adapter"] == "opencode_plugin", response.approved == nil { exit(1) }
+                let output = permissionHookResponse(agentType: agentType, approved: approved, adapter: args["adapter"])
+                if let stdout = output.stdout { print(stdout) }
                 dumpStdin(hook: "PERM_EXIT", data: ["approved": "\(approved)"])
-                exit(approved ? 0 : 1)
+                exit(output.exitCode)
 
             case .questionResponse:
                 let answer = response.answer ?? ""
-                if agentType == "cursor" {
+                if args["adapter"] == "opencode_plugin" {
+                    let output: String
+                    do {
+                        if let selected = response.selectedAnswers {
+                            guard message.allowsMultipleAnswers == true, response.answer == nil else { exit(1) }
+                            output = try OpenCodeHookAdapter.questionResponse(answers: selected)
+                        } else {
+                            guard message.allowsMultipleAnswers != true else { exit(1) }
+                            output = try OpenCodeHookAdapter.questionResponse(answer: answer)
+                        }
+                    } catch { exit(1) }
+                    print(output)
+                } else if agentType == "cursor" {
                     let payload: [String: Any] = [
                         "permission": "deny",
                         "agent_message": "The user already answered this question via X Island. User selected: \(answer). Do NOT ask the same question again. Continue with the conversation using this answer."
@@ -120,7 +178,7 @@ struct DIBridge {
             }
         } else {
             close(fd)
-            printJsonPlaceholderIfNeeded(hookType)
+            printJsonPlaceholderIfNeeded(hookOutputEvent, agentType: agentType, adapter: args["adapter"])
             exit(0)
         }
     }
@@ -146,8 +204,8 @@ struct DIBridge {
 
     /// 某些 hook（如 stop / sessionstart / userpromptsubmit）期望一个 JSON 输出，
     /// 即便桥接未连接上服务端也要回一个 `{}`，避免父脚本解析失败。
-    private static func printJsonPlaceholderIfNeeded(_ hookType: String) {
-        if needsJsonOutput(hookType) {
+    private static func printJsonPlaceholderIfNeeded(_ hookType: String, agentType: String, adapter: String? = nil) {
+        if needsJsonOutput(hookType, agentType: agentType, adapter: adapter) {
             print("{}")
         }
     }
@@ -220,17 +278,24 @@ struct DIBridge {
         return try? DIProtocol.decode(data)
     }
 
-    static func readFramedMessage(_ fd: Int32) -> Data? {
+    static func readFramedMessage(_ fd: Int32, timeoutSeconds: TimeInterval = 290) -> Data? {
         let chunkSize = 65536
         let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: chunkSize)
         defer { buffer.deallocate() }
 
-        var timeout = timeval(tv_sec: 300, tv_usec: 0)
-        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
-
+        // 在宿主 300 秒 hook 超时之前返回，留出拒绝/取消响应的写回时间。
+        // 使用总截止时间，避免分片持续到达使每次 recv 都重新获得完整等待时长。
+        guard timeoutSeconds.isFinite, timeoutSeconds > 0 else { return nil }
+        let deadline = ProcessInfo.processInfo.systemUptime + timeoutSeconds
         var accumulated = Data()
         while true {
+            let remaining = deadline - ProcessInfo.processInfo.systemUptime
+            guard remaining > 0 else { return nil }
+            var timeout = timeval(tv_sec: Int(remaining), tv_usec: Int32(max(1, (remaining - floor(remaining)) * 1_000_000)))
+            guard setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size)) == 0 else { return nil }
             let received = recv(fd, buffer, chunkSize, 0)
+            if received < 0, errno == EINTR { continue }
+            if received < 0 { return nil }
             guard received > 0 else { break }
             accumulated.append(buffer, count: received)
             if accumulated.count > maxMessageBytes { return nil }
@@ -242,9 +307,23 @@ struct DIBridge {
         return accumulated.isEmpty ? nil : accumulated
     }
 
-    static func needsJsonOutput(_ hookType: String) -> Bool {
+    static func needsJsonOutput(_ hookType: String, agentType: String? = nil, adapter: String? = nil) -> Bool {
+        // Kiro 会把上下文 hook 的 stdout 加入模型输入；观察器不注入占位 JSON。
+        if agentType == "kiro" || agentType == "workbuddy" { return false }
+        // 新版 Kimi 会把 stdout 当作上下文；纯观察入口不能注入占位 JSON。
+        if agentType == "kimi", adapter == "kimi_code" { return false }
+        if let agentType, ["claude_code", "codex", "qwen", "qoder", "droid", "gemini_cli", "tabnine", "devin", "copilot_cli", "trae", "kimi"].contains(agentType) {
+            return true
+        }
         let hook = hookType.lowercased()
         return hook == "stop" || hook == "sessionstart" || hook == "session_start" || hook == "userpromptsubmit"
+    }
+
+    /// 旧配置把 Codex Stop 映射成 notification；输出仍必须遵守原生事件的 JSON 契约。
+    static func outputEvent(hookType: String, stdinData: [String: Any]?) -> String {
+        guard let event = (stdinData?["hook_event_name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !event.isEmpty else { return hookType }
+        return event
     }
 
     // MARK: - 会话标识
@@ -334,6 +413,191 @@ struct DIBridge {
 
     // MARK: - 消息构建
 
+    enum NativePayloadError: Error {
+        case invalidField(String)
+    }
+
+    static func makeMessage(
+        agentType: String, hookType: String, sessionId: String,
+        stdinData: [String: Any]?, explicitTool: String? = nil, adapter: String? = nil
+    ) throws -> DIMessage {
+        if let adapter {
+            switch (agentType, adapter) {
+            case ("kimi", "kimi_code"): return try KimiCodeHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+            case ("workbuddy", "workbuddy_5_7_6"): return try WorkBuddyHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+            case ("kiro", "kiro_cli"): return try KiroHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+            case ("trae", "trae_cn"): return try TraeHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+            case ("opencode", "opencode_plugin"): return try OpenCodeHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+            case ("copilot", "vscode_local"): return try VSCodeHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+            default: throw NativePayloadError.invalidField("adapter")
+            }
+        }
+        // 旧通用 Kiro 模板没有可证明的协议身份，禁止回退为 Claude 风格事件。
+        if agentType == "kiro" { throw NativePayloadError.invalidField("adapter") }
+        if agentType == "workbuddy" { throw NativePayloadError.invalidField("adapter") }
+        if agentType == "amazon_q" { throw NativePayloadError.invalidField("requires scoped wrapper") }
+        // GLM 是模型来源；尚未核实独立 CLI，事件必须走实际客户端协议。
+        if agentType == "glm" { throw NativePayloadError.invalidField("unverified GLM client") }
+        // 尚无 Cody 本地事件契约；旧 hooks.json 模板不能成为兼容性证据。
+        if agentType == "cody" { throw NativePayloadError.invalidField("unverified Cody protocol") }
+        if agentType == "windsurf" {
+            return try WindsurfHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+        }
+        if agentType == "amp" {
+            return try AmpHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+        }
+        if agentType == "pi" {
+            return try PiHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+        }
+        if agentType == "copilot_cli" {
+            return try CopilotCliHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+        }
+        if agentType == "cursor" {
+            return try CursorHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+        }
+        if agentType == "kimi" {
+            return try KimiHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+        }
+        if agentType == "code_buddy" {
+            return try CodeBuddyHookAdapter.normalize(hookType: hookType, sessionId: sessionId, stdinData: stdinData)
+        }
+        if agentType == "cline" {
+            return try ClineHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+        }
+        if agentType == "deepseek" {
+            return try DeepSeekHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+        }
+        let event = outputEvent(hookType: hookType, stdinData: stdinData)
+        var data = stdinData
+        var codexTurnID: String?
+        if agentType == "codex" {
+            func identity(_ field: String) throws -> String {
+                guard let value = data?[field] as? String,
+                      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      value.utf8.count <= 4096, !value.utf8.contains(0) else {
+                    throw NativePayloadError.invalidField(field)
+                }
+                return value
+            }
+            let isTurnObservation = ["Interrupt", "PreCompact", "PostCompact"].contains(event)
+            if data?["turn_id"] != nil || isTurnObservation { codexTurnID = try identity("turn_id") }
+            if isTurnObservation {
+                _ = try identity("session_id")
+                if event != "Interrupt" {
+                    guard let trigger = data?["trigger"] as? String, ["manual", "auto"].contains(trigger) else {
+                        throw NativePayloadError.invalidField("trigger")
+                    }
+                }
+                var message = DIMessage(type: event == "PreCompact" ? .contextCompact : .statusUpdate, sessionId: sessionId)
+                message.agentType = agentType
+                message.nativeEvent = event
+                message.nativeTurnId = codexTurnID
+                message.workingDir = data?["cwd"] as? String
+                message.statusIsAssistantReply = false
+                // 压缩后的 hooks 仍可阻止后续运行；中断也不等于会话或子代理结束。
+                if event != "PreCompact" { message.observedState = "completionUnconfirmed" }
+                return message
+            }
+        }
+        let nativeAgents = ["claude_code", "codex", "qwen", "qoder", "droid", "gemini_cli", "tabnine", "devin"]
+        if nativeAgents.contains(agentType), data?["hook_event_name"] != nil {
+            guard let nativeSession = data?["session_id"] as? String,
+                  !nativeSession.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw NativePayloadError.invalidField("session_id")
+            }
+        }
+        if agentType == "droid", event == "SubagentStop" {
+            // 官方尚未定义子 ID 或父子 session_id 关系，不让旧模板猜测结束对象。
+            var message = DIMessage(type: .subagentEnd, sessionId: sessionId)
+            message.agentType = agentType
+            message.nativeEvent = event
+            message.subagentEndIsProvisional = true
+            message.statusIsAssistantReply = false
+            return message
+        }
+        if ["codex", "claude_code", "qwen", "qoder"].contains(agentType), event == "SubagentStart" || event == "SubagentStop" {
+            func nativeText(_ key: String, allowEmpty: Bool = false) throws -> String {
+                guard let value = data?[key] as? String,
+                      allowEmpty || !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      value.utf8.count <= 4096, !value.utf8.contains(0) else {
+                    throw NativePayloadError.invalidField(key)
+                }
+                return value
+            }
+            _ = try nativeText("session_id")
+            let child = try nativeText("agent_id")
+            var message = DIMessage(type: event == "SubagentStart" ? .subagentStart : .subagentEnd, sessionId: sessionId)
+            message.agentType = agentType
+            message.nativeEvent = event
+            message.nativeTurnId = codexTurnID
+            // Qwen/Qoder 按上报会话与子 ID 配对；共同会话上下文不等于直接父代理 ID。
+            message.parentSessionId = ["qwen", "qoder"].contains(agentType) ? nil : sessionId
+            message.subagentId = "\(agentType)-\(child)"
+            if agentType == "qoder" {
+                // 类型仅作展示；Qoder 未声明该字段必须存在，不能把它作为身份的门槛。
+                if data?["agent_type"] != nil { message.prompt = try nativeText("agent_type", allowEmpty: true) }
+            } else {
+                // Qwen 的类型是字符串；Claude 内部 Stop 允许空类型，Codex 校验保持独立。
+                message.prompt = try nativeText("agent_type", allowEmpty:
+                    agentType == "qwen" || (agentType == "claude_code" && event == "SubagentStop"))
+            }
+            message.workingDir = data?["cwd"] as? String
+            message.statusIsAssistantReply = false
+            if event == "SubagentStop" { message.subagentEndIsProvisional = true }
+            return message
+        }
+        if ["gemini_cli", "tabnine"].contains(agentType), event == "AfterAgent", let reply = data?["prompt_response"] as? String {
+            data?["message"] = reply
+        }
+        var message: DIMessage
+        if agentType == "devin" {
+            message = try DevinHookAdapter.normalize(hookType: hookType, sessionId: sessionId, stdinData: stdinData)
+        } else {
+            message = buildMessage(agentType: agentType, hookType: hookType, sessionId: sessionId,
+                                   stdinData: data, explicitTool: explicitTool)
+        }
+        if agentType == "codex" {
+            message.nativeEvent = event
+            message.nativeTurnId = codexTurnID
+        }
+        if let id = data?["tool_use_id"] as? String, !id.isEmpty { message.toolCallId = id }
+        guard nativeAgents.contains(agentType) else { return message }
+        if message.type == .toolStart || message.type == .toolComplete {
+            message.toolInput = outputText(data?["tool_input"]) ?? message.toolInput
+        }
+        if agentType == "tabnine", event == "AfterTool",
+           let response = data?["tool_response"] as? [String: Any], let error = response["error"], !(error is NSNull) {
+            message.observedState = "error"
+        }
+        if message.workingDir == nil { message.workingDir = data?["cwd"] as? String }
+        switch event {
+        case "Stop":
+            message.type = .statusUpdate
+            // 已核实这些 Stop hooks 仍可要求续跑，不能作为最终空闲回执。
+            message.observedState = ["codex", "claude_code", "droid", "qwen", "qoder"].contains(agentType) ? "completionUnconfirmed" : "idle"
+            message.statusIsAssistantReply = true
+        case "AfterAgent":
+            message.type = .statusUpdate
+            // Gemini/Tabnine 均可拒绝本次回复并重试，回复只是此时观察到的内容。
+            message.observedState = "completionUnconfirmed"
+            message.statusIsAssistantReply = true
+        case "SessionEnd":
+            message.observedState = "completed"
+        case "PostToolUseFailure":
+            message.observedState = "error"
+        case "Notification":
+            message.statusIsAssistantReply = false
+            let notification = data?["notification_type"] as? String
+            if notification == "ToolPermission" || notification == "permission_prompt" {
+                message.observedState = "waitingPermission"
+            } else if notification == "idle_prompt", !["gemini_cli", "tabnine"].contains(agentType) {
+                message.observedState = "idle"
+            }
+        default: break
+        }
+        return message
+    }
+
     static func buildMessage(
         agentType: String,
         hookType: String,
@@ -343,9 +607,22 @@ struct DIBridge {
     ) -> DIMessage {
         let hook = hookType.lowercased()
 
+        if hook == "toolstart" || hook == "tool_start" {
+            // 观察型前置事件不能因为工具名像问答，就变成未经支持的输入接管。
+            return buildToolStart(sessionId: sessionId, data: stdinData, explicitTool: explicitTool)
+        }
+        if hook == "toolcomplete" || hook == "tool_complete" {
+            return buildToolComplete(sessionId: sessionId, data: stdinData, explicitTool: explicitTool)
+        }
+        if agentType.lowercased() == "codex", hook == "stop" {
+            var message = buildNotification(sessionId: sessionId, data: stdinData)
+            message.agentType = agentType
+            return message
+        }
+
         if hook.contains("pretooluse") || hook.contains("tool_use") || hook == "tooluse" {
             let toolName = explicitTool ?? stdinData?["tool_name"] as? String ?? stdinData?["tool"] as? String ?? ""
-            if isQuestionTool(toolName) {
+            if ["claude_code", "trae", "cursor"].contains(agentType), isQuestionTool(toolName) {
                 return buildQuestionFromPermission(sessionId: sessionId, toolName: toolName, data: stdinData)
             }
             return buildToolStart(sessionId: sessionId, data: stdinData, explicitTool: explicitTool)
@@ -354,7 +631,8 @@ struct DIBridge {
             return buildToolComplete(sessionId: sessionId, data: stdinData, explicitTool: explicitTool)
         }
         if hook.contains("permission") {
-            return buildPermissionRequest(sessionId: sessionId, data: stdinData)
+            return buildPermissionRequest(sessionId: sessionId, data: stdinData,
+                                          allowsQuestionRedirect: ["claude_code", "trae", "cursor"].contains(agentType))
         }
         if hook.contains("question") || hook.contains("ask") {
             return buildQuestion(sessionId: sessionId, data: stdinData)
@@ -460,20 +738,28 @@ struct DIBridge {
         var msg = DIMessage(type: .toolComplete, sessionId: sessionId)
         msg.tool = explicitTool ?? data?["tool_name"] as? String ?? data?["tool"] as? String ?? "unknown"
 
-        // Codex 用 "tool_response"，Claude Code 用 "tool_result"。
-        msg.toolResult = data?["tool_result"] as? String
-            ?? data?["tool_response"] as? String
-            ?? data?["result"] as? String
+        // 原生工具结果既可能是文本，也可能是 JSON 对象；不能把对象结果静默丢掉。
+        msg.toolResult = outputText(data?["tool_result"])
+            ?? outputText(data?["tool_response"])
+            ?? outputText(data?["result"])
+            ?? outputText(data?["error"])
         msg.linesAdded = data?["lines_added"] as? Int
         msg.linesRemoved = data?["lines_removed"] as? Int
         extractTokens(data, into: &msg)
         return msg
     }
 
-    static func buildPermissionRequest(sessionId: String, data: [String: Any]?) -> DIMessage {
+    static func outputText(_ value: Any?) -> String? {
+        if let text = value as? String { return text }
+        guard let value, JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    static func buildPermissionRequest(sessionId: String, data: [String: Any]?, allowsQuestionRedirect: Bool = true) -> DIMessage {
         let toolName = data?["tool_name"] as? String ?? data?["tool"] as? String ?? "unknown"
 
-        if isQuestionTool(toolName) {
+        if allowsQuestionRedirect, isQuestionTool(toolName) {
             return buildQuestionFromPermission(sessionId: sessionId, toolName: toolName, data: data)
         }
 
@@ -640,6 +926,13 @@ struct DIBridge {
 
     // MARK: - Claude Code 兼容
 
+    static func shouldSkipImportedClaudeHook(agentType: String, stdinData: [String: Any]?, environment: [String: String]) -> Bool {
+        guard agentType == "claude_code", environment["DEVIN_PROJECT_DIR"]?.isEmpty == false,
+              stdinData?["hook_event_name"] is String, stdinData?["session_id"] is String else { return false }
+        // Claude 原生事件必带 cwd；嵌套启动 Claude 时即使继承 Devin 环境，也必须正常接收。
+        return stdinData?["cwd"] == nil
+    }
+
     static func isClaudeCodeQuestion(hookType: String, stdinData: [String: Any]?) -> Bool {
         let hook = hookType.lowercased()
         guard hook.contains("pretooluse") || hook.contains("tool_use")
@@ -651,7 +944,28 @@ struct DIBridge {
     /// 是否为需要走 Claude Code 风格 stdout 的 `PermissionRequest` hook（退出码本身不够）。
     static func usesClaudeCodePermissionStdout(agentType: String) -> Bool {
         let agent = agentType.lowercased()
-        return agent == "claude_code" || agent == "trae"
+        return ["claude_code", "trae", "codex", "qwen", "qoder"].contains(agent)
+    }
+
+    struct PermissionHookResponse {
+        let stdout: String?
+        let exitCode: Int32
+    }
+
+    static func permissionHookResponse(agentType: String, approved: Bool, adapter: String? = nil) -> PermissionHookResponse {
+        if agentType == "opencode", adapter == "opencode_plugin" { return OpenCodeHookAdapter.permissionResponse(approved: approved) }
+        if agentType.lowercased() == "devin" { return DevinHookAdapter.permissionResponse(approved: approved) }
+        if usesClaudeCodePermissionStdout(agentType: agentType) {
+            // 成功执行 hook 与批准命令是两回事；拒绝也用 exit 0 交付结构化 decision。
+            return PermissionHookResponse(stdout: buildClaudeCodePermissionResponse(approved: approved), exitCode: 0)
+        }
+        return PermissionHookResponse(stdout: nil, exitCode: approved ? 0 : 1)
+    }
+
+    private static func emitDevinUnavailablePermission() -> Never {
+        let output = DevinHookAdapter.unavailablePermissionResponse()
+        if let stdout = output.stdout { print(stdout) }
+        exit(output.exitCode)
     }
 
     static func buildClaudeCodePermissionResponse(approved: Bool) -> String {

@@ -81,7 +81,21 @@ struct QuestionAnswerView: View {
     private func questionBody(_ question: PendingQuestion, selectedAnswer: String?) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             prompt(question)
+            if question.allowsMultipleAnswers {
+                MultipleQuestionInputView(question: question, sessionID: session.id, onFocus: {
+                    manager.focusInteraction(session: session, kind: .question, requestID: question.id)
+                }) { values in
+                    manager.answerQuestion(session: session, answers: values, requestID: question.id)
+                }
+            } else {
             optionsList(question, selectedAnswer: selectedAnswer)
+            if question.allowsCustomAnswer {
+                CustomQuestionInputView(question: question, sessionID: session.id, onFocus: {
+                    manager.focusInteraction(session: session, kind: .question, requestID: question.id)
+                }, submit: submit)
+                    .disabled(submittedAnswer != nil)
+            }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -169,9 +183,11 @@ struct QuestionAnswerView: View {
     }
 
     private func submit(_ option: String) {
-        guard submittedAnswer == nil else { return }
+        guard submittedAnswer == nil, let question = snapshotQuestion,
+              session.pendingQuestion?.id == question.id, question.state.canSubmit,
+              question.acceptsAnswer(option) else { return }
         submittedAnswer = option
-        manager.answerQuestion(session: session, answer: option)
+        manager.answerQuestion(session: session, answer: option, requestID: question.id)
         onComplete()
     }
 }

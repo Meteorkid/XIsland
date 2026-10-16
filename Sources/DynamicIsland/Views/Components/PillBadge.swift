@@ -26,6 +26,7 @@ struct PillBadge: View {
         case .waitingPermission, .waitingAnswer, .waitingPlanReview: .orange
         case .error: .red
         case .compacting: .yellow
+        case .observationUnavailable, .completionUnconfirmed: .gray
         }
     }
 
@@ -76,7 +77,7 @@ struct PillBadge: View {
                 Text(session.agentType.shortName)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(IslandStyle.primaryText)
-                Text(session.lastActivity)
+                Text(session.status == .completionUnconfirmed ? L10n.completionUnconfirmed : session.lastActivity)
                     .font(.system(size: 8))
                     .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
                     .lineLimit(1)

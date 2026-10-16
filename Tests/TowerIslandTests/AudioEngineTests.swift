@@ -8,22 +8,22 @@ final class AudioEngineTests: XCTestCase {
     override func setUp() {
         super.setUp()
         // 清理 UserDefaults 状态
-        UserDefaults.standard.removeObject(forKey: "audio.isMuted")
-        UserDefaults.standard.removeObject(forKey: "audio.volume")
-        UserDefaults.standard.removeObject(forKey: "audio.quietHoursEnabled")
-        UserDefaults.standard.removeObject(forKey: "audio.quietHoursStart")
-        UserDefaults.standard.removeObject(forKey: "audio.quietHoursEnd")
-        UserDefaults.standard.removeObject(forKey: "audio.muteRules")
+        AppPreferences.defaults.removeObject(forKey: "audio.isMuted")
+        AppPreferences.defaults.removeObject(forKey: "audio.volume")
+        AppPreferences.defaults.removeObject(forKey: "audio.quietHoursEnabled")
+        AppPreferences.defaults.removeObject(forKey: "audio.quietHoursStart")
+        AppPreferences.defaults.removeObject(forKey: "audio.quietHoursEnd")
+        AppPreferences.defaults.removeObject(forKey: "audio.muteRules")
         engine = AudioEngine()
     }
 
     override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: "audio.isMuted")
-        UserDefaults.standard.removeObject(forKey: "audio.volume")
-        UserDefaults.standard.removeObject(forKey: "audio.quietHoursEnabled")
-        UserDefaults.standard.removeObject(forKey: "audio.quietHoursStart")
-        UserDefaults.standard.removeObject(forKey: "audio.quietHoursEnd")
-        UserDefaults.standard.removeObject(forKey: "audio.muteRules")
+        AppPreferences.defaults.removeObject(forKey: "audio.isMuted")
+        AppPreferences.defaults.removeObject(forKey: "audio.volume")
+        AppPreferences.defaults.removeObject(forKey: "audio.quietHoursEnabled")
+        AppPreferences.defaults.removeObject(forKey: "audio.quietHoursStart")
+        AppPreferences.defaults.removeObject(forKey: "audio.quietHoursEnd")
+        AppPreferences.defaults.removeObject(forKey: "audio.muteRules")
         engine = nil
         super.tearDown()
     }
@@ -36,9 +36,9 @@ final class AudioEngineTests: XCTestCase {
 
     func testIsMutedPersistsToUserDefaults() {
         engine.isMuted = true
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: "audio.isMuted"))
+        XCTAssertTrue(AppPreferences.defaults.bool(forKey: "audio.isMuted"))
         engine.isMuted = false
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: "audio.isMuted"))
+        XCTAssertFalse(AppPreferences.defaults.bool(forKey: "audio.isMuted"))
     }
 
     // MARK: - Volume
@@ -49,7 +49,7 @@ final class AudioEngineTests: XCTestCase {
 
     func testVolumePersistsToUserDefaults() {
         engine.volume = 0.75
-        XCTAssertEqual(UserDefaults.standard.float(forKey: "audio.volume"), 0.75, accuracy: 0.01)
+        XCTAssertEqual(AppPreferences.defaults.float(forKey: "audio.volume"), 0.75, accuracy: 0.01)
     }
 
     // MARK: - Event enable/disable
@@ -95,9 +95,9 @@ final class AudioEngineTests: XCTestCase {
         let startStr = String(format: "%02d:%02d", startHour, currentMinute)
         let endStr = String(format: "%02d:%02d", endHour, currentMinute)
 
-        UserDefaults.standard.set(true, forKey: "audio.quietHoursEnabled")
-        UserDefaults.standard.set(startStr, forKey: "audio.quietHoursStart")
-        UserDefaults.standard.set(endStr, forKey: "audio.quietHoursEnd")
+        AppPreferences.defaults.set(true, forKey: "audio.quietHoursEnabled")
+        AppPreferences.defaults.set(startStr, forKey: "audio.quietHoursStart")
+        AppPreferences.defaults.set(endStr, forKey: "audio.quietHoursEnd")
 
         // 重新创建 engine 读取新设置
         let testEngine = AudioEngine()

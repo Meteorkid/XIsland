@@ -14,7 +14,7 @@ struct MascotView: View {
     @AppStorage("disableAnimations") private var disableAnimations = false
 
     private var reduceMotion: Bool {
-        !IslandMotionPolicy(
+        status == .observationUnavailable || status == .completionUnconfirmed || !IslandMotionPolicy(
             reduceMotion: appReduceMotion,
             systemReduceMotion: systemReduceMotion,
             disableAnimations: disableAnimations
@@ -117,7 +117,7 @@ struct MascotView: View {
                 .offset(y: -eyeSize * 0.45)
             }
 
-        case .idle:
+        case .idle, .observationUnavailable, .completionUnconfirmed:
             // 睡眼 — 半闭的横线
             let breathe = breatheScale(tick: tick)
             HStack(spacing: eyeSpacing) {
@@ -231,7 +231,7 @@ struct MascotView: View {
                 }
             }
 
-        case .idle:
+        case .idle, .observationUnavailable, .completionUnconfirmed:
             // Zzz 嘴
             ZStack(alignment: .trailing) {
                 Capsule()

@@ -136,7 +136,8 @@ enum AppTestFixtureLoader {
                 text: pendingQuestion.text,
                 options: pendingQuestion.options,
                 respond: { _ in },
-                cancel: nil
+                cancel: nil,
+                allowsCustomAnswer: pendingQuestion.allowsCustomAnswer == true
             )
         }
 

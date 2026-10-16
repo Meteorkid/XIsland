@@ -1,0 +1,349 @@
+{
+  "profile": "kimi_code",
+  "package": "@moonshot-ai/kimi-code",
+  "version": "2.1.1",
+  "sourceCommit": "f67e6398fb3210ad8ace970e2dfd5bcc984ed61f",
+  "synthetic": true,
+  "cases": [
+    {
+      "event": "SessionStart",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "SessionStart",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "source": "startup",
+        "model": "fixture-model",
+        "profile": "default"
+      },
+      "expectedType": "status_update",
+      "expectedState": "idle"
+    },
+    {
+      "event": "UserPromptSubmit",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "UserPromptSubmit",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "prompt": [
+          {
+            "type": "text",
+            "text": "Inspect fixture"
+          },
+          {
+            "type": "image",
+            "image": "fixture image placeholder"
+          }
+        ],
+        "is_steer": false
+      },
+      "expectedType": "session_start",
+      "expectedState": null
+    },
+    {
+      "event": "UserPromptQueued",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "UserPromptQueued",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "prompt_id": "queued-1",
+        "prompt": [
+          {
+            "type": "text",
+            "text": "Queued fixture"
+          }
+        ],
+        "queue_length": 1
+      },
+      "expectedType": "status_update",
+      "expectedState": null
+    },
+    {
+      "event": "TurnStarted",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "TurnStarted",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "turn_id": 0,
+        "origin_kind": "user",
+        "prompt": "Inspect fixture"
+      },
+      "expectedType": "status_update",
+      "expectedState": "active"
+    },
+    {
+      "event": "PreToolUse",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "PreToolUse",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "tool_name": "Read",
+        "tool_call_id": "call-1",
+        "tool_input": {
+          "file_path": "/tmp/fixture"
+        }
+      },
+      "expectedType": "tool_start",
+      "expectedState": null
+    },
+    {
+      "event": "PostToolUse",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "PostToolUse",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "tool_name": "Read",
+        "tool_call_id": "call-1",
+        "tool_input": {},
+        "tool_output": "fixture result"
+      },
+      "expectedType": "tool_complete",
+      "expectedState": null
+    },
+    {
+      "event": "PostToolUseFailure",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "PostToolUseFailure",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "tool_name": "Read",
+        "tool_call_id": "call-2",
+        "tool_input": {},
+        "error": {
+          "name": "Error",
+          "message": "fixture error"
+        }
+      },
+      "expectedType": "tool_complete",
+      "expectedState": "error"
+    },
+    {
+      "event": "PermissionRequest",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "PermissionRequest",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "id": "approval_fixture",
+        "agent_id": "agent-main",
+        "turn_id": 0,
+        "tool_call_id": "call-1",
+        "tool_name": "Bash",
+        "action": "Run fixture command",
+        "display": {
+          "kind": "generic",
+          "summary": "Fixture only",
+          "detail": {}
+        },
+        "tool_input": {
+          "command": "fixture only; never executed"
+        }
+      },
+      "expectedType": "status_update",
+      "expectedState": null
+    },
+    {
+      "event": "PermissionResult",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "PermissionResult",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "id": "approval_fixture",
+        "agent_id": "agent-main",
+        "turn_id": 0,
+        "tool_call_id": "call-1",
+        "tool_name": "Bash",
+        "action": "Run fixture command",
+        "display": {
+          "kind": "generic",
+          "summary": "Fixture only",
+          "detail": {}
+        },
+        "tool_input": {
+          "command": "fixture only; never executed"
+        },
+        "decision": "approved",
+        "scope": "session"
+      },
+      "expectedType": "status_update",
+      "expectedState": null
+    },
+    {
+      "event": "Stop",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "Stop",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "stop_hook_active": false
+      },
+      "expectedType": "status_update",
+      "expectedState": "completionUnconfirmed"
+    },
+    {
+      "event": "StopFailure",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "StopFailure",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "error_type": "FixtureError",
+        "error_message": "fixture failure"
+      },
+      "expectedType": "status_update",
+      "expectedState": "error"
+    },
+    {
+      "event": "Interrupt",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "Interrupt",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "turn_id": 0,
+        "reason": "cancelled"
+      },
+      "expectedType": "status_update",
+      "expectedState": "completionUnconfirmed"
+    },
+    {
+      "event": "SessionHeartbeat",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "SessionHeartbeat",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "uptime_ms": 60000
+      },
+      "expectedType": "status_update",
+      "expectedState": null
+    },
+    {
+      "event": "SubagentStart",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "SubagentStart",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "agent_name": "reviewer",
+        "prompt": "Review fixture"
+      },
+      "expectedType": "status_update",
+      "expectedState": null
+    },
+    {
+      "event": "SubagentStop",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "SubagentStop",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "agent_name": "reviewer",
+        "response": "Fixture response"
+      },
+      "expectedType": "status_update",
+      "expectedState": null
+    },
+    {
+      "event": "TaskStarted",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "TaskStarted",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "task_id": "task-1",
+        "kind": "process",
+        "description": "Fixture task",
+        "status": "running",
+        "detached": true,
+        "started_at": 1780000000000
+      },
+      "expectedType": "status_update",
+      "expectedState": null
+    },
+    {
+      "event": "PreCompact",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "PreCompact",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "trigger": "auto",
+        "token_count": 1000
+      },
+      "expectedType": "context_compact",
+      "expectedState": null
+    },
+    {
+      "event": "PostCompact",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "PostCompact",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "trigger": "auto",
+        "estimated_token_count": 300
+      },
+      "expectedType": "status_update",
+      "expectedState": "active"
+    },
+    {
+      "event": "Notification",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "Notification",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "sink": "context",
+        "agent_id": "receiving-agent",
+        "notification_type": "task.completed",
+        "title": "Fixture task",
+        "body": "Observed result",
+        "severity": "info",
+        "source_kind": "background_task",
+        "source_id": "task-1"
+      },
+      "expectedType": "status_update",
+      "expectedState": null
+    },
+    {
+      "event": "SessionEnd",
+      "input": {
+        "session_id": "node-fixture",
+        "hook_event_name": "SessionEnd",
+        "cwd": "/tmp/fixture-project",
+        "client_type": "kimi_code_cli",
+        "session_title": "Fixture session",
+        "reason": "exit"
+      },
+      "expectedType": "session_end",
+      "expectedState": "completed"
+    }
+  ]
+}

@@ -143,6 +143,14 @@ enum L10n {
             en: "The question or choices are incomplete. Continue in the agent.")
     }
 
+    static var customAnswer: String {
+        localized("customAnswer", zh: "输入其他回答", ko: "직접 답변 입력", ja: "回答を入力", fr: "Saisir une réponse", en: "Type a custom answer")
+    }
+
+    static var sendAnswer: String {
+        localized("sendAnswer", zh: "发送", ko: "보내기", ja: "送信", fr: "Envoyer", en: "Send")
+    }
+
     static var permissionDiffAvailable: String {
         localized("permissionDiffAvailable",
             zh: "包含文件改动，展开查看完整 diff", ko: "파일 변경 사항이 있습니다. 펼쳐서 전체 diff를 확인하세요.", ja: "ファイル変更があります。展開して差分全体を確認してください。", fr: "Modifications incluses. Développez pour voir le diff complet.",
@@ -433,6 +441,12 @@ enum L10n {
     }
 
     // MARK: - Subagent
+
+    static var completionUnconfirmed: String {
+        localized("completionUnconfirmed",
+            zh: "完成未确认", ko: "완료 확인 안 됨", ja: "完了未確認", fr: "Fin non confirmée",
+            en: "Completion unconfirmed")
+    }
 
     static func subagentCount(_ count: Int) -> String {
         switch effectiveLanguage {
@@ -1036,14 +1050,135 @@ enum L10n {
 
     static var hookActive: String {
         localized("hookActive",
-            zh: "活跃", ko: "활성", ja: "有効", fr: "Actif",
-            en: "Active")
+            zh: "已配置", ko: "설정됨", ja: "設定済み", fr: "Configuré",
+            en: "Configured")
     }
 
     static var hookOff: String {
         localized("hookOff",
-            zh: "关闭", ko: "꺼짐", ja: "オフ", fr: "Désactivé",
-            en: "Off")
+            zh: "未配置", ko: "미설정", ja: "未設定", fr: "Non configuré",
+            en: "Not configured")
+    }
+
+    static var hookViaExtension: String {
+        localized("hookViaExtension", zh: "通过扩展接入", ko: "확장으로 연결", ja: "拡張機能で接続", fr: "Via une extension", en: "Via extension")
+    }
+
+    static var hookViaObserver: String {
+        localized("hookViaObserver", zh: "服务状态观察", ko: "서버 상태 관찰", ja: "サーバー状態監視", fr: "Observation du serveur", en: "Server observation")
+    }
+
+    static var hookViaCody: String {
+        localized("hookViaCody", zh: "Cody Agent 观察", ko: "Cody Agent 관찰", ja: "Cody Agent 監視", fr: "Observation Cody Agent", en: "Cody Agent observation")
+    }
+
+    static var hookViaAmazonQ: String {
+        localized("hookViaAmazonQ", zh: "旧 Q 进程观察", ko: "이전 Q 프로세스 관찰", ja: "旧 Q プロセス監視", fr: "Observation Q historique", en: "Legacy Q observation")
+    }
+
+    static var hookViaWorkBuddy: String {
+        localized("hookViaWorkBuddy", zh: "WorkBuddy 插件观察", ko: "WorkBuddy 플러그인 관찰", ja: "WorkBuddy プラグイン監視", fr: "Observation WorkBuddy", en: "WorkBuddy plugin observation")
+    }
+
+    static var hookWorkBuddyHint: String {
+        localized("hookWorkBuddyHint", zh: "需手动导出并在 WorkBuddy 中安装观察插件。此开关仅控制接收；不会写入配置或回传审批决定。真实客户端验收尚未完成。",
+                  ko: "WorkBuddy 관찰 플러그인을 직접 설치해야 합니다. 이 스위치는 수신만 제어합니다.",
+                  ja: "監視プラグインを WorkBuddy に手動でインストールしてください。このスイッチは受信のみを制御します。",
+                  fr: "Installez manuellement le plugin WorkBuddy. Ce réglage contrôle uniquement la réception.",
+                  en: "Manually export and install the WorkBuddy observer plugin. This toggle controls reception only; it does not write configuration or make permission decisions. Native client acceptance is pending.")
+    }
+
+    static var hookAmazonQHint: String {
+        localized("hookAmazonQHint", zh: "仅接收显式包装的 qchat 1.19.7；需审查选定 agent 的 hooks 配置。不会自动安装，不覆盖 Q IDE 或 Kiro，审批仍在原客户端。",
+                  ko: "명시적으로 래핑한 qchat 1.19.7만 지원합니다. 자동 설치하지 않습니다.",
+                  ja: "明示的にラップした qchat 1.19.7 のみ対象です。自動設定はしません。",
+                  fr: "Uniquement qchat 1.19.7 explicitement enveloppé. Aucune installation automatique.",
+                  en: "Receives only explicitly wrapped qchat 1.19.7 with reviewed agent hooks. No automatic installation; Q IDE and Kiro are not covered. Approve in the original client.")
+    }
+
+    static var hookCodyHint: String {
+        localized("hookCodyHint", zh: "仅接收显式包装的 Cody jsonrpc-stdio 进程；不自动修改 IDE 或认证。普通 Cody CLI/IDE 会话不在此通道范围。",
+                  ko: "명시적으로 래핑한 Cody jsonrpc-stdio 프로세스만 관찰합니다.",
+                  ja: "明示的にラップした Cody jsonrpc-stdio プロセスのみ監視します。",
+                  fr: "Observe uniquement un processus Cody jsonrpc-stdio explicitement enveloppé.",
+                  en: "Receives only an explicitly wrapped Cody jsonrpc-stdio process. Does not change IDE or authentication settings. Ordinary CLI/IDE sessions are outside this channel.")
+    }
+
+    static var hookObserverHint: String {
+        localized("hookObserverHint", zh: "仅接收显式指定的 cn serve 状态；需手动启动限时观察命令。开关不启动服务，不配置 hooks，审批在 Continue 完成。",
+                  ko: "명시적으로 지정한 cn serve만 관찰합니다. 승인은 Continue에서 처리합니다.",
+                  ja: "明示的に指定した cn serve のみ監視します。承認は Continue で行います。",
+                  fr: "Observe uniquement le serveur cn serve choisi explicitement. Approbations dans Continue.",
+                  en: "Receives only an explicitly selected cn serve via a manually started, time-limited observer. Does not start a server or configure hooks. Approve in Continue.")
+    }
+
+    static var hookViaACP: String {
+        localized("hookViaACP", zh: "ACP 外部接入", ko: "ACP 연결", ja: "ACP 連携", fr: "Agent ACP", en: "External ACP")
+    }
+
+    static var hookACPHint: String {
+        localized("hookACPHint", zh: "需要显式包装选定的外部 ACP Agent；内置 AI 不在此通道范围。此开关控制接收，审批仍在原编辑器完成。",
+                  ko: "선택한 외부 ACP Agent를 연결해야 합니다. 승인은 원래 편집기에서 처리합니다.",
+                  ja: "選択した外部 ACP Agent の設定が必要です。承認は元のエディターで行います。",
+                  fr: "Nécessite un agent ACP externe configuré. Les autorisations restent dans l’éditeur.",
+                  en: "Requires explicit wrapping of an external ACP agent. Built-in AI is separate; permissions remain in the editor. This switch controls reception.")
+    }
+
+    static var hookPending: String {
+        localized("hookPending", zh: "待适配", ko: "통합 대기", ja: "対応準備中", fr: "Intégration en cours", en: "Integration pending")
+    }
+
+    static var hookViaModelClient: String {
+        localized("hookViaModelClient", zh: "通过客户端接入", ko: "클라이언트 연결", ja: "クライアント経由", fr: "Via le client", en: "Via client")
+    }
+
+    static var hookViaKiro: String {
+        localized("hookViaKiro", zh: "Kiro V3 手动接入", ko: "Kiro V3 수동 연결", ja: "Kiro V3 手動連携", fr: "Kiro V3 manuel", en: "Manual Kiro V3")
+    }
+
+    static var hookKiroHint: String {
+        localized("hookKiroHint", zh: "可导出 Kiro CLI 2.31.0 V3 的独立观察配置。请按指南检查并安装；不会自动改写配置，不接管审批，不覆盖 IDE。",
+                  ko: "Kiro CLI 2.31.0 V3 관찰 설정을 내보낼 수 있습니다. 자동 설치 또는 승인은 하지 않습니다.",
+                  ja: "Kiro CLI 2.31.0 V3 の監視設定を書き出せます。自動設定や承認は行いません。",
+                  fr: "Export de configuration pour Kiro CLI 2.31.0 V3. Installation manuelle, sans contrôle des autorisations.",
+                  en: "Export an observation configuration for Kiro CLI 2.31.0 V3. Review and install using the guide; no automatic configuration, approval control or IDE coverage.")
+    }
+
+    static var hookModelClientHint: String {
+        localized("hookModelClientHint", zh: "在 Claude Code、OpenCode、Cline 或 Pi 中选择 GLM，并启用对应客户端的 X Island 接入。会话保留客户端名称，显示其上报的模型；可用 GLM 筛选。",
+                  ko: "Claude Code, OpenCode, Cline 또는 Pi에서 GLM을 선택하고 해당 클라이언트를 연결하세요.",
+                  ja: "Claude Code、OpenCode、Cline、Pi で GLM を選び、対応するクライアントを連携してください。",
+                  fr: "Choisissez GLM dans Claude Code, OpenCode, Cline ou Pi et activez son intégration.",
+                  en: "Select GLM in Claude Code, OpenCode, Cline or Pi and enable that client's integration. Sessions keep their client identity, show the reported model and can be filtered by GLM.")
+    }
+
+    static var setupGuide: String {
+        localized("setupGuide", zh: "接入说明", ko: "설정 안내", ja: "設定ガイド", fr: "Guide", en: "Setup guide")
+    }
+
+    static var hookPendingHint: String {
+        localized("hookPendingHint", zh: "原生接入仍待实现或验证，已停用旧通用模板；不会改写现有配置。",
+                  ko: "기본 통합 검증 대기 중입니다. 기존 설정은 변경하지 않습니다.",
+                  ja: "ネイティブ連携は検証中です。既存設定は変更しません。",
+                  fr: "L’intégration native reste à valider. La configuration existante est conservée.",
+                  en: "Native integration remains pending. Legacy generic templates are disabled and existing configuration is preserved.")
+    }
+
+    static var hookExtensionHint: String {
+        localized("hookExtensionHint", zh: "需要在对应编辑器安装 X Island Bridge 扩展并启用已支持的来源。此开关控制本应用是否接收该来源。",
+                  ko: "편집기에 X Island Bridge 확장이 필요합니다. 이 스위치는 수신을 제어합니다.",
+                  ja: "エディターに X Island Bridge 拡張機能が必要です。このスイッチは受信を制御します。",
+                  fr: "Nécessite X Island Bridge dans l’éditeur. Ce bouton contrôle la réception.",
+                  en: "Requires X Island Bridge in the editor and an enabled supported source. This switch controls reception in this app.")
+    }
+
+    static var hookConfigurationHint: String {
+        localized("hookConfigurationHint",
+            zh: "此处仅检查配置。部分软件还需在原软件中启用或信任后才会生效。",
+            ko: "설정 여부만 확인합니다. 일부 앱에서는 활성화하거나 신뢰해야 작동합니다.",
+            ja: "設定の有無を確認します。一部のアプリでは有効化や信頼の承認も必要です。",
+            fr: "Vérifie la configuration. Certaines applications exigent aussi une activation ou une autorisation de confiance.",
+            en: "Checks configuration only. Some apps also require enabling or trusting the hooks in that app.")
     }
 
     static var ideInstalled: String {
@@ -1653,6 +1788,18 @@ enum L10n {
         localized("statusIdle",
             zh: "空闲", ko: "대기", ja: "アイドル", fr: "Inactif",
             en: "Idle")
+    }
+
+    static var statusObservationUnavailable: String {
+        localized("statusObservationUnavailable",
+            zh: "状态未知", ko: "상태 알 수 없음", ja: "状態不明", fr: "État inconnu",
+            en: "State unknown")
+    }
+
+    static var observationInterrupted: String {
+        localized("observationInterrupted",
+            zh: "观察中断", ko: "관찰 중단", ja: "観測中断", fr: "Observation interrompue",
+            en: "Observation interrupted")
     }
 
     static var statusThinking: String {

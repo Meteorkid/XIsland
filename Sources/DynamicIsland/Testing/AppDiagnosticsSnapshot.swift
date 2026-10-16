@@ -9,6 +9,8 @@ public struct AppDiagnosticsSnapshot: Codable, Equatable {
     public let islandState: String
     public let selectedSessionId: String?
     public let pendingInteraction: String?
+    /// 可选以兼容旧诊断文件；用于区分消息处理完成与普通界面刷新。
+    public let handledMessageCount: UInt64?
     public let visibleSessions: [SessionSnapshot]
     public let visibleAccessibilityIdentifiers: [String]
     public let update: UpdateSnapshot
@@ -21,6 +23,12 @@ public struct AppDiagnosticsSnapshot: Codable, Equatable {
         public let workingDirectory: String
         public let prompt: String
         public let pendingInteraction: String?
+        public let sourceNamespace: String?
+        public let sourceInstanceId: String?
+        public let nativeTaskId: String?
+        public let observationEndedAt: Date?
+        public let completedAt: Date?
+        public let runningSubagentCount: Int?
     }
 
     /// 更新子系统的诊断投影。
@@ -46,6 +54,7 @@ public struct AppDiagnosticsSnapshot: Codable, Equatable {
             islandState: islandState,
             selectedSessionId: sessionManager.selectedSessionId,
             pendingInteraction: primarySession.flatMap(Self.interactionKind(for:)),
+            handledMessageCount: sessionManager.handledMessageCount,
             visibleSessions: Self.makeSessionSnapshots(from: sessionManager),
             visibleAccessibilityIdentifiers: Self.makeAccessibilityIdentifiers(
                 sessionManager: sessionManager,
@@ -68,7 +77,13 @@ public struct AppDiagnosticsSnapshot: Codable, Equatable {
                 status: session.status.rawValue,
                 workingDirectory: session.workingDirectory,
                 prompt: session.prompt,
-                pendingInteraction: interactionKind(for: session)
+                pendingInteraction: interactionKind(for: session),
+                sourceNamespace: session.sourceNamespace,
+                sourceInstanceId: session.sourceInstanceId,
+                nativeTaskId: session.nativeTaskId,
+                observationEndedAt: session.observationEndedAt,
+                completedAt: session.completedAt,
+                runningSubagentCount: session.events.filter { $0.tool == "Subagent" && $0.isRunning }.count
             )
         }
     }
@@ -120,6 +135,11 @@ public struct AppDiagnosticsSnapshot: Codable, Equatable {
         if let question = session.pendingQuestion {
             append([TestAccessibility.questionPanel] + question.options.indices.map(TestAccessibility.questionOption(index:)),
                    requestID: question.id)
+            if question.allowsCustomAnswer {
+                append([TestAccessibility.customAnswerField], requestID: question.id)
+                if !question.allowsMultipleAnswers { append([TestAccessibility.customAnswerSubmit], requestID: question.id) }
+            }
+            if question.allowsMultipleAnswers { append([TestAccessibility.multipleAnswerSubmit], requestID: question.id) }
         }
         if let plan = session.pendingPlanReview {
             var bases = [TestAccessibility.planPanel, TestAccessibility.planRejectButton,
@@ -146,18 +166,12 @@ public struct AppDiagnosticsSnapshot: Codable, Equatable {
 
     // MARK: - 状态映射
 
-    /// 把会话状态映射成稳定的交互类别字符串（无交互时为 nil）。
+    /// 只报告本应用可操作的交互；原生客户端中的等待状态不代表这里有应答控件。
     private static func interactionKind(for session: AgentSession) -> String? {
-        switch session.status {
-        case .waitingPermission:
-            return "permission"
-        case .waitingAnswer:
-            return "question"
-        case .waitingPlanReview:
-            return "planReview"
-        default:
-            return nil
-        }
+        if session.pendingPermission != nil { return "permission" }
+        if session.pendingQuestion != nil { return "question" }
+        if session.pendingPlanReview != nil { return "planReview" }
+        return nil
     }
 
     /// 把更新状态映射成稳定的字符串。

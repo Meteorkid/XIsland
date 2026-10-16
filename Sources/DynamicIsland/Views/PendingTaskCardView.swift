@@ -145,7 +145,7 @@ struct PendingTaskCardView: View {
 
     private func questionContent(_ question: PendingQuestion) -> some View {
         let canAnswer = !question.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !question.options.isEmpty
+            && (!question.options.isEmpty || question.allowsCustomAnswer)
         return VStack(alignment: .leading, spacing: 8) {
             requestHeading(L10n.question, symbol: "questionmark.bubble", color: .blue)
             ScrollView {
@@ -158,6 +158,14 @@ struct PendingTaskCardView: View {
             .frame(maxHeight: 100)
 
             if canAnswer {
+                if question.allowsMultipleAnswers {
+                    MultipleQuestionInputView(question: question, sessionID: session.id, onFocus: {
+                        manager.focusInteraction(session: session, kind: .question, requestID: question.id)
+                    }) { values in
+                        manager.focusInteraction(session: session, kind: .question)
+                        manager.answerQuestion(session: session, answers: values, requestID: question.id)
+                    }
+                } else {
                 ScrollView {
                     VStack(spacing: 6) {
                         ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
@@ -181,7 +189,16 @@ struct PendingTaskCardView: View {
                         }
                     }
                 }
-                .frame(maxHeight: 200)
+                .frame(minHeight: min(200, CGFloat(question.options.count) * 44), maxHeight: 200)
+                if question.allowsCustomAnswer {
+                    CustomQuestionInputView(question: question, sessionID: session.id, onFocus: {
+                        manager.focusInteraction(session: session, kind: .question, requestID: question.id)
+                    }) { answer in
+                        manager.focusInteraction(session: session, kind: .question)
+                        manager.answerQuestion(session: session, answer: answer, requestID: question.id)
+                    }
+                }
+                }
             } else {
                 Text(L10n.questionUnavailable)
                     .font(.system(size: 11))

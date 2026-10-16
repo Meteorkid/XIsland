@@ -33,7 +33,7 @@ final class HistoryStoreBackupTests: XCTestCase {
 
         let backupURL = try XCTUnwrap(HistoryStoreBackup.prepareBackupIfNeeded(storeURL: storeURL))
 
-        XCTAssertEqual(backupURL.lastPathComponent, "history.store.pre-stable-record-ids-v1.sqlite")
+        XCTAssertEqual(backupURL.lastPathComponent, "history.store.pre-tool-completion-status-v5.sqlite")
         XCTAssertEqual(try Data(contentsOf: storeURL), sourceData)
         XCTAssertEqual(try Data(contentsOf: walURL), walData)
         XCTAssertEqual(try scalar("SELECT content FROM history", at: backupURL), "committed in WAL")
@@ -53,6 +53,32 @@ final class HistoryStoreBackupTests: XCTestCase {
         XCTAssertEqual(try HistoryStoreBackup.prepareBackupIfNeeded(storeURL: storeURL), backupURL)
         XCTAssertEqual(try Data(contentsOf: backupURL), originalBackup)
         XCTAssertEqual(try scalar("SELECT COUNT(*) FROM history", at: backupURL), "1")
+    }
+
+    func testEventFinalityMigrationKeepsPreviousRecoveryPoints() throws {
+        let storeURL = directory.appendingPathComponent("history.store")
+        let source = try open(storeURL)
+        defer { sqlite3_close(source) }
+        try execute("CREATE TABLE history (content TEXT); INSERT INTO history VALUES ('before first migration');", on: source)
+        let current = try XCTUnwrap(HistoryStoreBackup.prepareBackupIfNeeded(storeURL: storeURL))
+        let previous = current.deletingLastPathComponent().appendingPathComponent("history.store.pre-stable-record-ids-v1.sqlite")
+        try FileManager.default.moveItem(at: current, to: previous)
+        let previousBytes = try Data(contentsOf: previous)
+        let observationBackup = current.deletingLastPathComponent().appendingPathComponent("history.store.pre-observation-sources-v2.sqlite")
+        try FileManager.default.copyItem(at: previous, to: observationBackup)
+        let finalityBackup = current.deletingLastPathComponent().appendingPathComponent("history.store.pre-event-finality-v3.sqlite")
+        try FileManager.default.copyItem(at: previous, to: finalityBackup)
+        let approvalBackup = current.deletingLastPathComponent().appendingPathComponent("history.store.pre-kimi-approval-observation-v4.sqlite")
+        try FileManager.default.copyItem(at: previous, to: approvalBackup)
+        try execute("INSERT INTO history VALUES ('before observation migration');", on: source)
+        let next = try XCTUnwrap(HistoryStoreBackup.prepareBackupIfNeeded(storeURL: storeURL))
+        XCTAssertNotEqual(next, previous)
+        XCTAssertEqual(try Data(contentsOf: previous), previousBytes)
+        XCTAssertEqual(try Data(contentsOf: observationBackup), previousBytes)
+        XCTAssertEqual(try Data(contentsOf: finalityBackup), previousBytes)
+        XCTAssertEqual(try Data(contentsOf: approvalBackup), previousBytes)
+        XCTAssertEqual(try scalar("SELECT COUNT(*) FROM history", at: next), "2")
+        XCTAssertEqual(try scalar("SELECT COUNT(*) FROM history", at: previous), "1")
     }
 
     func testCorruptSourceFailsWithoutPublishingPartialBackup() throws {

@@ -41,6 +41,7 @@ struct AppTestFixture: Codable {
         let requestingAgent: AgentType
         let text: String
         let options: [String]
+        var allowsCustomAnswer: Bool? = nil
     }
 
     struct PendingPlanReviewFixture: Codable {

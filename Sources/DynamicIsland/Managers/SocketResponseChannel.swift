@@ -18,6 +18,9 @@ final class SocketResponseChannel: @unchecked Sendable {
         case .question(let answer):
             response = DIMessage(type: .questionResponse, sessionId: sessionID)
             response.answer = answer
+        case .questionSelections(let answers):
+            response = DIMessage(type: .questionResponse, sessionId: sessionID)
+            response.selectedAnswers = answers
         case .plan(let approved, let feedback):
             response = DIMessage(type: .planResponse, sessionId: sessionID)
             response.planApproved = approved

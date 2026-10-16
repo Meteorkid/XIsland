@@ -4,6 +4,21 @@ import DIShared
 @testable import DIBridge
 
 final class DIBridgeQuestionResponseTests: XCTestCase {
+    func testInteractiveReadReturnsBeforeConfiguredDeadlineWithoutResponse() throws {
+        let sockets = try makeSocketPair()
+        defer { close(sockets.0); close(sockets.1) }
+        let start = ProcessInfo.processInfo.systemUptime
+        XCTAssertNil(DIBridge.readFramedMessage(sockets.1, timeoutSeconds: 0.02))
+        XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 1)
+    }
+
+    func testInteractiveReadDoesNotDecodeIncompleteFrameOnTimeout() throws {
+        let sockets = try makeSocketPair()
+        defer { close(sockets.0); close(sockets.1) }
+        XCTAssertTrue(DIBridge.sendAll(fd: sockets.0, data: Data("{\"type\":".utf8)))
+        XCTAssertNil(DIBridge.readFramedMessage(sockets.1, timeoutSeconds: 0.02))
+    }
+
     func testQuestionsArrayResponseIncludesAllAnswerFields() throws {
         let stdin: [String: Any] = [
             "tool_name": "AskUserQuestion",
@@ -78,6 +93,41 @@ final class DIBridgeQuestionResponseTests: XCTestCase {
         XCTAssertTrue(DIBridge.usesClaudeCodePermissionStdout(agentType: "claude_code"))
         XCTAssertTrue(DIBridge.usesClaudeCodePermissionStdout(agentType: "trae"))
         XCTAssertFalse(DIBridge.usesClaudeCodePermissionStdout(agentType: "cursor"))
+    }
+
+    func testCodexPermissionDecisionsUseStructuredOutputAndSuccessfulHookExit() throws {
+        for approved in [true, false] {
+            let response = DIBridge.permissionHookResponse(agentType: "codex", approved: approved)
+            XCTAssertEqual(response.exitCode, 0)
+            let root = try decodeJSON(try XCTUnwrap(response.stdout))
+            let output = try hookOutput(from: root)
+            XCTAssertEqual(output["hookEventName"] as? String, "PermissionRequest")
+            let decision = try XCTUnwrap(output["decision"] as? [String: Any])
+            XCTAssertEqual(decision["behavior"] as? String, approved ? "allow" : "deny")
+            XCTAssertNil(output["updatedInput"])
+            XCTAssertNil(output["updatedPermissions"])
+        }
+    }
+
+    func testNativeExitCodePermissionAdapterKeepsItsExistingContract() {
+        let response = DIBridge.permissionHookResponse(agentType: "cursor", approved: false)
+        XCTAssertNil(response.stdout)
+        XCTAssertEqual(response.exitCode, 1)
+    }
+
+    func testOutputUsesNativeEventNameForLegacyCodexStopMapping() {
+        let event = DIBridge.outputEvent(hookType: "notification", stdinData: ["hook_event_name": "Stop"])
+        XCTAssertEqual(event, "Stop")
+        XCTAssertTrue(DIBridge.needsJsonOutput(event))
+        XCTAssertEqual(DIBridge.outputEvent(hookType: "session_start", stdinData: [:]), "session_start")
+        XCTAssertEqual(DIBridge.outputEvent(hookType: "Stop", stdinData: ["hook_event_name": " "]), "Stop")
+    }
+
+    func testCodexStopUpdatesReplyWithoutEndingTheSession() {
+        let message = DIBridge.buildMessage(agentType: "codex", hookType: "Stop", sessionId: "codex-stop",
+                                           stdinData: ["last_assistant_message": "Completed this turn"])
+        XCTAssertEqual(message.type, .statusUpdate)
+        XCTAssertEqual(message.status, "Completed this turn")
     }
 
     func testPermissionHookUsesPermissionRequestEventName() throws {

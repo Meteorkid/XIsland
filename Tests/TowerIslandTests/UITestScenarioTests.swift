@@ -2,6 +2,24 @@ import XCTest
 @testable import XIslandUITestDriver
 
 final class UITestScenarioTests: XCTestCase {
+    func testOnlySocketScenarioEnablesIsolatedSocketStartup() throws {
+        let runner = UITestScenarioRunner(appBundlePath: "/tmp/X Island.app", timeout: 2)
+        let url = URL(fileURLWithPath: "/tmp/xi-fixture/diagnostics.json")
+        let socket = runner.makeLaunchRequest(for: try UITestScenario.named("question-custom-socket"), diagnosticsURL: url)
+        let ordinary = runner.makeLaunchRequest(for: try UITestScenario.named("question-custom"), diagnosticsURL: url)
+        XCTAssertTrue(socket.arguments.contains("--ui-test-socket"))
+        XCTAssertTrue(socket.arguments.contains("--ui-test-mode"))
+        XCTAssertFalse(ordinary.arguments.contains("--ui-test-socket"))
+        XCTAssertEqual(socket.environment["X_ISLAND_TEST_RUNTIME_DIR"], "/tmp/xi-fixture")
+    }
+
+    func testCustomQuestionScenarioRequiresScopedInputAndSendControls() throws {
+        let scenario = try UITestScenario.named("question-custom")
+        XCTAssertEqual(scenario.fixtureName, "question-custom")
+        XCTAssertEqual(scenario.requiredIdentifiers, [UITestAccessibility.customAnswerField, UITestAccessibility.customAnswerSubmit])
+        XCTAssertTrue(scenario.requiredIdentifiers.allSatisfy(UITestAccessibility.usesRequestScope))
+    }
+
     func testInlineInteractionResolvesOnlyTheSelectedSessionRequest() throws {
         let requestID = UUID().uuidString
         let expected = "island.plan-approve.session-a.\(requestID)"

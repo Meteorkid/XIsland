@@ -163,7 +163,7 @@ final class SessionManagerStatusTests: XCTestCase {
         XCTAssertEqual(manager.sessions.first?.agentType, .trae)
     }
 
-    func testOpenCodePlaceholderPermissionIsAutoApprovedAndNotShown() {
+    func testOpenCodePlaceholderPermissionWaitsForUserApproval() {
         let manager = SessionManager()
 
         var start = DIMessage(type: .sessionStart, sessionId: "opencode-s1")
@@ -176,18 +176,16 @@ final class SessionManagerStatusTests: XCTestCase {
         permission.permDescription = ""
         permission.filePath = ""
 
-        var approved: Bool?
-        manager.handlePermissionRequest(permission, respond: { value in
-            approved = value
+        manager.handlePermissionRequest(permission, respond: { _ in
+            XCTFail("Unknown requests must not be automatically approved")
         })
 
         let session = manager.sessions.first(where: { $0.id == "opencode-s1" })
-        XCTAssertEqual(approved, true)
-        XCTAssertEqual(session?.status, .active)
-        XCTAssertNil(session?.pendingPermission)
+        XCTAssertEqual(session?.status, .waitingPermission)
+        XCTAssertNotNil(session?.pendingPermission)
     }
 
-    func testOpenCodeExternalDirectoryPermissionIsAutoApprovedAndNotShown() {
+    func testOpenCodeExternalDirectoryPermissionWaitsForUserApproval() {
         let manager = SessionManager()
 
         var start = DIMessage(type: .sessionStart, sessionId: "opencode-s2")
@@ -200,15 +198,13 @@ final class SessionManagerStatusTests: XCTestCase {
         permission.permDescription = "External_directory: /tmp/*"
         permission.filePath = "/tmp/*"
 
-        var approved: Bool?
-        manager.handlePermissionRequest(permission, respond: { value in
-            approved = value
+        manager.handlePermissionRequest(permission, respond: { _ in
+            XCTFail("External directory access must await user approval")
         })
 
         let session = manager.sessions.first(where: { $0.id == "opencode-s2" })
-        XCTAssertEqual(approved, true)
-        XCTAssertEqual(session?.status, .active)
-        XCTAssertNil(session?.pendingPermission)
+        XCTAssertEqual(session?.status, .waitingPermission)
+        XCTAssertNotNil(session?.pendingPermission)
     }
 
     func testMirroredClaudeStatusUsesExistingCursorSession() {

@@ -1,219 +1,82 @@
-import * as net from "net";
+import * as crypto from "crypto";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
+import { Agent, observeTasks, TaskAPI } from "./task-observer";
+import { ObservationTransport } from "./transport";
 
-const SOCKET_PATH = path.join(os.homedir(), ".xisland", "di.sock");
-const IDLE_TIMEOUT_MS = 30_000; // 30s inactivity → session_end
-const DEBOUNCE_MS = 2_000; // batch rapid edits into one session_start
-
-let socket: net.Socket | null = null;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let idleTimer: ReturnType<typeof setTimeout> | null = null;
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let currentSessionId: string | null = null;
-let currentAgent: string | null = null;
-let currentCwd: string = "";
-
-// --- Socket helpers ---
-
-function connect(): void {
-    if (socket && !socket.destroyed) return;
-
-    socket = new net.Socket();
-    socket.connect(SOCKET_PATH, () => {
-        console.log(`[XIsland] Connected to ${SOCKET_PATH}`);
-    });
-
-    socket.on("error", (err: Error) => {
-        console.error(`[XIsland] Socket error: ${err.message}`);
-        scheduleReconnect();
-    });
-
-    socket.on("close", () => {
-        console.log("[XIsland] Socket closed");
-        scheduleReconnect();
-    });
-}
-
-function scheduleReconnect(): void {
-    if (reconnectTimer) return;
-    reconnectTimer = setTimeout(() => {
-        reconnectTimer = null;
-        connect();
-    }, 5_000);
-}
-
-function sendMessage(msg: Record<string, unknown>): void {
-    if (!socket || socket.destroyed) {
-        connect();
-        return;
-    }
-    try {
-        const json = JSON.stringify(msg) + "\n";
-        socket.write(json);
-    } catch {
-        // Socket write failed, will reconnect on next attempt
-    }
-}
-
-// --- Session lifecycle ---
-
-function startSession(agent: string): void {
-    if (currentSessionId) {
-        // Already tracking a session — just reset the idle timer
-        resetIdleTimer();
-        return;
-    }
-
-    currentSessionId = `vscode-${agent}-${Date.now()}`;
-    currentAgent = agent;
-    currentCwd = getWorkspaceDir();
-
-    sendMessage({
-        type: "session_start",
-        session_id: currentSessionId,
-        agent_type: agent,
-        terminal: "VS Code",
-        working_dir: currentCwd,
-        prompt: "",
-        timestamp: new Date().toISOString(),
-    });
-
-    console.log(`[XIsland] session_start: ${currentSessionId} (${agent})`);
-    resetIdleTimer();
-}
-
-function endSession(): void {
-    if (!currentSessionId) return;
-
-    sendMessage({
-        type: "session_end",
-        session_id: currentSessionId,
-        agent_type: currentAgent,
-        timestamp: new Date().toISOString(),
-    });
-
-    console.log(`[XIsland] session_end: ${currentSessionId}`);
-    currentSessionId = null;
-    currentAgent = null;
-    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-}
-
-function resetIdleTimer(): void {
-    if (idleTimer) clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-        endSession();
-    }, IDLE_TIMEOUT_MS);
-}
-
-function getWorkspaceDir(): string {
-    const folders = vscode.workspace.workspaceFolders;
-    return folders?.length ? folders[0].uri.fsPath : "";
-}
-
-// --- Activity signals ---
-
-function onActivity(agent: string): void {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-        startSession(agent);
-    }, DEBOUNCE_MS);
-}
-
-// --- Heuristic: rapid consecutive file edits → AI activity ---
-
-function detectAIByExtension(): string | null {
-    const ids = [
-        { id: "github.copilot", agent: "copilot" },
-        { id: "github.copilot-chat", agent: "copilot" },
-        { id: "saoudrizwan.claude-dev", agent: "claude_code" },
-        { id: "continue.continue", agent: "continue" },
-    ];
-
-    for (const { id, agent } of ids) {
-        const ext = vscode.extensions.getExtension(id);
-        if (ext && ext.isActive) {
-            console.log(`[XIsland] Detected active extension: ${id} → ${agent}`);
-            return agent;
-        }
-    }
-    return null;
-}
-
-// --- Activation ---
+const targets: { id: string; version: string; agent: Agent; setting: string }[] = [
+    { id: "RooVeterinaryInc.roo-cline", version: "3.54.0", agent: "roo_code", setting: "observeRooCode" },
+    { id: "PearAI.pearai-roo-cline", version: "3.15.3", agent: "pearai", setting: "observePearAIExperimental" },
+];
+let cleanup: (() => Promise<void>) | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
-    console.log("[XIsland] VS Code extension activated");
-
-    // Connect to X Island socket
-    connect();
-
-    // 1. File edit heuristic: rapid edits within DEBOUNCE_MS → likely AI
-    context.subscriptions.push(
-        vscode.workspace.onDidChangeTextDocument((e: vscode.TextDocumentChangeEvent) => {
-            // Only react to AI-initiated changes: document has no associated editor
-            // (user-typed changes come through an active TextEditor)
-            const editors = vscode.window.visibleTextEditors.filter(
-                (ed) => ed.document.uri.toString() === e.document.uri.toString()
-            );
-
-            // If there's a visible editor for this document, the change is likely user-initiated.
-            // AI tools (Copilot inline, Cline file edits) often modify files in the background.
-            const likelyAI = editors.length === 0;
-
-            if (likelyAI) {
-                const agent = detectAIByExtension() || "copilot";
-                onActivity(agent);
+    cleanup?.();
+    let stopped = false;
+    let drained: Promise<void> | undefined;
+    const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    const attached = new Map<Agent, { api: TaskAPI; dispose(): void }>();
+    let connection = "等待原生任务事件";
+    let problems: string[] = [];
+    const render = () => {
+        if (stopped) return;
+        status.text = `$(pulse) X Island · ${attached.size} 来源`;
+        status.tooltip = [connection, ...problems, "只观察已核实版本的侧栏任务；审批和回答请在原应用处理。"].join("\n");
+    };
+    const transport = new ObservationTransport(path.join(os.homedir(), ".xisland", "di.sock"), value => {
+        connection = value; render();
+    });
+    // 持久来源命名空间，不以本次窗口启动时间或工作目录伪造原生 taskId。
+    const source = crypto.createHash("sha256").update(JSON.stringify([
+        vscode.env.machineId, vscode.env.appName, context.globalStorageUri.toString(),
+    ])).digest("hex").slice(0, 24);
+    const refresh = () => {
+        if (stopped) return;
+        problems = [];
+        const local = process.platform === "darwin" && !vscode.env.remoteName && vscode.workspace.isTrusted;
+        if (!local) problems.push("仅在受信任的本地 macOS 扩展宿主观察；未启用远程转发。");
+        for (const target of targets) {
+            const extension = vscode.extensions.getExtension(target.id);
+            const enabled = vscode.workspace.getConfiguration("xisland").get<boolean>(target.setting, false);
+            const api = extension?.isActive ? extension.exports as Partial<TaskAPI> | undefined : undefined;
+            const valid = local && enabled && extension?.packageJSON.version === target.version
+                && typeof api?.on === "function" && typeof api?.removeListener === "function";
+            const previous = attached.get(target.agent);
+            if (previous && (!valid || previous.api !== api)) {
+                transport.discard(target.agent); previous.dispose(); attached.delete(target.agent);
             }
-        })
-    );
-
-    // 2. Active editor change — detect when user starts chatting with AI
-    context.subscriptions.push(
-        vscode.window.onDidChangeActiveTextEditor(() => {
-            const agent = detectAIByExtension();
-            if (agent) {
-                onActivity(agent);
+            if (valid && !attached.has(target.agent)) {
+                try {
+                    const subscription = observeTasks(api as TaskAPI, target.agent, source, message =>
+                        transport.send({ ...message, terminal: vscode.env.appName }));
+                    attached.set(target.agent, { api: api as TaskAPI, dispose: () => subscription.dispose() });
+                } catch { problems.push(`${target.id} 事件订阅失败`); }
+            } else if (enabled && !valid) {
+                problems.push(`${target.id}：等待已激活的 ${target.version}；其他版本未验收`);
             }
-        })
-    );
-
-    // 3. Terminal open — Cline/Copilot Chat may open terminals for agent execution
-    context.subscriptions.push(
-        vscode.window.onDidOpenTerminal((terminal: vscode.Terminal) => {
-            const name = terminal.name.toLowerCase();
-            if (name.includes("cline") || name.includes("copilot") || name.includes("codex")) {
-                onActivity("copilot");
-            }
-        })
-    );
-
-    // Periodic check: if an AI extension is active, keep session alive
-    const interval = setInterval(() => {
-        const agent = detectAIByExtension();
-        if (agent && currentSessionId) {
-            resetIdleTimer();
         }
-    }, 15_000);
-
-    context.subscriptions.push({ dispose: () => clearInterval(interval) });
-
-    // Show status bar indicator
-    const statusBar = vscode.window.createStatusBarItem(
-        vscode.StatusBarAlignment.Right,
-        100
-    );
-    statusBar.text = "$(pulse) X Island";
-    statusBar.tooltip = "X Island bridge active";
-    statusBar.show();
-    context.subscriptions.push(statusBar);
+        render();
+    };
+    const changes = vscode.extensions.onDidChange(refresh);
+    const settings = vscode.workspace.onDidChangeConfiguration(event => {
+        if (event.affectsConfiguration("xisland")) refresh();
+    });
+    // onDidChange 不保证覆盖所有激活状态变化；仅检查两个已安装扩展，不自动激活或创建任务。
+    const timer = setInterval(refresh, 2000);
+    timer.unref();
+    cleanup = () => {
+        if (stopped) return drained ?? Promise.resolve();
+        stopped = true; clearInterval(timer); changes.dispose(); settings.dispose();
+        for (const [agent, entry] of attached) { transport.discard(agent); entry.dispose(); }
+        attached.clear(); status.dispose();
+        drained = transport.drain();
+        return drained;
+    };
+    context.subscriptions.push({ dispose: cleanup });
+    status.show(); refresh();
 }
 
-export function deactivate(): void {
-    endSession();
-    if (socket) { socket.destroy(); socket = null; }
-    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
-    console.log("[XIsland] VS Code extension deactivated");
+export function deactivate(): Promise<void> | undefined {
+    const drained = cleanup?.(); cleanup = undefined; return drained;
 }

@@ -7,12 +7,12 @@ final class ThemeManagerTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        // 清除标准 UserDefaults 中的外观设置，确保测试隔离
-        UserDefaults.standard.removeObject(forKey: "appearanceMode")
+        // 清除当前测试偏好中的外观设置，确保测试隔离
+        AppPreferences.defaults.removeObject(forKey: "appearanceMode")
     }
 
     override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: "appearanceMode")
+        AppPreferences.defaults.removeObject(forKey: "appearanceMode")
         super.tearDown()
     }
 

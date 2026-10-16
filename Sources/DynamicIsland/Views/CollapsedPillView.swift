@@ -95,22 +95,18 @@ struct CollapsedPillView: View {
 
     private var unobscuredCenteredIcons: some View {
         HStack(spacing: 8) {
-            if showCollapsedAgentIcon {
-                if visible.isEmpty {
-                    idleContent.transition(.opacity)
-                } else {
-                    let maxIcons = 5
-                    let shown = Array(visible.prefix(maxIcons))
-                    let overflow = visible.count - maxIcons
-                    HStack(spacing: 6) {
-                        ForEach(shown) { session in
-                            AgentIcon(agentType: session.agentType, size: 22, status: session.status)
-                        }
-                        if overflow > 0 {
-                            Text("+\(overflow)")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                .foregroundStyle(IslandStyle.secondaryText)
-                        }
+            if showCollapsedAgentIcon && !visible.isEmpty {
+                let maxIcons = 5
+                let shown = Array(visible.prefix(maxIcons))
+                let overflow = visible.count - maxIcons
+                HStack(spacing: 6) {
+                    ForEach(shown) { session in
+                        AgentIcon(agentType: session.agentType, size: 22, status: session.status)
+                    }
+                    if overflow > 0 {
+                        Text("+\(overflow)")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(IslandStyle.secondaryText)
                     }
                 }
             }
@@ -120,13 +116,12 @@ struct CollapsedPillView: View {
                     Spacer(minLength: 0)
                 }
                 compactModules
-            } else if showCollapsedAgentIcon {
-                Spacer(minLength: 0)
             } else {
-                idleContent.transition(.opacity)
+                Spacer(minLength: 0)
             }
         }
         .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func sessionNeedsAttention(_ session: AgentSession) -> Bool {
@@ -231,17 +226,6 @@ struct CollapsedPillView: View {
         .fixedSize(horizontal: true, vertical: false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibility)
-    }
-
-    private var idleContent: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(.green.opacity(0.6))
-                .frame(width: 6, height: 6)
-            Text(L10n.ready)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(IslandStyle.secondaryText)
-        }
     }
 
     private var compactTrailingModules: AnyView? {
@@ -369,7 +353,7 @@ private struct RotatingSessionIcon: View {
             return 5.0
         case .active, .thinking, .compacting:
             return 0.8
-        case .idle, .completed:
+        case .idle, .completed, .observationUnavailable, .completionUnconfirmed:
             return 0.6
         }
     }

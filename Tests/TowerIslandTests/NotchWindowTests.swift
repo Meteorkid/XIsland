@@ -6,7 +6,7 @@ final class NotchWindowTests: XCTestCase {
     /// 临时固定收起高度。此前两个用例用 IslandSizeCalculator.collapsedShapeHeight 表达期望，
     /// 而它读的正是被测实现同一个 UserDefaults 键——断言退化成恒等式，还随本机设置漂移。
     private func withCollapsedHeight(_ height: Double, _ body: () -> Void) {
-        let defaults = UserDefaults.standard
+        let defaults = AppPreferences.defaults
         let previous = defaults.double(forKey: "islandHeight")
         defaults.set(height, forKey: "islandHeight")
         defer {

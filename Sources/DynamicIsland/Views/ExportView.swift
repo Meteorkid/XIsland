@@ -40,6 +40,10 @@ struct SessionExportData: Codable {
     let agentType: String
     let startTime: String
     let completedAt: String?
+    let observationEndedAt: String?
+    let sourceNamespace: String?
+    let sourceInstanceId: String?
+    let nativeTaskId: String?
     let prompt: String
     let workspaceName: String
     let terminal: String
@@ -62,6 +66,7 @@ struct SessionExportData: Codable {
     struct ExportToolEvent: Codable {
         let timestamp: String
         let tool: String
+        let toolCallId: String?
         let input: String?
         let result: String?
         let linesAdded: Int?
@@ -70,6 +75,8 @@ struct SessionExportData: Codable {
         let testPassed: Int?
         let testFailed: Int?
         let isComplete: Bool
+        let completionUnconfirmed: Bool?
+        let nativeCompletionStatus: String?
     }
 }
 
@@ -191,6 +198,10 @@ struct ExportView: View {
             agentType: session.agentType.rawValue,
             startTime: ISO8601DateFormatter().string(from: session.startTime),
             completedAt: session.completedAt.map { ISO8601DateFormatter().string(from: $0) },
+            observationEndedAt: session.observationEndedAt.map { ISO8601DateFormatter().string(from: $0) },
+            sourceNamespace: session.sourceNamespace,
+            sourceInstanceId: session.sourceInstanceId,
+            nativeTaskId: session.nativeTaskId,
             prompt: session.prompt,
             workspaceName: session.workspaceName,
             terminal: session.terminal,
@@ -212,6 +223,7 @@ struct ExportView: View {
                 SessionExportData.ExportToolEvent(
                     timestamp: ISO8601DateFormatter().string(from: event.timestamp),
                     tool: event.tool,
+                    toolCallId: event.toolCallId,
                     input: event.input,
                     result: event.result,
                     linesAdded: event.linesAdded,
@@ -219,7 +231,9 @@ struct ExportView: View {
                     linesRead: event.linesRead,
                     testPassed: event.testResults?.passed,
                     testFailed: event.testResults?.failed,
-                    isComplete: event.isComplete
+                    isComplete: event.isComplete,
+                    completionUnconfirmed: event.completionUnconfirmed,
+                    nativeCompletionStatus: event.nativeCompletionStatus
                 )
             }
         )
@@ -236,6 +250,8 @@ struct ExportView: View {
         md += "Started: \(session.startTime.formatted(date: .abbreviated, time: .shortened))"
         if let completed = session.completedAt {
             md += " | Completed: \(completed.formatted(date: .abbreviated, time: .shortened))"
+        } else if let ended = session.observationEndedAt {
+            md += " | Observation interrupted: \(ended.formatted(date: .abbreviated, time: .shortened))"
         }
         md += " | Duration: \(session.formattedDuration)\n"
 

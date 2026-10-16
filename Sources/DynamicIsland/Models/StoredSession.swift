@@ -7,6 +7,12 @@ final class StoredSession {
     var agentTypeRaw: String
     var startTime: Date
     var completedAt: Date?
+    var sourceNamespace: String?
+    var sourceInstanceId: String?
+    var nativeTaskId: String?
+    var observationEndedAt: Date?
+    var kimiCodeApprovalObservationData: Data? = nil
+    var historyDate: Date?
     var prompt: String
     var workingDirectory: String
     var terminal: String
@@ -32,7 +38,7 @@ final class StoredSession {
     }
 
     var duration: TimeInterval {
-        (completedAt ?? Date()).timeIntervalSince(startTime)
+        (completedAt ?? observationEndedAt ?? Date()).timeIntervalSince(startTime)
     }
 
     var workspaceName: String {
@@ -69,6 +75,11 @@ final class StoredSession {
         self.agentTypeRaw = session.agentType.rawValue
         self.startTime = session.startTime
         self.completedAt = session.completedAt
+        self.sourceNamespace = session.sourceNamespace
+        self.sourceInstanceId = session.sourceInstanceId
+        self.nativeTaskId = session.nativeTaskId
+        self.observationEndedAt = session.observationEndedAt
+        self.historyDate = session.completedAt ?? session.observationEndedAt ?? session.startTime
         self.prompt = session.prompt
         self.workingDirectory = session.workingDirectory
         self.terminal = session.terminal
@@ -104,6 +115,7 @@ final class StoredSession {
         self.agentTypeRaw = agentTypeRaw
         self.startTime = startTime
         self.completedAt = completedAt
+        self.historyDate = completedAt ?? startTime
         self.prompt = prompt
         self.workingDirectory = workingDirectory
         self.terminal = terminal

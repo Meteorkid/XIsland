@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import AppKit
 import DIShared
+import CryptoKit
 
 // MARK: - Session Grouping & Filtering
 
@@ -62,9 +63,15 @@ final class SessionManager {
     private var suffixCache: [String: String] = [:]
     /// 预计算 subagent 关系：parentId → [childSession]
     private var subagentMap: [String: [AgentSession]] = [:]
+    /// 原生后台 hook 可能在退出后迟到；关闭记录必须比 UI 会话存活更久。
+    private var closedDeepSeekSessionIDs: Set<String> = []
+    private var closedAmazonQWrapperIDs: Set<String> = []
     var audioEngine: AudioEngine?
     var persistenceManager: SessionPersistenceManager?
     private(set) var unsavedSessionIDs: Set<String> = []
+    @ObservationIgnored private var unsavedKimiBackgroundTasks: [String: [String: DINativeBackgroundTask]] = [:]
+    /// 诊断回执计数；包含被忽略的消息，只在同步处理和持久化路径返回后递增。
+    @ObservationIgnored private(set) var handledMessageCount: UInt64 = 0
     var currentIslandState: IslandState = .collapsed
     /// 会话分组模式，持久化到 UserDefaults
     var grouping: SessionGrouping {
@@ -84,20 +91,45 @@ final class SessionManager {
     }
 
     private var approvalInterruption = ApprovalInterruptionState()
+    private var kimiCodeOrphanObservations: [String: KimiCodeApprovalObservation] = [:]
+    private var kimiCodeProjectionTransactions: [String: KimiCodeApprovalObservation] = [:]
+    /// 与可见会话对象分离，隐藏再恢复不会丢失本次 App 已知的回合顺序。
+    @ObservationIgnored private var codexTurns: [String: (current: String, observed: Set<String>)] = [:]
 
     /// Incremented to force SwiftUI to re-evaluate `visibleSessions` after linger expires.
     var visibleSessionsVersion: Int = 0
     private var cleanupTimer: Timer?
     private var workspaceObserver: Any?
+    private let allowsExternalApplicationAccess: Bool
+    private let captureWindowNumber: (AgentType, String) -> Int?
+    private var observationLeases = ObservationLeaseLedger()
+    nonisolated(unsafe) private var observationTimer: Timer?
+    private let observationClock: () -> TimeInterval
+    private let observationWallClock: () -> Date
+
+    init(
+        testConfiguration: AppTestConfiguration = .current(),
+        captureWindowNumber: @escaping (AgentType, String) -> Int? = {
+            TerminalJumpManager.captureFrontWindowNumber(for: $0, terminal: $1)
+        },
+        observationClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        observationWallClock: @escaping () -> Date = Date.init
+    ) {
+        allowsExternalApplicationAccess = !testConfiguration.isEnabled && !AppPreferences.isIsolated
+        self.captureWindowNumber = captureWindowNumber
+        self.observationClock = observationClock
+        self.observationWallClock = observationWallClock
+    }
+
+    deinit { observationTimer?.invalidate() }
 
     /// Debounces the "Session complete" (`sessionEnd`) chime when assistant text arrives via `statusUpdate`
     /// (Notification hook) as well as `sessionEnd`, so streaming updates do not spam sounds.
     private var lastAssistantReplySoundAt: [String: TimeInterval] = [:]
     private let assistantReplySoundMinInterval: TimeInterval = 1.8
 
-    /// Caches the last answer per session so that duplicate follow-up events from
-    /// agents like OpenCode (same question, same options, fired within 2 seconds)
-    /// are auto-replied without re-showing the question panel.
+    /// Caches answers only for legacy events without native request IDs; native
+    /// requests must each await a decision even when their question text matches.
     private struct RecentAnswer {
         let answer: String
         let questionText: String
@@ -106,8 +138,6 @@ final class SessionManager {
     }
     private var recentAnswers: [String: RecentAnswer] = [:]
 
-    static let idleTimeout: TimeInterval = 120
-
     var completedLingerDuration: TimeInterval {
         let val = AppPreferences.defaults.double(forKey: "completedLingerDuration")
         if val == 0 || val < 0 { return .infinity }  // 「永久」选项（兼容旧版 -1.0）
@@ -115,12 +145,13 @@ final class SessionManager {
     }
 
     var activeSessions: [AgentSession] {
-        sessions.filter { $0.status != .completed }
+        sessions.filter { $0.status != .completed && $0.status != .observationUnavailable }
     }
 
-    /// 真正运行中的会话（active、thinking、compacting）
+    /// 主会话运行中，或主回复未确认但仍观察到子代理在运行。
     var trulyActiveSessions: [AgentSession] {
-        sessions.filter { $0.status == .active || $0.status == .thinking || $0.status == .compacting }
+        sessions.filter { $0.status == .active || $0.status == .thinking || $0.status == .compacting
+            || ($0.status == .completionUnconfirmed && $0.hasRunningSubagents) }
     }
 
     /// 获取指定会话的 subagent 列表（O(1) 查询）
@@ -148,7 +179,7 @@ final class SessionManager {
         case .all:
             break
         case .agentType(let type):
-            result = result.filter { $0.agentType == type }
+            result = result.filter { $0.agentType == type || (type == .glm && $0.usesGLMModel) }
         case .status(let status):
             result = result.filter { $0.status == status }
         case .text(let text):
@@ -157,6 +188,7 @@ final class SessionManager {
                 session.prompt.lowercased().contains(lower)
                     || session.workspaceName.lowercased().contains(lower)
                     || session.terminal.lowercased().contains(lower)
+                    || session.tokenUsage.model.lowercased().contains(lower)
             }
         }
 
@@ -167,6 +199,7 @@ final class SessionManager {
                 session.prompt.lowercased().contains(lower)
                     || session.workspaceName.lowercased().contains(lower)
                     || session.terminal.lowercased().contains(lower)
+                    || session.tokenUsage.model.lowercased().contains(lower)
             }
         }
 
@@ -199,7 +232,7 @@ final class SessionManager {
                 .map { SessionGroup(id: $0.key, title: $0.key, sessions: $0.value) }
         case .status:
             let grouped = Dictionary(grouping: sessions) { $0.status.rawValue }
-            let order: [SessionStatus] = [.active, .thinking, .compacting, .waitingPermission, .waitingAnswer, .waitingPlanReview, .idle, .completed, .error]
+            let order: [SessionStatus] = [.active, .thinking, .compacting, .waitingPermission, .waitingAnswer, .waitingPlanReview, .idle, .completionUnconfirmed, .completed, .error, .observationUnavailable]
             return order.compactMap { status in
                 guard let items = grouped[status.rawValue], !items.isEmpty else { return nil }
                 return SessionGroup(id: status.rawValue, title: status.displayName, sessions: items)
@@ -284,7 +317,7 @@ final class SessionManager {
         Task.detached(priority: .utility) { [checks] in
             let deadAgents = checks.compactMap { check -> AgentType? in
                 let (agentType, names) = check
-                guard !Self.isAnyProcessRunning(names: names) else { return nil }
+                guard Self.isAnyProcessRunning(names: names) == false else { return nil }
                 return agentType
             }
             guard !deadAgents.isEmpty else { return }
@@ -295,11 +328,11 @@ final class SessionManager {
     }
 
     @MainActor
-    func checkProcessesAlive(processStatus: @escaping @Sendable ([String]) -> Bool) {
+    func checkProcessesAlive(processStatus: @escaping @Sendable ([String]) -> Bool?) {
         let checks = cliProcessChecks()
         let deadAgents = checks.compactMap { check -> AgentType? in
             let (agentType, names) = check
-            return processStatus(names) ? nil : agentType
+            return processStatus(names) == false ? agentType : nil
         }
         handleDeadAgents(deadAgents)
     }
@@ -319,23 +352,28 @@ final class SessionManager {
 
         for agentType in deadAgents {
             for session in activeSessions where session.agentType == agentType {
-                markCompleted(session)
+                markObservationUnavailable(session)
             }
         }
 
+        selectNextInteraction()
         reSelectIfCurrentCompleted()
+        scheduleLingerCleanup()
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
     }
 
     /// If the currently selected session has been completed, pick the next active session.
     private func reSelectIfCurrentCompleted() {
         guard let sid = selectedSessionId,
-              sessions.first(where: { $0.id == sid })?.status == .completed
+              let status = sessions.first(where: { $0.id == sid })?.status,
+              status == .completed || status == .observationUnavailable
         else { return }
         selectedSessionId = activeSessions.first?.id
     }
 
-    private nonisolated static func isAnyProcessRunning(names: [String]) -> Bool {
+    /// 检测失败时返回 nil，不能把无法查询进程当成确认退出。
+    private nonisolated static func isAnyProcessRunning(names: [String]) -> Bool? {
+        var detectionFailed = false
         for name in names {
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
@@ -345,20 +383,21 @@ final class SessionManager {
             do {
                 try task.run()
                 task.waitUntilExit()
+                guard task.terminationReason == .exit else {
+                    detectionFailed = true
+                    continue
+                }
                 if task.terminationStatus == 0 { return true }
-            } catch {}
+                if task.terminationStatus != 1 { detectionFailed = true }
+            } catch {
+                detectionFailed = true
+            }
         }
-        return false
+        return detectionFailed ? nil : false
     }
 
     func cleanupStaleSessions() {
-        let now = Date()
-        for session in activeSessions {
-            if (session.status == .active || session.status == .idle),
-               now.timeIntervalSince(session.lastActivityTime) > Self.idleTimeout {
-                markCompleted(session)
-            }
-        }
+        expireObservationSources()
         reSelectIfCurrentCompleted()
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
         purgeOrphanedCacheEntries()
@@ -390,8 +429,8 @@ final class SessionManager {
         return pendingInteractionSessions.first
     }
 
-    func focusInteraction(session: AgentSession, kind: InteractionKind) {
-        guard let id = requestID(in: session, kind: kind) else { return }
+    func focusInteraction(session: AgentSession, kind: InteractionKind, requestID: UUID? = nil) {
+        guard let id = self.requestID(in: session, kind: kind), requestID == nil || requestID == id else { return }
         focusedInteraction = InteractionFocus(sessionID: session.id, kind: kind, requestID: id)
         selectedSessionId = session.id
         switch kind {
@@ -425,7 +464,14 @@ final class SessionManager {
         case (.question, "1"), (.question, "2"), (.question, "3"):
             guard let digit = Int(key), let question = session.pendingQuestion,
                   question.options.indices.contains(digit - 1) else { return false }
-            answerQuestion(session: session, answer: question.options[digit - 1], requestID: focus.requestID)
+            if question.allowsMultipleAnswers {
+                guard question.state.canSubmit else { return false }
+                let option = question.options[digit - 1]
+                if question.state.selectedAnswers.contains(option) { question.state.selectedAnswers.remove(option) }
+                else { question.state.selectedAnswers.insert(option) }
+            } else {
+                answerQuestion(session: session, answer: question.options[digit - 1], requestID: focus.requestID)
+            }
         default: return false
         }
         return true
@@ -463,8 +509,81 @@ final class SessionManager {
     }
 
     func handleMessage(_ message: DIMessage) {
+        defer {
+            handledMessageCount += 1
+            AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+        }
+        if !message.hasObservationMetadata, sessionById(message.sessionId)?.sourceInstanceId != nil { return }
+        if !message.hasObservationMetadata, message.type == .subagentStart || message.type == .subagentEnd,
+           let parent = message.parentSessionId, sessionById(parent)?.sourceInstanceId != nil { return }
+        let sourceAgent = resolvedAgentType(for: message)
+        if sourceAgent == .amazonQ, message.sessionId.hasPrefix("amazonq-wrapper-") {
+            if closedAmazonQWrapperIDs.contains(message.sessionId) { return }
+            if message.nativeEvent == "amazonq_wrapper_end" { closedAmazonQWrapperIDs.insert(message.sessionId) }
+        }
+        if ZeroConfigManager.usesCompanionExtension(sourceAgent) || ZeroConfigManager.usesACPBridge(sourceAgent) || ZeroConfigManager.usesStateObserver(sourceAgent) || ZeroConfigManager.usesCodyBridge(sourceAgent) || ZeroConfigManager.usesAmazonQWrapper(sourceAgent) || ZeroConfigManager.usesWorkBuddyPlugin(sourceAgent),
+           !ZeroConfigManager.isAutoConfigEnabled(for: sourceAgent) { return }
+        if message.hasObservationMetadata {
+            expireObservationSources()
+            switch observationLeases.accept(message, now: observationClock(), wallTime: observationWallClock()) {
+            case .rejected: return
+            case .ended(let source):
+                endObservation(source)
+                return
+            case .heartbeat:
+                startObservationTimerIfNeeded()
+                return
+            case .event:
+                startObservationTimerIfNeeded()
+            }
+        }
+        if resolvedAgentType(for: message) == .deepseek, let nativeEvent = message.nativeEvent {
+            if nativeEvent == "session_start" {
+                closedDeepSeekSessionIDs.remove(message.sessionId)
+            } else if nativeEvent == "session_end" {
+                closedDeepSeekSessionIDs.insert(message.sessionId)
+            } else if closedDeepSeekSessionIDs.contains(message.sessionId) {
+                return
+            }
+        }
+
+        if handleKimiCodeBackgroundTask(message) || handleKimiCodeApprovalObservation(message) {
+            AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+            return
+        }
+
+        if resolvedAgentType(for: message) == .codex,
+           message.nativeEvent == "UserPromptSubmit", let turnID = message.nativeTurnId,
+           let known = codexTurns[message.sessionId],
+           known.current != turnID, known.observed.contains(turnID) { return }
+
+        if isCodexTurnObservation(message) {
+            // 结果观察不能重建历史会话；未见当前回合时也不猜测事件归属。
+            guard let session = sessionById(message.sessionId), let turnID = message.nativeTurnId,
+                  !session.hasPendingInteraction,
+                  ![SessionStatus.completed, .observationUnavailable, .error,
+                    .waitingPermission, .waitingAnswer, .waitingPlanReview].contains(session.status) else { return }
+            if message.nativeEvent == "PreCompact" {
+                // 压缩开始本身就是活动证据，不要求伪造一个先行的用户提示。
+                // 只拒绝本次运行已见过且被新回合取代的 ID；跨重启的未知 ID 无法排序。
+                if let known = codexTurns[session.id], known.current != turnID,
+                   known.observed.contains(turnID) { return }
+            } else if codexTurns[session.id]?.current != turnID { return }
+        }
+
+        guard restoreArchivedSessionIfNeeded(message) else {
+            AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+            return
+        }
         if shouldIgnoreMirroredSession(message) {
             return
+        }
+
+        let tracksKimiApproval = isKimiCodeMessage(message)
+            || sessionById(message.sessionId)?.kimiCodeApprovalObservation != nil
+        if tracksKimiApproval, !beginKimiCodeProjection(message) { return }
+        defer {
+            if tracksKimiApproval { finishKimiCodeProjection(message) }
         }
 
         switch message.type {
@@ -486,29 +605,351 @@ final class SessionManager {
             handleContextCompact(message)
         case .recap:
             handleRecap(message)
+        case .interactionResolved:
+            handleInteractionResolved(message)
         default:
             break
+        }
+
+        if let session = sessionById(message.sessionId) { rememberCodexTurn(message, session: session) }
+
+        if message.hasObservationMetadata, let session = sessionById(message.sessionId) {
+            session.sourceNamespace = message.sourceNamespace
+            session.sourceInstanceId = message.sourceInstanceId
+            session.nativeTaskId = message.nativeTaskId
         }
 
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
     }
 
-    private func shouldIgnoreMirroredSession(_ message: DIMessage) -> Bool {
-        guard let agentType = AgentType.from(message.agentType),
-              agentType == .claudeCode,
-              message.type == .sessionStart || message.type == .sessionEnd,
-              let sessionSuffix = mirroredSessionSuffix(from: message.sessionId)
-        else {
-            return false
-        }
+    private func isKimiCodeMessage(_ message: DIMessage) -> Bool {
+        resolvedAgentType(for: message) == .kimi && message.nativeEvent?.hasPrefix("kimi_code.") == true
+    }
 
-        return sessions.contains { session in
-            isCursorFamily(session.agentType) && suffixCache[session.id] == sessionSuffix
+    private func isCodexTurnObservation(_ message: DIMessage) -> Bool {
+        resolvedAgentType(for: message) == .codex
+            && ["Interrupt", "PreCompact", "PostCompact"].contains(message.nativeEvent ?? "")
+    }
+
+    private func rememberCodexTurn(_ message: DIMessage, session: AgentSession) {
+        guard session.agentType == .codex, resolvedAgentType(for: message) == .codex,
+              let turnID = message.nativeTurnId,
+              ["UserPromptSubmit", "PreCompact", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop"].contains(message.nativeEvent ?? ""),
+              message.nativeMessageReplay != true else { return }
+        // 新提示或压缩开始确认活动；工具、审批或结果仅补齐首次观测。
+        if message.nativeEvent == "UserPromptSubmit" || message.nativeEvent == "PreCompact" || codexTurns[session.id] == nil {
+            var known = codexTurns[session.id] ?? (current: turnID, observed: [])
+            known.current = turnID
+            known.observed.insert(turnID)
+            codexTurns[session.id] = known
         }
     }
 
-    /// Cursor 系（VSCode fork）的桥接都会同时发出 `<agent>-<uuid>` 与 `claude_code-<uuid>`，
-    /// 需要按同一套镜像规则合并成一行。Windsurf 从 Cursor 拆出后仍属此列。
+    private func kimiCodeRequest(_ message: DIMessage) -> KimiCodeApprovalObservation.Request? {
+        KimiCodeApprovalObservation.Request(id: message.nativeRequestId, agentID: message.nativeAgentId,
+            turnID: message.nativeTurnId, toolCallID: message.toolCallId)
+    }
+
+    /// TaskStarted 和通知以任务 ID 关联，不借用模型工具 ID 或名称型子代理身份。
+    private func handleKimiCodeBackgroundTask(_ message: DIMessage) -> Bool {
+        guard isKimiCodeMessage(message), let task = message.nativeBackgroundTask,
+              ["kimi_code.TaskStarted", "kimi_code.Notification"].contains(message.nativeEvent ?? "") else { return false }
+        do {
+            let visible = sessionById(message.sessionId)
+            let stored = visible == nil ? try persistenceManager?.restoreSession(sessionId: message.sessionId) : nil
+            let existing = visible ?? stored
+            if existing == nil, persistenceManager != nil {
+                unsavedKimiBackgroundTasks.removeValue(forKey: message.sessionId)
+                unsavedSessionIDs.remove(message.sessionId)
+            }
+            if let existing {
+                guard existing.agentType == .kimi, existing.sourceNamespace == message.sourceNamespace,
+                      existing.sourceInstanceId == message.sourceInstanceId, existing.nativeTaskId == message.nativeTaskId else { return true }
+            }
+            var observation = existing?.kimiCodeApprovalObservation
+                ?? KimiCodeApprovalObservation(baseStatus: existing?.status ?? .idle, baseStatusText: existing?.statusText ?? "")
+            if let orphan = try loadKimiCodeOrphan(message.sessionId) {
+                observation.merge(orphan)
+                if existing == nil, orphan.baseStatus == .completed { observation.endSession() }
+            }
+            mergeUnsavedKimiBackgroundTasks(into: &observation, sessionID: message.sessionId)
+            observation.observeBackgroundTask(task)
+            guard let recorded = observation.backgroundTasks?[task.id] else { return true }
+            if let existing {
+                let closed = existing.status == .completed || existing.status == .observationUnavailable
+                if closed { observation.markBackgroundTasksUnconfirmed() }
+                existing.kimiCodeApprovalObservation = observation
+                synchronizeKimiCodeBackgroundTasks(existing)
+                applyKimiCodeProjection(existing)
+                // 已在历史中的结束事实只更新历史；正在运行的新任务才能重新显示会话。
+                if visible == nil, !closed, recorded.kind == "agent", recorded.status == "running" {
+                    sessions.append(existing)
+                    updateIndexForAppend(existing, at: sessions.count - 1)
+                }
+                if !persistSession(existing), visible == nil {
+                    // 隐藏历史对象不在 sessions 中，必须另存事实供恢复写入后重试。
+                    unsavedKimiBackgroundTasks[existing.id] = existing.kimiCodeApprovalObservation?.backgroundTasks ?? [:]
+                }
+                return recorded.kind == "agent" || visible == nil || closed
+            }
+            if recorded.status != "running" || observation.baseStatus == .completed {
+                persistKimiCodeOrphan(observation, sessionID: message.sessionId)
+                return true
+            }
+            if recorded.kind != "agent" {
+                persistKimiCodeOrphan(observation, sessionID: message.sessionId)
+                return false
+            }
+            let session = findOrCreateSession(message)
+            observation.baseStatus = session.status
+            session.kimiCodeApprovalObservation = observation
+            synchronizeKimiCodeBackgroundTasks(session)
+            applyKimiCodeProjection(session)
+            persistSession(session)
+        } catch {
+            print("[SessionManager] Kimi background task facts could not be loaded: \(error.localizedDescription)")
+        }
+        return true
+    }
+
+    private func synchronizeKimiCodeBackgroundTasks(_ session: AgentSession) {
+        let tasks = session.kimiCodeApprovalObservation?.backgroundTasks ?? [:]
+        for task in tasks.values.sorted(by: { ($0.startedAtMilliseconds ?? 0, $0.id) < ($1.startedAtMilliseconds ?? 0, $1.id) }) {
+            guard task.kind == "agent" else { continue }
+            let eventID = KimiCodeApprovalObservation.backgroundTaskEventID(sessionID: session.id, taskID: task.id)
+            let index = session.events.firstIndex { $0.id == eventID }
+            let timestamp = task.startedAtMilliseconds.map { Date(timeIntervalSince1970: Double($0) / 1000) } ?? Date()
+            // 不设置 toolCallId：它属于模型可选择的命名空间，不能用字符串前缀隔离。
+            var event = index.map { session.events[$0] } ?? ToolEvent(tool: "Subagent", id: eventID, timestamp: timestamp)
+            event.input = task.description
+            event.isComplete = ["completed", "failed", "timed_out", "killed"].contains(task.status)
+            event.completionUnconfirmed = ["lost", "unconfirmed"].contains(task.status)
+            event.result = task.result ?? (event.isComplete ? "Background task: " + task.status : nil)
+            if let index {
+                let previous = session.events[index]
+                if previous.input == event.input, previous.isComplete == event.isComplete,
+                   previous.completionUnconfirmed == event.completionUnconfirmed, previous.result == event.result { continue }
+                session.events[index] = event
+            }
+            else { session.events.append(event) }
+        }
+        if !tasks.isEmpty, session.currentTool == "Subagent", !session.hasRunningSubagents {
+            session.currentTool = session.events.last(where: { $0.isRunning })?.tool
+        }
+    }
+
+    private func mergeUnsavedKimiBackgroundTasks(into observation: inout KimiCodeApprovalObservation, sessionID: String) {
+        for task in (unsavedKimiBackgroundTasks[sessionID] ?? [:]).values {
+            observation.observeBackgroundTask(task)
+        }
+    }
+
+    /// 被动结果只更新已知事实；即使历史已归档，也不能借此恢复可见活动。
+    private func handleKimiCodeApprovalObservation(_ message: DIMessage) -> Bool {
+        guard isKimiCodeMessage(message), let event = message.nativeEvent else { return false }
+        if event == "kimi_code.SessionHeartbeat" { return true }
+        if event == "kimi_code.UserPromptSubmit", let session = sessionById(message.sessionId),
+           session.status == .completed || session.status == .observationUnavailable { return true }
+        let isRequest = event == "kimi_code.PermissionRequest"
+        let isResult = event == "kimi_code.PermissionResult"
+        let isArchivedEnd = event == "kimi_code.SessionEnd" && sessionById(message.sessionId) == nil
+        guard isRequest || isResult || isArchivedEnd else { return false }
+        guard message.nativeMessageReplay != true else { return true }
+        do {
+            let visible = sessionById(message.sessionId)
+            let stored: AgentSession?
+            if visible == nil { stored = try persistenceManager?.restoreSession(sessionId: message.sessionId) }
+            else { stored = nil }
+            let existing = visible ?? stored
+            if let existing {
+                guard existing.agentType == .kimi, existing.sourceNamespace == message.sourceNamespace,
+                      existing.sourceInstanceId == message.sourceInstanceId, existing.nativeTaskId == message.nativeTaskId else { return true }
+                let closed = existing.status == .completed || existing.status == .observationUnavailable
+                if isRequest, closed { return true }
+                if isArchivedEnd {
+                    existing.kimiCodeApprovalObservation?.endSession()
+                    synchronizeKimiCodeBackgroundTasks(existing)
+                    existing.status = .completed
+                    existing.completedAt = existing.completedAt ?? Date()
+                    persistSession(existing)
+                    return true
+                }
+                var observation = existing.kimiCodeApprovalObservation
+                    ?? KimiCodeApprovalObservation(baseStatus: existing.status, baseStatusText: existing.statusText)
+                if isRequest { observation.observeRequest(kimiCodeRequest(message)) }
+                else { observation.observeResult(kimiCodeRequest(message)) }
+                existing.kimiCodeApprovalObservation = observation
+                applyKimiCodeProjection(existing)
+                if isRequest, visible == nil, observation.hasPendingApproval {
+                    sessions.append(existing)
+                    updateIndexForAppend(existing, at: sessions.count - 1)
+                }
+                persistSession(existing)
+                return true
+            }
+            var observation = try loadKimiCodeOrphan(message.sessionId)
+                ?? KimiCodeApprovalObservation(baseStatus: .idle)
+            if isArchivedEnd {
+                observation.endSession()
+                persistKimiCodeOrphan(observation, sessionID: message.sessionId)
+                return true
+            }
+            if isResult {
+                guard let request = kimiCodeRequest(message) else { return true }
+                observation.observeResult(request)
+                persistKimiCodeOrphan(observation, sessionID: message.sessionId)
+                return true
+            }
+            guard observation.baseStatus != .completed else { return true }
+            observation.observeRequest(kimiCodeRequest(message))
+            // 已结束 ID 的迟到 Request 只读事实，不新建等待会话。
+            guard observation.hasPendingApproval else { return true }
+            let session = findOrCreateSession(message)
+            session.kimiCodeApprovalObservation = observation
+            applyKimiCodeProjection(session)
+            persistSession(session)
+        } catch {
+            // 历史/ledger 读取失败时保留磁盘事实，不能退回空状态继续处理。
+            print("[SessionManager] Kimi approval observation could not be restored: \(error.localizedDescription)")
+        }
+        return true
+    }
+
+    private func loadKimiCodeOrphan(_ sessionID: String) throws -> KimiCodeApprovalObservation? {
+        var observation = try persistenceManager?.kimiCodeApprovalOrphan(sessionId: sessionID)
+        if let cached = kimiCodeOrphanObservations[sessionID] {
+            if observation == nil { observation = cached }
+            else {
+                observation?.merge(cached)
+                if cached.baseStatus == .completed { observation?.endSession() }
+            }
+        }
+        return observation
+    }
+
+    private func persistKimiCodeOrphan(_ observation: KimiCodeApprovalObservation, sessionID: String) {
+        kimiCodeOrphanObservations[sessionID] = observation
+        if persistenceManager?.saveKimiCodeApprovalOrphan(sessionId: sessionID, observation: observation) == true {
+            // 仅失败事实留在内存；已持久记录删除或过期后不能被缓存重新写回。
+            kimiCodeOrphanObservations.removeValue(forKey: sessionID)
+        }
+    }
+
+    private func beginKimiCodeProjection(_ message: DIMessage) -> Bool {
+        do {
+            let session = sessionById(message.sessionId)
+            var observation = session?.kimiCodeApprovalObservation
+                ?? KimiCodeApprovalObservation(baseStatus: session?.status ?? .idle, baseStatusText: session?.statusText ?? "")
+            if let orphan = try loadKimiCodeOrphan(message.sessionId) {
+                if session == nil, orphan.baseStatus == .completed {
+                    // 没有历史父记录的关闭事实也需要恢复门禁；结果或通知不算新活动。
+                    guard message.nativeEvent == "kimi_code.SessionStart" || message.nativeEvent == "kimi_code.TurnStarted"
+                        || message.type == .toolStart || message.type == .contextCompact else { return false }
+                }
+                observation.merge(orphan)
+            }
+            mergeUnsavedKimiBackgroundTasks(into: &observation, sessionID: message.sessionId)
+            kimiCodeProjectionTransactions[message.sessionId] = observation
+            if let session {
+                session.kimiCodeApprovalObservation = observation
+                if !session.hasPendingInteraction, session.status != .completed, session.status != .observationUnavailable {
+                    session.status = observation.baseStatus
+                    session.statusText = observation.baseStatusText
+                }
+            }
+            return true
+        } catch {
+            print("[SessionManager] Kimi approval facts could not be loaded: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func finishKimiCodeProjection(_ message: DIMessage) {
+        guard var observation = kimiCodeProjectionTransactions.removeValue(forKey: message.sessionId),
+              let session = sessionById(message.sessionId) else { return }
+        if let current = session.kimiCodeApprovalObservation { observation.merge(current) }
+        if message.nativeEvent == "kimi_code.SessionEnd" { observation.endSession() }
+        if message.nativeEvent == "kimi_code.Interrupt" { observation.observeInterrupt() }
+        // 提交可被其他 hook 阻断；只有 TurnStarted 等执行证据改变基础状态。
+        if message.nativeEvent != "kimi_code.UserPromptSubmit", message.type != .interactionResolved {
+            if !session.hasPendingInteraction {
+                observation.baseStatus = session.status
+                observation.baseStatusText = session.statusText
+            } else if message.type == .toolStart {
+                observation.baseStatus = .active
+            } else if message.type == .contextCompact {
+                observation.baseStatus = .compacting
+            } else if let raw = message.observedState, let state = SessionStatus(rawValue: raw),
+                      [.active, .idle, .completionUnconfirmed, .error].contains(state) {
+                observation.baseStatus = state
+                observation.baseStatusText = message.status ?? observation.baseStatusText
+            }
+        }
+        session.kimiCodeApprovalObservation = observation
+        synchronizeKimiCodeBackgroundTasks(session)
+        applyKimiCodeProjection(session)
+        persistSession(session)
+        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+    }
+
+    private func applyKimiCodeProjection(_ session: AgentSession) {
+        guard let observation = session.kimiCodeApprovalObservation,
+              session.status != .completed, session.status != .observationUnavailable else { return }
+        if session.hasPendingInteraction {
+            session.status = session.pendingPermission != nil ? .waitingPermission
+                : session.pendingQuestion != nil ? .waitingAnswer : .waitingPlanReview
+            return
+        }
+        session.status = observation.displayedStatus ?? observation.baseStatus
+        session.statusText = observation.displayedText ?? observation.baseStatusText
+    }
+
+    private func startObservationTimerIfNeeded() {
+        guard observationTimer == nil, observationLeases.hasLiveSources else { return }
+        observationTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            self?.expireObservationSources()
+        }
+    }
+
+    func expireObservationSources() {
+        for source in observationLeases.expire(now: observationClock()) { endObservation(source) }
+        if !observationLeases.hasLiveSources {
+            observationTimer?.invalidate()
+            observationTimer = nil
+        }
+    }
+
+    private func endObservation(_ source: ObservationSource) {
+        for session in sessions where session.agentType.rawValue == source.agent
+            && session.sourceNamespace == source.namespace && session.sourceInstanceId == source.instance
+            && session.status != .completed {
+            markObservationUnavailable(session)
+        }
+        selectNextInteraction()
+        reSelectIfCurrentCompleted()
+        scheduleLingerCleanup()
+        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+    }
+
+    private func markObservationUnavailable(_ session: AgentSession) {
+        cancelPendingInteractions(session)
+        session.status = .observationUnavailable
+        session.statusText = L10n.observationInterrupted
+        session.currentTool = nil
+        session.observationEndedAt = session.observationEndedAt ?? observationWallClock()
+        session.kimiCodeApprovalObservation?.markBackgroundTasksUnconfirmed()
+        synchronizeKimiCodeBackgroundTasks(session)
+        persistSession(session)
+    }
+
+    private func shouldIgnoreMirroredSession(_ message: DIMessage) -> Bool {
+        guard message.type == .sessionStart || message.type == .sessionEnd,
+              mirrorSource(for: message) == .claudeCode,
+              let session = sessionById(message.sessionId) ?? sessionMatchingMirror(of: message) else { return false }
+        return isCursorFamily(session.agentType)
+    }
+
+    /// 保留已有 IDE 与 Claude hook 的镜像兼容；IDE 之间不能仅凭相同后缀合并。
     private func isCursorFamily(_ agentType: AgentType) -> Bool {
         agentType == .cursor || agentType == .trae || agentType == .windsurf
     }
@@ -522,20 +963,19 @@ final class SessionManager {
     }
 
     private func resolvedAgentType(for message: DIMessage) -> AgentType {
+        if mirrorSource(for: message) == .claudeCode,
+           let mirrored = sessionById(message.sessionId) ?? sessionMatchingMirror(of: message),
+           isCursorFamily(mirrored.agentType) {
+            return mirrored.agentType
+        }
+
         if let explicit = AgentType.from(message.agentType) {
-            if explicit == .claudeCode, let mirrored = mirroredCursorFamilyAgent(for: message.sessionId) {
-                return mirrored
-            }
             return explicit
         }
 
         if let prefix = message.sessionId.split(separator: "-", maxSplits: 1).first,
            let inferred = AgentType.from(String(prefix)) {
             return inferred
-        }
-
-        if let mirrored = mirroredCursorFamilyAgent(for: message.sessionId) {
-            return mirrored
         }
 
         if let terminal = message.terminal, let app = TerminalApp.detect(from: terminal) {
@@ -560,38 +1000,43 @@ final class SessionManager {
         return .claudeCode
     }
 
-    private func mirroredCursorFamilyAgent(for sessionId: String) -> AgentType? {
-        guard let sessionSuffix = mirroredSessionSuffix(from: sessionId) else {
-            return nil
-        }
-        return sessions.first(where: {
-            isCursorFamily($0.agentType) && suffixCache[$0.id] == sessionSuffix
-        })?.agentType
+    private func mirrorSource(for message: DIMessage) -> AgentType? {
+        guard let prefix = message.sessionId.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false).first,
+              let source = AgentType(rawValue: String(prefix)),
+              source == .claudeCode || isCursorFamily(source),
+              message.agentType == nil || AgentType.from(message.agentType) == source else { return nil }
+        return source
     }
 
-    private func isMirroredCursorMessage(_ message: DIMessage) -> Bool {
-        guard let sessionSuffix = mirroredSessionSuffix(from: message.sessionId) else {
-            return false
+    /// 只有来源明确的 Claude/IDE 配对才共享后缀；Claude 先到时记录已绑定的 IDE。
+    private func sessionMatchingMirror(of message: DIMessage) -> AgentSession? {
+        guard let source = mirrorSource(for: message),
+              let suffix = mirroredSessionSuffix(from: message.sessionId),
+              sessionById(message.sessionId) == nil else { return nil }
+        let matchingSuffix = sessions.filter { suffixCache[$0.id] == suffix }
+        let candidates = matchingSuffix.filter { session in
+            if source == .claudeCode {
+                return isCursorFamily(session.agentType)
+                    && session.id.hasPrefix(session.agentType.rawValue + "-")
+            }
+            return session.id.hasPrefix("claude_code-")
+                && (session.agentType == .claudeCode || session.agentType == source)
         }
-        return sessions.contains { session in
-            isCursorFamily(session.agentType) && suffixCache[session.id] == sessionSuffix
+        guard candidates.count == 1, let session = candidates.first else { return nil }
+        if source != .claudeCode {
+            if session.agentType == .claudeCode,
+               matchingSuffix.contains(where: { isCursorFamily($0.agentType) && $0.agentType != source }) {
+                return nil
+            }
+            session.agentType = source
         }
-    }
-
-    /// Bridges often emit both `cursor-<uuid>` and `claude_code-<uuid>` for one run; keep a single island row.
-    private func mergeAgentTypesForMirror(_ existing: AgentType, _ incoming: AgentType) -> AgentType {
-        if existing == .cursor || incoming == .cursor { return .cursor }
-        if existing == .windsurf || incoming == .windsurf { return .windsurf }
-        return existing
-    }
-
-    /// Returns another session whose id shares the same mirrored suffix (paired hooks).
-    private func sessionMatchingMirroredSuffix(of sessionId: String) -> AgentSession? {
-        guard let suffix = mirroredSessionSuffix(from: sessionId) else { return nil }
-        return sessions.first { suffixCache[$0.id] == suffix && $0.id != sessionId }
+        return session
     }
 
     func handlePermissionRequest(_ message: DIMessage, delivery: InteractionDelivery? = nil, cancel: (@Sendable () -> Void)? = nil, respond: @escaping @Sendable (Bool) -> Void) {
+        guard message.nativeMessageReplay != true, !message.hasObservationMetadata,
+              sessionById(message.sessionId)?.sourceInstanceId == nil,
+              restoreArchivedSessionIfNeeded(message, activate: !bypassMode) else { cancel?(); return }
         if bypassMode {
             respond(true)
             return
@@ -599,25 +1044,9 @@ final class SessionManager {
 
         let realAgent = resolvedAgentType(for: message)
 
-        if realAgent == .openCode {
-            let tool = (message.tool ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let desc = (message.permDescription ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let path = (message.filePath ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let diff = (message.diff ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let isSafeFilesystemPermission = tool == "external_directory"
-                || tool == "externaldirectory"
-            let isPlaceholderPermission = (tool.isEmpty || tool == "unknown")
-                && desc.isEmpty
-                && path.isEmpty
-                && diff.isEmpty
-            if isPlaceholderPermission || isSafeFilesystemPermission {
-                respond(true)
-                return
-            }
-        }
-
         let session = findOrCreateSessionForInteraction(message)
-        session.status = .waitingPermission
+        rememberCodexTurn(message, session: session)
+        let refreshCheckpoint = resumeSession(session, as: .waitingPermission)
         session.pendingPermission?.cancel?()
         session.pendingPermission = PendingPermission(
             requestingAgent: realAgent,
@@ -627,8 +1056,10 @@ final class SessionManager {
             filePath: message.filePath,
             respond: respond,
             delivery: delivery,
-            cancel: cancel
+            cancel: cancel,
+            nativeRequestId: message.nativeRequestId
         )
+        if refreshCheckpoint { persistSession(session) }
         selectNextInteraction()
         audioEngine?.play(.permissionRequest, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
@@ -638,28 +1069,33 @@ final class SessionManager {
     }
 
     func handleQuestionRequest(_ message: DIMessage, delivery: InteractionDelivery? = nil, respond: @escaping @Sendable (String) -> Void, cancel: (@Sendable () -> Void)? = nil) {
-        if bypassMode, let firstOption = message.options?.first {
-            respond(firstOption)
-            return
-        }
-
-        let realAgent = resolvedAgentType(for: message)
+        guard message.nativeMessageReplay != true, !message.hasObservationMetadata,
+              sessionById(message.sessionId)?.sourceInstanceId == nil else { cancel?(); return }
         let text = message.questionText ?? ""
         let options = message.options ?? []
         // Skip stub events (e.g. OpenCode fires a placeholder "Question" with no options
         // before the real question arrives). Close the fd so the di-bridge exits cleanly.
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty && !(trimmed == "Question" && options.isEmpty) else {
+        guard !trimmed.isEmpty && !(trimmed == "Question" && options.isEmpty
+            && message.nativeRequestId == nil && message.allowsCustomAnswer != true) else {
             cancel?()
             return
         }
+        let bypassesQuestion = bypassMode && message.allowsMultipleAnswers != true && options.first != nil
+        guard restoreArchivedSessionIfNeeded(message, activate: !bypassesQuestion) else { cancel?(); return }
+        if bypassMode, message.allowsMultipleAnswers != true, let firstOption = message.options?.first {
+            respond(firstOption)
+            return
+        }
+        let realAgent = resolvedAgentType(for: message)
         let session = findOrCreateSessionForInteraction(message)
 
         // Deduplicate: if this session was answered recently (within 2s) and the
         // incoming question text matches (exact or contains — handles [N/M] prefix
         // variations from sequential flows), auto-reply with the cached answer so the
         // sequential flow can advance to the next question.
-        if let recent = recentAnswers[session.id],
+        if message.nativeRequestId == nil,
+           let recent = recentAnswers[session.id],
            !options.isEmpty,
            recent.options == Set(options), options.contains(recent.answer),
            Date().timeIntervalSince(recent.timestamp) < 2.0,
@@ -672,15 +1108,19 @@ final class SessionManager {
 
         // Close the previous question's fd when superseded by a newer event.
         session.pendingQuestion?.cancel?()
-        session.status = .waitingAnswer
+        let refreshCheckpoint = resumeSession(session, as: .waitingAnswer)
         session.pendingQuestion = PendingQuestion(
             requestingAgent: realAgent,
             text: text,
             options: options,
             respond: respond,
             cancel: cancel,
-            delivery: delivery
+            delivery: delivery,
+            nativeRequestId: message.nativeRequestId,
+            allowsCustomAnswer: message.allowsCustomAnswer == true,
+            allowsMultipleAnswers: message.allowsMultipleAnswers == true
         )
+        if refreshCheckpoint { persistSession(session) }
         selectNextInteraction()
         audioEngine?.play(.question, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
@@ -690,6 +1130,9 @@ final class SessionManager {
     }
 
     func handlePlanReview(_ message: DIMessage, delivery: InteractionDelivery? = nil, cancel: (@Sendable () -> Void)? = nil, respond: @escaping @Sendable (Bool, String?) -> Void) {
+        guard message.nativeMessageReplay != true, !message.hasObservationMetadata,
+              sessionById(message.sessionId)?.sourceInstanceId == nil,
+              restoreArchivedSessionIfNeeded(message, activate: !bypassMode) else { cancel?(); return }
         if bypassMode {
             respond(true, nil)
             return
@@ -697,7 +1140,7 @@ final class SessionManager {
 
         let realAgent = resolvedAgentType(for: message)
         let session = findOrCreateSessionForInteraction(message)
-        session.status = .waitingPlanReview
+        let refreshCheckpoint = resumeSession(session, as: .waitingPlanReview)
         session.pendingPlanReview?.cancel?()
         session.pendingPlanReview = PendingPlanReview(
             requestingAgent: realAgent,
@@ -706,12 +1149,46 @@ final class SessionManager {
             delivery: delivery,
             cancel: cancel
         )
+        if refreshCheckpoint { persistSession(session) }
         selectNextInteraction()
         audioEngine?.play(.planReview, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
 
         // 有审批时强制置顶显示
         forceToShowForApproval()
+    }
+
+    private func handleInteractionResolved(_ message: DIMessage) {
+        guard let nativeRequestId = message.nativeRequestId,
+              !nativeRequestId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let session = sessionById(message.sessionId) else { return }
+
+        switch message.nativeRequestKind {
+        case "permission":
+            guard let request = session.pendingPermission, request.nativeRequestId == nativeRequestId else { return }
+            request.cancel?()
+            session.pendingPermission = nil
+        case "question":
+            guard let request = session.pendingQuestion, request.nativeRequestId == nativeRequestId else { return }
+            request.cancel?()
+            session.pendingQuestion = nil
+        default:
+            return
+        }
+
+        session.status = session.pendingPermission != nil ? .waitingPermission
+            : session.pendingQuestion != nil ? .waitingAnswer
+            : session.pendingPlanReview != nil ? .waitingPlanReview : .active
+        applyKimiCodeProjection(session)
+        selectNextInteraction()
+        if !hasInteraction {
+            switch currentIslandState {
+            case .permission, .question, .planReview: currentIslandState = .collapsed
+            default: break
+            }
+        }
+        // 原端已处理的请求不再占用显示权，也不触发本地审批后的窗口切换。
+        approvalInterruption.cancelIfFinished(hasPendingInteractions: hasInteraction)
     }
 
     func approvePermission(session: AgentSession, requestID: UUID? = nil) {
@@ -733,17 +1210,30 @@ final class SessionManager {
 
     func answerQuestion(session: AgentSession, answer: String, requestID: UUID? = nil) {
         guard let request = session.pendingQuestion, requestID == nil || request.id == requestID,
+              !request.allowsMultipleAnswers,
               !request.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              request.options.contains(answer) else { return }
+              request.acceptsAnswer(answer) else { return }
         submitInteraction(session: session, kind: .question, requestID: request.id,
                           state: request.state, delivery: request.delivery,
                           decision: .question(answer), sound: .answered,
                           onSuccess: { [weak self] in
+            guard request.nativeRequestId == nil else { return }
             self?.recentAnswers[session.id] = RecentAnswer(
                 answer: answer, questionText: request.text.trimmingCharacters(in: .whitespacesAndNewlines),
                 options: Set(request.options), timestamp: Date())
         }) {
             request.respond(answer)
+        }
+    }
+
+    func answerQuestion(session: AgentSession, answers: [String], requestID: UUID) {
+        guard let request = session.pendingQuestion, request.id == requestID,
+              !request.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              request.acceptsAnswers(answers), request.delivery != nil || request.respondMultiple != nil else { return }
+        submitInteraction(session: session, kind: .question, requestID: request.id,
+                          state: request.state, delivery: request.delivery,
+                          decision: .questionSelections(answers), sound: .answered, onSuccess: {}) {
+            request.respondMultiple?(answers)
         }
     }
 
@@ -783,6 +1273,8 @@ final class SessionManager {
             session.status = session.pendingPermission != nil ? .waitingPermission
                 : session.pendingQuestion != nil ? .waitingAnswer
                 : session.pendingPlanReview != nil ? .waitingPlanReview : .active
+            self.applyKimiCodeProjection(session)
+            if session.kimiCodeApprovalObservation != nil { self.persistSession(session) }
             self.audioEngine?.play(sound, session: session)
             self.selectNextInteraction()
             AppDelegate.shared?.refreshDiagnostics(islandState: self.diagnosticsIslandState)
@@ -814,30 +1306,43 @@ final class SessionManager {
 
     private func startSession(_ message: DIMessage) {
         let session = sessionById(message.sessionId)
-            ?? sessionMatchingMirroredSuffix(of: message.sessionId)
+            ?? sessionMatchingMirror(of: message)
             ?? createNewSession(from: message)
 
-        cancelPendingInteractions(session)
-        recentAnswers.removeValue(forKey: session.id)
-        session.lastActivityTime = Date()
-        session.status = .active
-        session.statusText = ""
+        let duplicatePrompt = nativeChatID(message, role: .user).map { id in
+            session.chatHistory.contains { $0.id == id }
+        } ?? false
+        let acceptsActivity = message.nativeMessageReplay != true && !duplicatePrompt
+        var refreshCheckpoint = false
+        if acceptsActivity {
+            if !isKimiCodeMessage(message) || !session.hasPendingInteraction { cancelPendingInteractions(session) }
+            recentAnswers.removeValue(forKey: session.id)
+            session.lastActivityTime = Date()
+            refreshCheckpoint = resumeSession(session)
+            session.statusText = message.status ?? ""
+        }
         if let t = message.terminal, !t.isEmpty { session.terminal = t }
         if let w = message.workingDir, !w.isEmpty { session.workingDirectory = w }
         if let p = message.prompt, !p.isEmpty {
             session.prompt = p
-            session.agentResponse = ""
-            session.chatHistory.append(ChatMessage(timestamp: Date(), role: .user, content: p))
-            audioEngine?.play(.sessionStart, session: session)
+            if let id = nativeChatID(message, role: .user), let index = session.chatHistory.firstIndex(where: { $0.id == id }) {
+                session.chatHistory[index] = ChatMessage(id: id, timestamp: session.chatHistory[index].timestamp, role: .user, content: p)
+            } else {
+                if acceptsActivity { session.agentResponse = "" }
+                session.chatHistory.append(ChatMessage(id: nativeChatID(message, role: .user) ?? UUID(), timestamp: Date(), role: .user, content: p))
+                if acceptsActivity { audioEngine?.play(.sessionStart, session: session) }
+            }
         }
         if let ts = message.termSessionId, !ts.isEmpty { session.termSessionId = ts }
-        if session.windowNumber == nil {
-            session.windowNumber = TerminalJumpManager.captureFrontWindowNumber(
-                for: session.agentType, terminal: session.terminal)
+        if allowsExternalApplicationAccess, session.sourceInstanceId == nil, session.windowNumber == nil {
+            session.windowNumber = captureWindowNumber(session.agentType, session.terminal)
         }
         updateTokenUsage(session: session, message: message)
-        selectedSessionId = session.id
-        selectNextInteraction()
+        if refreshCheckpoint || [.claudeCode, .codex].contains(resolvedAgentType(for: message)) { persistSession(session) }
+        if acceptsActivity {
+            selectedSessionId = session.id
+            selectNextInteraction()
+        }
     }
 
     private func endSession(_ message: DIMessage) {
@@ -850,11 +1355,11 @@ final class SessionManager {
         updateTokenUsage(session: session, message: message)
 
         if let responseText = message.status, !responseText.isEmpty {
-            session.agentResponse = responseText
+            if message.statusIsAssistantReply != false { session.agentResponse = responseText }
             session.statusText = responseText
         }
 
-        if !session.agentResponse.isEmpty {
+        if message.statusIsAssistantReply != false, !session.agentResponse.isEmpty {
             if let lastIdx = session.chatHistory.indices.last, session.chatHistory[lastIdx].role == .assistant {
                 session.chatHistory[lastIdx] = ChatMessage(
                     id: session.chatHistory[lastIdx].id, timestamp: Date(), role: .assistant, content: session.agentResponse
@@ -866,7 +1371,16 @@ final class SessionManager {
             }
         }
 
-        if !agentType.processNames.isEmpty {
+        if message.observedState == "completed" {
+            if agentType == .claudeCode {
+                // 拒绝权限可能不产生后置工具事件；会话关闭后不能继续显示这些调用在运行。
+                // 权限请求没有调用 ID，不能把缺失的结果伪造成具体工具的成功或拒绝。
+                for index in session.events.indices where session.events[index].isRunning {
+                    session.events[index].completionUnconfirmed = true
+                }
+            }
+            markCompleted(session)
+        } else if !agentType.processNames.isEmpty {
             session.status = .idle
             session.currentTool = nil
             if session.statusText.isEmpty {
@@ -876,7 +1390,7 @@ final class SessionManager {
         } else {
             markCompleted(session)
         }
-        if !alreadyCompleted {
+        if !alreadyCompleted, message.statusIsAssistantReply != false {
             playAssistantReplySoundDebounced(sessionId: session.id)
         }
 
@@ -907,10 +1421,31 @@ final class SessionManager {
         scheduleLingerCleanup()
     }
 
+    /// 仅在接受新的活动后调用；历史重放、迟到结果和查找会话不能清除结束时间。
+    private func resumeSession(_ session: AgentSession, as status: SessionStatus = .active) -> Bool {
+        let refreshCheckpoint = session.completedAt != nil || session.observationEndedAt != nil
+            || session.status == .completionUnconfirmed
+        session.completedAt = nil
+        session.observationEndedAt = nil
+        session.status = status
+        return refreshCheckpoint
+    }
+
     @discardableResult
     private func persistSession(_ session: AgentSession) -> Bool {
+        // Kimi 普通事件先更新基础状态，再投影审批显示；只保存最终状态。
+        if kimiCodeProjectionTransactions[session.id] != nil { return true }
+        if unsavedKimiBackgroundTasks[session.id] != nil {
+            var observation = session.kimiCodeApprovalObservation
+                ?? KimiCodeApprovalObservation(baseStatus: session.status, baseStatusText: session.statusText)
+            mergeUnsavedKimiBackgroundTasks(into: &observation, sessionID: session.id)
+            session.kimiCodeApprovalObservation = observation
+            synchronizeKimiCodeBackgroundTasks(session)
+        }
         guard let persistenceManager else { return true }
         if persistenceManager.save(session: session) {
+            kimiCodeOrphanObservations.removeValue(forKey: session.id)
+            unsavedKimiBackgroundTasks.removeValue(forKey: session.id)
             unsavedSessionIDs.remove(session.id)
             return true
         }
@@ -921,6 +1456,26 @@ final class SessionManager {
     func retryPendingHistorySaves() {
         for session in sessions where unsavedSessionIDs.contains(session.id) {
             persistSession(session)
+        }
+        if let persistenceManager {
+            for id in Array(unsavedKimiBackgroundTasks.keys) where sessionById(id) == nil {
+                do {
+                    guard let stored = try persistenceManager.restoreSession(sessionId: id) else {
+                        // 已删除或过期的历史不由内存缓存重建。
+                        unsavedKimiBackgroundTasks.removeValue(forKey: id)
+                        unsavedSessionIDs.remove(id)
+                        continue
+                    }
+                    persistSession(stored)
+                } catch {
+                    print("[SessionManager] Kimi background task save retry could not read history: \(error.localizedDescription)")
+                }
+            }
+        }
+        for sessionID in Array(kimiCodeOrphanObservations.keys) {
+            if let observation = kimiCodeOrphanObservations[sessionID] {
+                persistKimiCodeOrphan(observation, sessionID: sessionID)
+            }
         }
     }
 
@@ -947,10 +1502,10 @@ final class SessionManager {
         }
         let now = Date()
         let completedSessions = sessions
-            .filter { $0.status == .completed && !unsavedSessionIDs.contains($0.id) }
-            .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+            .filter { ($0.status == .completed || $0.status == .observationUnavailable) && !unsavedSessionIDs.contains($0.id) }
+            .sorted { ($0.completedAt ?? $0.observationEndedAt ?? .distantPast) > ($1.completedAt ?? $1.observationEndedAt ?? .distantPast) }
         let expiredIds = completedSessions.compactMap { session -> String? in
-            guard let completedAt = session.completedAt else { return nil }
+            guard let completedAt = session.completedAt ?? session.observationEndedAt else { return nil }
             return now.timeIntervalSince(completedAt) > completedLingerDuration ? session.id : nil
         }
         var toRemove = Set(expiredIds)
@@ -978,35 +1533,104 @@ final class SessionManager {
 
     private func handleToolStart(_ message: DIMessage) {
         let session = findOrCreateSession(message)
+        if let id = message.toolCallId, let index = session.events.firstIndex(where: { $0.toolCallId == id }) {
+            if message.nativeEvent == "acp" || message.nativeEvent == "continue_snapshot" {
+                session.events[index].tool = message.tool ?? session.events[index].tool
+                session.events[index].input = message.toolInput
+                if message.nativeMessageReplay != true, session.status != .completed, session.status != .observationUnavailable {
+                    session.events[index].isComplete = false
+                    if index == session.events.lastIndex(where: { $0.isRunning }) { session.currentTool = session.events[index].tool }
+                }
+            }
+            return
+        }
+        guard message.nativeMessageReplay != true else { return }
+        let refreshCheckpoint = resumeSession(session, as: session.hasPendingInteraction ? session.status : .active)
         clearStaleInteraction(session)
-        let event = ToolEvent(tool: message.tool ?? "unknown", input: message.toolInput)
+        if !session.hasPendingInteraction { session.status = .active }
+        let event = ToolEvent(tool: message.tool ?? "unknown", input: message.toolInput, toolCallId: message.toolCallId)
         session.events.append(event)
         session.currentTool = message.tool
+        if refreshCheckpoint { persistSession(session) }
         audioEngine?.play(.toolStart, session: session)
     }
 
     private func handleToolComplete(_ message: DIMessage) {
         let session = findOrCreateSession(message)
+        let preservesTerminalState = session.status == .completed || session.status == .observationUnavailable
         clearStaleInteraction(session)
-        if let idx = session.events.lastIndex(where: { $0.tool == (message.tool ?? "") && !$0.isComplete }) {
+        let matchingIndex = session.events.lastIndex {
+            if let id = message.toolCallId { return $0.toolCallId == id }
+            return $0.toolCallId == nil && $0.tool == (message.tool ?? "") && !$0.isComplete
+        }
+        if let idx = matchingIndex {
+            if message.nativeEvent == "acp" || message.nativeEvent == "continue_snapshot" {
+                session.events[idx].tool = message.tool ?? session.events[idx].tool
+                session.events[idx].input = message.toolInput
+            }
             session.events[idx].result = message.toolResult
             session.events[idx].linesAdded = message.linesAdded
             session.events[idx].linesRemoved = message.linesRemoved
             session.events[idx].isComplete = true
+            if resolvedAgentType(for: message) == .claudeCode, session.events[idx].tool != "Subagent" {
+                session.events[idx].completionUnconfirmed = false
+            }
             session.events[idx].linesRead = ToolEvent.estimateLinesRead(from: message.toolResult)
             session.events[idx].testResults = ToolEvent.parseTestResults(from: message.toolResult)
+        } else {
+            // Amp 等接口只提供结果；也可能在应用启动前已发出开始事件。
+            session.events.append(ToolEvent(tool: message.tool ?? "unknown", input: message.toolInput,
+                result: message.toolResult, linesAdded: message.linesAdded, linesRemoved: message.linesRemoved,
+                isComplete: true, linesRead: ToolEvent.estimateLinesRead(from: message.toolResult),
+                testResults: ToolEvent.parseTestResults(from: message.toolResult), toolCallId: message.toolCallId))
         }
-        session.currentTool = nil
+        if !preservesTerminalState { session.currentTool = session.events.last(where: { $0.isRunning })?.tool }
+        if message.observedState == "error", message.nativeMessageReplay != true, !preservesTerminalState {
+            if !session.hasPendingInteraction { session.status = .error }
+            audioEngine?.play(.error, session: session)
+        }
         updateTokenUsage(session: session, message: message)
+        if preservesTerminalState, resolvedAgentType(for: message) == .claudeCode {
+            persistSession(session)
+        }
     }
 
     private func handleStatus(_ message: DIMessage) {
-        let session = findOrCreateSession(message, reactivate: false)
+        let session = findOrCreateSession(message)
+        let previousStatus = session.status
+        let completionUnconfirmed = message.observedState == SessionStatus.completionUnconfirmed.rawValue
+        let informational = message.statusIsAssistantReply == false && message.observedState == nil
+        let preserveExistingState = (completionUnconfirmed || informational) && (session.hasPendingInteraction
+            || [.completed, .error, .observationUnavailable, .waitingPermission, .waitingAnswer, .waitingPlanReview].contains(session.status))
+        if let prompt = message.prompt, let id = nativeChatID(message, role: .user) {
+            let wasCurrentPrompt = session.chatHistory.last(where: { $0.role == .user })?.id == id
+            if let index = session.chatHistory.firstIndex(where: { $0.id == id }) {
+                if prompt.isEmpty { session.chatHistory.remove(at: index) }
+                else { session.chatHistory[index] = ChatMessage(id: id, timestamp: session.chatHistory[index].timestamp, role: .user, content: prompt) }
+            } else if !prompt.isEmpty {
+                session.chatHistory.append(ChatMessage(id: id, timestamp: message.timestamp, role: .user, content: prompt))
+            }
+            if session.chatHistory.last(where: { $0.role == .user })?.id == id { session.prompt = prompt }
+            else if wasCurrentPrompt { session.prompt = session.chatHistory.last(where: { $0.role == .user })?.content ?? "" }
+        }
         let text = message.status ?? ""
-        session.statusText = text
-        if !text.isEmpty {
-            session.agentResponse = text
-            if let lastIdx = session.chatHistory.indices.last, session.chatHistory[lastIdx].role == .assistant {
+        var latestMessage = true
+        if message.status == "", message.statusIsAssistantReply == true,
+           let id = nativeChatID(message, role: .assistant), let index = session.chatHistory.firstIndex(where: { $0.id == id }) {
+            let wasLatest = index == session.chatHistory.indices.last
+            session.chatHistory.remove(at: index)
+            if wasLatest { session.agentResponse = session.chatHistory.last(where: { $0.role == .assistant })?.content ?? "" }
+            latestMessage = wasLatest
+        }
+        if !text.isEmpty, message.statusIsAssistantReply != false {
+            if let id = nativeChatID(message, role: .assistant) {
+                if let index = session.chatHistory.firstIndex(where: { $0.id == id }) {
+                    session.chatHistory[index] = ChatMessage(id: id, timestamp: session.chatHistory[index].timestamp, role: .assistant, content: text)
+                    latestMessage = index == session.chatHistory.indices.last
+                } else {
+                    session.chatHistory.append(ChatMessage(id: id, timestamp: message.timestamp, role: .assistant, content: text))
+                }
+            } else if let lastIdx = session.chatHistory.indices.last, session.chatHistory[lastIdx].role == .assistant {
                 session.chatHistory[lastIdx] = ChatMessage(
                     id: session.chatHistory[lastIdx].id, timestamp: Date(), role: .assistant, content: text
                 )
@@ -1015,19 +1639,86 @@ final class SessionManager {
                     ChatMessage(timestamp: Date(), role: .assistant, content: text)
                 )
             }
+            if latestMessage { session.agentResponse = text }
+        }
+        if latestMessage, !preserveExistingState, message.status != nil || message.observedState != nil { session.statusText = text }
+
+        if completionUnconfirmed {
+            // 准备停止不是最终结果，也不能替代仍在等待的用户交互或已知错误。
+            if !preserveExistingState {
+                session.status = .completionUnconfirmed
+                session.currentTool = nil
+            }
+            // 保留既有的助手回复提示音；收到回复不等于确认整个会话完成。
+            if message.statusIsAssistantReply == true, !text.isEmpty, message.nativeMessagePartial != true,
+               message.nativeMessageReplay != true, latestMessage {
+                playAssistantReplySoundDebounced(sessionId: session.id)
+            }
+            updateTokenUsage(session: session, message: message)
+            persistSession(session)
+            return
         }
 
+        if message.nativeMessageReplay == true {
+            updateTokenUsage(session: session, message: message)
+            return
+        }
+
+        if let rawState = message.observedState,
+           let observed = SessionStatus(rawValue: rawState),
+           [.active, .idle, .waitingPermission, .waitingAnswer, .waitingPlanReview, .error].contains(observed) {
+            if observed == .idle {
+                if !isKimiCodeMessage(message) || !session.hasPendingInteraction { cancelPendingInteractions(session) }
+                session.currentTool = nil
+                selectNextInteraction()
+            }
+            let refreshCheckpoint: Bool
+            if observed == .error {
+                refreshCheckpoint = false
+                if session.status != .completed && session.status != .observationUnavailable { session.status = observed }
+            } else {
+                refreshCheckpoint = resumeSession(session, as: observed)
+            }
+            if observed == .error { audioEngine?.play(.error, session: session) }
+            else if observed == .idle, message.statusIsAssistantReply != false, !text.isEmpty,
+                    message.nativeMessagePartial != true, message.nativeMessageReplay != true, latestMessage {
+                playAssistantReplySoundDebounced(sessionId: session.id)
+            }
+            updateTokenUsage(session: session, message: message)
+            if refreshCheckpoint || previousStatus == .completionUnconfirmed { persistSession(session) }
+            return
+        }
+
+        if message.statusIsAssistantReply != nil {
+            if message.statusIsAssistantReply == true, !text.isEmpty, message.nativeMessagePartial != true,
+               message.nativeMessageReplay != true, latestMessage {
+                playAssistantReplySoundDebounced(sessionId: session.id)
+            }
+            updateTokenUsage(session: session, message: message)
+            return
+        }
         let lower = text.lowercased()
         if lower.contains("compact") || lower.contains("context window") {
             audioEngine?.play(.contextCompacting, session: session)
         } else if lower.contains("error") || lower.contains("failed") || lower.contains("fatal") {
-            session.status = .error
-            audioEngine?.play(.error, session: session)
-        } else if !text.isEmpty {
+            if session.status != .completed && session.status != .observationUnavailable {
+                session.status = .error
+                audioEngine?.play(.error, session: session)
+            }
+        } else if !text.isEmpty, message.statusIsAssistantReply != false {
             // Assistant reply via Notification / progress — same chime as session end (user preference: "Session complete").
             playAssistantReplySoundDebounced(sessionId: session.id)
         }
         updateTokenUsage(session: session, message: message)
+    }
+
+    /// 原生消息 ID 派生为已有 UUID 字段，无需迁移历史库；重连更新也能定位同一条记录。
+    private func nativeChatID(_ message: DIMessage, role: ChatMessage.ChatRole) -> UUID? {
+        guard let id = message.nativeMessageId, !id.isEmpty, id.utf8.count <= 512, !id.utf8.contains(0) else { return nil }
+        let key = message.sessionId + "\0" + role.rawValue + "\0" + id
+        let bytes = Array(SHA256.hash(data: Data(key.utf8)).prefix(16))
+        return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+                           bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
     }
 
     /// Resolves the session for `sessionEnd` when hooks use `cursor-*` vs `claude_code-*` ids for the same run.
@@ -1035,7 +1726,7 @@ final class SessionManager {
         if let s = sessions.first(where: { $0.id == message.sessionId }) {
             return s
         }
-        return sessionMatchingMirroredSuffix(of: message.sessionId)
+        return sessionMatchingMirror(of: message)
     }
 
     private func playAssistantReplySoundDebounced(sessionId: String) {
@@ -1050,12 +1741,23 @@ final class SessionManager {
         let parentId = message.parentSessionId ?? message.sessionId
         guard let parent = sessions.first(where: { $0.id == parentId && $0.status != .completed })
         else { return }
+        if let subId = message.subagentId,
+           let index = parent.events.firstIndex(where: { $0.tool == "Subagent" && $0.toolCallId == subId }) {
+            // 已核实 Claude/Qwen 恢复同一子代理时重发 Start；连续重复仍只保留一条记录。
+            if [AgentType.claudeCode.rawValue, AgentType.qwen.rawValue].contains(message.agentType ?? ""),
+               message.nativeEvent == "SubagentStart",
+               parent.events[index].completionUnconfirmed, !parent.events[index].isComplete {
+                parent.events[index].completionUnconfirmed = false
+                parent.lastActivityTime = Date()
+            }
+            return
+        }
         let subId = message.subagentId ?? UUID().uuidString
         if !parent.subagentIds.contains(subId) {
             parent.subagentIds.append(subId)
         }
         parent.lastActivityTime = Date()
-        let event = ToolEvent(tool: "Subagent", input: message.prompt)
+        let event = ToolEvent(tool: "Subagent", input: message.prompt, toolCallId: message.subagentId)
         parent.events.append(event)
     }
 
@@ -1063,27 +1765,71 @@ final class SessionManager {
         let parentId = message.parentSessionId ?? message.sessionId
         guard let parent = sessions.first(where: { $0.id == parentId && $0.status != .completed })
         else { return }
+        let provisional = message.subagentEndIsProvisional == true
+        // 未确认的结束不能用旧协议的“最后一个子代理”兜底匹配。
+        if provisional && message.subagentId == nil { return }
+        let matchingIndex: Int?
         if let subId = message.subagentId {
-            parent.subagentIds.removeAll { $0 == subId }
+            guard let index = parent.events.lastIndex(where: {
+                $0.tool == "Subagent" && $0.toolCallId == subId && !$0.isComplete
+            }) else { return }
+            matchingIndex = index
+            if !provisional { parent.subagentIds.removeAll { $0 == subId } }
+        } else {
+            matchingIndex = parent.events.lastIndex(where: { $0.tool == "Subagent" && !$0.isComplete })
+        }
+        if provisional, let idx = matchingIndex {
+            guard !parent.events[idx].completionUnconfirmed else { return }
+            parent.events[idx].completionUnconfirmed = true
+            parent.lastActivityTime = Date()
+            if parent.currentTool == "Subagent" {
+                parent.currentTool = parent.events.last(where: { $0.isRunning })?.tool
+            }
+            return
         }
         parent.lastActivityTime = Date()
         updateTokenUsage(session: parent, message: message)
-        if let idx = parent.events.lastIndex(where: { $0.tool == "Subagent" && !$0.isComplete }) {
+        if let idx = matchingIndex {
             parent.events[idx].isComplete = true
-            parent.events[idx].result = "Completed"
+            parent.events[idx].completionUnconfirmed = false
+            let hasCodewhaleOutcome = resolvedAgentType(for: message) == .deepseek && message.nativeEvent == "subagent_complete"
+            if hasCodewhaleOutcome {
+                parent.events[idx].result = message.toolResult
+                parent.events[idx].nativeCompletionStatus = message.status
+            } else {
+                parent.events[idx].result = "Completed"
+            }
+            if parent.currentTool == "Subagent" {
+                parent.currentTool = parent.events.last(where: { $0.isRunning })?.tool
+            }
+            if hasCodewhaleOutcome { persistSession(parent) }
         }
     }
 
     private func handleContextCompact(_ message: DIMessage) {
         let session = findOrCreateSession(message)
-        session.status = .compacting
+        guard message.nativeMessageReplay != true else { return }
+        let refreshCheckpoint = resumeSession(session, as: .compacting)
         session.statusText = message.status ?? "Context compacting..."
         audioEngine?.play(.contextCompacting, session: session)
         updateTokenUsage(session: session, message: message)
+        if refreshCheckpoint || isCodexTurnObservation(message) { persistSession(session) }
+        // 有原生压缩结果的入口等待事实，不用旧客户端的计时器推断恢复。
+        if isKimiCodeMessage(message), message.nativeEvent == "kimi_code.PreCompact" { return }
+        if isCodexTurnObservation(message), message.nativeEvent == "PreCompact" { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self, weak session] in
             // 只在 session 仍存在且仍处于 compacting 时恢复
-            guard let session, session.status == .compacting else { return }
-            session.status = .active
+            guard let session else { return }
+            if var observation = session.kimiCodeApprovalObservation {
+                guard observation.baseStatus == .compacting,
+                      session.status != .completed, session.status != .observationUnavailable else { return }
+                observation.baseStatus = .active
+                session.kimiCodeApprovalObservation = observation
+                self?.applyKimiCodeProjection(session)
+                self?.persistSession(session)
+            } else if session.status == .compacting {
+                session.status = .active
+            }
         }
     }
 
@@ -1092,74 +1838,157 @@ final class SessionManager {
         session.recapText = message.recapText
     }
 
-    /// If the agent sent new activity while we were still showing a pending interaction,
-    /// the interaction was handled externally (e.g. user responded in the terminal).
+    /// Legacy activity may imply an external response; native requests require
+    /// their matching resolution because unrelated tools can run concurrently.
     private func clearStaleInteraction(_ session: AgentSession) {
-        let hadPendingInteraction = session.status == .waitingPermission
-            || session.status == .waitingAnswer
-            || session.status == .waitingPlanReview
+        if session.kimiCodeApprovalObservation != nil, session.hasPendingInteraction { return }
+        var clearedInteraction = false
 
         switch session.status {
-        case .waitingPermission:
+        case .waitingPermission where session.pendingPermission?.nativeRequestId == nil:
             session.pendingPermission?.cancel?()
             session.pendingPermission = nil
             session.status = .active
-        case .waitingAnswer:
+            clearedInteraction = true
+        case .waitingAnswer where session.pendingQuestion?.nativeRequestId == nil:
             session.pendingQuestion?.cancel?()
             session.pendingQuestion = nil
             session.status = .active
+            clearedInteraction = true
         case .waitingPlanReview:
             session.pendingPlanReview?.cancel?()
             session.pendingPlanReview = nil
             session.status = .active
+            clearedInteraction = true
         default:
             break
         }
 
+        if session.hasPendingInteraction {
+            session.status = session.pendingPermission != nil ? .waitingPermission
+                : session.pendingQuestion != nil ? .waitingAnswer : .waitingPlanReview
+        }
+
         // 最后一个交互被外部清除时取消恢复；其他待办仍保留本轮显示权。
-        if hadPendingInteraction {
+        if clearedInteraction {
+            selectNextInteraction()
             approvalInterruption.cancelIfFinished(hasPendingInteractions: hasInteraction)
         }
     }
 
     private func updateTokenUsage(session: AgentSession, message: DIMessage) {
-        if let t = message.tokensIn { session.tokenUsage.inputTokens += t }
-        if let t = message.tokensOut { session.tokenUsage.outputTokens += t }
-        if let t = message.totalTokens { session.tokenUsage.totalTokens = t }
-        if let c = message.costUSD { session.tokenUsage.estimatedCostUSD += c }
+        if message.usageIsCumulative == true {
+            // 重复及乱序到达的会话快照都不能重复计费或回退已观测用量。
+            if let t = message.tokensIn { session.tokenUsage.inputTokens = max(session.tokenUsage.inputTokens, t) }
+            if let t = message.tokensOut { session.tokenUsage.outputTokens = max(session.tokenUsage.outputTokens, t) }
+            if let t = message.totalTokens { session.tokenUsage.totalTokens = max(session.tokenUsage.totalTokens, t) }
+            if let c = message.costUSD { session.tokenUsage.estimatedCostUSD = max(session.tokenUsage.estimatedCostUSD, c) }
+        } else {
+            if let t = message.tokensIn { session.tokenUsage.inputTokens += t }
+            if let t = message.tokensOut { session.tokenUsage.outputTokens += t }
+            if let t = message.totalTokens { session.tokenUsage.totalTokens = t }
+            if let c = message.costUSD { session.tokenUsage.estimatedCostUSD += c }
+        }
         if let m = message.model, !m.isEmpty { session.tokenUsage.model = m }
+    }
+
+    /// 内存缺失不等于新会话。只查询精确 ID；关闭历史不能被迟到事件重建为空壳。
+    private func restoreArchivedSessionIfNeeded(_ message: DIMessage, activate: Bool = true) -> Bool {
+        if sessionById(message.sessionId) != nil || sessionMatchingMirror(of: message) != nil { return true }
+        guard let persistenceManager else { return true }
+        do {
+            var restored = try persistenceManager.sessionState(sessionId: message.sessionId)
+            let source = mirrorSource(for: message)
+            if restored == nil, let source, let suffix = mirroredSessionSuffix(from: message.sessionId) {
+                let candidates: [AgentType] = source == .claudeCode ? [.cursor, .trae, .windsurf] : [.claudeCode]
+                var matches: [SessionHistoryState] = []
+                for candidate in candidates {
+                    if let stored = try persistenceManager.sessionState(sessionId: candidate.rawValue + "-" + suffix),
+                       source == .claudeCode ? stored.agentType == candidate : (stored.agentType == .claudeCode || stored.agentType == source) {
+                        matches.append(stored)
+                    }
+                }
+                guard matches.count <= 1 else { return false }
+                restored = matches.first
+            }
+            guard let stored = restored else {
+                codexTurns.removeValue(forKey: message.sessionId)
+                if unsavedKimiBackgroundTasks.removeValue(forKey: message.sessionId) != nil {
+                    unsavedSessionIDs.remove(message.sessionId)
+                }
+                return true
+            }
+            let incomingAgent = AgentType.from(message.agentType)
+                ?? message.sessionId.split(separator: "-", maxSplits: 1).first.flatMap { AgentType(rawValue: String($0)) }
+            let allowedMirror = source == .claudeCode && isCursorFamily(stored.agentType)
+                || source.map { isCursorFamily($0) && stored.id.hasPrefix("claude_code-")
+                    && (stored.agentType == .claudeCode || stored.agentType == $0) } == true
+            guard incomingAgent == nil || incomingAgent == stored.agentType || allowedMirror,
+                  stored.sourceNamespace == message.sourceNamespace,
+                  stored.sourceInstanceId == message.sourceInstanceId,
+                  stored.nativeTaskId == message.nativeTaskId else { return false }
+
+            if source == .claudeCode, isCursorFamily(stored.agentType),
+               message.type == .sessionStart || message.type == .sessionEnd { return false }
+            if let source, isCursorFamily(source), stored.agentType == .claudeCode,
+               let suffix = mirroredSessionSuffix(from: message.sessionId) {
+                for other in [AgentType.cursor, .trae, .windsurf] where other != source {
+                    if try persistenceManager.sessionState(sessionId: other.rawValue + "-" + suffix) != nil { return false }
+                }
+            }
+
+            let isClosed = stored.status == .completed || stored.status == .observationUnavailable
+            if isClosed {
+                if isKimiCodeMessage(message), message.nativeEvent == "kimi_code.UserPromptSubmit" { return false }
+                guard message.nativeMessageReplay != true else { return false }
+                switch message.type {
+                case .sessionStart, .toolStart, .contextCompact, .permissionRequest, .question, .planReview:
+                    break
+                case .statusUpdate, .progress:
+                    guard let raw = message.observedState, let state = SessionStatus(rawValue: raw),
+                          [.active, .idle, .waitingPermission, .waitingAnswer, .waitingPlanReview].contains(state) else { return false }
+                default:
+                    return false
+                }
+            }
+            guard activate else { return true }
+            guard let session = try persistenceManager.restoreSession(sessionId: stored.id) else { return false }
+            if isClosed, message.type == .sessionStart {
+                var canonical = message
+                canonical.sessionId = session.id
+                let ids = [nativeChatID(message, role: .user), nativeChatID(canonical, role: .user)].compactMap { $0 }
+                guard !session.chatHistory.contains(where: { ids.contains($0.id) }) else { return false }
+            }
+            if isClosed, message.type == .toolStart, let id = message.toolCallId,
+               session.events.contains(where: { $0.toolCallId == id }) { return false }
+            if let source, isCursorFamily(source), session.agentType == .claudeCode { session.agentType = source }
+            let index = sessions.count
+            sessions.append(session)
+            updateIndexForAppend(session, at: index)
+            return true
+        } catch {
+            // 保留存储层错误，下一次消息可重试；不可把读取失败当成不存在。
+            return false
+        }
     }
 
     /// Interactive requests fold mirrored hook ids (`cursor-*` / `claude_code-*` same suffix) like `findOrCreateSession`.
     private func findOrCreateSessionForInteraction(_ message: DIMessage) -> AgentSession {
-        let session = activeSessionById(message.sessionId)
-            ?? mirroredCursorSession(for: message.sessionId)
-            ?? sessionMatchingMirroredSuffix(of: message.sessionId)
-            ?? sessionById(message.sessionId)
+        let session = sessionById(message.sessionId)
+            ?? sessionMatchingMirror(of: message)
             ?? createNewSession(from: message)
 
         session.lastActivityTime = Date()
-        if session.status == .completed { session.status = .active }
         return session
     }
 
-    private func findOrCreateSession(_ message: DIMessage, reactivate: Bool = true) -> AgentSession {
-        let session = activeSessionById(message.sessionId)
-            ?? mirroredCursorSession(for: message.sessionId)
-            ?? sessionById(message.sessionId)
-            ?? sessionMatchingMirroredSuffix(of: message.sessionId)
+    private func findOrCreateSession(_ message: DIMessage) -> AgentSession {
+        let session = sessionById(message.sessionId)
+            ?? sessionMatchingMirror(of: message)
             ?? createNewSession(from: message)
 
         session.lastActivityTime = Date()
-        if reactivate, session.status == .completed { session.status = .active }
         return session
-    }
-
-    private func mirroredCursorSession(for sessionId: String) -> AgentSession? {
-        guard let suffix = mirroredSessionSuffix(from: sessionId) else { return nil }
-        return sessions.first(where: {
-            isCursorFamily($0.agentType) && $0.status != .completed && suffixCache[$0.id] == suffix
-        })
     }
 
     // MARK: - Session resolution helpers
@@ -1205,20 +2034,27 @@ final class SessionManager {
         return sessions[index]
     }
 
-    private func activeSessionById(_ sessionId: String) -> AgentSession? {
-        guard let session = sessionById(sessionId), session.status != .completed else { return nil }
-        return session
-    }
-
     private func createNewSession(from message: DIMessage) -> AgentSession {
         let agentType = resolvedAgentType(for: message)
+        var startTime = Date()
+        if let namespace = message.sourceNamespace, let instance = message.sourceInstanceId {
+            startTime = persistenceManager?.observationStartTime(sessionId: message.sessionId, namespace: namespace,
+                instance: instance) ?? observationWallClock()
+        }
         let session = AgentSession(
             id: message.sessionId,
             agentType: agentType,
             terminal: message.terminal ?? "",
             workingDirectory: message.workingDir ?? "",
-            prompt: message.prompt ?? ""
+            prompt: message.prompt ?? "",
+            startTime: startTime
         )
+        if message.hasObservationMetadata {
+            session.sourceNamespace = message.sourceNamespace
+            session.sourceInstanceId = message.sourceInstanceId
+            session.nativeTaskId = message.nativeTaskId
+            session.status = .observationUnavailable
+        }
         let index = sessions.count
         sessions.append(session)
         updateIndexForAppend(session, at: index)
@@ -1229,7 +2065,7 @@ final class SessionManager {
 
     /// 有审批时强制置顶显示灵动岛（即使 xnook 在前台）
     private func forceToShowForApproval() {
-        guard !AppTestConfiguration.current().isEnabled else { return }
+        guard allowsExternalApplicationAccess else { return }
         // 精确检查 xnook 是否正在运行（而非任意其他灵动岛应用）
         if AppSwitcher.shared.isIslandRunning(named: "xnook") {
             approvalInterruption.markInterrupted()
@@ -1243,7 +2079,7 @@ final class SessionManager {
 
     /// 审批完成后恢复到 xnook（如果之前是从 xnook 被中断的）
     private func restoreToXnookIfNeeded() {
-        guard !AppTestConfiguration.current().isEnabled else { return }
+        guard allowsExternalApplicationAccess else { return }
         guard approvalInterruption.takeRestorationIfReady(hasPendingInteractions: hasInteraction) else { return }
 
         // 精确检查 xnook 是否仍然运行

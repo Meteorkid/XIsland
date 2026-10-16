@@ -298,6 +298,13 @@ struct SessionCardView: View {
                         .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
                         .lineLimit(1)
                 }
+                if !session.tokenUsage.model.isEmpty {
+                    Text(session.tokenUsage.model)
+                        .font(.system(size: 9))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                        .lineLimit(1)
+                        .help(session.tokenUsage.model)
+                }
             }
 
             Spacer()
@@ -340,17 +347,20 @@ struct SessionCardView: View {
     private var toolActivity: some View {
         VStack(alignment: .leading, spacing: 4) {
             let recentEvents = session.events.suffix(5)
+            let taskStatuses = session.kimiCodeApprovalObservation?.backgroundTaskStatuses(sessionID: session.id) ?? [:]
             ForEach(recentEvents) { event in
+                let failed = event.hasFailedOutcome || KimiCodeApprovalObservation.isFailedBackgroundTask(taskStatuses[event.id])
+                let uncertain = event.completionUnconfirmed || event.hasUnknownOutcome
                 HStack(spacing: 6) {
-                    Image(systemName: event.isComplete ? "checkmark.square.fill" : "square")
+                    Image(systemName: failed ? "xmark.square.fill" : event.wasCancelled ? "minus.square" : uncertain ? "questionmark.square" : event.isComplete ? "checkmark.square.fill" : "square")
                         .font(.system(size: 9))
-                        .foregroundStyle(event.isComplete ? .green.opacity(0.5) : IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                        .foregroundStyle(failed ? .red.opacity(0.7) : event.wasCancelled || uncertain ? .orange.opacity(0.7) : event.isComplete ? .green.opacity(0.5) : IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
 
                     Text("\(event.displayName)")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(event.isComplete ? IslandStyle.tertiaryText(for: themeManager.resolvedScheme) : IslandStyle.secondaryText)
 
-                    if event.isComplete {
+                    if event.isComplete || event.completionUnconfirmed {
                         Text(event.summary)
                             .font(.system(size: 9))
                             .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))

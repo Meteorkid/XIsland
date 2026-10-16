@@ -66,7 +66,7 @@ struct StatisticsView: View {
     private var dailyUsages: [DailyUsage] {
         let calendar = Calendar.current
         var map: [Date: DailyUsage] = [:]
-        for session in filteredSessions {
+        for session in usageSummaries {
             let day = calendar.startOfDay(for: session.startTime)
             if map[day] == nil {
                 map[day] = DailyUsage(date: day, sessionCount: 0, totalDuration: 0, totalTokens: 0, totalCost: 0)
@@ -74,14 +74,14 @@ struct StatisticsView: View {
             map[day]?.sessionCount += 1
             map[day]?.totalDuration += session.duration
             map[day]?.totalTokens += session.totalTokens
-            map[day]?.totalCost += session.estimatedCostUSD
+            map[day]?.totalCost += session.costUSD
         }
         return map.values.sorted { $0.date < $1.date }
     }
 
     private var agentUsages: [AgentUsage] {
         var map: [AgentType: Int] = [:]
-        for session in filteredSessions {
+        for session in usageSummaries {
             map[session.agentType, default: 0] += 1
         }
         return map.map { AgentUsage(agentType: $0.key, sessionCount: $0.value) }
@@ -107,10 +107,12 @@ struct StatisticsView: View {
 
     // MARK: - Summary
 
-    private var totalCount: Int { filteredSessions.count }
+    private var usageSummaries: [HistoryUsageSummary] { HistoryUsageSummary.aggregate(filteredSessions) }
+
+    private var totalCount: Int { usageSummaries.count }
 
     private var totalDurationText: String {
-        let total = filteredSessions.reduce(0) { $0 + $1.duration }
+        let total = usageSummaries.reduce(0) { $0 + $1.duration }
         let hours = Int(total) / 3600
         let mins = (Int(total) % 3600) / 60
         if hours > 0 { return "\(hours)h \(mins)m" }
@@ -118,12 +120,12 @@ struct StatisticsView: View {
     }
 
     private var totalCostText: String {
-        let total = filteredSessions.reduce(0) { $0 + $1.estimatedCostUSD }
+        let total = usageSummaries.reduce(0) { $0 + $1.costUSD }
         return String(format: "$%.2f", total)
     }
 
     private var totalTokensText: String {
-        let total = filteredSessions.reduce(0) { $0 + $1.totalTokens }
+        let total = usageSummaries.reduce(0) { $0 + $1.totalTokens }
         if total >= 1_000_000 {
             return String(format: "%.1fM", Double(total) / 1_000_000)
         } else if total >= 1_000 {

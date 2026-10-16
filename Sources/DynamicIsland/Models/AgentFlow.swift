@@ -37,7 +37,7 @@ enum AgentFlowBlockerKind: Int, Comparable, Sendable {
             return .waitingPermission
         case .error:
             return .toolFailure
-        case .active, .idle, .thinking, .compacting, .completed:
+        case .active, .idle, .thinking, .compacting, .completed, .observationUnavailable, .completionUnconfirmed:
             return .none
         }
     }
@@ -90,8 +90,8 @@ struct AgentFlowBlocker: Identifiable {
 
 /// 以工作目录聚合的项目组：包含会话清单、各类计数与阻塞清单。
 ///
-/// 计数关系（互斥三分，与 UI 徽标语义一致）：
-/// - `totalSessions` = `activeCount` + `completedCount` + `blockedCount`
+/// 计数关系（四类互斥，与 UI 徽标语义一致）：
+/// - `totalSessions` = `activeCount` + `completedCount` + `blockedCount` + `unavailableCount` + `unconfirmedCount`
 /// - `activeCount`：无阻塞且未完成的会话（正在运行 / 思考 / 压缩中 / 空闲）
 /// - `completedCount`：已完成的会话
 /// - `blockedCount`：被识别为阻塞的会话（等待人工输入 / 等待权限 / 工具失败）
@@ -114,8 +114,14 @@ struct AgentFlowProject: Identifiable {
     /// 与 `blockedCount` 互斥——等待回答 / 等待权限 / 工具失败的会话不计入活跃，
     /// 避免项目卡片徽标把阻塞会话误标为"活跃"。
     var activeCount: Int {
-        sessions.filter { $0.status != .completed && AgentFlowBlockerKind.classify($0) == .none }.count
+        sessions.filter { $0.status != .completed && $0.status != .observationUnavailable
+            && ($0.status != .completionUnconfirmed || $0.hasRunningSubagents)
+            && AgentFlowBlockerKind.classify($0) == .none }.count
     }
+
+    var unavailableCount: Int { sessions.filter { $0.status == .observationUnavailable }.count }
+
+    var unconfirmedCount: Int { sessions.filter { $0.status == .completionUnconfirmed && !$0.hasRunningSubagents }.count }
 
     /// 完成数：状态为 `.completed` 的会话。
     var completedCount: Int {

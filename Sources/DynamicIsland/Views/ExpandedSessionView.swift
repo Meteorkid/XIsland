@@ -34,6 +34,13 @@ struct ExpandedSessionView: View {
                 Text(session.agentType.displayName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(IslandStyle.primaryText)
+                if !session.tokenUsage.model.isEmpty {
+                    Text(session.tokenUsage.model)
+                        .font(.system(size: 10))
+                        .foregroundStyle(IslandStyle.secondaryText)
+                        .lineLimit(1)
+                        .help(session.tokenUsage.model)
+                }
                 HStack(spacing: 6) {
                     Text(session.terminal.isEmpty ? session.agentType.shortName : session.terminal)
                         .font(.system(size: 10))
@@ -95,10 +102,11 @@ struct ExpandedSessionView: View {
     private var activityFeed: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 4) {
+                let taskStatuses = session.kimiCodeApprovalObservation?.backgroundTaskStatuses(sessionID: session.id) ?? [:]
                 ForEach(session.events.suffix(20)) { event in
-                    AgentActivityView(event: event)
+                    AgentActivityView(event: event, nativeTaskStatus: taskStatuses[event.id])
                 }
-                if let tool = session.currentTool {
+                if session.status != .completionUnconfirmed, let tool = session.currentTool {
                     runningIndicator(tool)
                 }
             }
@@ -139,6 +147,8 @@ struct ExpandedSessionView: View {
         case .idle:              (L10n.idle, .green)
         case .completed:         (L10n.done, .green)
         case .error:             (L10n.error, .red)
+        case .observationUnavailable: (L10n.statusObservationUnavailable, .gray)
+        case .completionUnconfirmed: (L10n.completionUnconfirmed, .gray)
         }
     }
 

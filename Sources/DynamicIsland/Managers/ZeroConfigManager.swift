@@ -4,6 +4,15 @@ import DIShared
 enum HookInstallStatus {
     case active
     case inactive
+    case externalExtension
+    case unverified
+    case externalAgent
+    case externalObserver
+    case externalCody
+    case externalAmazonQ
+    case externalWorkBuddy
+    case modelSource
+    case externalKiro
 }
 
 enum ZeroConfigManager {
@@ -15,12 +24,79 @@ enum ZeroConfigManager {
         for agent in AgentType.allCases where isAutoConfigEnabled(for: agent) {
             configure(agent)
         }
-        print("[ZeroConfig] Agent hooks configured")
+        print("[ZeroConfig] Supported agent configurations checked")
     }
 
     /// 穷尽 switch，不留 default：新增 AgentType 时编译器会强制在这里做出选择。
     /// v1.13.0 新增的 4 个工具正是因为 default 分支而被静默漏配。
     static func configure(_ agent: AgentType) {
+        if usesCompanionExtension(agent) || usesACPBridge(agent) || usesStateObserver(agent) || usesCodyBridge(agent) || usesAmazonQWrapper(agent) || usesWorkBuddyPlugin(agent) || hasUnverifiedIntegration(agent) { return }
+        if let profile = effectiveNativeProfile(for: agent) {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(profile.relativeConfigPath)
+            do {
+                try HookConfigurationFile.update(at: url) { try profile.merging(into: $0, bridgePath: bridgePath) }
+            } catch {
+                print("[ZeroConfig] \(agent.rawValue) hook configuration failed: \(error.localizedDescription)")
+            }
+            return
+        }
+        if agent == .devin {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(DevinHookConfiguration.relativeConfigPath)
+            do {
+                try HookConfigurationFile.update(at: url) { try DevinHookConfiguration.merging(into: $0, bridgePath: bridgePath) }
+            } catch {
+                print("[ZeroConfig] Devin hook configuration failed: \(error.localizedDescription)")
+            }
+            return
+        }
+        if agent == .windsurf {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(WindsurfHookConfiguration.relativeConfigPath)
+            do {
+                try HookConfigurationFile.update(at: url) { try WindsurfHookConfiguration.merging(into: $0, bridgePath: bridgePath) }
+            } catch {
+                print("[ZeroConfig] Windsurf hook configuration failed: \(error.localizedDescription)")
+            }
+            return
+        }
+        if agent == .copilotCli {
+            let url = CopilotCliHookConfiguration.configURL(homeDirectory: home, environment: ProcessInfo.processInfo.environment)
+            do {
+                try HookConfigurationFile.update(at: url) { try CopilotCliHookConfiguration.merging(into: $0, bridgePath: bridgePath) }
+            } catch {
+                print("[ZeroConfig] Copilot CLI hook configuration failed: \(error.localizedDescription)")
+            }
+            return
+        }
+        if agent == .cursor {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(CursorHookConfiguration.relativeConfigPath)
+            do {
+                try HookConfigurationFile.update(at: url) { try CursorHookConfiguration.merging(into: $0, bridgePath: bridgePath) }
+            } catch {
+                print("[ZeroConfig] Cursor hook configuration failed: \(error.localizedDescription)")
+            }
+            return
+        }
+        if agent == .trae {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(TraeHookConfiguration.relativeConfigPath)
+            do {
+                try HookConfigurationFile.update(at: url) { try TraeHookConfiguration.merging(into: $0, bridgePath: bridgePath) }
+            } catch {
+                print("[ZeroConfig] Trae CN hook configuration failed: \(error.localizedDescription)")
+            }
+            return
+        }
+        if agent == .codeBuddy {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(CodeBuddyHookConfiguration.relativeConfigPath)
+            do { try HookConfigurationFile.update(at: url) { try CodeBuddyHookConfiguration.merging(into: $0, bridgePath: bridgePath) } }
+            catch { print("[ZeroConfig] CodeBuddy hook configuration failed: \(error.localizedDescription)") }
+            return
+        }
+        if agent == .cline {
+            let directory = clineHooksDirectory
+            do { try ClineHookConfiguration.install(in: directory, bridgePath: bridgePath) }
+            catch { print("[ZeroConfig] Cline hook configuration failed: \(error.localizedDescription)") }
+            return
+        }
         switch agent {
         case .windsurf, .amazonQ, .cody, .cline, .`continue`, .copilotCli,
              .rooCode, .pearai, .zed, .jetbrainsAi:
@@ -39,11 +115,25 @@ enum ZeroConfigManager {
         case .amp: configureAmp()
         case .pi: configurePi()
         case .hermes: configureHermes()
-        case .glm: configureGLM()
+        case .glm: break // 模型来源尚无独立客户端协议，不生成配置。
+        case .workBuddy: break // 独立插件尚未通过客户端验收，不自动写入配置。
         case .aider: configureAider()
         case .devin: configureDevin()
         case .tabnine: configureTabnine()
         }
+    }
+
+    /// Factory 仍支持 settings.json 回退；不新建更高优先级文件去遮蔽用户既有 hooks。
+    static func effectiveNativeProfile(for agent: AgentType, homeDirectory: String? = nil) -> NativeHookProfile? {
+        guard let profile = NativeHookProfile.profile(for: agent) else { return nil }
+        let directory = homeDirectory ?? home
+        if agent == .droid,
+           !FileManager.default.fileExists(atPath: "\(directory)/\(profile.relativeConfigPath)"),
+           FileManager.default.fileExists(atPath: "\(directory)/.factory/settings.json") {
+            return NativeHookProfile(agent: agent, relativeConfigPath: ".factory/settings.json", hooksAreAtRoot: false,
+                                     timeoutUnit: profile.timeoutUnit, bindings: profile.bindings)
+        }
+        return profile
     }
 
     /// 模板式 hooks.json 的配置位置与 session 前缀。
@@ -80,15 +170,6 @@ enum ZeroConfigManager {
         SettingsHookBinding(event: "PermissionRequest", hookArg: "PermissionRequest", timeout: 300),
     ]
 
-    /// Kiro 用自己的一套事件名，且没有审批/压缩类事件
-    private static let kiroHookBindings: [SettingsHookBinding] = [
-        SettingsHookBinding(event: "agentSpawn", hookArg: "session_start", timeout: 5),
-        SettingsHookBinding(event: "userPromptSubmit", hookArg: "session_start", timeout: 5),
-        SettingsHookBinding(event: "preToolUse", hookArg: "PreToolUse", timeout: 5),
-        SettingsHookBinding(event: "postToolUse", hookArg: "PostToolUse", timeout: 5),
-        SettingsHookBinding(event: "Stop", hookArg: "session_end", timeout: 5),
-    ]
-
     private static func settingsHookTarget(for agent: AgentType) -> SettingsHookTarget? {
         switch agent {
         case .qwen:
@@ -99,8 +180,6 @@ enum ZeroConfigManager {
             SettingsHookTarget(configDir: "\(home)/.factory", bindings: standardHookBindings, legacyKeys: [])
         case .geminiCli:
             SettingsHookTarget(configDir: "\(home)/.gemini", bindings: standardHookBindings, legacyKeys: ["xisland_hook"])
-        case .kiro:
-            SettingsHookTarget(configDir: "\(home)/.kiro", bindings: kiroHookBindings, legacyKeys: [])
         default:
             nil
         }
@@ -273,99 +352,106 @@ enum ZeroConfigManager {
     }
 
     static func hookStatus(for agent: AgentType) -> HookInstallStatus {
-        hasConfiguration(for: agent) ? .active : .inactive
+        if agent == .glm { return .modelSource }
+        if agent == .kiro { return .externalKiro }
+        if usesWorkBuddyPlugin(agent) { return .externalWorkBuddy }
+        if usesAmazonQWrapper(agent) { return .externalAmazonQ }
+        if usesCodyBridge(agent) { return .externalCody }
+        if usesStateObserver(agent) { return .externalObserver }
+        if usesACPBridge(agent) { return .externalAgent }
+        if hasUnverifiedIntegration(agent) { return .unverified }
+        if usesCompanionExtension(agent) { return .externalExtension }
+        return hasConfiguration(for: agent) ? .active : .inactive
+    }
+
+    static func usesCompanionExtension(_ agent: AgentType) -> Bool {
+        agent == .rooCode || agent == .pearai
+    }
+
+    static func hasUnverifiedIntegration(_ agent: AgentType) -> Bool {
+        agent == .kiro
+    }
+
+    static func usesWorkBuddyPlugin(_ agent: AgentType) -> Bool { agent == .workBuddy }
+
+    static func usesAmazonQWrapper(_ agent: AgentType) -> Bool { agent == .amazonQ }
+
+    static func usesCodyBridge(_ agent: AgentType) -> Bool { agent == .cody }
+
+    static func usesStateObserver(_ agent: AgentType) -> Bool { agent == .`continue` }
+
+    static func usesACPBridge(_ agent: AgentType) -> Bool { agent == .zed || agent == .jetbrainsAi }
+
+    /// 仅检查已有文件；轮询修复不为未安装的软件创建配置目录。
+    static func shouldRepairNativeHooks(for agent: AgentType, homeDirectory: String) -> Bool {
+        if hasUnverifiedIntegration(agent) || usesCompanionExtension(agent) || usesACPBridge(agent) || usesStateObserver(agent) || usesCodyBridge(agent) || usesAmazonQWrapper(agent) || usesWorkBuddyPlugin(agent) { return false }
+        if agent == .deepseek {
+            return DeepSeekHookInstallation.shouldRepair(homeDirectory: homeDirectory, bridgePath: "\(homeDirectory)/.xisland/bin/di-bridge",
+                                                        environment: ProcessInfo.processInfo.environment)
+        }
+        if agent == .aider {
+            let url = URL(fileURLWithPath: homeDirectory).appendingPathComponent(AiderWrapperConfiguration.relativePath)
+            return AiderWrapperConfiguration.shouldRepair(at: url, bridgePath: "\(homeDirectory)/.xisland/bin/di-bridge")
+        }
+        if agent == .copilot {
+            return VSCodeHookInstallation.shouldRepair(homeDirectory: homeDirectory, bridgePath: "\(homeDirectory)/.xisland/bin/di-bridge")
+        }
+        if agent == .cline {
+            let directory = homeDirectory == home ? clineHooksDirectory
+                : URL(fileURLWithPath: homeDirectory).appendingPathComponent(ClineHookConfiguration.relativeHooksDirectory)
+            return ClineHookConfiguration.shouldRepair(in: directory, bridgePath: "\(homeDirectory)/.xisland/bin/di-bridge")
+        }
+        if agent == .kimi {
+            return KimiHookInstallation.shouldRepair(homeDirectory: homeDirectory, bridgePath: "\(homeDirectory)/.xisland/bin/di-bridge",
+                                                      environment: ProcessInfo.processInfo.environment)
+        }
+        let profile = effectiveNativeProfile(for: agent, homeDirectory: homeDirectory)
+        let relativePath: String
+        if let profile { relativePath = profile.relativeConfigPath }
+        else if agent == .devin { relativePath = DevinHookConfiguration.relativeConfigPath }
+        else if agent == .windsurf { relativePath = WindsurfHookConfiguration.relativeConfigPath }
+        else if agent == .cursor { relativePath = CursorHookConfiguration.relativeConfigPath }
+        else if agent == .trae { relativePath = TraeHookConfiguration.relativeConfigPath }
+        else if agent == .codeBuddy { relativePath = CodeBuddyHookConfiguration.relativeConfigPath }
+        else if agent == .copilotCli {
+            let url = CopilotCliHookConfiguration.configURL(homeDirectory: homeDirectory, environment: ProcessInfo.processInfo.environment)
+            guard FileManager.default.fileExists(atPath: url.path), let config = try? HookConfigurationFile.read(at: url) else { return false }
+            return !CopilotCliHookConfiguration.isConfigured(in: config, bridgePath: "\(homeDirectory)/.xisland/bin/di-bridge")
+        }
+        else { return false }
+        let url = URL(fileURLWithPath: homeDirectory).appendingPathComponent(relativePath)
+        guard FileManager.default.fileExists(atPath: url.path),
+              let config = try? HookConfigurationFile.read(at: url) else { return false }
+        let bridge = "\(homeDirectory)/.xisland/bin/di-bridge"
+        if let profile { return !profile.isConfigured(in: config, bridgePath: bridge) }
+        if agent == .devin { return !DevinHookConfiguration.isConfigured(in: config, bridgePath: bridge) }
+        if agent == .cursor { return !CursorHookConfiguration.isConfigured(in: config, bridgePath: bridge) }
+        if agent == .trae { return !TraeHookConfiguration.isConfigured(in: config, bridgePath: bridge) }
+        if agent == .codeBuddy { return !CodeBuddyHookConfiguration.isConfigured(in: config, bridgePath: bridge) }
+        return !WindsurfHookConfiguration.isConfigured(in: config, bridgePath: bridge)
     }
 
     static func repairHooksIfNeeded() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
 
-        // JSON hooks agents: [agent, config path]
-        let jsonHookAgents: [(AgentType, String)] = [
-            (.claudeCode, "\(home)/.claude/settings.json"),
-            (.qwen, "\(home)/.qwen/settings.json"),
-            (.geminiCli, "\(home)/.gemini/settings.json"),
-            (.droid, "\(home)/.factory/settings.json"),
-            (.codeBuddy, "\(home)/.codebuddy/settings.json"),
-            (.kiro, "\(home)/.kiro/settings.json"),
-            (.codex, "\(home)/.codex/hooks.json"),
-        ]
-
-        for (agent, path) in jsonHookAgents {
-            guard isAutoConfigEnabled(for: agent),
-                  FileManager.default.fileExists(atPath: path),
-                  let settings = readJSON(path),
-                  let hooks = settings["hooks"] as? [String: Any] else { continue }
-
-            let hasDIBridge = hooks.values.contains { hookList in
-                guard let list = hookList as? [[String: Any]] else { return false }
-                return list.contains { entry in
-                    let cmds = entry["hooks"] as? [[String: Any]] ?? []
-                    return cmds.contains { ($0["command"] as? String)?.contains("di-bridge") == true }
-                }
-            }
-            if !hasDIBridge {
+        // 按完整事件集合检测；只剩一条旧命令不能视为配置正常。
+        for agent in AgentType.allCases where isAutoConfigEnabled(for: agent) {
+            if shouldRepairNativeHooks(for: agent, homeDirectory: home) {
                 configure(agent)
-                print("[ZeroConfig] Repaired \(agent.displayName) hooks at \(path)")
-            }
-        }
-
-        // Cursor-family hooks (Cursor / Trae / Trae CN) — different JSON format
-        if isAutoConfigEnabled(for: .cursor) || isAutoConfigEnabled(for: .trae) {
-            for target in cursorHookTargets where isAutoConfigEnabled(for: target.agent) {
-                guard FileManager.default.fileExists(atPath: target.path) else { continue }
-                if let config = readJSON(target.path),
-                   let hooks = config["hooks"] as? [String: Any] {
-                    let hasDIBridge = hooks.values.contains { entries in
-                        guard let list = entries as? [[String: Any]] else { return false }
-                        return list.contains { ($0["command"] as? String)?.contains("di-bridge") == true }
-                    }
-                    if !hasDIBridge {
-                        configure(target.agent)
-                        print("[ZeroConfig] Repaired \(target.agent.displayName) hooks at \(target.path)")
-                    }
-                }
-            }
-        }
-
-        // Trae IDE settings hooks (Trae / Trae CN / TRAE SOLO CN)
-        if isAutoConfigEnabled(for: .trae) {
-            for path in traeIDESettingsPaths where FileManager.default.fileExists(atPath: path) {
-                guard let config = readJSON(path) else { continue }
-                let hooks = config["claudeCode.hooks"] as? [String: Any] ?? [:]
-                if !hooksContainBridge(hooks) {
-                    configure(.trae)
-                    print("[ZeroConfig] Repaired Trae IDE hooks at \(path)")
-                }
-            }
-        }
-
-        // TOML hooks agents
-        let tomlAgents: [(AgentType, String, String)] = [
-            (.kimi, "\(home)/.kimi/config.toml", "# X Island hooks"),
-            (.deepseek, "\(home)/.deepseek/config.toml", "# X Island hooks"),
-            (.glm, "\(home)/.zhipu/config.toml", "# X Island hooks"),
-        ]
-
-        for (agent, path, marker) in tomlAgents {
-            guard isAutoConfigEnabled(for: agent),
-                  let text = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
-            if !text.contains("di-bridge") {
-                configure(agent)
-                print("[ZeroConfig] Repaired \(agent.displayName) TOML hooks at \(path)")
             }
         }
 
         // Plugin/script file agents
         let fileAgents: [(AgentType, String)] = [
-            (.openCode, "\(home)/.config/opencode/plugins/xisland.js"),
-            (.amp, "\(home)/.config/amp/plugins/xisland.ts"),
-            (.pi, "\(home)/.pi/agent/extensions/xisland.ts"),
+            (.openCode, openCodePluginURL.path),
+            (.amp, ampPluginURL.path),
+            (.pi, piPluginURL.path),
         ]
 
         for (agent, path) in fileAgents {
             guard isAutoConfigEnabled(for: agent) else { continue }
             if let text = try? String(contentsOfFile: path, encoding: .utf8),
-               !text.contains("di-bridge") {
+               ([AgentType.amp, .pi, .openCode].contains(agent) ? !hasConfiguration(for: agent) : !text.contains("di-bridge")) {
                 configure(agent)
                 print("[ZeroConfig] Repaired \(agent.displayName) plugin at \(path)")
             }
@@ -374,7 +460,6 @@ enum ZeroConfigManager {
         // Shell wrapper agents
         let wrapperAgents: [(AgentType, String)] = [
             (.hermes, "\(home)/.xisland/bin/hermes-bridge"),
-            (.aider, "\(home)/.xisland/bin/aider-bridge"),
         ]
 
         for (agent, path) in wrapperAgents {
@@ -686,187 +771,43 @@ enum ZeroConfigManager {
     }
 
     // MARK: - OpenCode
-    // OpenCode uses a JS plugin system. The plugin uses di-bridge for fire-and-forget events,
-    // and async spawn + internalFetch for bidirectional permission/question interaction
-    // (reference: vibe-island plugin architecture).
+
+    private enum PluginConfigurationError: Error { case userOwnedFile }
+
+    private static var openCodePluginURL: URL {
+        OpenCodePluginConfiguration.pluginURL(homeDirectory: home, environment: ProcessInfo.processInfo.environment)
+    }
+
     private static func configureOpenCode() {
-        let pluginDir = "\(home)/.config/opencode/plugins"
-        let pluginPath = "\(pluginDir)/xisland.js"
-        ensureDir(pluginDir)
-
-        let pluginSource = #"""
-        import { spawn, execSync } from "child_process";
-        import { homedir } from "os";
-        const BRIDGE = homedir() + "/.xisland/bin/di-bridge";
-        function sendViaBridge(hookType, sessionId, data) {
-          try {
-            const stdin = JSON.stringify({ ...data, session_id: sessionId });
-            execSync(`${BRIDGE} --agent opencode --hook ${hookType} --session ${sessionId}`, {
-              input: stdin, timeout: 5000, stdio: ["pipe", "pipe", "pipe"],
-            });
-          } catch {}
-        }
-        function sendInteractive(hookType, sessionId, data) {
-          return new Promise((resolve) => {
-            try {
-              const child = spawn(BRIDGE, ["--agent","opencode","--hook",hookType,"--session",sessionId],
-                { stdio: ["pipe","pipe","pipe"] });
-              child.stdin.write(JSON.stringify(data)); child.stdin.end();
-              let stdout = "";
-              child.stdout.on("data", (d) => { stdout += d.toString(); });
-              child.on("close", (code) => resolve({ exitCode: code, output: stdout.trim() }));
-              child.on("error", () => resolve(null));
-              setTimeout(() => { child.kill(); resolve(null); }, 300000);
-            } catch { resolve(null); }
-          });
-        }
-        // One active question bridge per session; kill the old one when a newer event
-        // arrives so only the latest rid ever gets replied to.
-        const activeQ = new Map();
-        // After the user answers, cache the answer briefly so that follow-up duplicate
-        // events (same question, same options) from OpenCode get auto-replied without
-        // showing the question panel again.
-        const answeredQ = new Map(); // sid -> { answer, opts, ts }
-        const answeringQ = new Set(); // sids with an active askSequentially loop
-        export default async ({ client, serverUrl }) => {
-          const serverPort = serverUrl ? parseInt(serverUrl.port) || 4096 : 4096;
-          const internalFetch = client?._client?.getConfig?.()?.fetch || null;
-          const msgRoles = new Map(), sessions = new Map(), sessionCwd = new Map();
-          function getSession(sid) {
-            if (!sessions.has(sid)) sessions.set(sid, { lastUserText: "", lastAssistantText: "" });
-            return sessions.get(sid);
-          }
-          function handleEvent(ev) {
-            const t = ev.type, p = ev.properties || {};
-            if (t === "session.created" && p.info) {
-              sessionCwd.set(p.info.id, p.info.directory || "");
-              sendViaBridge("session_start", `opencode-${p.info.id}`, { cwd: p.info.directory || "", terminal: process.env.TERM_PROGRAM || "Terminal" });
-              return;
-            }
-            if (t === "session.deleted" && p.info) { sessions.delete(p.info.id); sessionCwd.delete(p.info.id); sendViaBridge("session_end", `opencode-${p.info.id}`, {}); return; }
-            if (t === "session.updated" && p.info) {
-              if (p.info.directory) sessionCwd.set(p.info.id, p.info.directory);
-              if (p.info.time?.archived) { sessions.delete(p.info.id); sessionCwd.delete(p.info.id); sendViaBridge("session_end", `opencode-${p.info.id}`, {}); }
-              return;
-            }
-            if (t === "permission.asked" && p.id && p.sessionID) {
-              const rid = p.id, sid = `opencode-${p.sessionID}`;
-              const permRaw = (p.permission||"unknown");
-              const perm = permRaw.toLowerCase();
-              const tn = permRaw.charAt(0).toUpperCase()+permRaw.slice(1);
-              const pts = p.patterns||[];
-              let desc = tn;
-              if (p.permission==="bash"&&pts.length) desc = "Run: "+pts.join(" && ");
-              else if ((p.permission==="edit"||p.permission==="write")&&pts.length) desc = tn+": "+pts[0];
-              else if (pts.length) desc = tn+": "+pts.join(", ");
-              const questionLike = perm.includes("ask") || perm.includes("question") || perm.includes("input");
-              if (questionLike) {
-                const opts = pts.filter(Boolean).map(String);
-                if (internalFetch) {
-                  sendInteractive("question", sid, { question: desc || "Question", options: opts });
-                } else {
-                  sendViaBridge("question", sid, { question: desc || "Question", options: opts });
+        let url = openCodePluginURL
+        do {
+            let source = try OpenCodePluginConfiguration.source(bridgePath: bridgePath)
+            try HookConfigurationFile.updateText(at: url) { existing in
+                guard existing.isEmpty || OpenCodePluginConfiguration.isOwnedSource(existing) else {
+                    throw PluginConfigurationError.userOwnedFile
                 }
-                return;
-              }
-              if ((perm === "unknown" || perm === "") && !pts.length) {
-                return;
-              }
-              if (internalFetch) {
-                sendInteractive("PermissionRequest", sid, { tool_name:tn, description:desc, file_path:pts[0]||"" })
-                  .then(async (r)=>{ if(!r)return; try{ await internalFetch(new Request(`http://localhost:${serverPort}/permission/${rid}/reply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reply:r.exitCode===0?"once":"reject"})}));}catch{} });
-              } else { sendViaBridge("PermissionRequest", sid, { tool_name:tn, description:desc, file_path:pts[0]||"" }); }
-              return;
+                return source
             }
-            if (t === "permission.replied" && p.sessionID) { sendViaBridge("PostToolUse",`opencode-${p.sessionID}`,{tool_name:"Permission"}); return; }
-            if (t === "question.asked" && p.id && p.sessionID) {
-              const rid = p.id, sid = `opencode-${p.sessionID}`;
-              const qs = p.questions||[];
-              const allQt = qs.map(q=>q.question||q.header||"").filter(Boolean).join("\n");
-              if (!allQt.trim() || (allQt.trim() === "Question" && !qs.some(q=>(q.options||[]).length))) return;
-              if (!internalFetch) {
-                const opts = qs.flatMap(q=>(q.options||[]).map(o=>o.label||o.description||"")).filter(Boolean);
-                sendViaBridge("question", sid, { question:allQt, options:opts });
-                return;
-              }
-              // If we're already walking through a multi-question batch for this
-              // session, ignore the re-fired event from OpenCode.
-              if (answeringQ.has(sid)) {
-                return;
-              }
-              // Dedup: if we just answered the exact same batch, auto-reply.
-              const prev = answeredQ.get(sid);
-              const allOpts = qs.flatMap(q=>(q.options||[]).map(o=>o.label||o.description||"")).filter(Boolean);
-              if (prev && Date.now()-prev.ts < 2000 && prev.rid === rid) return;
-              // Kill any previous bridge for this session.
-              const prevBridge = activeQ.get(sid);
-              if (prevBridge) { try { prevBridge.kill("SIGTERM"); } catch {} activeQ.delete(sid); }
-              // Walk through questions one at a time via X Island.
-              async function askSequentially() {
-                answeringQ.add(sid);
-                try {
-                  const answers = [];
-                  for (let i = 0; i < qs.length; i++) {
-                    const q = qs[i];
-                    const qText = (q.header ? q.header + ": " : "") + (q.question || "");
-                    const qOpts = (q.options||[]).map(o=>o.label||o.description||"").filter(Boolean);
-                    if (!qText.trim() && !qOpts.length) { answers.push([""]); continue; }
-                    const label = qs.length > 1 ? `[${i+1}/${qs.length}] ${qText}` : qText;
-                    const answer = await new Promise((resolve) => {
-                      const child = spawn(BRIDGE, ["--agent","opencode","--hook","question","--session",sid], { stdio:["pipe","pipe","pipe"] });
-                      activeQ.set(sid, child);
-                      child.stdin.write(JSON.stringify({ question: label, options: qOpts })); child.stdin.end();
-                      let out = "";
-                      child.stdout.on("data", d => { out += d.toString(); });
-                      child.on("close", () => { if (activeQ.get(sid)===child) activeQ.delete(sid); resolve(out.trim()); });
-                      child.on("error", () => { if (activeQ.get(sid)===child) activeQ.delete(sid); resolve(""); });
-                      setTimeout(() => { try { child.kill(); } catch {} }, 300000);
-                    });
-                    if (!answer) return;
-                    answers.push([answer]);
-                  }
-                  answeredQ.set(sid, { rid, opts: allOpts, ts: Date.now() });
-                  try { await internalFetch(new Request(`http://localhost:${serverPort}/question/${rid}/reply`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({answers}) })); } catch {}
-                } finally { answeringQ.delete(sid); }
-              }
-              askSequentially().catch(()=>{ answeringQ.delete(sid); });
-              return;
-            }
-            if ((t==="question.replied"||t==="question.rejected") && p.sessionID) { sendViaBridge("notification",`opencode-${p.sessionID}`,{status:t==="question.replied"?"Question answered":"Question dismissed"}); return; }
-            if (t === "message.updated" && p.info?.id && p.info?.sessionID) { msgRoles.set(p.info.id, { role: p.info.role, sessionID: p.info.sessionID }); if (msgRoles.size > 200) msgRoles.delete(msgRoles.keys().next().value); return; }
-            if (t === "message.part.updated" && p.part?.type === "text" && p.part?.messageID) {
-              const meta = msgRoles.get(p.part.messageID); if (!meta) return;
-              const s = getSession(meta.sessionID), text = p.part.text || "";
-              if (meta.role === "user" && text) { s.lastUserText = text; sendViaBridge("session_start", `opencode-${meta.sessionID}`, { prompt: text, cwd: sessionCwd.get(meta.sessionID) || "", terminal: process.env.TERM_PROGRAM || "Terminal" }); }
-              else if (meta.role === "assistant" && text) { s.lastAssistantText = text; sendViaBridge("notification", `opencode-${meta.sessionID}`, { status: text }); }
-              return;
-            }
-            if (t === "message.part.updated" && p.part?.type === "tool" && p.part?.sessionID) {
-              const st = p.part.state?.status, toolName = (p.part.tool || "unknown").charAt(0).toUpperCase() + (p.part.tool || "unknown").slice(1);
-              if (st === "running" || st === "pending") sendViaBridge("PreToolUse", `opencode-${p.part.sessionID}`, { tool_name: toolName, tool_input: p.part.state?.input || {} });
-              else if (st === "completed" || st === "error") sendViaBridge("PostToolUse", `opencode-${p.part.sessionID}`, { tool_name: toolName });
-              return;
-            }
-            if (t === "session.status" && p.sessionID && p.status?.type === "idle") {
-              const s = getSession(p.sessionID);
-              sendViaBridge("notification", `opencode-${p.sessionID}`, { status: "idle", message: s.lastAssistantText || "idle" });
-            }
-          }
-          return { "event": async ({ event }) => { try { handleEvent(event); } catch {} } };
-        };
-        """#
+            try removeOpenCodeLegacyRegistration(at: url)
+        } catch {
+            print("[ZeroConfig] OpenCode plugin configuration failed: \(error.localizedDescription)")
+        }
+    }
 
-        try? pluginSource.write(toFile: pluginPath, atomically: true, encoding: String.Encoding.utf8)
 
-        let configPath = "\(home)/.config/opencode/config.json"
-        let pluginURL = "file://\(pluginPath)"
-        var config = readJSON(configPath) ?? ["$schema": "https://opencode.ai/config.json"]
-        var plugins = config["plugin"] as? [String] ?? []
-        if !plugins.contains(pluginURL) {
-            plugins.removeAll { ($0 as? String)?.contains("xisland") == true || ($0 as? String)?.contains("open-island") == true || ($0 as? String)?.contains("dynamic-island") == true || ($0 as? String)?.contains("vibe-island") == true }
-            plugins.append(pluginURL)
-            config["plugin"] = plugins
-            writeJSON(configPath, config)
+    private static func removeOpenCodeLegacyRegistration(at url: URL) throws {
+        // 本地插件目录自动加载，安装/卸载均清理旧版的重复注册。
+        let directory = url.deletingLastPathComponent().deletingLastPathComponent()
+        let legacyURL = URL(fileURLWithPath: "\(home)/.config/opencode/plugins/xisland.js")
+        var managedURLs = [url]
+        if legacyURL != url, let text = try? String(contentsOf: legacyURL, encoding: .utf8),
+           OpenCodePluginConfiguration.isOwnedSource(text) { managedURLs.append(legacyURL) }
+        for name in ["config.json", "opencode.json"] {
+            let configURL = directory.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: configURL.path) else { continue }
+            try HookConfigurationFile.update(at: configURL) { original in
+                OpenCodePluginConfiguration.removingLegacyReferences(from: original, pluginURLs: managedURLs)
+            }
         }
     }
 
@@ -883,8 +824,14 @@ enum ZeroConfigManager {
     // MARK: - Copilot
 
     private static func configureCopilot() {
-        // Copilot has no hook system — detection via process/desktop app monitoring only.
-        print("[ZeroConfig] Copilot does not support hook injection. X Island will monitor it via process detection.")
+        do { try VSCodeHookInstallation.install(homeDirectory: home, bridgePath: bridgePath) }
+        catch { print("[ZeroConfig] VS Code Local hook configuration failed: \(error.localizedDescription)") }
+    }
+
+    private static var clineHooksDirectory: URL {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: home).appendingPathComponent("Documents")
+        return documents.appendingPathComponent("Cline/Hooks", isDirectory: true)
     }
 
     // MARK: - CodeBuddy
@@ -896,110 +843,21 @@ enum ZeroConfigManager {
     // MARK: - Kimi Code
 
     private static func configureKimi() {
-        let configDir = "\(home)/.kimi"
-        let configPath = "\(configDir)/config.toml"
-        ensureDir(configDir)
-
-        let hookMapping: [(String, String, Int)] = [
-            ("PreToolUse", "PreToolUse", 5),
-            ("PostToolUse", "PostToolUse", 5),
-            ("UserPromptSubmit", "session_start", 5),
-            ("SessionStart", "session_start", 5),
-            ("SessionEnd", "session_end", 5),
-            ("Stop", "notification", 5),
-            ("SubagentStart", "subagent_start", 5),
-            ("SubagentStop", "subagent_end", 5),
-            ("PreCompact", "compact", 5),
-            ("Notification", "Notification", 5),
-            ("PermissionRequest", "PermissionRequest", 300),
-        ]
-
-        var toml = ""
-        if let existing = try? String(contentsOfFile: configPath, encoding: .utf8) {
-            toml = existing
+        do {
+            try KimiHookInstallation.install(homeDirectory: home, bridgePath: bridgePath,
+                                             environment: ProcessInfo.processInfo.environment)
+        } catch {
+            print("[ZeroConfig] Kimi hook configuration failed: \(error.localizedDescription)")
         }
-
-        // Remove existing xisland hooks block
-        if let range = toml.range(of: "# X Island hooks") {
-            let rest = toml[range.lowerBound...]
-            if let nextSection = rest.range(of: "\n[", options: .literal, range: rest.index(after: range.lowerBound)..<rest.endIndex) {
-                toml.removeSubrange(range.lowerBound..<nextSection.lowerBound)
-            } else {
-                toml.removeSubrange(range.lowerBound...)
-            }
-        }
-
-        toml += "\n# X Island hooks\n"
-        for (hookType, hookArg, timeout) in hookMapping {
-            let guardedCmd: String
-            if hookArg == "PermissionRequest" {
-                guardedCmd = "\(bridgePath) --agent kimi --hook \(hookArg)"
-            } else {
-                guardedCmd = "\(bridgePath) --agent kimi --hook \(hookArg) || true"
-            }
-            toml += """
-            [[hooks]]
-            event = "\(hookType)"
-            command = "\(guardedCmd)"
-            matcher = "*"
-            timeout = \(timeout)
-
-            """
-        }
-
-        try? toml.write(toFile: configPath, atomically: true, encoding: .utf8)
     }
 
     // MARK: - DeepSeek-TUI
 
     private static func configureDeepSeek() {
-        let configDir = "\(home)/.deepseek"
-        let configPath = "\(configDir)/config.toml"
-        ensureDir(configDir)
-
-        let hookMapping: [(String, String)] = [
-            ("session_start", "session_start"),
-            ("session_end", "session_end"),
-            ("message_submit", "session_start"),
-            ("tool_call_before", "PreToolUse"),
-            ("tool_call_after", "PostToolUse"),
-            ("mode_change", "notification"),
-            ("on_error", "notification"),
-        ]
-
-        var toml = ""
-        if let existing = try? String(contentsOfFile: configPath, encoding: .utf8) {
-            toml = existing
-        }
-
-        // Remove existing xisland hooks block
-        if let range = toml.range(of: "# X Island hooks") {
-            let rest = toml[range.lowerBound...]
-            if let nextSection = rest.range(of: "\n[", options: .literal, range: rest.index(after: range.lowerBound)..<rest.endIndex) {
-                toml.removeSubrange(range.lowerBound..<nextSection.lowerBound)
-            } else {
-                toml.removeSubrange(range.lowerBound...)
-            }
-        }
-
-        // Ensure global hooks enabled
-        if !toml.contains("[hooks]") {
-            toml += "\n[hooks]\nenabled = true\n"
-        }
-
-        toml += "\n# X Island hooks\n"
-        for (event, hookArg) in hookMapping {
-            toml += """
-            [[hooks.hooks]]
-            name = "xisland_\(event)"
-            event = "\(event)"
-            command = "\(bridgePath) --agent deepseek --hook \(hookArg) || true"
-            condition = "*"
-
-            """
-        }
-
-        try? toml.write(toFile: configPath, atomically: true, encoding: .utf8)
+        do {
+            _ = try DeepSeekHookInstallation.install(homeDirectory: home, bridgePath: bridgePath,
+                                                    environment: ProcessInfo.processInfo.environment)
+        } catch { print("[ZeroConfig] Codewhale hook configuration failed: \(error.localizedDescription)") }
     }
 
     // MARK: - Kiro
@@ -1007,100 +865,54 @@ enum ZeroConfigManager {
 
     // MARK: - Amp
 
+    private static var ampPluginURL: URL {
+        AmpPluginConfiguration.pluginURL(homeDirectory: home, environment: ProcessInfo.processInfo.environment)
+    }
+
     private static func configureAmp() {
-        let pluginDir = "\(home)/.config/amp/plugins"
-        let pluginPath = "\(pluginDir)/xisland.ts"
-        ensureDir(pluginDir)
-
-        let pluginSource = #"""
-        import { execSync } from "child_process";
-        import { homedir } from "os";
-        const BRIDGE = homedir() + "/.xisland/bin/di-bridge";
-        function send(hookType: string, sessionId: string, data: Record<string, any>) {
-          try {
-            const stdin = JSON.stringify({ ...data, session_id: sessionId });
-            execSync(`${BRIDGE} --agent amp --hook ${hookType} --session ${sessionId}`, {
-              input: stdin, timeout: 5000, stdio: ["pipe", "pipe", "pipe"],
-            });
-          } catch {}
+        let url = ampPluginURL
+        do {
+            let source = try AmpPluginConfiguration.source(bridgePath: bridgePath)
+            if FileManager.default.fileExists(atPath: url.path) {
+                let existing = try String(contentsOf: url, encoding: .utf8)
+                guard AmpPluginConfiguration.isOwnedSource(existing) else {
+                    print("[ZeroConfig] Amp plugin path contains a user file; kept unchanged")
+                    return
+                }
+                guard existing != source else { return }
+            }
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            try source.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            print("[ZeroConfig] Amp plugin configuration failed: \(error.localizedDescription)")
         }
-        export default {
-          onSessionStart: (ctx: { sessionId: string }) => {
-            send("session_start", ctx.sessionId, { terminal: process.env.TERM_PROGRAM || "Terminal" });
-          },
-          onSessionEnd: (ctx: { sessionId: string }) => {
-            send("session_end", ctx.sessionId, {});
-          },
-          onAgentStart: (ctx: { sessionId: string; task: string }) => {
-            send("session_start", ctx.sessionId, { prompt: ctx.task });
-          },
-          onAgentEnd: (ctx: { sessionId: string }) => {
-            send("session_end", ctx.sessionId, {});
-          },
-          onToolCall: (ctx: { sessionId: string; tool: string; input: any }) => {
-            send("PreToolUse", ctx.sessionId, { tool_name: ctx.tool, tool_input: ctx.input });
-          },
-          onToolResult: (ctx: { sessionId: string; tool: string; result: any }) => {
-            send("PostToolUse", ctx.sessionId, { tool_name: ctx.tool, result: ctx.result });
-          },
-        };
-        """#
-
-        try? pluginSource.write(toFile: pluginPath, atomically: true, encoding: String.Encoding.utf8)
-
-        // Amp loads plugins from .amp/plugins/*.ts automatically if present.
-        // No additional config registration needed for basic file-based plugins.
     }
 
     // MARK: - Pi Agent
 
+    private static var piPluginURL: URL {
+        PiPluginConfiguration.pluginURL(homeDirectory: home)
+    }
+
     private static func configurePi() {
-        let extDir = "\(home)/.pi/agent/extensions"
-        let extPath = "\(extDir)/xisland.ts"
-        ensureDir(extDir)
-
-        let extSource = #"""
-        import { spawn } from "child_process";
-        import { homedir } from "os";
-        const BRIDGE = homedir() + "/.xisland/bin/di-bridge";
-        function send(hookType: string, sessionId: string, data: Record<string, any>) {
-          return new Promise<void>((resolve) => {
-            try {
-              const child = spawn(BRIDGE, ["--agent","pi","--hook",hookType,"--session",sessionId], {
-                stdio: ["pipe","pipe","pipe"]
-              });
-              child.stdin.write(JSON.stringify(data)); child.stdin.end();
-              child.on("close", () => resolve());
-              child.on("error", () => resolve());
-              setTimeout(() => { child.kill(); resolve(); }, 5000);
-            } catch { resolve(); }
-          });
+        let url = piPluginURL
+        do {
+            let source = try PiPluginConfiguration.source(bridgePath: bridgePath)
+            if FileManager.default.fileExists(atPath: url.path) {
+                let existing = try String(contentsOf: url, encoding: .utf8)
+                guard PiPluginConfiguration.isOwnedSource(existing) else {
+                    print("[ZeroConfig] Pi extension path contains a user file; kept unchanged")
+                    return
+                }
+                guard existing != source else { return }
+            }
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            try source.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            print("[ZeroConfig] Pi extension configuration failed: \(error.localizedDescription)")
         }
-        export default {
-          session_start: async (ctx: { sessionId: string; cwd?: string }) => {
-            await send("session_start", ctx.sessionId, { cwd: ctx.cwd || "", terminal: process.env.TERM_PROGRAM || "Terminal" });
-          },
-          session_end: async (ctx: { sessionId: string }) => {
-            await send("session_end", ctx.sessionId, {});
-          },
-          agent_start: async (ctx: { sessionId: string; task?: string }) => {
-            await send("session_start", ctx.sessionId, { prompt: ctx.task || "" });
-          },
-          agent_end: async (ctx: { sessionId: string }) => {
-            await send("session_end", ctx.sessionId, {});
-          },
-          tool_call: async (ctx: { sessionId: string; tool: string; input?: any }) => {
-            await send("PreToolUse", ctx.sessionId, { tool_name: ctx.tool, tool_input: ctx.input });
-          },
-          tool_result: async (ctx: { sessionId: string; tool: string; result?: any }) => {
-            await send("PostToolUse", ctx.sessionId, { tool_name: ctx.tool, result: ctx.result });
-          },
-        };
-        """#
-
-        try? extSource.write(toFile: extPath, atomically: true, encoding: String.Encoding.utf8)
-
-        // Pi Agent loads extensions from ~/.pi/agent/extensions/*.ts automatically.
     }
 
     // MARK: - Hermes
@@ -1132,76 +944,9 @@ enum ZeroConfigManager {
     // MARK: - Aider
 
     private static func configureAider() {
-        let wrapperDir = "\(home)/.xisland/bin"
-        let wrapperPath = "\(wrapperDir)/aider-bridge"
-        ensureDir(wrapperDir)
-
-        let wrapper = #"""
-        #!/bin/bash
-        # Aider X Island bridge wrapper
-        # Usage: aider-bridge <hook> [session_id]
-        HOOK="${1:-notification}"
-        PROMPT="${2:-}"
-        BRIDGE="$HOME/.xisland/bin/di-bridge"
-        SESSION="${3:-aider-$(echo "$PWD" | md5)}"
-        echo '{"prompt":"'"$PROMPT"'"}' | "$BRIDGE" --agent aider --hook "$HOOK" --session "$SESSION"
-        """#
-
-        try? wrapper.write(toFile: wrapperPath, atomically: true, encoding: String.Encoding.utf8)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapperPath)
-        print("[ZeroConfig] Aider bridge wrapper installed at \(wrapperPath)")
-    }
-
-    private static func configureGLM() {
-        // GLM (Zhipu AI) uses TOML config at ~/.zhipu/config.toml
-        let dir = "\(home)/.zhipu"
-        let configPath = "\(dir)/config.toml"
-        ensureDir(dir)
-
-        let block = """
-        # X Island hooks — managed by X Island
-        [[hooks]]
-        name = "xisland_session_start"
-        command = "~/.xisland/bin/di-bridge --agent glm --hook session_start --session glm-$(pwd | md5)"
-        events = ["SessionStart"]
-
-        [[hooks]]
-        name = "xisland_session_end"
-        command = "~/.xisland/bin/di-bridge --agent glm --hook session_end --session glm-$(pwd | md5)"
-        events = ["SessionEnd"]
-
-        [[hooks]]
-        name = "xisland_tool_start"
-        command = "~/.xisland/bin/di-bridge --agent glm --hook tool_start --session glm-$(pwd | md5)"
-        events = ["PreToolUse"]
-
-        [[hooks]]
-        name = "xisland_tool_complete"
-        command = "~/.xisland/bin/di-bridge --agent glm --hook tool_complete --session glm-$(pwd | md5)"
-        events = ["PostToolUse"]
-
-        [[hooks]]
-        name = "xisland_permission"
-        command = "~/.xisland/bin/di-bridge --agent glm --hook permission_request --session glm-$(pwd | md5)"
-        events = ["PermissionRequest"]
-
-        [[hooks]]
-        name = "xisland_question"
-        command = "~/.xisland/bin/di-bridge --agent glm --hook question --session glm-$(pwd | md5)"
-        events = ["AskUserQuestion"]
-        """
-
-        if let existing = try? String(contentsOfFile: configPath, encoding: .utf8),
-           existing.contains("# X Island hooks") {
-            // Already configured, skip
-            print("[ZeroConfig] GLM hooks already present")
-            return
-        }
-
-        let content = (try? String(contentsOfFile: configPath, encoding: .utf8)) ?? ""
-        let newContent = content + "\n" + block + "\n"
-        try? newContent.write(toFile: configPath, atomically: true, encoding: .utf8)
-        print("[ZeroConfig] GLM hooks configured at \(configPath)")
+        let url = URL(fileURLWithPath: home).appendingPathComponent(AiderWrapperConfiguration.relativePath)
+        do { try AiderWrapperConfiguration.install(at: url, bridgePath: bridgePath) }
+        catch { print("[ZeroConfig] Aider wrapper configuration failed: \(error.localizedDescription)") }
     }
 
     // MARK: - New Agents Configuration
@@ -1285,6 +1030,46 @@ enum ZeroConfigManager {
     }
 
     private static func hasConfiguration(for agent: AgentType) -> Bool {
+        if usesCompanionExtension(agent) || usesACPBridge(agent) || usesStateObserver(agent) || usesCodyBridge(agent) || usesAmazonQWrapper(agent) || usesWorkBuddyPlugin(agent) || hasUnverifiedIntegration(agent) { return false }
+        if agent == .codeBuddy {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(CodeBuddyHookConfiguration.relativeConfigPath)
+            guard let config = try? HookConfigurationFile.read(at: url) else { return false }
+            return CodeBuddyHookConfiguration.isConfigured(in: config, bridgePath: "\(home)/.xisland/bin/di-bridge")
+        }
+        if agent == .cline {
+            let directory = clineHooksDirectory
+            return ClineHookConfiguration.isConfigured(in: directory, bridgePath: "\(home)/.xisland/bin/di-bridge")
+        }
+        if let profile = effectiveNativeProfile(for: agent) {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(profile.relativeConfigPath)
+            guard let config = try? HookConfigurationFile.read(at: url) else { return false }
+            return profile.isConfigured(in: config, bridgePath: "\(home)/.xisland/bin/di-bridge")
+        }
+        if agent == .devin {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(DevinHookConfiguration.relativeConfigPath)
+            guard let config = try? HookConfigurationFile.read(at: url) else { return false }
+            return DevinHookConfiguration.isConfigured(in: config, bridgePath: "\(home)/.xisland/bin/di-bridge")
+        }
+        if agent == .windsurf {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(WindsurfHookConfiguration.relativeConfigPath)
+            guard let config = try? HookConfigurationFile.read(at: url) else { return false }
+            return WindsurfHookConfiguration.isConfigured(in: config, bridgePath: "\(home)/.xisland/bin/di-bridge")
+        }
+        if agent == .copilotCli {
+            let url = CopilotCliHookConfiguration.configURL(homeDirectory: home, environment: ProcessInfo.processInfo.environment)
+            guard let config = try? HookConfigurationFile.read(at: url) else { return false }
+            return CopilotCliHookConfiguration.isConfigured(in: config, bridgePath: "\(home)/.xisland/bin/di-bridge")
+        }
+        if agent == .cursor {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(CursorHookConfiguration.relativeConfigPath)
+            guard let config = try? HookConfigurationFile.read(at: url) else { return false }
+            return CursorHookConfiguration.isConfigured(in: config, bridgePath: "\(home)/.xisland/bin/di-bridge")
+        }
+        if agent == .trae {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(TraeHookConfiguration.relativeConfigPath)
+            guard let config = try? HookConfigurationFile.read(at: url) else { return false }
+            return TraeHookConfiguration.isConfigured(in: config, bridgePath: "\(home)/.xisland/bin/di-bridge")
+        }
         switch agent {
         case .windsurf, .amazonQ, .cody, .cline, .`continue`, .copilotCli,
              .rooCode, .pearai, .zed, .jetbrainsAi:
@@ -1324,41 +1109,38 @@ enum ZeroConfigManager {
             }
             return false
         case .openCode:
-            let path = "\(home)/.config/opencode/plugins/xisland.js"
-            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
-            return text.contains("di-bridge")
+            guard let text = try? String(contentsOf: openCodePluginURL, encoding: .utf8),
+                  let expected = try? OpenCodePluginConfiguration.source(bridgePath: "\(home)/.xisland/bin/di-bridge") else { return false }
+            return text == expected
         case .qoder:
             // No hook system — always false
             return false
         case .copilot:
-            // No hook system — always false
-            return false
+            return VSCodeHookInstallation.isConfigured(homeDirectory: home, bridgePath: "\(home)/.xisland/bin/di-bridge")
         case .kimi:
-            let path = "\(home)/.kimi/config.toml"
-            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
-            return text.contains("di-bridge")
+            return KimiHookInstallation.isConfigured(homeDirectory: home, bridgePath: "\(home)/.xisland/bin/di-bridge",
+                                                      environment: ProcessInfo.processInfo.environment)
         case .deepseek:
-            let path = "\(home)/.deepseek/config.toml"
-            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
-            return text.contains("di-bridge")
+            return DeepSeekHookInstallation.isConfigured(homeDirectory: home, bridgePath: "\(home)/.xisland/bin/di-bridge",
+                                                        environment: ProcessInfo.processInfo.environment)
         case .amp:
-            let path = "\(home)/.config/amp/plugins/xisland.ts"
-            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
-            return text.contains("di-bridge")
+            guard let text = try? String(contentsOf: ampPluginURL, encoding: .utf8),
+                  let expected = try? AmpPluginConfiguration.source(bridgePath: "\(home)/.xisland/bin/di-bridge") else { return false }
+            return text == expected
         case .pi:
-            let path = "\(home)/.pi/agent/extensions/xisland.ts"
-            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
-            return text.contains("di-bridge")
+            guard let text = try? String(contentsOf: piPluginURL, encoding: .utf8),
+                  let expected = try? PiPluginConfiguration.source(bridgePath: "\(home)/.xisland/bin/di-bridge") else { return false }
+            return text == expected
         case .hermes:
             let path = "\(home)/.xisland/bin/hermes-bridge"
             return FileManager.default.fileExists(atPath: path)
         case .glm:
-            let path = "\(home)/.zhipu/config.toml"
-            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
-            return text.contains("di-bridge")
+            return false
+        case .workBuddy:
+            return false
         case .aider:
-            let path = "\(home)/.xisland/bin/aider-bridge"
-            return FileManager.default.fileExists(atPath: path)
+            let url = URL(fileURLWithPath: home).appendingPathComponent(AiderWrapperConfiguration.relativePath)
+            return AiderWrapperConfiguration.isConfigured(at: url, bridgePath: "\(home)/.xisland/bin/di-bridge")
         case .devin, .tabnine:
             guard let config = readJSON(customBridgeConfigPath(for: agent)) else { return false }
             return (config["xisland_bridge"] as? String)?.contains("di-bridge") == true
@@ -1371,6 +1153,55 @@ enum ZeroConfigManager {
     }
 
     private static func removeConfiguration(for agent: AgentType) {
+        if usesCompanionExtension(agent) || usesACPBridge(agent) || usesStateObserver(agent) || usesCodyBridge(agent) || usesAmazonQWrapper(agent) || usesWorkBuddyPlugin(agent) || hasUnverifiedIntegration(agent) { return }
+        if agent == .codeBuddy {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(CodeBuddyHookConfiguration.relativeConfigPath)
+            do { try HookConfigurationFile.update(at: url) { try CodeBuddyHookConfiguration.removing(from: $0) } }
+            catch { print("[ZeroConfig] CodeBuddy hook removal failed: \(error.localizedDescription)") }
+            return
+        }
+        if agent == .cline {
+            let directory = clineHooksDirectory
+            do { try ClineHookConfiguration.remove(from: directory) }
+            catch { print("[ZeroConfig] Cline hook removal failed: \(error.localizedDescription)") }
+            return
+        }
+        if let profile = effectiveNativeProfile(for: agent) {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(profile.relativeConfigPath)
+            do { try HookConfigurationFile.update(at: url) { try profile.removing(from: $0) } }
+            catch { print("[ZeroConfig] \(agent.rawValue) hook removal failed: \(error.localizedDescription)") }
+            return
+        }
+        if agent == .devin {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(DevinHookConfiguration.relativeConfigPath)
+            do { try HookConfigurationFile.update(at: url) { try DevinHookConfiguration.removing(from: $0) } }
+            catch { print("[ZeroConfig] Devin hook removal failed: \(error.localizedDescription)") }
+            return
+        }
+        if agent == .windsurf {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(WindsurfHookConfiguration.relativeConfigPath)
+            do { try HookConfigurationFile.update(at: url) { try WindsurfHookConfiguration.removing(from: $0) } }
+            catch { print("[ZeroConfig] Windsurf hook removal failed: \(error.localizedDescription)") }
+            return
+        }
+        if agent == .copilotCli {
+            let url = CopilotCliHookConfiguration.configURL(homeDirectory: home, environment: ProcessInfo.processInfo.environment)
+            do { try HookConfigurationFile.update(at: url) { try CopilotCliHookConfiguration.removing(from: $0) } }
+            catch { print("[ZeroConfig] Copilot CLI hook removal failed: \(error.localizedDescription)") }
+            return
+        }
+        if agent == .cursor {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(CursorHookConfiguration.relativeConfigPath)
+            do { try HookConfigurationFile.update(at: url) { try CursorHookConfiguration.removing(from: $0) } }
+            catch { print("[ZeroConfig] Cursor hook removal failed: \(error.localizedDescription)") }
+            return
+        }
+        if agent == .trae {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(TraeHookConfiguration.relativeConfigPath)
+            do { try HookConfigurationFile.update(at: url) { try TraeHookConfiguration.removing(from: $0) } }
+            catch { print("[ZeroConfig] Trae CN hook removal failed: \(error.localizedDescription)") }
+            return
+        }
         switch agent {
         case .windsurf, .amazonQ, .cody, .cline, .`continue`, .copilotCli,
              .rooCode, .pearai, .zed, .jetbrainsAi:
@@ -1400,27 +1231,51 @@ enum ZeroConfigManager {
                 removeBridgeHooks(at: path, hooksKey: "claudeCode.hooks")
             }
         case .openCode:
-            try? FileManager.default.removeItem(atPath: "\(home)/.config/opencode/plugins/xisland.js")
+            do {
+                let text = try String(contentsOf: openCodePluginURL, encoding: .utf8)
+                if OpenCodePluginConfiguration.isOwnedSource(text) {
+                    try removeOpenCodeLegacyRegistration(at: openCodePluginURL)
+                    try FileManager.default.removeItem(at: openCodePluginURL)
+                }
+            } catch {
+                print("[ZeroConfig] OpenCode plugin removal failed: \(error.localizedDescription)")
+            }
         case .qoder:
             // No hook config — nothing to remove
             break
         case .copilot:
-            // No hook config — nothing to remove
-            break
+            do { try VSCodeHookInstallation.remove(homeDirectory: home) }
+            catch { print("[ZeroConfig] VS Code Local hook removal failed: \(error.localizedDescription)") }
         case .kimi:
-            removeTOMLBlock(at: "\(home)/.kimi/config.toml", marker: "# X Island hooks")
+            do { try KimiHookInstallation.remove(homeDirectory: home, environment: ProcessInfo.processInfo.environment) }
+            catch { print("[ZeroConfig] Kimi hook removal failed: \(error.localizedDescription)") }
         case .deepseek:
-            removeTOMLBlock(at: "\(home)/.deepseek/config.toml", marker: "# X Island hooks")
+            do { try DeepSeekHookInstallation.remove(homeDirectory: home, environment: ProcessInfo.processInfo.environment) }
+            catch { print("[ZeroConfig] Codewhale hook removal failed: \(error.localizedDescription)") }
         case .amp:
-            try? FileManager.default.removeItem(atPath: "\(home)/.config/amp/plugins/xisland.ts")
+            do {
+                let text = try String(contentsOf: ampPluginURL, encoding: .utf8)
+                if AmpPluginConfiguration.isOwnedSource(text) { try FileManager.default.removeItem(at: ampPluginURL) }
+            } catch {
+                print("[ZeroConfig] Amp plugin removal failed: \(error.localizedDescription)")
+            }
         case .pi:
-            try? FileManager.default.removeItem(atPath: "\(home)/.pi/agent/extensions/xisland.ts")
+            do {
+                let text = try String(contentsOf: piPluginURL, encoding: .utf8)
+                if PiPluginConfiguration.isOwnedSource(text) { try FileManager.default.removeItem(at: piPluginURL) }
+            } catch {
+                print("[ZeroConfig] Pi extension removal failed: \(error.localizedDescription)")
+            }
         case .hermes:
             try? FileManager.default.removeItem(atPath: "\(home)/.xisland/bin/hermes-bridge")
         case .glm:
-            removeTOMLBlock(at: "\(home)/.zhipu/config.toml", marker: "# X Island hooks")
+            break // 未经核实的旧路径不读取或删除用户配置。
+        case .workBuddy:
+            break
         case .aider:
-            try? FileManager.default.removeItem(atPath: "\(home)/.xisland/bin/aider-bridge")
+            let url = URL(fileURLWithPath: home).appendingPathComponent(AiderWrapperConfiguration.relativePath)
+            do { try AiderWrapperConfiguration.remove(at: url) }
+            catch { print("[ZeroConfig] Aider wrapper removal failed: \(error.localizedDescription)") }
         }
     }
 

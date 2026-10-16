@@ -8,6 +8,7 @@ enum InteractionKind: String, Sendable {
 enum InteractionDecision: Sendable {
     case permission(Bool)
     case question(String)
+    case questionSelections([String])
     case plan(Bool, String?)
 }
 
@@ -20,6 +21,8 @@ final class InteractionRequestState {
     var phase: Phase = .pending
     var isExpanded = false
     var draftFeedback = ""
+    var draftAnswer = ""
+    var selectedAnswers: Set<String> = []
     var canSubmit: Bool { phase == .pending }
 }
 

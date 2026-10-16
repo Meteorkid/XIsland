@@ -1,0 +1,656 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-15",
+  "goal": "全部30项真实适配，逐项保留未完成与能力限制",
+  "verificationRule": "只有协议证据、契约测试和真实版本验收均通过，才能标记该目标已完成。接口缺口不等于完成。",
+  "targets": [
+    {
+      "id": "claude_code",
+      "product": "Claude Code",
+      "route": "原生 settings hooks",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "NativeHookProfile",
+      "contractTests": "Swift 992 with three rendering suites, 0 failures; 109 compiled bridge scenarios; two tool-finality regressions passed after eight initial assertion failures",
+      "runtimeVerification": "Claude Code 2.1.234 isolated native Read and island AX denial of Write with local mock model; 12 hooks / 7 event types / 6 App snapshots / 2 final durable-history checkpoints on App 35fbe0185595",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "2.1.234真实Read和岛上拒绝已通过；明确SessionEnd将未决调用保留为完成未确认，不再显示运行中。原生权限hook缺tool_use_id，不能猜测逐调用拒绝归属；运行中会话与首提示现已即时保存，失败可重试；最终发行构建的原生复验另列。允许/取消/超时、并发权限、子代理、执行失败、TUI、前置问答、真实服务商与其他版本仍待验收。",
+      "lastCheckedAt": "2026-10-15",
+      "mainStopVerification": {
+        "state": "completionUnconfirmed",
+        "scope": "synthetic vendor events; no native client launch"
+      },
+      "nativeVerification": {
+        "clientVersion": "2.1.234",
+        "nativeReadVerified": true,
+        "xIslandNativeDenialVerified": true,
+        "fullApprovalControlVerified": false,
+        "fullClientVerified": false,
+        "realProviderVerified": false,
+        "nativeEventTypes": [
+          "PermissionRequest",
+          "PostToolUse",
+          "PreToolUse",
+          "SessionEnd",
+          "SessionStart",
+          "Stop",
+          "UserPromptSubmit"
+        ],
+        "appSHA256": "35fbe0185595b6ef1160ec6c52d4ec8b90abe94845a804ebceea999e98606f03"
+      },
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "codex",
+      "product": "Codex CLI／桌面核心",
+      "route": "原生 hooks.json",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "NativeHookProfile",
+      "contractTests": "Swift 990 with three rendering suites, 0 failures; 109 compiled bridge scenarios; 21 synthetic Codex hooks / 23 isolated App+SQLite checkpoints; no native Codex hook execution",
+      "runtimeVerification": "client_discovery_passed_untrusted_execution_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "原生12事件模板；已补Interrupt/PreCompact/PostCompact与同App回合保护、隐藏恢复和即时历史保存。0.162.0-alpha.17.2只读发现6条旧XIsland hook全部untrusted；配置安装、信任审阅、原生工具审批与完整执行仍待验。跨App重启的未知回合ID无法排序。",
+      "observedVersions": [
+        {
+          "client": "desktop_core",
+          "version": "0.154.0-alpha.6.2",
+          "verification": "hooks/list only; existing six XIsland hooks are untrusted"
+        },
+        {
+          "client": "desktop_core",
+          "version": "0.160.0",
+          "verification": "read-only hooks/list and protocol schema; existing six XIsland hooks are untrusted; no native execution"
+        },
+        {
+          "client": "desktop_core",
+          "version": "0.162.0-alpha.17.2",
+          "verification": "Read-only hooks/list and generated 12-event enum; existing six XIsland hooks untrusted; no native execution"
+        }
+      ],
+      "lastCheckedAt": "2026-10-14",
+      "mainStopVerification": {
+        "state": "completionUnconfirmed",
+        "scope": "synthetic vendor events; no native client launch"
+      },
+      "lifecycleVerification": {
+        "configuredEvents": 12,
+        "syntheticHooks": 21,
+        "appAndSQLiteCheckpoints": 23,
+        "nativeClientVerified": false,
+        "turnIdentityScope": "Current SessionManager lifetime including hide/resume; unseen IDs across app restart are not ordered"
+      },
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "gemini_cli",
+      "product": "Gemini CLI",
+      "route": "原生 settings hooks；后续 ACP",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "NativeHookProfile",
+      "contractTests": "swift_full_887_passed_2026-10-11; main stop-finality verified through bundled bridge, isolated app and SQLite with synthetic payloads",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "AfterAgent可要求自动重试，现显示完成未确认；Notification仅核实ToolPermission，不从未知idle_prompt制造空闲。原生最终轮次、审批及真实客户端仍待验收",
+      "lastCheckedAt": "2026-10-11",
+      "mainStopVerification": {
+        "state": "completionUnconfirmed",
+        "scope": "synthetic vendor events; no native client launch"
+      },
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "cursor",
+      "product": "Cursor",
+      "route": "Cursor 原生 hooks",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "CursorHookConfiguration / CursorHookAdapter",
+      "contractTests": "swift_passed_2026-09-24",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "9个原生观察事件与旧命令迁移已通过契约；真实版本、原生审批问答和其他hooks组合仍待验收",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "trae",
+      "product": "Trae／Trae CN／Solo",
+      "route": "各发行版原生 hooks",
+      "protocolEvidence": "partial",
+      "implementation": "implemented_contract_tested",
+      "component": "Trae CN configuration / explicit trae_cn adapter",
+      "contractTests": "swift_full_887_passed_2026-10-11; main stop-finality verified through bundled bridge, isolated app and SQLite with synthetic payloads",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "CN六事件契约通过；Stop仅准备结束，idle_prompt才空闲。CN/SOLO CN默认共用.trae-cn；三发行版公开资源已静态核对，国际版/SOLO、子代理归属和完整原生交互仍未验收",
+      "lastCheckedAt": "2026-10-11",
+      "observedVersions": [
+        {
+          "client": "CN",
+          "version": "3.3.75",
+          "verification": "public installed resources only; no native execution"
+        },
+        {
+          "client": "International",
+          "version": "3.5.73",
+          "verification": "public installed resources only; no native execution"
+        },
+        {
+          "client": "SOLO CN",
+          "version": "0.1.69",
+          "verification": "public installed resources only; no native execution"
+        }
+      ],
+      "mainStopVerification": {
+        "state": "completionUnconfirmed",
+        "scope": "synthetic vendor events; no native client launch"
+      },
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "opencode",
+      "product": "OpenCode",
+      "route": "专用插件／实例 SDK",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "OpenCodePluginConfiguration / OpenCodeHookAdapter",
+      "contractTests": "swift_passed_2026-09-24",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "原实例审批、单选/多选/自由文本、多题及取消队列契约已测；自由文本与多选真实桥接/socket/UI闭环通过，实际OpenCode宿主SDK及完整计划仍待验收",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "droid",
+      "product": "Factory Droid",
+      "route": "原生 hooks.json 或 settings 回退",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "NativeHookProfile",
+      "contractTests": "swift_full_887_passed_2026-10-11; main stop-finality verified through bundled bridge, isolated app and SQLite with synthetic payloads",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "无已核实PermissionRequest；前置仅观察。Stop可续跑；SubagentStop无文档化父子身份，仅防止错误完成，真实子代理跟踪仍未完成；取消后的idle_prompt不等于成功",
+      "lastCheckedAt": "2026-10-11",
+      "mainStopVerification": {
+        "state": "completionUnconfirmed",
+        "scope": "synthetic vendor events; no native client launch"
+      },
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "qoder",
+      "product": "Qoder CLI／IDE",
+      "route": "原生 settings hooks",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "NativeHookProfile",
+      "contractTests": "swift_full_887_passed_2026-10-11; main stop-finality verified through bundled bridge, isolated app and SQLite with synthetic payloads",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "CLI审批需hookEventName；按session_id/agent_id关联，不补造父ID，agent_type缺省仍接收；Stop/SubagentStop非最终。真实父子关系、恢复、原生交互与IDE/JetBrains独立语义仍未验收",
+      "lastCheckedAt": "2026-10-11",
+      "mainStopVerification": {
+        "state": "completionUnconfirmed",
+        "scope": "synthetic vendor events; no native client launch"
+      },
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "copilot",
+      "product": "VS Code Copilot",
+      "route": "VS Code Local hooks；Agent Host按供应商另验",
+      "protocolEvidence": "partial",
+      "implementation": "implemented_contract_tested",
+      "component": "VSCodeHookConfiguration / VSCodeHookSettings / VSCodeHookInstallation / VSCodeHookAdapter",
+      "contractTests": "swift_full_887_passed_2026-10-11; main stop-finality verified through bundled bridge, isolated app and SQLite with synthetic payloads",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "Local八事件与独立路径注册已测；无session_id拒绝上报；Stop不冒充结束，SubagentStop保留子ID与完成未确认状态，历史和导出同步保留。Remote/自定义目录、完整交互与真实各harness待验收",
+      "lastCheckedAt": "2026-10-11",
+      "mainStopVerification": {
+        "state": "completionUnconfirmed",
+        "scope": "synthetic vendor events; no native client launch"
+      },
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "code_buddy",
+      "product": "CodeBuddy Code",
+      "route": "CodeBuddy Code CLI 原生 settings hooks",
+      "protocolEvidence": "partial",
+      "implementation": "implemented_contract_tested",
+      "component": "CodeBuddyHookConfiguration / CodeBuddyHookAdapter",
+      "contractTests": "swift_full_887_passed_2026-10-11; main stop-finality verified through bundled bridge, isolated app and SQLite with synthetic payloads",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "CLI十类观察事件已测；Stop/SubagentStop可续跑，主Stop完成未确认；不可把continue:false当允许停止。审批输入/回传、CLI实机、IDE及WorkBuddy独立入口仍待验收",
+      "lastCheckedAt": "2026-10-11",
+      "mainStopVerification": {
+        "state": "completionUnconfirmed",
+        "scope": "synthetic vendor events; no native client launch"
+      },
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "qwen",
+      "product": "Qwen Code",
+      "route": "原生 settings hooks",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "NativeHookProfile",
+      "contractTests": "swift_full_887_passed_2026-10-11; main stop-finality verified through bundled bridge, isolated app and SQLite with synthetic payloads",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "审批JSON契约已核实；固定源码确认agent_id/agent_type，按原生会话与子ID关联，Stop非最终，同ID新Start恢复运行。直接父代理树、真实CLI版本/启用/工具审批及完整问答仍待实机验收",
+      "lastCheckedAt": "2026-10-11",
+      "mainStopVerification": {
+        "state": "completionUnconfirmed",
+        "scope": "synthetic vendor events; no native client launch"
+      },
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "kimi",
+      "product": "Kimi Code CLI",
+      "route": "Python与Node.js独立TOML观察入口；完整交互按运行时另验",
+      "protocolEvidence": "partial",
+      "implementation": "implemented_contract_tested",
+      "component": "KimiHookConfiguration / KimiHookAdapter / KimiCodeHookAdapter",
+      "contractTests": "Swift 990 with rendering, 0 failures; 109 compiled bridge scenarios; native queue, Read/background tasks, lifecycle and rejection rerun on same final build",
+      "runtimeVerification": "Official Node Kimi 2.1.1 ACP + Web API with local model: 20 native event types / 66 deliveries / 49 isolated App+SQLite checkpoints on one final build",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "Node2.1.1原生ACP/Web API已实测20/20类事件；真实排队、取消、出队及后台agent观察通过。取消排队无外部hook，完整父子树/主子Stop归属、通知抑制终态、自动压缩、岛上审批、真实服务商、其他版本及旧Python仍未完成。",
+      "lastCheckedAt": "2026-10-14",
+      "mainStopVerification": {
+        "state": "completionUnconfirmed",
+        "scope": "synthetic vendor events; no native client launch"
+      },
+      "runtimeBoundary": {
+        "legacyPython": {
+          "config": ".kimi/config.toml",
+          "events": 13,
+          "implementation": "existing_contract_tested_native_pending"
+        },
+        "nodeRuntime": {
+          "config": ".kimi-code/config.toml",
+          "environmentOverride": "KIMI_CODE_HOME",
+          "documentedEvents": 20,
+          "implementation": "implemented_contract_and_scoped_native_client_tested",
+          "missingEvents": [],
+          "contractVersion": "@moonshot-ai/kimi-code@2.1.1",
+          "sourceCommit": "f67e6398fb3210ad8ace970e2dfd5bcc984ed61f",
+          "implementedEvents": 20,
+          "remainingCapabilities": [
+            "Immediate queue cancellation/count changes have no external hook; Web API acceptance is not browser UI acceptance",
+            "Complete agent hierarchy and main/subagent Stop attribution; suppressed notifications need another terminal source",
+            "Native automatic compaction; manual compaction failure may have no terminal hook",
+            "Approval allow/cancel/error and separately verified XIsland controls",
+            "Complete assistant replies, real-provider and broader concurrency/version acceptance",
+            "Legacy Python client acceptance"
+          ],
+          "nativeClientVerification": {
+            "configuredEvents": 20,
+            "observedEventTypes": 20,
+            "deliveries": 66,
+            "appAndSQLiteCheckpoints": 49,
+            "flatBackgroundAgentTrackingVerified": true,
+            "fullTaskTreeVerified": false,
+            "scope": "Four same-build Node 2.1.1 ACP/Web API runs with local model: Read/background Agent, lifecycle/reject and native enqueue/cancel/dequeue. Full-client and browser UI acceptance pending",
+            "passed": true,
+            "queueEventVerified": true
+          }
+        },
+        "realClientVerified": false
+      },
+      "observedVersions": [
+        {
+          "client": "node_acp_and_web_api",
+          "version": "2.1.1"
+        }
+      ],
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "deepseek",
+      "product": "DeepSeek-TUI／Codewhale",
+      "route": "Codewhale 0.10.0原生hooks；旧DeepSeek-TUI另验",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "DeepSeekHookConfiguration / DeepSeekHookInstallation / DeepSeekHookAdapter",
+      "contractTests": "swift_passed_2026-09-24",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "第三方TUI；14事件与精确版本门槛已测，累计快照/迟到关闭保护已补；真实客户端、活跃状态乱序、原生交互与旧版仍待验收 已修复子代理终态丢失：按原生状态保留failed/cancelled/interrupted/unknown及结果，历史和导出同步；不影响父会话。",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "kiro",
+      "product": "Kiro CLI／IDE",
+      "route": "Kiro CLI 2.31.0 V3 独立观察配置显式导出",
+      "protocolEvidence": "verified_with_documented_timeout_discrepancy",
+      "implementation": "implemented_contract_tested",
+      "component": "KiroHookConfiguration / KiroConfigurationCommand / KiroHookAdapter",
+      "contractTests": "18 focused Kiro configuration/lifecycle tests; 30 with adjacent native message history tests, 0 failures; compiled bridge release validation tracked separately",
+      "runtimeVerification": "contract_tested_native_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "六事件独立文档生成、合并、检测、移除与版本门槛已实现；SessionStart可恢复同ID，Stop无答案也可观察；其他hook可要求继续，故只标完成未确认且保留错误，只有SessionEnd关闭。省略有冲突的可选超时字段；真实CLI加载、工具任务、调用ID/审批、IDE与其他引擎版本仍待验。",
+      "automaticConfiguration": "disabled_explicit_versioned_export",
+      "publicVerification": "release-verification-2.0.0.json",
+      "lastCheckedAt": "2026-10-15",
+      "setupGuide": "kiro-setup.md"
+    },
+    {
+      "id": "amp",
+      "product": "Amp",
+      "route": "专用Plugin API",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "AmpPluginConfiguration / AmpHookAdapter",
+      "contractTests": "swift_passed_2026-09-24",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "四个观察事件已实现；tool.call要求作决定，工具开始与审批仍待明确规则；真实宿主待验收",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "pi",
+      "product": "Pi",
+      "route": "专用TypeScript extensions",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "PiPluginConfiguration / PiHookAdapter",
+      "contractTests": "swift_passed_2026-09-24",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "原生扩展与Node模拟通过；agent_settled才空闲；版本差异、真实宿主、交互能力仍待验收",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "glm",
+      "product": "GLM使用场景",
+      "route": "Claude Code / OpenCode / Cline / Pi 客户端原生模型字段",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "GLMIntegration / client metadata / model filtering and history",
+      "contractTests": "Four-client payload, identity, model filtering, switching and history contracts; Pi generated extension mock passed",
+      "runtimeVerification": "multi_client_contract_tested_real_provider_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "按用户选择覆盖多个客户端；保留客户端身份，显示上报的GLM模型，提供跨客户端筛选、搜索与历史保存。只上报别名或未提供模型字段时不猜测；不修改凭据、不虚构glm CLI。真实GLM服务商与完整客户端交互仍待验。",
+      "automaticConfiguration": "uses_actual_client_configuration",
+      "publicVerification": "release-verification-2.0.0.json",
+      "lastCheckedAt": "2026-10-15",
+      "setupGuide": "glm-setup.md"
+    },
+    {
+      "id": "aider",
+      "product": "Aider",
+      "route": "显式xisland-aider进程包装器＋原生通知",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "AiderWrapperConfiguration / AiderLauncher / TerminalProcessSupervisor",
+      "contractTests": "swift_passed_2026-09-24",
+      "runtimeVerification": "compiled_wrapper_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "进程UUID明确为包装器来源；通知不等于完成或审批。PTY/离线替身通过；固定0.86.2实机、完整工具/轮次/交互仍未完成",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "windsurf",
+      "product": "Windsurf／Cascade",
+      "route": "原生snake_case hooks",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "WindsurfHookConfiguration / WindsurfHookAdapter",
+      "contractTests": "swift_passed_2026-09-24",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "以trajectory_id关联；pre-hook阻断不等于原生批准",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "devin",
+      "product": "Devin CLI；云端另列",
+      "route": "原生hooks；云API只读状态",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "DevinHookConfiguration",
+      "contractTests": "swift_passed_2026-09-24",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "本地审批与云会话不能混称；完整问答未核实",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "amazon_q",
+      "product": "Amazon Q CLI／IDE",
+      "route": "显式 qchat 1.19.7 包装器与选定 agent hooks",
+      "protocolEvidence": "partial",
+      "implementation": "implemented_contract_tested",
+      "component": "AmazonQLauncher / AmazonQHookAdapter / AmazonQSessionLease / AmazonQAgentConfiguration",
+      "contractTests": "13 Swift tests; 9 offline wrapper checks; full suite 764 passed",
+      "runtimeVerification": "offline_process_passed_client_pending",
+      "verifiedVersions": [
+        "Q CLI v1.19.7 source contract; qchat binary acceptance pending"
+      ],
+      "complete": false,
+      "limits": "仅包装进程身份；原生会话切换/恢复不能独立映射；无工具调用ID和回复正文；原生配置加载与真实客户端待验，不覆盖Q IDE/Kiro",
+      "automaticConfiguration": "disabled_manual_agent_merge",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "tabnine",
+      "product": "Tabnine CLI／IDE／OpenCode插件",
+      "route": "当前JSON hooks；后继宿主插件",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "NativeHookProfile",
+      "contractTests": "swift_full_887_passed_2026-10-11; main stop-finality verified through bundled bridge, isolated app and SQLite with synthetic payloads",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "CLI settings hooks与毫秒超时已核实；AfterAgent可重试，现显示完成未确认；保留原有总开关，不推断未知空闲通知。真实CLI、IDE及OpenCode继任插件仍待验收",
+      "lastCheckedAt": "2026-10-11",
+      "mainStopVerification": {
+        "state": "completionUnconfirmed",
+        "scope": "synthetic vendor events; no native client launch"
+      },
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "cody",
+      "product": "Cody IDE／实验CLI",
+      "route": "显式 jsonrpc-stdio Agent 透明代理",
+      "protocolEvidence": "partial",
+      "implementation": "implemented_contract_tested",
+      "component": "CodyMessageFramer / CodyEventObserver / ACPRunner Cody mode",
+      "contractTests": "10 Cody Swift tests; offline process transparency; full suite 751 passed",
+      "runtimeVerification": "offline_process_passed_client_pending",
+      "verifiedVersions": [
+        "@sourcegraph/cody 5.5.26 published source map; client pending"
+      ],
+      "complete": false,
+      "limits": "仅显式 Agent：无已打开IDE接管；工具/审批/累计用量未覆盖；消息无稳定ID仅预览；真实客户端待验",
+      "automaticConfiguration": "disabled_manual_agent_wrapper",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "cline",
+      "product": "Cline VS Code／SDK CLI",
+      "route": "VS Code事件文件；独立CLI/SDK插件另验",
+      "protocolEvidence": "partial",
+      "implementation": "implemented_contract_tested",
+      "component": "ClineHookConfiguration / ClineHookAdapter",
+      "contractTests": "swift_passed_2026-09-24",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "当前扩展六个已接线事件与可执行脚本安装已测；启用/信任、实机版本、独立CLI/SDK与完整交互待完成",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "continue",
+      "product": "Continue IDE／cn CLI",
+      "route": "显式 cn serve /state 限时只读观察",
+      "protocolEvidence": "partial",
+      "implementation": "implemented_contract_tested",
+      "component": "ContinueStateObserver / ContinueStateWatcher",
+      "contractTests": "9 Swift tests + 6 offline HTTP process scenarios",
+      "runtimeVerification": "offline_http_fixture_passed_client_pending",
+      "verifiedVersions": [
+        "@continuedev/cli 1.5.47 source contract; real client pending"
+      ],
+      "complete": false,
+      "limits": "仅 cn serve：轮询可能遗漏瞬时状态；审批在 Continue 完成；消息无稳定ID，仅回复预览；普通TUI/IDE和真实客户端验收待完成",
+      "automaticConfiguration": "disabled_manual_observer",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "copilot_cli",
+      "product": "GitHub Copilot CLI",
+      "route": "原生JSON hooks",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "CopilotCliHookConfiguration / CopilotCliHookAdapter",
+      "contractTests": "swift_full_887_passed_2026-10-11; main stop-finality verified through bundled bridge, isolated app and SQLite with synthetic payloads",
+      "runtimeVerification": "bridge_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "12个camelCase观察事件已接线；agentStop和后台agent_idle不结束主会话。完整审批输入契约、工具并发ID与真实客户端仍待验证",
+      "lastCheckedAt": "2026-10-11",
+      "mainStopVerification": {
+        "state": "completionUnconfirmed",
+        "scope": "synthetic vendor events; no native client launch"
+      },
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "roo_code",
+      "product": "Roo Code",
+      "route": "Roo 3.54.0公开任务API观察扩展",
+      "protocolEvidence": "partial",
+      "implementation": "implemented_contract_tested",
+      "component": "XIslandVSCode observer/transport; ObservationLease; source-scoped history and cumulative usage",
+      "contractTests": "42 Node tests; Swift lease/history regressions; 849-test whole suite + 36 final focused tests passed 2026-10-09",
+      "runtimeVerification": "Compiled TS observer/transport -> isolated XIsland app: same-task windows, reload, graceful exit, crash expiry and four persisted records passed; vendor client pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "只读观察，审批/回答在原应用处理；多窗口身份与失联语义已实现，但真实Roo窗口、普通新标签页、晚接入历史及精确窗口定位仍未验收",
+      "automaticConfiguration": "companion_extension_required",
+      "lastCheckedAt": "2026-10-09",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "pearai",
+      "product": "PearAI Agent／Continue fork",
+      "route": "PearAI Roo fork 3.15.3实验性观察扩展",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "XIslandVSCode observer/transport; ObservationLease; source-scoped history and cumulative usage",
+      "contractTests": "42 Node tests; Swift lease/history regressions; 849-test whole suite + 36 final focused tests passed 2026-10-09",
+      "runtimeVerification": "Compiled TS observer/transport -> isolated XIsland app: same-task windows, reload, graceful exit, crash expiry and four persisted records passed; vendor client pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "默认关闭；实际PearAI发行产物/hash未验，Continue fork不覆盖；观察身份与失联语义已实现，但真实客户端、安全应答、标签页覆盖和精确窗口定位仍未验收",
+      "automaticConfiguration": "companion_extension_required",
+      "lastCheckedAt": "2026-10-09",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "zed",
+      "product": "Zed外部Agent与内置Agent",
+      "route": "显式外部ACP包装器，按v1/v2协商解析",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "ACPRunner / ACPEventObserver / ACPCustomAgentConfiguration",
+      "contractTests": "swift_passed_2026-09-24",
+      "runtimeVerification": "compiled_acp_proxy_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "字节透明转发与观察已测；只覆盖显式包装的外部Agent，原编辑器处理权限；内置AI、实际客户端、完整交互与大历史仍待验收",
+      "automaticConfiguration": "explicit_custom_acp_entry_required",
+      "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "jetbrains_ai",
+      "product": "JetBrains AI／Junie／外部Agent",
+      "route": "显式外部ACP包装器，按v1/v2协商解析",
+      "protocolEvidence": "verified",
+      "implementation": "implemented_contract_tested",
+      "component": "ACPRunner / ACPEventObserver / ACPCustomAgentConfiguration",
+      "contractTests": "swift_passed_2026-09-24",
+      "runtimeVerification": "compiled_acp_proxy_fixture_passed_client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "字节透明转发与观察已测；只覆盖显式包装的外部Agent，原编辑器处理权限；内置AI、实际客户端、完整交互与大历史仍待验收",
+      "automaticConfiguration": "explicit_custom_acp_entry_required",
+      "publicVerification": "release-verification-2.0.0.json"
+    }
+  ],
+  "additionalClients": [
+    {
+      "id": "workbuddy",
+      "product": "WorkBuddy desktop",
+      "relationToOriginalScope": "Additional client surface of CodeBuddy family; not counted toward original 30 targets",
+      "route": "Explicit exported observation plugin for reviewed WorkBuddy 5.7.6 / 5.7.7 hook runtime",
+      "protocolEvidence": "static_installed_bundle_and_official_plugin_docs",
+      "implementation": "implemented_contract_tested",
+      "component": "WorkBuddyHookAdapter / WorkBuddyPluginExport",
+      "contractTests": "Swift 887; 11 exported commands; synthetic Stop/FinalStop bridge->isolated app/SQLite passed",
+      "runtimeVerification": "synthetic_hook_payloads_with_app_and_history_passed; native plugin import/load/trigger pending",
+      "verifiedVersions": [
+        "5.7.6 static bundle only",
+        "5.7.7 static bundle only; five reviewed resources byte-identical to 5.7.6"
+      ],
+      "complete": false,
+      "automaticConfiguration": "disabled_manual_plugin_export",
+      "limits": "No permission decisions; SessionEnd/SubagentStop never close parent; nested agent attribution and native client acceptance pending",
+      "lastCheckedAt": "2026-10-11",
+      "mainStopVerification": {
+        "state": "completionUnconfirmed",
+        "finalIdlePersisted": true,
+        "scope": "synthetic vendor events; no native client launch"
+      },
+      "publicVerification": "release-verification-2.0.0.json"
+    }
+  ],
+  "remainingAppLifecycleChecks": [
+    "Native per-session process identity and actual client event ordering still require verification; name-level checks only indicate observation loss",
+    "Events without stable native message/call IDs cannot reliably identify every duplicate start"
+  ],
+  "sessionLifecycleVerification": {
+    "checkedAt": "2026-10-12",
+    "swiftTests": 912,
+    "silenceNoLongerInfersCompletion": true,
+    "acceptedInMemoryResumeClearsTerminalTimesAndRefreshesHistory": true,
+    "processExitNoLongerInfersCompletion": true,
+    "closedHistoryProtectedAcrossAppRestart": true,
+    "freshActivityRestoresOriginalHistory": true,
+    "realClientVerified": false,
+    "scope": "Unit and isolated application with synthetic vendor events; detailed limits in checkpoint"
+  },
+  "publicVerification": "release-verification-2.0.0.json",
+  "evidenceScope": "Each target retains its historical protocol and runtime evidence bounds. Historical test totals are not final v2.0.0 release results; see publicVerification for the current release build.",
+  "releaseVersion": "2.0.0"
+}

@@ -51,43 +51,45 @@ X Island 以一个紧凑的药丸形状悬浮在屏幕顶部。当 AI Agent 工�
 - **自定义静音规则** — 基于正则表达式的静音规则，可匹配 Agent 类型、工具名或工作目录
 - **Bypass/自动模式** — 自动批准所有权限、问题和计划审查
 - **Subagent 嵌套可视化** — 子 Agent session 缩进显示，支持展开/收起
-- **VS Code 扩展** — 从灵动岛直接跳转到终端标签页
+- **编辑器扩展桥接** — 观察固定版本 Roo Code 与实验性 PearAI fork 的原生任务和消息
 - **语言手动切换** — 偏好设置中手动选择语言（自动检测 或 中/英/韩/日/法）
 
-**支持的 AI Agent：**
+**AI 软件适配目标：**
 
-| Agent | 接入方式 | 支持状态 |
-|-------|---------|---------|
-| Claude Code | 原生 hooks (settings.json) | 完整支持 |
-| Cursor | Hooks API (hooks.json) | 完整支持 |
-| Trae / Trae CN / TRAE SOLO CN | Hooks API (hooks.json) + IDE settings.json `claudeCode.hooks` | 完整支持 |
-| Windsurf | Hooks API (hooks.json) | 完整支持 |
-| Codex (OpenAI) | 原生 hooks | 完整支持 |
-| Aider | 索引信号文件 | 完整支持 |
-| OpenCode | JS 插件 | 完整支持 |
-| GLM (智谱) | TOML hooks (config.toml) | 完整支持 |
-| Kimi (月之暗面) | TOML hooks (config.toml) | 完整支持 |
-| DeepSeek | TOML hooks (config.toml) | 完整支持 |
-| Qwen Code | TOML hooks (config.toml) | 完整支持 |
-| Kiro | Spec hook | 完整支持 |
-| CodeBuddy | 配置 hook | 完整支持 |
-| Amp (Sourcegraph) | 配置 hook | 完整支持 |
-| Pi Agent | 配置 hook | 完整支持 |
-| Gemini CLI | 配置 hook | 基础支持 |
-| Copilot (VS Code) | 配置 hook | 基础支持 |
-| Copilot CLI | 配置 hook | 基础支持 |
-| Cline | 配置 hook | 基础支持 |
-| Continue | 配置 hook | 基础支持 |
-| Cody (Sourcegraph) | 配置 hook | 基础支持 |
-| Tabnine | 配置 hook | 基础支持 |
-| Amazon Q Developer | 配置 hook | 基础支持 |
-| Devin (Cognition) | 配置 hook | 基础支持 |
-| Droid (Factory) | 配置 hook | 基础支持 |
-| Qoder | 配置 hook | 基础支持 |
-| Roo Code | 配置 hook | 基础支持 |
-| PearAI | 配置 hook | 基础支持 |
-| Zed AI | 配置 hook | 基础支持 |
-| JetBrains AI Assistant | 配置 hook | 基础支持 |
+以下是计划接入路线，当前实现与实际能力以[适配矩阵](docs/compatibility/README.md)为准；配置文件存在不等于客户端已加载或端到端验收通过。
+
+| 软件 | 接入路线 | 当前状态 |
+|---|---|---|
+| Claude Code | 原生 settings hooks | 2.1.234 隔离真实读取与岛上拒绝通过（本地模拟模型）；完整客户端验收待完成 |
+| Codex CLI／桌面核心 | 原生 hooks.json | 契约测试通过，待真实客户端联调 |
+| Gemini CLI | 原生 settings hooks；后续 ACP | 契约测试通过，待真实客户端联调 |
+| Cursor | Cursor 原生 hooks | 契约测试通过，待真实客户端联调 |
+| Trae／Trae CN／Solo | 各发行版原生 hooks | CN契约测试通过，其他发行版与实机待验收 |
+| OpenCode | 专用插件／实例 SDK | 契约测试通过，待实机及剩余交互验收 |
+| Factory Droid | 原生 hooks.json 或 settings 回退 | 契约测试通过，待真实客户端联调 |
+| Qoder CLI／IDE | 原生 settings hooks | 契约测试通过，待真实客户端联调 |
+| VS Code Copilot | Local专用hooks；Agent Host另验 | Local契约测试通过，待实机与其他载体验收 |
+| CodeBuddy Code | CLI原生settings hooks | CLI契约测试通过，IDE/WorkBuddy及实机待验收 |
+| Qwen Code | 原生 settings hooks | 契约测试通过，待真实客户端联调 |
+| Kimi Code CLI | 原生TOML hooks；完整交互用Wire | 契约测试通过，待实机及剩余交互验收 |
+| DeepSeek-TUI／Codewhale | Codewhale 0.10.0原生hooks；旧版另验 | 固定版契约测试通过，实机/交互仍待验收 |
+| Kiro CLI／IDE | CLI 2.31.0 V3 独立观察配置导出 | 基础契约通过；真实客户端、IDE及其他版本待验 |
+| Amp | 专用Plugin API | 契约测试通过，待真实客户端联调 |
+| Pi | 专用TypeScript extensions | 契约测试通过，待真实客户端联调 |
+| GLM 模型 | Claude Code、OpenCode、Cline、Pi 模型元数据 | 显示、筛选和历史契约通过；真实服务商待验 |
+| Aider | 显式xisland-aider进程包装器＋原生通知 | 离线/PTY契约通过，实机及完整交互待验收 |
+| Windsurf／Cascade | 原生snake_case hooks | 契约测试通过，待真实客户端联调 |
+| Devin CLI；云端另列 | 原生hooks；云API只读状态 | 契约测试通过，待真实客户端联调 |
+| Amazon Q CLI／IDE | 显式 qchat 1.19.7 包装观察 | 契约测试通过；原生配置与客户端待验 |
+| Tabnine CLI／IDE／OpenCode插件 | 当前JSON hooks；后继宿主插件 | CLI契约测试通过，待实机及其他形态适配 |
+| Cody IDE／实验CLI | 显式 jsonrpc-stdio Agent 观察 | 契约测试通过；真实客户端与普通IDE会话待验 |
+| Cline VS Code／SDK CLI | VS Code事件文件；SDK插件另验 | 扩展契约测试通过，独立CLI/SDK及实机待验收 |
+| Continue IDE／cn CLI | 显式限时 cn serve 状态观察 | 契约测试通过；真实客户端、TUI和IDE待验 |
+| GitHub Copilot CLI | 原生JSON hooks | CLI契约测试通过，待实机及其他形态适配 |
+| Roo Code | 固定3.54.0原生任务API扩展 | 观察契约通过，实机及完整交互待验收 |
+| PearAI Agent／Continue fork | Roo fork实验性观察扩展 | 默认关闭；契约通过，实际发行包与其他形态待验收 |
+| Zed外部Agent与内置Agent | 显式外部ACP v1/v2包装器 | 外部观察契约通过；内置AI、完整交互及实机待验收 |
+| JetBrains AI／Junie／外部Agent | 显式外部ACP v1/v2包装器 | 外部观察契约通过；内置形态与实机待验收 |
 
 ## 安装
 

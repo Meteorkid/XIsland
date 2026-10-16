@@ -44,10 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static var exitingAsDuplicateInstance = false
     private static var singleInstanceLockFD: Int32 = -1
 
-    let sessionManager = SessionManager()
+    let sessionManager: SessionManager
     let audioEngine = AudioEngine()
     let updateManager = UpdateManager()
-    let quotaTracker = QuotaTracker()
+    let quotaTracker: QuotaTracker
     let persistenceManager = SessionPersistenceManager()
     let themeManager = ThemeManager()
     private var socketServer: SocketServer?
@@ -63,10 +63,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var scrollMonitor: Any?
     private var islandHideObserver: NSObjectProtocol?
 
-    override init() {
-        self.testConfiguration = AppTestConfiguration.current()
-        self.launchHooks = .live
-        super.init()
+    override convenience init() {
+        self.init(testConfiguration: AppTestConfiguration.current())
     }
 
     init(
@@ -75,6 +73,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ) {
         self.testConfiguration = testConfiguration
         self.launchHooks = launchHooks
+        self.sessionManager = SessionManager(testConfiguration: testConfiguration)
+        self.quotaTracker = QuotaTracker(testConfiguration: testConfiguration)
         super.init()
     }
 
@@ -418,6 +418,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // fixture窗口不监听全局输入、不隐藏其他岛体，也不访问真实Agent配置。
             audioEngine.isMuted = true
             notchWindow?.showWindow()
+            if CommandLine.arguments.contains("--ui-test-socket") {
+                // 测试配置已校验短临时路径；只启用隔离服务，不执行生产自动配置。
+                startSocketServer()
+            }
         } else {
             setupScrollMonitor()
             scheduleInitialVisibilityResolution()
@@ -777,6 +781,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func postHideNotification(_ name: String) {
+        guard !testConfiguration.isEnabled, !AppPreferences.isIsolated else { return }
         DistributedNotificationCenter.default().postNotificationName(
             Notification.Name(name),
             object: nil,

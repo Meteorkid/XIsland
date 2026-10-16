@@ -26,3 +26,15 @@ Assets/*.mov
 
 # 本地工具索引（机器相关）
 .serena/
+
+# 本地助手记忆与 Python 运行缓存
+/.workbuddy/
+__pycache__/
+*.py[cod]
+
+# 兼容性原始取证：本地留存，公开发布仅使用脱敏摘要
+/docs/compatibility/research/
+/docs/compatibility/verification/
+
+# 早期布局方案草稿：保留本地文件，不混入本次发布
+/docs/superpowers/specs/2026-07-16-collapsed-layout-session-count-rotation-design.md

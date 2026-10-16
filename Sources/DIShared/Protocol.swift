@@ -77,6 +77,7 @@ public enum DIMessageType: String, Codable, Sendable {
     case permissionResponse = "permission_response"
     case question = "question"
     case questionResponse = "question_response"
+    case interactionResolved = "interaction_resolved"
     case planReview = "plan_review"
     case planResponse = "plan_response"
     case statusUpdate = "status_update"
@@ -85,9 +86,31 @@ public enum DIMessageType: String, Codable, Sendable {
     case subagentEnd = "subagent_end"
     case contextCompact = "context_compact"
     case recap = "recap"
+    case observationHeartbeat = "observation_heartbeat"
+    case observationEnded = "observation_ended"
 }
 
 // MARK: - 消息载体
+
+/// 原生后台任务事实；独立于会话的观察租约 nativeTaskId 和模型工具调用 ID。
+public struct DINativeBackgroundTask: Codable, Equatable, Sendable {
+    public var id: String
+    public var kind: String?
+    public var status: String
+    public var description: String?
+    public var startedAtMilliseconds: Int64?
+    public var result: String?
+
+    public init(id: String, kind: String? = nil, status: String, description: String? = nil,
+                startedAtMilliseconds: Int64? = nil, result: String? = nil) {
+        self.id = id
+        self.kind = kind
+        self.status = status
+        self.description = description
+        self.startedAtMilliseconds = startedAtMilliseconds
+        self.result = result
+    }
+}
 
 /// 桥接层与服务端之间传递的通用消息结构。
 ///
@@ -98,6 +121,24 @@ public struct DIMessage: Codable, Sendable {
     public var sessionId: String
     public var agentType: String?
     public var timestamp: Date
+    /// 原生 hook 名称，用于区分真正的会话开始与同样映射为 sessionStart 的消息提交。
+    public var nativeEvent: String?
+    /// 原生代理与轮次身份；不等同观察租约的 nativeTaskId。
+    public var nativeAgentId: String?
+    public var nativeTurnId: String?
+    public var nativeBackgroundTask: DINativeBackgroundTask?
+    public var nativeMessageId: String?
+    public var nativeMessagePartial: Bool?
+    public var nativeMessageReplay: Bool?
+    public var sourceNamespace: String?
+    public var sourceInstanceId: String?
+    public var nativeTaskId: String?
+    public var observationSequence: Int?
+
+    public var hasObservationMetadata: Bool {
+        sourceNamespace != nil || sourceInstanceId != nil || nativeTaskId != nil || observationSequence != nil
+            || type == .observationHeartbeat || type == .observationEnded
+    }
 
     // 会话 / 终端上下文
     public var terminal: String?
@@ -106,11 +147,16 @@ public struct DIMessage: Codable, Sendable {
     public var prompt: String?
 
     // 工具调用
+    public var toolCallId: String?
     public var tool: String?
     public var toolInput: String?
     public var toolResult: String?
     public var linesAdded: Int?
     public var linesRemoved: Int?
+
+    // 原生交互关联：请求 ID 与类型共同区分权限和问题的生命周期。
+    public var nativeRequestId: String?
+    public var nativeRequestKind: String?
 
     // 权限申请
     public var permDescription: String?
@@ -121,7 +167,10 @@ public struct DIMessage: Codable, Sendable {
     // 问答
     public var questionText: String?
     public var options: [String]?
+    public var allowsCustomAnswer: Bool?
+    public var allowsMultipleAnswers: Bool?
     public var answer: String?
+    public var selectedAnswers: [String]?
 
     // 计划评审
     public var planMarkdown: String?
@@ -129,12 +178,17 @@ public struct DIMessage: Codable, Sendable {
     public var feedback: String?
 
     public var status: String?
+    /// 适配器从原生事件确认的状态；未知值由客户端忽略，旧客户端也可忽略这两个可选字段。
+    public var observedState: String?
+    public var statusIsAssistantReply: Bool?
 
     // Token / 成本统计
     public var tokensIn: Int?
     public var tokensOut: Int?
     public var totalTokens: Int?
     public var costUSD: Double?
+    /// true 表示会话累计快照；缺省或 false 保留增量统计语义。
+    public var usageIsCumulative: Bool?
     public var model: String?
 
     // 会话回顾
@@ -143,6 +197,8 @@ public struct DIMessage: Codable, Sendable {
     // 子代理追踪
     public var parentSessionId: String?
     public var subagentId: String?
+    /// true 表示仅收到子代理准备结束的通知，尚无最终完成回执。
+    public var subagentEndIsProvisional: Bool?
 
     public init(type: DIMessageType, sessionId: String) {
         self.type = type

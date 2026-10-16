@@ -12,6 +12,10 @@ final class StoredToolEvent {
     var linesAdded: Int?
     var linesRemoved: Int?
     var isComplete: Bool
+    // 默认值用于旧历史库新增字段的轻量迁移。
+    var completionUnconfirmed: Bool = false
+    var nativeCompletionStatus: String? = nil
+    var toolCallId: String?
     var linesRead: Int?
     var testPassed: Int
     var testFailed: Int
@@ -28,6 +32,9 @@ final class StoredToolEvent {
         self.linesAdded = event.linesAdded
         self.linesRemoved = event.linesRemoved
         self.isComplete = event.isComplete
+        self.completionUnconfirmed = event.completionUnconfirmed
+        self.nativeCompletionStatus = event.nativeCompletionStatus
+        self.toolCallId = event.toolCallId
         self.linesRead = event.linesRead
         self.testPassed = event.testResults?.passed ?? 0
         self.testFailed = event.testResults?.failed ?? 0
@@ -43,6 +50,9 @@ final class StoredToolEvent {
         linesAdded = event.linesAdded
         linesRemoved = event.linesRemoved
         isComplete = event.isComplete
+        completionUnconfirmed = event.completionUnconfirmed
+        nativeCompletionStatus = event.nativeCompletionStatus
+        toolCallId = event.toolCallId
         linesRead = event.linesRead
         testPassed = event.testResults?.passed ?? 0
         testFailed = event.testResults?.failed ?? 0
@@ -61,7 +71,10 @@ final class StoredToolEvent {
         linesRead: Int? = nil,
         testPassed: Int = 0,
         testFailed: Int = 0,
-        testSkipped: Int = 0
+        testSkipped: Int = 0,
+        completionUnconfirmed: Bool = false,
+        toolCallId: String? = nil,
+        nativeCompletionStatus: String? = nil
     ) {
         self.tool = tool
         self.input = input
@@ -70,6 +83,9 @@ final class StoredToolEvent {
         self.linesAdded = linesAdded
         self.linesRemoved = linesRemoved
         self.isComplete = isComplete
+        self.completionUnconfirmed = completionUnconfirmed
+        self.nativeCompletionStatus = nativeCompletionStatus
+        self.toolCallId = toolCallId
         self.linesRead = linesRead
         self.testPassed = testPassed
         self.testFailed = testFailed

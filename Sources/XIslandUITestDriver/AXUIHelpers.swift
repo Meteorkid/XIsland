@@ -108,7 +108,10 @@ enum AXUIHelpers {
         }
     }
 
-    static func press(_ element: AXUIElement, identifier: String) throws {
+    static func press(_ element: AXUIElement, identifier: String, timeout: TimeInterval = 10) throws {
+        _ = try waitUntil(timeout: timeout, description: "Control did not become enabled: \(identifier)") {
+            (attribute(kAXEnabledAttribute, of: element) as? Bool) == true ? element : nil
+        }
         let result = AXUIElementPerformAction(element, kAXPressAction as CFString)
         guard result == .success else {
             throw UITestDriverError.actionFailed(
@@ -118,6 +121,10 @@ enum AXUIHelpers {
     }
 
     static func setText(_ text: String, in element: AXUIElement, identifier: String) throws {
+        let focusResult = AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        guard focusResult == .success else {
+            throw UITestDriverError.actionFailed("Failed to focus text control \(identifier): \(focusResult.rawValue)")
+        }
         let result = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, text as CFTypeRef)
         guard result == .success,
               stringValue(of: element, attribute: kAXValueAttribute) == text else {

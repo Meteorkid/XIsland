@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class AppDiagnosticsRefreshTests: XCTestCase {
-    func testAppTerminationRefreshesDiagnosticsAfterCompletingDesktopSession() throws {
+    func testAppTerminationRefreshesDiagnosticsAfterDesktopObservationEnds() throws {
         let context = try makeDiagnosticsContext()
         let session = AgentSession(id: "cursor-session", agentType: .cursor, workingDirectory: "/tmp/project")
         context.appDelegate.sessionManager.sessions = [session]
@@ -15,13 +15,15 @@ final class AppDiagnosticsRefreshTests: XCTestCase {
 
         let snapshot = try loadSnapshot(from: context.diagnosticsURL)
         XCTAssertNil(snapshot.selectedSessionId)
-        XCTAssertEqual(snapshot.visibleSessions.map(\.status), ["completed"])
+        XCTAssertEqual(snapshot.visibleSessions.map(\.status), ["observationUnavailable"])
+        XCTAssertNil(session.completedAt)
+        XCTAssertNotNil(session.observationEndedAt)
     }
 
-    func testStaleSessionCleanupRefreshesDiagnosticsAfterCompletion() throws {
+    func testStaleSessionCleanupRefreshesDiagnosticsWithoutInferringCompletion() throws {
         let context = try makeDiagnosticsContext()
         let session = AgentSession(id: "claude-session", agentType: .claudeCode, workingDirectory: "/tmp/project")
-        session.lastActivityTime = Date(timeIntervalSinceNow: -(SessionManager.idleTimeout + 10))
+        session.lastActivityTime = Date(timeIntervalSinceNow: -600)
         context.appDelegate.sessionManager.sessions = [session]
         context.appDelegate.sessionManager.selectedSessionId = session.id
         context.appDelegate.refreshDiagnostics(islandState: context.appDelegate.sessionManager.diagnosticsIslandState)
@@ -29,8 +31,9 @@ final class AppDiagnosticsRefreshTests: XCTestCase {
         context.appDelegate.sessionManager.cleanupStaleSessions()
 
         let snapshot = try loadSnapshot(from: context.diagnosticsURL)
-        XCTAssertNil(snapshot.selectedSessionId)
-        XCTAssertEqual(snapshot.visibleSessions.map(\.status), ["completed"])
+        XCTAssertEqual(snapshot.selectedSessionId, session.id)
+        XCTAssertEqual(snapshot.visibleSessions.map(\.status), ["active"])
+        XCTAssertNil(session.completedAt)
     }
 
     func testLingerCleanupRefreshesDiagnosticsAfterRemovingExpiredSession() throws {
@@ -47,7 +50,7 @@ final class AppDiagnosticsRefreshTests: XCTestCase {
         XCTAssertTrue(snapshot.visibleSessions.isEmpty)
     }
 
-    func testProcessCheckRefreshesDiagnosticsAfterCompletingDeadCliSession() async throws {
+    func testProcessCheckRefreshesDiagnosticsAfterCliObservationEnds() async throws {
         let context = try makeDiagnosticsContext()
         let session = AgentSession(id: "claude-session", agentType: .claudeCode, workingDirectory: "/tmp/project")
         context.appDelegate.sessionManager.sessions = [session]
@@ -58,7 +61,9 @@ final class AppDiagnosticsRefreshTests: XCTestCase {
 
         let snapshot = try loadSnapshot(from: context.diagnosticsURL)
         XCTAssertNil(snapshot.selectedSessionId)
-        XCTAssertEqual(snapshot.visibleSessions.map(\.status), ["completed"])
+        XCTAssertEqual(snapshot.visibleSessions.map(\.status), ["observationUnavailable"])
+        XCTAssertNil(session.completedAt)
+        XCTAssertNotNil(session.observationEndedAt)
     }
 
     func testDiagnosticsRefreshUsesPrioritizedWaitingInteractionState() throws {

@@ -11,6 +11,7 @@ enum AgentType: String, CaseIterable, Codable, Identifiable, Sendable {
     case qoder = "qoder"
     case copilot = "copilot"
     case codeBuddy = "code_buddy"
+    case workBuddy = "workbuddy"
     case qwen = "qwen"
     case kimi = "kimi"
     case deepseek = "deepseek"

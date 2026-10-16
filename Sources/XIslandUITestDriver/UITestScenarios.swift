@@ -9,6 +9,9 @@ enum UITestAccessibility {
     static let permissionPanel = "island.permission-panel"
     static let permissionApproveButton = "island.permission-approve"
     static let questionPanel = "island.question-panel"
+    static let customAnswerField = "island.question-custom-input"
+    static let customAnswerSubmit = "island.question-custom-submit"
+    static let multipleAnswerSubmit = "island.question-multiple-submit"
     static let planPanel = "island.plan-panel"
     static let planApproveButton = "island.plan-approve"
     static let planDetailsButton = "island.plan-details"
@@ -20,7 +23,7 @@ enum UITestAccessibility {
 
     static func usesRequestScope(_ identifier: String) -> Bool {
         [permissionPanel, permissionApproveButton, questionPanel, planPanel,
-         planApproveButton, planDetailsButton, planFeedbackField].contains(identifier)
+         planApproveButton, planDetailsButton, planFeedbackField, customAnswerField, customAnswerSubmit, multipleAnswerSubmit].contains(identifier)
             || identifier.hasPrefix("island.question-option.")
     }
 
@@ -212,6 +215,43 @@ struct UITestScenario {
                     $0.pendingInteraction == nil && $0.islandState == "collapsed"
                 }
             }
+        case "question-custom-socket", "question-multiple-socket":
+            return Self(name: name, fixtureName: "empty-interaction", opensPreferencesOnLaunch: false,
+                        requiredIdentifiers: [], expectedInitialIslandState: "collapsed") { context in
+                try context.verifyCustomQuestionSocketRoundTrip(multiple: name == "question-multiple-socket")
+            }
+        case "question-focus":
+            return Self(name: name, fixtureName: name, opensPreferencesOnLaunch: false,
+                        requiredIdentifiers: [UITestAccessibility.customAnswerField], expectedInitialIslandState: "question") { context in
+                let secondPrefix = UITestAccessibility.customAnswerField + ".fixture-question-b."
+                let initial = try context.waitForSnapshot(description: "Waiting for two question cards") {
+                    $0.selectedSessionId == "fixture-question-a" && $0.visibleAccessibilityIdentifiers.contains { $0.hasPrefix(secondPrefix) }
+                }
+                guard let secondField = initial.visibleAccessibilityIdentifiers.first(where: { $0.hasPrefix(secondPrefix) }) else {
+                    throw UITestDriverError.missingElement(secondPrefix)
+                }
+                try context.setText("B custom answer", in: secondField)
+                _ = try context.waitForSnapshot(description: "Editing B did not focus its request") { $0.selectedSessionId == "fixture-question-b" }
+                try context.pressElement(UITestAccessibility.customAnswerSubmit)
+                _ = try context.waitForSnapshot(description: "B submit changed the wrong request") {
+                    $0.selectedSessionId == "fixture-question-a" && $0.pendingInteraction == "question"
+                        && !$0.visibleAccessibilityIdentifiers.contains { $0.hasPrefix(secondPrefix) }
+                }
+            }
+        case "question-custom":
+            return Self(name: name, fixtureName: name, opensPreferencesOnLaunch: false,
+                        requiredIdentifiers: [UITestAccessibility.customAnswerField, UITestAccessibility.customAnswerSubmit],
+                        expectedInitialIslandState: "question") { context in
+                _ = try context.waitForPrimaryWindow(minWidth: 300, description: "Waiting for custom question window")
+                _ = try context.waitForSnapshot(description: "Waiting for custom question") {
+                    $0.pendingInteraction == "question" && $0.selectedSessionId == "fixture-custom-question"
+                }
+                try context.setText("/tmp/自定义项目", in: UITestAccessibility.customAnswerField)
+                try context.pressElement(UITestAccessibility.customAnswerSubmit)
+                _ = try context.waitForSnapshot(description: "Custom answer did not clear request") {
+                    $0.pendingInteraction == nil && $0.islandState == "collapsed"
+                }
+            }
         case "plan-smoke":
             return Self(
                 name: name,
@@ -301,6 +341,50 @@ struct UITestScenarioContext {
     let application: AXUIElement
     let diagnosticsURL: URL
     let timeout: TimeInterval
+
+    func verifyCustomQuestionSocketRoundTrip(multiple: Bool = false) throws {
+        guard let appExecutable = process.executableURL else { throw UITestDriverError.launchFailed("No application executable") }
+        let bridge = Process()
+        bridge.executableURL = appExecutable.deletingLastPathComponent().appendingPathComponent("di-bridge")
+        bridge.arguments = ["--agent", "opencode", "--adapter", "opencode_plugin", "--hook", "question.asked"]
+        var environment = process.environment ?? [:]
+        environment["DI_SOCKET_PATH"] = diagnosticsURL.deletingLastPathComponent().appendingPathComponent("di.sock").path
+        bridge.environment = environment
+        let input = Pipe(), output = Pipe(), errors = Pipe()
+        bridge.standardInput = input; bridge.standardOutput = output; bridge.standardError = errors
+        let exited = DispatchSemaphore(value: 0)
+        bridge.terminationHandler = { _ in exited.signal() }
+        try bridge.run()
+        defer {
+            if bridge.isRunning {
+                bridge.terminate()
+                if exited.wait(timeout: .now() + 1) != .success { kill(bridge.processIdentifier, SIGKILL) }
+            }
+        }
+        let payload: [String: Any] = ["native_event": "question.asked", "session_id": "ui-socket",
+            "native_request_id": "question-1", "native_request_kind": "question", "question": "请输入目录",
+            "options": multiple ? ["A,逗号", "B换行\n第二行"] : [], "allow_custom_answer": true, "allow_multiple_answers": multiple]
+        try input.fileHandleForWriting.write(contentsOf: JSONSerialization.data(withJSONObject: payload))
+        try input.fileHandleForWriting.close()
+        _ = try waitForSnapshot(description: "Socket question did not reach UI") {
+            $0.pendingInteraction == "question" && $0.selectedSessionId == "opencode-ui-socket"
+        }
+        let answer = "/tmp/中文项目"
+        if multiple {
+            try pressElement(UITestAccessibility.questionOption(index: 1))
+            try pressElement(UITestAccessibility.questionOption(index: 0))
+        }
+        try setText(answer, in: UITestAccessibility.customAnswerField)
+        try pressElement(multiple ? UITestAccessibility.multipleAnswerSubmit : UITestAccessibility.customAnswerSubmit)
+        guard exited.wait(timeout: .now() + timeout) == .success, bridge.terminationStatus == 0,
+              let data = try output.fileHandleForReading.readToEnd(),
+              let response = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              multiple ? (response["answers"] as? [String] == ["A,逗号", "B换行\n第二行", answer] && response["answer"] == nil)
+                : (response["answer"] as? String == answer && response["answers"] == nil) else {
+            throw UITestDriverError.actionFailed("Custom answer did not return unchanged through bridge")
+        }
+        _ = try waitForSnapshot(description: "Delivered socket question did not clear") { $0.pendingInteraction == nil }
+    }
 
     func activate() throws {
         guard let runningApplication = NSRunningApplication(processIdentifier: process.processIdentifier) else {
@@ -466,6 +550,7 @@ struct UITestScenarioRunner {
 
     private func launchArguments(for scenario: UITestScenario) -> [String] {
         var arguments = ["--ui-test-mode", "--fixture", scenario.fixtureName]
+        if ["question-custom-socket", "question-multiple-socket"].contains(scenario.name) { arguments.append("--ui-test-socket") }
         if scenario.opensPreferencesOnLaunch {
             arguments.append("--open-preferences")
         }

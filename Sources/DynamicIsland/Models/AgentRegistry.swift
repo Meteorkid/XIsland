@@ -85,7 +85,7 @@ extension AgentType {
             color: Color(red: 0.4, green: 0.7, blue: 0.9),
             iconSymbol: "airplane",
             bundleIds: ["com.microsoft.VSCode"], processNames: ["Code"],
-            isDesktopApp: true, sendsSessionEnd: true,
+            isDesktopApp: true, sendsSessionEnd: false,
             aliases: []
         ),
         .codeBuddy: AgentMeta(
@@ -95,6 +95,14 @@ extension AgentType {
             bundleIds: [], processNames: [],
             isDesktopApp: false, sendsSessionEnd: true,
             aliases: ["code-buddy", "codebuddy"]
+        ),
+        .workBuddy: AgentMeta(
+            displayName: "WorkBuddy", shortName: "WorkBuddy",
+            color: Color(red: 0.25, green: 0.65, blue: 0.95),
+            iconSymbol: "w.circle",
+            bundleIds: ["com.tencent.workbuddy.mac"], processNames: [],
+            isDesktopApp: true, sendsSessionEnd: false,
+            aliases: ["work-buddy", "work_buddy"]
         ),
         .qwen: AgentMeta(
             displayName: "Qwen Code", shortName: "Qwen",
@@ -108,24 +116,24 @@ extension AgentType {
             displayName: "Kimi Code", shortName: "Kimi",
             color: Color(red: 0.95, green: 0.35, blue: 0.45),
             iconSymbol: "k.circle",
-            bundleIds: [], processNames: ["kimi"],
+            bundleIds: [], processNames: ["kimi", "kimi-code"],
             isDesktopApp: false, sendsSessionEnd: true,
             aliases: ["kimi", "kimi-code", "kimi_code"]
         ),
         .deepseek: AgentMeta(
-            displayName: "DeepSeek-TUI", shortName: "DeepSeek",
+            displayName: "Codewhale / DeepSeek-TUI", shortName: "Codewhale",
             color: Color(red: 0.25, green: 0.75, blue: 0.55),
             iconSymbol: "d.circle",
-            bundleIds: [], processNames: ["deepseek"],
+            bundleIds: [], processNames: ["codewhale", "deepseek"],
             isDesktopApp: false, sendsSessionEnd: true,
-            aliases: ["deepseek", "deepseek-tui", "deepseek_tui"]
+            aliases: ["codewhale", "codew", "deepseek", "deepseek-tui", "deepseek_tui"]
         ),
         .kiro: AgentMeta(
             displayName: "Kiro", shortName: "Kiro",
             color: Color(red: 0.6, green: 0.5, blue: 0.85),
             iconSymbol: "k.square",
             bundleIds: [], processNames: [],
-            isDesktopApp: false, sendsSessionEnd: true,
+            isDesktopApp: false, sendsSessionEnd: false,
             aliases: ["kiro"]
         ),
         .amp: AgentMeta(
@@ -156,15 +164,15 @@ extension AgentType {
             displayName: "GLM (Zhipu)", shortName: "GLM",
             color: Color(red: 0.25, green: 0.45, blue: 0.95),
             iconSymbol: "g.circle",
-            bundleIds: [], processNames: ["glm", "zhipu"],
-            isDesktopApp: false, sendsSessionEnd: true,
+            bundleIds: [], processNames: [],
+            isDesktopApp: false, sendsSessionEnd: false,
             aliases: ["glm", "zhipu", "glm-code", "glm_code"]
         ),
         .aider: AgentMeta(
             displayName: "Aider", shortName: "AI",
             color: Color(red: 0.95, green: 0.5, blue: 0.25),
             iconSymbol: "a.circle",
-            bundleIds: [], processNames: ["aider"],
+            bundleIds: [], processNames: [],
             isDesktopApp: false, sendsSessionEnd: true,
             aliases: ["aider"]
         ),
@@ -188,7 +196,7 @@ extension AgentType {
             displayName: "Amazon Q", shortName: "Q",
             color: Color(red: 0.95, green: 0.6, blue: 0.1),
             iconSymbol: "q.square",
-            bundleIds: [], processNames: ["q", "amazon-q"],
+            bundleIds: [], processNames: [],
             isDesktopApp: false, sendsSessionEnd: true,
             aliases: ["amazon q", "q developer", "codewhisperer", "amazon-q"]
         ),
@@ -204,24 +212,26 @@ extension AgentType {
             displayName: "Cody", shortName: "Cody",
             color: Color(red: 0.8, green: 0.3, blue: 0.5),
             iconSymbol: "c.circle",
-            bundleIds: [], processNames: ["cody"],
-            isDesktopApp: false, sendsSessionEnd: true,
+            bundleIds: [], processNames: [],
+            isDesktopApp: false, sendsSessionEnd: false,
             aliases: ["cody", "sourcegraph"]
         ),
         .cline: AgentMeta(
             displayName: "Cline", shortName: "Cline",
             color: Color(red: 0.2, green: 0.8, blue: 0.6),
             iconSymbol: "l.circle",
-            bundleIds: [], processNames: ["cline"],
-            isDesktopApp: false, sendsSessionEnd: true,
+            // 当前接入的是 VS Code 扩展；不存在同名 CLI 进程不代表扩展会话已结束。
+            bundleIds: [], processNames: [],
+            isDesktopApp: false, sendsSessionEnd: false,
             aliases: ["cline"]
         ),
         .`continue`: AgentMeta(
             displayName: "Continue", shortName: "Continue",
             color: Color(red: 0.5, green: 0.5, blue: 0.9),
             iconSymbol: "arrow.right.circle",
-            bundleIds: [], processNames: ["continue"],
-            isDesktopApp: false, sendsSessionEnd: true,
+            // cn serve 由 Node 承载；观察连接结束不代表原生会话结束。
+            bundleIds: [], processNames: [],
+            isDesktopApp: false, sendsSessionEnd: false,
             aliases: ["continue"]
         ),
         .copilotCli: AgentMeta(
@@ -237,7 +247,7 @@ extension AgentType {
             color: Color(red: 0.85, green: 0.3, blue: 0.5),
             iconSymbol: "r.circle",
             bundleIds: [], processNames: [],
-            isDesktopApp: false, sendsSessionEnd: true,
+            isDesktopApp: false, sendsSessionEnd: false,
             aliases: ["roo", "roo-code", "roo_code", "roo-cline", "roocline", "roo code"]
         ),
         .pearai: AgentMeta(
@@ -245,7 +255,7 @@ extension AgentType {
             color: Color(red: 0.4, green: 0.9, blue: 0.6),
             iconSymbol: "leaf",
             bundleIds: ["dev.pearai", "com.pearai.app"], processNames: ["PearAI"],
-            isDesktopApp: true, sendsSessionEnd: true,
+            isDesktopApp: true, sendsSessionEnd: false,
             aliases: ["pearai", "pear-ai", "pear_ai"]
         ),
         .zed: AgentMeta(

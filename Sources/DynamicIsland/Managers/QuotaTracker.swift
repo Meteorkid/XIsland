@@ -9,8 +9,12 @@ final class QuotaTracker {
     var quotas: [QuotaInfo] = []
     nonisolated(unsafe) private var timer: Timer?
     private let updateInterval: TimeInterval = 60
+    private let allowsLiveAccess: Bool
+    var isPolling: Bool { timer?.isValid == true }
 
-    init() {
+    init(testConfiguration: AppTestConfiguration = .current()) {
+        allowsLiveAccess = !testConfiguration.isEnabled && !AppPreferences.isIsolated
+        guard allowsLiveAccess else { return }
         Self.migrateKeychainAccessibility()
         fetchAll()
         startTimer()
@@ -21,6 +25,7 @@ final class QuotaTracker {
     }
 
     func fetchAll() {
+        guard allowsLiveAccess else { return }
         let defaults = AppPreferences.defaults
         let providers: [(String, String)] = [
             (Self.anthropicEnabledKey, "anthropic"),
@@ -55,6 +60,7 @@ final class QuotaTracker {
     // MARK: - Anthropic
 
     func fetchAnthropic(apiKey: String? = nil) {
+        guard allowsLiveAccess else { return }
         guard let apiKey, !apiKey.isEmpty else {
             updateQuota(QuotaInfo(provider: "Anthropic", requestsRemaining: nil, requestsLimit: nil,
                                   tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date()))
@@ -94,6 +100,7 @@ final class QuotaTracker {
     // MARK: - OpenAI (Codex local SQLite)
 
     func fetchOpenAI() {
+        guard allowsLiveAccess else { return }
         Task.detached(priority: .utility) { [weak self] in
             let totalTokens = Self.fetchOpenAITokenCount()
             let info = QuotaInfo(provider: "OpenAI", requestsRemaining: nil, requestsLimit: nil,
@@ -126,6 +133,7 @@ final class QuotaTracker {
     // MARK: - Kimi (Moonshot)
 
     func fetchKimi(apiKey: String? = nil) {
+        guard allowsLiveAccess else { return }
         guard let apiKey, !apiKey.isEmpty else {
             updateQuota(QuotaInfo(provider: "Kimi", requestsRemaining: nil, requestsLimit: nil,
                                   tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date()))
@@ -161,6 +169,7 @@ final class QuotaTracker {
     // MARK: - DeepSeek
 
     func fetchDeepSeek(apiKey: String? = nil) {
+        guard allowsLiveAccess else { return }
         guard let apiKey, !apiKey.isEmpty else {
             updateQuota(QuotaInfo(provider: "DeepSeek", requestsRemaining: nil, requestsLimit: nil,
                                   tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date()))
@@ -199,6 +208,7 @@ final class QuotaTracker {
     // MARK: - GLM (Zhipu)
 
     func fetchGLM(apiKey: String? = nil) {
+        guard allowsLiveAccess else { return }
         guard let apiKey, !apiKey.isEmpty else {
             updateQuota(QuotaInfo(provider: "GLM", requestsRemaining: nil, requestsLimit: nil,
                                   tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date()))
@@ -231,6 +241,7 @@ final class QuotaTracker {
     static let glmEnabledKey = "quotaTrackingGLMEnabled"
 
     static func saveAPIKey(_ key: String, for provider: String) -> Bool {
+        guard !AppPreferences.isIsolated else { return false }
         let service = "com.xisland.apikeys"
         let account = provider
         let data = key.data(using: .utf8)!
@@ -257,6 +268,7 @@ final class QuotaTracker {
     }
 
     nonisolated static func loadAPIKey(for provider: String) -> String? {
+        guard !AppPreferences.isIsolated else { return nil }
         let service = "com.xisland.apikeys"
         let account = provider
         let query: [String: Any] = [
@@ -273,6 +285,7 @@ final class QuotaTracker {
     }
 
     static func migrateKeychainAccessibility() {
+        guard !AppPreferences.isIsolated else { return }
         let providers = ["anthropic", "openai", "kimi", "deepseek", "glm"]
         for provider in providers {
             if let key = loadAPIKey(for: provider) {
@@ -283,6 +296,7 @@ final class QuotaTracker {
     }
 
     static func deleteAPIKey(for provider: String) -> Bool {
+        guard !AppPreferences.isIsolated else { return false }
         let service = "com.xisland.apikeys"
         let account = provider
         let query: [String: Any] = [

@@ -63,7 +63,10 @@ enum IslandIntegrationSettings {
     }
 
     static let suiteName = "dev.xisland.integration"
-    static let sharedDefaults = UserDefaults(suiteName: suiteName) ?? .standard
+    private static let productionDefaults = UserDefaults(suiteName: suiteName) ?? .standard
+    static var sharedDefaults: UserDefaults {
+        AppPreferences.isIsolated ? AppPreferences.defaults : productionDefaults
+    }
 
     static func registerDefaults() {
         sharedDefaults.register(defaults: [

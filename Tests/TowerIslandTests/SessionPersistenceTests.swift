@@ -8,7 +8,7 @@ final class SessionPersistenceTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema([StoredSession.self, StoredToolEvent.self, StoredChatMessage.self])
+        let schema = Schema([StoredSession.self, StoredToolEvent.self, StoredChatMessage.self, StoredKimiCodeApprovalOrphan.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: [config])
     }
@@ -144,7 +144,7 @@ final class SessionPersistenceTests: XCTestCase {
             XCTAssertTrue(manager.save(session: makeTestSession(id: "saved")))
         }
 
-        let schema = Schema([StoredSession.self, StoredToolEvent.self, StoredChatMessage.self])
+        let schema = Schema([StoredSession.self, StoredToolEvent.self, StoredChatMessage.self, StoredKimiCodeApprovalOrphan.self])
         let readOnly = ModelConfiguration(schema: schema, url: storeURL, allowsSave: false)
         let manager = makeManager(container: try ModelContainer(for: schema, configurations: [readOnly]))
         let pending = makeTestSession(id: "pending")
@@ -193,9 +193,16 @@ final class SessionPersistenceTests: XCTestCase {
             XCTAssertEqual(stored.sessionId, "legacy")
             XCTAssertNil(stored.recapText)
             XCTAssertNil(stored.completedAt)
+            XCTAssertNil(stored.sourceNamespace)
+            XCTAssertNil(stored.sourceInstanceId)
+            XCTAssertNil(stored.nativeTaskId)
+            XCTAssertNil(stored.observationEndedAt)
+            XCTAssertEqual(stored.historyDate, stored.startTime)
             XCTAssertEqual(stored.toolEvents.count, 2)
             XCTAssertEqual(stored.chatMessages.count, 2)
             XCTAssertTrue(stored.toolEvents.allSatisfy { $0.timestamp == timestamp && $0.tool == "read" && $0.input == nil })
+            XCTAssertTrue(stored.toolEvents.allSatisfy { !$0.completionUnconfirmed && $0.toolCallId == nil })
+            XCTAssertTrue(stored.toolEvents.allSatisfy { $0.nativeCompletionStatus == nil })
             XCTAssertTrue(stored.chatMessages.allSatisfy { $0.timestamp == timestamp && $0.content == "Same content" })
             eventIDs = Set(stored.toolEvents.compactMap(\.eventId))
             messageIDs = Set(stored.chatMessages.compactMap(\.messageId))
@@ -251,15 +258,20 @@ final class SessionPersistenceTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let storeURL = directory.appendingPathComponent("history.store")
+        let fixtureURL = directory.appendingPathComponent("fixture/legacy.store")
+        try FileManager.default.createDirectory(at: fixtureURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try autoreleasepool {
             let schema = Schema([
                 LegacyHistorySchema.StoredSession.self,
                 LegacyHistorySchema.StoredToolEvent.self,
                 LegacyHistorySchema.StoredChatMessage.self,
             ])
-            let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: storeURL)])
+            let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: fixtureURL)])
             container.mainContext.insert(LegacyHistorySchema.StoredSession())
             try container.mainContext.save()
+            // 被测文件不交给夹具的 CoreData 连接持有，避免其异步收尾影响字节级断言。
+            let snapshot = try XCTUnwrap(HistoryStoreBackup.prepareBackupIfNeeded(storeURL: fixtureURL))
+            try FileManager.default.copyItem(at: snapshot, to: storeURL)
         }
         let sourceData = try Data(contentsOf: storeURL)
         let walURL = URL(fileURLWithPath: storeURL.path + "-wal")
@@ -272,6 +284,7 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertTrue(manager.lastSaveError?.contains("backup") == true)
         XCTAssertEqual(try Data(contentsOf: storeURL), sourceData)
         if let walData { XCTAssertEqual(try Data(contentsOf: walURL), walData) }
+        else { XCTAssertFalse(FileManager.default.fileExists(atPath: walURL.path)) }
     }
 
     func testCorruptSourcePreventsMigrationAndInMemoryStoreSkipsBackup() throws {

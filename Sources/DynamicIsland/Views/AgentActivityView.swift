@@ -3,6 +3,14 @@ import SwiftUI
 struct AgentActivityView: View {
     @Environment(ThemeManager.self) private var themeManager
     let event: ToolEvent
+    var nativeTaskStatus: String? = nil
+
+    var completionSymbol: String? {
+        if event.hasFailedOutcome || KimiCodeApprovalObservation.isFailedBackgroundTask(nativeTaskStatus) { return "xmark.circle" }
+        if event.wasCancelled { return "minus.circle" }
+        if event.completionUnconfirmed || event.hasUnknownOutcome { return "questionmark.circle" }
+        return event.isComplete ? "checkmark" : nil
+    }
 
     private var scheme: ColorScheme { themeManager.resolvedScheme }
 
@@ -20,10 +28,12 @@ struct AgentActivityView: View {
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(IslandStyle.primaryText)
 
-                        if event.isComplete {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 7, weight: .bold))
-                                .foregroundStyle(.green.opacity(0.7))
+                        if let symbol = completionSymbol {
+                            Image(systemName: symbol)
+                                .font(.system(size: symbol == "checkmark" ? 7 : 9,
+                                              weight: symbol == "checkmark" ? .bold : .regular))
+                                .foregroundStyle((symbol == "checkmark" ? Color.green :
+                                    symbol == "xmark.circle" ? Color.red : Color.orange).opacity(0.7))
                         }
                     }
 

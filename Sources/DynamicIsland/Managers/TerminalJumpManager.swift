@@ -16,6 +16,7 @@ enum TerminalApp: String, CaseIterable {
     case traeCn = "Trae CN"
     case traeWorkCn = "TRAE SOLO CN"
     case codex = "Codex"
+    case workBuddy = "WorkBuddy"
     case wezTerm = "WezTerm"
     case zellij = "Zellij"
     case antigravity = "Antigravity"
@@ -40,6 +41,7 @@ enum TerminalApp: String, CaseIterable {
         case .traeCn: ["cn.trae.app"]
         case .traeWorkCn: ["cn.trae.solo.app"]
         case .codex: ["com.openai.codex"]
+        case .workBuddy: ["com.tencent.workbuddy.mac"]
         case .wezTerm: ["org.wezfurlong.wezterm"]
         case .zellij: ["no.bundle.id.zellij"] // multiplexer, runs inside another terminal
         case .antigravity: ["com.antigravity.Antigravity"] // Antigravity IDE terminal
@@ -70,6 +72,7 @@ enum TerminalApp: String, CaseIterable {
         case .traeCn: ["trae cn", "trae-cn", "traecn"]
         case .traeWorkCn: ["trae work cn", "trae solo cn", "trae-work-cn", "trae-solo-cn", "traeworkcn", "traesolocn", "trae aicc", "trae-aicc"]
         case .codex: ["codex"]
+        case .workBuddy: ["workbuddy", "work-buddy"]
         case .wezTerm: ["wezterm"]
         case .zellij: ["zellij"]
         case .antigravity: ["antigravity"]
@@ -139,6 +142,7 @@ enum TerminalApp: String, CaseIterable {
         case .cursor: return .cursor
         case .trae: return .trae
         case .codex: return .codex
+        case .workBuddy: return .workBuddy
         case .copilot: return .vscode
         case .windsurf: return .windsurf
         case .zed: return .zed

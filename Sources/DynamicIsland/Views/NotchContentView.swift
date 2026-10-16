@@ -347,12 +347,16 @@ struct NotchContentView: View {
 
         let prefix = session.agentType.shortName
 
+        if session.status == .completionUnconfirmed {
+            return "\(prefix) · \(L10n.completionUnconfirmed)"
+        }
+
         if let tool = session.currentTool, !tool.isEmpty {
             return "\(prefix) · \(L10n.toolRunning(tool))"
         }
 
         if let lastEvent = session.events.last {
-            if lastEvent.isComplete {
+            if lastEvent.isComplete || lastEvent.completionUnconfirmed {
                 return "\(prefix) · \(lastEvent.displayName): \(lastEvent.summary)"
             }
             return "\(prefix) · \(L10n.toolRunning(lastEvent.displayName))"
@@ -893,7 +897,7 @@ struct NotchContentView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                 } else {
-                    Text("\(manager.activeSessions.count)\(L10n.activeSessions)")
+                    Text("\(manager.trulyActiveSessions.count)\(L10n.activeSessions)")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
                 }
@@ -1206,6 +1210,9 @@ struct NotchContentView: View {
 
     private var activityLogContent: some View {
         let allEvents = sortedActivityEvents.prefix(30)
+        let taskStatuses = manager.sessions.reduce(into: [UUID: String]()) { states, session in
+            states.merge(session.kimiCodeApprovalObservation?.backgroundTaskStatuses(sessionID: session.id) ?? [:]) { _, new in new }
+        }
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -1232,14 +1239,16 @@ struct NotchContentView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 3) {
                         ForEach(Array(allEvents), id: \.event.id) { item in
+                            let failed = item.event.hasFailedOutcome || KimiCodeApprovalObservation.isFailedBackgroundTask(taskStatuses[item.event.id])
+                            let uncertain = item.event.completionUnconfirmed || item.event.hasUnknownOutcome
                             HStack(spacing: 6) {
                                 Circle()
                                     .fill(item.session.agentType.color.opacity(0.6))
                                     .frame(width: 4, height: 4)
-                                Image(systemName: item.event.isComplete ? "checkmark.circle.fill" : "circle.dashed")
+                                Image(systemName: failed ? "xmark.circle.fill" : item.event.wasCancelled ? "minus.circle" : uncertain ? "questionmark.circle" : item.event.isComplete ? "checkmark.circle.fill" : "circle.dashed")
                                     .font(.system(size: 8))
-                                    .foregroundStyle(item.event.isComplete ? .green.opacity(0.5) : IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
-                                    .symbolEffect(.bounce, value: item.event.isComplete)
+                                    .foregroundStyle(failed ? .red.opacity(0.7) : item.event.wasCancelled || uncertain ? .orange.opacity(0.7) : item.event.isComplete ? .green.opacity(0.5) : IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                                    .symbolEffect(.bounce, value: item.event.isComplete && !failed && !item.event.wasCancelled && !uncertain)
                                 Text(item.session.agentType.shortName)
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundStyle(item.session.agentType.color.opacity(0.7))
@@ -1258,17 +1267,17 @@ struct NotchContentView: View {
                             .padding(.horizontal, 4)
                             .padding(.vertical, 2)
                             .background(
-                                item.event.isComplete
+                                failed ? Color.red.opacity(0.08) : item.event.isComplete
                                     ? Color.accentColor.opacity(0.15)
                                     : Color.clear
                             )
                             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                             .modifier(ToolCompletionEffect(
-                                isComplete: item.event.isComplete,
+                                isComplete: item.event.isComplete && !failed,
                                 reduceMotion: reduceMotion
                             ))
                             .modifier(ActivityLogGlowTrail(
-                                isActive: !item.event.isComplete,
+                                isActive: item.event.isRunning,
                                 reduceMotion: reduceMotion
                             ))
                         }

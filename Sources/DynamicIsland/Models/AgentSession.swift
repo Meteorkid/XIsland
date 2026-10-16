@@ -12,6 +12,8 @@ enum SessionStatus: String, Codable, Sendable {
     case completed
     case error
     case compacting
+    case observationUnavailable
+    case completionUnconfirmed
 
     var color: String {
         switch self {
@@ -19,7 +21,7 @@ enum SessionStatus: String, Codable, Sendable {
         case .idle: "green"
         case .thinking: "purple"
         case .waitingPermission, .waitingAnswer, .waitingPlanReview: "orange"
-        case .completed: "gray"
+        case .completed, .observationUnavailable, .completionUnconfirmed: "gray"
         case .error: "red"
         case .compacting: "yellow"
         }
@@ -36,7 +38,9 @@ enum SessionStatus: String, Codable, Sendable {
         case .thinking:          return 5  // 思考中
         case .compacting:        return 6  // 压缩中
         case .idle:              return 7  // 空闲
-        case .completed:         return 8  // 已完成
+        case .completionUnconfirmed: return 8
+        case .completed:         return 9  // 已完成
+        case .observationUnavailable: return 10
         }
     }
 
@@ -47,7 +51,7 @@ enum SessionStatus: String, Codable, Sendable {
         case .idle: .green
         case .thinking: .purple
         case .waitingPermission, .waitingAnswer, .waitingPlanReview: .orange
-        case .completed: .gray
+        case .completed, .observationUnavailable, .completionUnconfirmed: .gray
         case .error: .red
         case .compacting: .yellow
         }
@@ -64,6 +68,8 @@ enum SessionStatus: String, Codable, Sendable {
         case .completed: return L10n.statusCompleted
         case .error: return L10n.statusError
         case .compacting: return L10n.statusCompacting
+        case .observationUnavailable: return L10n.statusObservationUnavailable
+        case .completionUnconfirmed: return L10n.completionUnconfirmed
         }
     }
 }
@@ -143,6 +149,11 @@ final class AgentSession: Identifiable {
     var recapText: String?
 
     var completedAt: Date?
+    var sourceNamespace: String?
+    var sourceInstanceId: String?
+    var nativeTaskId: String?
+    var observationEndedAt: Date?
+    var kimiCodeApprovalObservation: KimiCodeApprovalObservation?
     var windowNumber: Int?
     var termSessionId: String?
 
@@ -152,6 +163,10 @@ final class AgentSession: Identifiable {
 
     var hasPendingInteraction: Bool {
         pendingPermission != nil || pendingQuestion != nil || pendingPlanReview != nil
+    }
+
+    var hasRunningSubagents: Bool {
+        events.contains { $0.tool == "Subagent" && $0.isRunning }
     }
 
     var workspaceName: String {
@@ -178,7 +193,7 @@ final class AgentSession: Identifiable {
         !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    var duration: TimeInterval { Date().timeIntervalSince(startTime) }
+    var duration: TimeInterval { (completedAt ?? observationEndedAt ?? Date()).timeIntervalSince(startTime) }
 
     var formattedDuration: String {
         let mins = Int(duration) / 60
@@ -188,10 +203,17 @@ final class AgentSession: Identifiable {
     }
 
     var lastActivity: String {
+        if !hasPendingInteraction, status != .completed, status != .observationUnavailable,
+           let text = kimiCodeApprovalObservation?.displayedText { return text }
+        if status == .completionUnconfirmed { return L10n.completionUnconfirmed }
+        if status == .observationUnavailable {
+            return observationEndedAt == nil ? L10n.statusObservationUnavailable : L10n.observationInterrupted
+        }
         if let tool = currentTool {
             return "Running \(tool)"
         }
         if let last = events.last {
+            if last.completionUnconfirmed { return "\(last.displayName): \(last.summary)" }
             return last.isComplete ? "\(last.tool) done" : "Running \(last.tool)"
         }
         return statusText.isEmpty ? "Working..." : statusText
@@ -220,6 +242,7 @@ struct PendingPermission {
     let respond: @Sendable (Bool) -> Void
     var delivery: InteractionDelivery? = nil
     var cancel: (@Sendable () -> Void)? = nil
+    var nativeRequestId: String? = nil
 }
 
 struct PendingQuestion {
@@ -233,6 +256,31 @@ struct PendingQuestion {
     /// superseded by a newer event or filtered as a stub).
     let cancel: (@Sendable () -> Void)?
     var delivery: InteractionDelivery? = nil
+    var nativeRequestId: String? = nil
+    var allowsCustomAnswer = false
+    var allowsMultipleAnswers = false
+    var respondMultiple: (@Sendable ([String]) -> Void)? = nil
+
+    func acceptsAnswer(_ answer: String) -> Bool {
+        options.contains(answer) || (allowsCustomAnswer
+            && !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && answer.utf8.count <= 8192 && !answer.utf8.contains(0))
+    }
+
+    func acceptsAnswers(_ answers: [String]) -> Bool {
+        allowsMultipleAnswers && !answers.isEmpty && answers.count <= 128
+            && Set(answers).count == answers.count && answers.allSatisfy(acceptsAnswer)
+            && answers.reduce(0, { $0 + $1.utf8.count }) <= 8192
+            && answers.filter { !options.contains($0) }.count <= 1
+    }
+
+    var selectedAnswerValues: [String] {
+        var values = options.filter { state.selectedAnswers.contains($0) }
+        if allowsCustomAnswer && !state.draftAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            values.append(state.draftAnswer)
+        }
+        return values
+    }
 }
 
 struct PendingPlanReview {

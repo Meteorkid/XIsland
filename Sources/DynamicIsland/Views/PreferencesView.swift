@@ -910,7 +910,12 @@ struct PreferencesView: View {
                                         Text(session.formattedDuration)
                                             .font(.system(size: 11))
                                             .foregroundStyle(.secondary)
-                                        if let completed = session.completedAt {
+                                        if session.observationEndedAt != nil {
+                                            Text(L10n.observationInterrupted)
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        if let completed = session.completedAt ?? session.observationEndedAt {
                                             Text(completed.formatted(date: .abbreviated, time: .shortened))
                                                 .font(.system(size: 11))
                                                 .foregroundStyle(.tertiary)
@@ -1093,25 +1098,44 @@ struct PreferencesView: View {
 
     private func hookRow(_ agent: AgentType) -> some View {
         let status = ZeroConfigManager.hookStatus(for: agent)
+        let label: String = switch status {
+        case .active: L10n.hookActive
+        case .inactive: L10n.hookOff
+        case .externalExtension: L10n.hookViaExtension
+        case .unverified: L10n.hookPending
+        case .externalWorkBuddy: L10n.hookViaWorkBuddy
+        case .externalAmazonQ: L10n.hookViaAmazonQ
+        case .externalCody: L10n.hookViaCody
+        case .externalObserver: L10n.hookViaObserver
+        case .externalAgent: L10n.hookViaACP
+        case .modelSource: L10n.hookViaModelClient
+        case .externalKiro: L10n.hookViaKiro
+        }
         return row(agent.displayName) {
             HStack(spacing: 10) {
                 HStack(spacing: 4) {
                     Circle()
                         .fill(status == .active ? .green : Color.secondary.opacity(0.4))
                         .frame(width: 6, height: 6)
-                    Text(status == .active ? L10n.hookActive : L10n.hookOff)
+                    Text(label)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
+                .help(status == .externalKiro ? L10n.hookKiroHint : status == .modelSource ? L10n.hookModelClientHint : status == .externalWorkBuddy ? L10n.hookWorkBuddyHint : status == .externalAmazonQ ? L10n.hookAmazonQHint : status == .externalCody ? L10n.hookCodyHint : status == .externalObserver ? L10n.hookObserverHint : status == .externalAgent ? L10n.hookACPHint : status == .unverified ? L10n.hookPendingHint : status == .externalExtension ? L10n.hookExtensionHint : L10n.hookConfigurationHint)
 
-                Toggle(
-                    "",
-                    isOn: Binding(
-                        get: { ZeroConfigManager.isAutoConfigEnabled(for: agent) },
-                        set: { ZeroConfigManager.setAutoConfigEnabled($0, for: agent) }
+                if status == .modelSource || status == .externalKiro {
+                    Link(L10n.setupGuide, destination: URL(string: "https://github.com/Meteorkid/XIsland/blob/main/docs/compatibility/\(status == .modelSource ? "glm" : "kiro")-setup.md")!)
+                        .font(.system(size: 11))
+                } else if status != .unverified {
+                    Toggle(
+                        "",
+                        isOn: Binding(
+                            get: { ZeroConfigManager.isAutoConfigEnabled(for: agent) },
+                            set: { ZeroConfigManager.setAutoConfigEnabled($0, for: agent) }
+                        )
                     )
-                )
-                .labelsHidden()
+                    .labelsHidden()
+                }
             }
         }
     }
@@ -1341,6 +1365,10 @@ struct PreferencesView: View {
                 "agentType": session.agentTypeRaw,
                 "startTime": ISO8601DateFormatter().string(from: session.startTime),
                 "completedAt": session.completedAt.map { ISO8601DateFormatter().string(from: $0) } as Any,
+                "observationEndedAt": session.observationEndedAt.map { ISO8601DateFormatter().string(from: $0) } as Any,
+                "sourceNamespace": session.sourceNamespace as Any,
+                "sourceInstanceId": session.sourceInstanceId as Any,
+                "nativeTaskId": session.nativeTaskId as Any,
                 "prompt": session.prompt,
                 "workspaceName": session.workspaceName,
                 "terminal": session.terminal,

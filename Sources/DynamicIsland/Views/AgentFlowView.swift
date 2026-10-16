@@ -203,6 +203,11 @@ struct AgentFlowProjectCard: View {
                             .font(.system(size: 9, weight: .medium))
                             .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
                     }
+                    if project.unavailableCount > 0 {
+                        Text("\(project.unavailableCount) \(L10n.statusObservationUnavailable)")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
+                    }
                 }
 
                 // 最紧急状态徽标

@@ -10,13 +10,26 @@ extension ProcessInfo: AppTestConfigurationProcessInfo {}
 
 /// 所有应用偏好及 SwiftUI 的 defaultAppStorage 共用同一个存储，避免测试写入真实偏好。
 enum AppPreferences {
+    private static let processConfiguration: AppTestConfiguration = {
+        var configuration = AppTestConfiguration.current()
+        // Debug/Release 的 XCTest 都必须隔离，不依赖调用者额外设置环境变量。
+        if !configuration.isEnabled, Bundle.allBundles.contains(where: { $0.bundleURL.pathExtension == "xctest" }) {
+            configuration = AppTestConfiguration(isEnabled: true, fixtureName: nil, fixturePath: nil,
+                diagnosticsPath: nil, disableAnimations: false)
+        }
+        return configuration
+    }()
     static let defaults: UserDefaults = {
         do {
-            return try AppTestConfiguration.current().makeUserDefaults()
+            return try processConfiguration.makeUserDefaults()
         } catch {
             preconditionFailure("Invalid test isolation configuration: \(error.localizedDescription)")
         }
     }()
+
+    static var isIsolated: Bool {
+        processConfiguration.isEnabled
+    }
 }
 
 struct AppTestConfiguration: Equatable {
