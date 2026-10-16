@@ -3,6 +3,24 @@ import DIShared
 @testable import DIBridge
 
 final class ACPEventObserverTests: XCTestCase {
+    func testAggregateUTF8BudgetSuspendsOnlyObservationWithoutCompletingSession() throws {
+        let observer = try setup(2)
+        _ = try create(observer)
+        let text = String(repeating: "界", count: 10_922)
+        XCTAssertEqual(text.utf8.count, 32_766)
+        for index in 0..<64 {
+            _ = try update(observer, ["sessionUpdate": "agent_message_chunk", "messageId": "message-\(index)",
+                                      "content": ["type": "text", "text": text]])
+            XCTAssertTrue(observer.isObserving)
+        }
+        let overflow = try update(observer, ["sessionUpdate": "agent_message_chunk", "messageId": "overflow",
+                                             "content": ["type": "text", "text": text]])
+        XCTAssertFalse(observer.isObserving)
+        XCTAssertTrue(overflow.contains { $0.status?.contains("观察已暂停") == true })
+        XCTAssertFalse(overflow.contains { $0.type == .sessionEnd || $0.observedState == "completed" })
+        XCTAssertTrue(try update(observer, ["sessionUpdate": "state_update", "state": "idle"]).isEmpty)
+    }
+
     func testNoEventsBeforeNegotiationAndUnsupportedVersionsRemainUnobserved() throws {
         let observer = try ACPEventObserver(host: "zed", source: "fixture")
         XCTAssertTrue(try request(observer, "session/new", id: 1, params: ["cwd": "/tmp/project"]).isEmpty)

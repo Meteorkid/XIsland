@@ -60,12 +60,20 @@ final class ACPEventObserver {
             if direction == .agentToClient { agentResponse(requestID, packet: packet) }
             else { clientResponse(requestID, packet: packet) }
         }
-        let retained = sessions.values.reduce(0) { sum, session in
-            sum + session.messages.values.reduce(0) { $0 + $1.utf8.count }
-                + session.tools.values.reduce(0) { $0 + $1.values.reduce(0) { $0 + (($1 as? String)?.utf8.count ?? 0) } }
-                + session.replay.reduce(0) { $0 + ($1.status?.utf8.count ?? 0) + ($1.prompt?.utf8.count ?? 0) + ($1.toolResult?.utf8.count ?? 0) }
-                + session.anonymousText.utf8.count
-        } + clientRequests.values.reduce(0) { $0 + ($1.prompt?.utf8.count ?? 0) }
+        var retained = 0
+        for session in sessions.values {
+            for text in session.messages.values { retained += text.utf8.count }
+            for tool in session.tools.values {
+                for value in tool.values { retained += (value as? String)?.utf8.count ?? 0 }
+            }
+            for message in session.replay {
+                retained += message.status?.utf8.count ?? 0
+                retained += message.prompt?.utf8.count ?? 0
+                retained += message.toolResult?.utf8.count ?? 0
+            }
+            retained += session.anonymousText.utf8.count
+        }
+        for request in clientRequests.values { retained += request.prompt?.utf8.count ?? 0 }
         if retained > 2_097_152 { return suspend() }
         return output
     }
