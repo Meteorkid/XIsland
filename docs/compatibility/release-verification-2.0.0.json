@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "releaseVersion": "2.0.0",
-  "generatedAt": "2026-10-16T08:58:09.650038+00:00",
+  "generatedAt": "2026-10-16T10:34:05.969660+00:00",
   "status": "release_candidate_verified",
   "scope": "Public sanitized pre-publication verification of the macOS 2.0.0 artifacts. GitHub CI and published download checks are recorded externally on the release commit and release notes.",
   "targetScope": {
@@ -28,9 +28,9 @@
       "architecture": "arm64",
       "minimumOS": "14.0",
       "dmgName": "XIsland-2.0.0.dmg",
-      "dmgSHA256": "286eb59e8d5b243de416ec9fa2ac6afe3b2f906d93511f1d9aab7ebe14845ef0",
-      "appSHA256": "5d78a8512cb62991e7374cc2fd3f58ca09f6ccec0da2aa846b527844544e714b",
-      "bridgeSHA256": "300025b900fd18a467347e5da6813a4c504864a8e3a49ceb266a1c448518dd06",
+      "dmgSHA256": "84be3fcbab6067cc6d30557247559d52bfb5ef8a7fa4ddbbad244a5587877d59",
+      "appSHA256": "66b5dbbaf3a5e43822e231bd184b893474a7dfa6c87efcab340d4727ef83cd01",
+      "bridgeSHA256": "08418750187ba9c97c4bd7ef00a2938c0b5a2754a7a44847a4fb900fec619fd6",
       "signature": "ad-hoc verified on build and read-only mounted DMG",
       "notarized": false
     },
@@ -45,10 +45,10 @@
     }
   },
   "releaseValidation": {
-    "sourceInputsSHA256": "66467745f67556a33b0e0682aa0faca4af9bed98ef5bfc963a9d869b565799ba",
+    "sourceInputsSHA256": "7f566a18b8abd17e7ce727c5a5aea90d429abc001e2516506747d801895084e5",
     "swift": {
       "status": "passed",
-      "tests": 1016,
+      "tests": 1017,
       "failures": 0,
       "skipped": 0,
       "renderSuitesEnabled": [
@@ -56,7 +56,7 @@
         "subagent_finality",
         "session_finality"
       ],
-      "logSHA256": "4000dbf97694c7ed84e04f8550e395b9487b30d080fd149c8afe58a335a0a3e2",
+      "logSHA256": "80f6c1fcdf84e05e1fe4e4c796366236f4ee26995e5566a43ad18b14bd290c6a",
       "renderTests": [
         "testRenderCustomQuestionPanels",
         "testRenderUnconfirmedSessionWithStaleToolActivity",
@@ -68,7 +68,7 @@
     "compiledBridge": {
       "status": "passed",
       "scenarios": 122,
-      "reportSHA256": "4b7abd79d4fe8ef9fb91698da85b1426ab7462ed6ce08c2a10bc722c102c4572",
+      "reportSHA256": "5d0908e4b4915bc643eb284f4aa40eb02592d5f1349d77a025ea2b2a4a4a85f2",
       "scope": "Synthetic payloads through packaged di-bridge; includes six Kiro V3 events, export/idempotence/remove/version gates and four GLM client payloads"
     },
     "vscodeCompanion": {
@@ -88,30 +88,37 @@
       "suites": {
         "test-history-migration-app": {
           "status": "passed",
-          "reportSHA256": "28899446b95507b8778f4995cffdd9ed3de59a9a58d069328d0915e2f6a0b7c4"
+          "reportSHA256": "a0e222c73cc570d79627a14b61c0c853667416ed5984e2c512c2570dcbeb4e35"
         },
         "test-codex-lifecycle-app": {
           "status": "passed",
-          "reportSHA256": "cfef3acd030873690747517f99bd230ca90eeee4ba6054db633cc8b0a617c2ea"
+          "reportSHA256": "32dc1ecb5cb180a18947cae829e25472f31485d07d1cac7a3d850a0ecc8ff401"
         },
         "test-main-finality-app": {
           "status": "passed",
-          "reportSHA256": "d2264561e20ef99989385dce7550e2eab65753b4f2503983d5e05a5bd0faffa6"
+          "reportSHA256": "d66571e382163c0544b3e27fd59ecb11d4bbd7244eead87a589429cd996db207"
         },
         "test-kimi-code-app": {
           "status": "passed",
-          "reportSHA256": "4b575bfe52c5fd5193edbdcd25ef97599faff299205ec7e2799e7a9c7ebeec5e"
+          "reportSHA256": "8f4676aeb29a5c5b40b9b7fcf5efe3afd2ba56cb2b0c8ed4abb19a37e310f0b8"
         },
         "test-vscode-app": {
           "status": "passed",
-          "reportSHA256": "0cf51f04b7e4c7773e360bbe2d922c55ea863c684d73737669b86b066e974b19"
+          "reportSHA256": "cc60953df209dcc7605fb64b6330f6dfc65340f8deed6d07aa37c56dc7624e1a"
         },
         "test-vscode-observation": {
           "status": "passed",
-          "reportSHA256": "128cde1761636e8ac1a9a640f10ccac801a5fd173ce42cb5f6383716376e1ae6"
+          "reportSHA256": "a12554ee84d9c30650504056053613dc8496568a91c7589713304ead12553d4d"
         }
       },
-      "scope": "Actual isolated XIsland application with synthetic vendor events, plus real migration of a 13-session old test store; not real Codex/Kimi/WorkBuddy vendor-client acceptance"
+      "scope": "Actual isolated XIsland application with synthetic vendor events, plus real migration of a 13-session old test store; not real Codex/Kimi/WorkBuddy vendor-client acceptance",
+      "migrationFixture": {
+        "version": "v1.13.1",
+        "sourceCommit": "90fdc0af202a86cabe94d59c6f1328314bf55cee",
+        "syntheticSessions": 13,
+        "provenanceSHA256": "774c0c8b01ce963d36b27e0db1c71131c4bb0318da5349d9840c3354b994c017",
+        "note": "Original temporary test store was no longer present. A fresh fixture was generated from unchanged stored-property declarations in the released version; no real user data."
+      }
     },
     "dmgContentsAndSignature": {
       "status": "passed",
@@ -120,25 +127,31 @@
       "architecture": "arm64",
       "binariesMatchTestedBuild": true,
       "signatureVerified": true,
-      "reportSHA256": "0111298d00b72371c23e55f43fdade2a3aec3533c77b9351ab504cc8d301ee7b"
+      "reportSHA256": "21d5634935999eebd6aaf0915b5be9d9c4de90e40d708049280719a345ed34b0"
     },
     "publicationManifestAudit": {
       "status": "passed",
       "files": 258,
       "privateRuntimeArtifactsExcluded": true,
-      "credentialPatternFindings": 0
+      "credentialPatternFindings": 0,
+      "scope": "Initial 258-file implementation commit was independently audited; subsequent two-file compiler fix and publication metadata are rechecked by root against the exact runtime source and asset hashes."
     },
     "githubCI": {
-      "status": "external_check",
-      "requiredBeforeRelease": true,
-      "lookup": "Tests workflow on the commit referenced by tag v2.0.0"
+      "status": "passed",
+      "runtimeSourceCommit": "38cfe072f2e673606cd63262fa5ec60e59937e00",
+      "runURL": "https://github.com/Meteorkid/XIsland/actions/runs/38883244324",
+      "tests": 1017,
+      "failures": 0,
+      "skipped": 6,
+      "skipScope": "Five opt-in rendering tests and compiled TypeScript frames; all six executed successfully in the local release suite",
+      "logSHA256": "7008f55d104d67c73e3fcca0b2b9c01bb087ae0131040dc834fac3139f38b40c"
     },
     "publishedAssetDownload": {
       "status": "post_publication_check",
       "required": true,
       "lookup": "Release notes record the downloaded asset SHA256 verification after publication"
     },
-    "sourceReference": "v2.0.0 tag; exact build inputs are hashed below",
+    "sourceReference": "Runtime source commit above; release tag also contains publication metadata updates only",
     "buildInputFiles": {
       "Assets/AppIcon.icns": "284e6f637f8c929802757ed7cd7607e8f2995d08714f3d0b3d687b138a99ceaa",
       "Assets/app-icon.png": "cd353cada971a891c0157d730ff413b5ab162d2802f7b4c2242b7b3fa043725a",
@@ -172,7 +185,7 @@
       "Scripts/test-workbuddy-plugin.py": "e71120ebdda3f8bf905f6d59a4607790be89ea5822eee2b8d7d7c246d1e25062",
       "Scripts/xisland": "fe2ec02506a458b6bc84f431ce8a06b77aa78d988f1aa292d24e7fe48a7aea12",
       "Sources/DIBridge/ACPConfigurationCommand.swift": "d55f0a632a0b4ff34f8752f9c735e8dfe7e3c2118505406806c9f88b97976e76",
-      "Sources/DIBridge/ACPEventObserver.swift": "d3b64fb5db420752f2d3db6cbfa79ef70bd80328ae723bd53d7189af6b00f09b",
+      "Sources/DIBridge/ACPEventObserver.swift": "6a64a08682af1eaa9eb7efff5a3d71aa70091f9e627a020208877938ae597b31",
       "Sources/DIBridge/ACPRunner.swift": "997056c9629fc650493ad8daa5e4b87689d8a729021d08b97fb3721ba0f2585e",
       "Sources/DIBridge/AiderLauncher.swift": "8a96f816759e715575029fffc1695dbeaee92f1f01b304bc5efde21d73984d7e",
       "Sources/DIBridge/AmazonQAgentConfiguration.swift": "9cf821bb4db3047334c590abc95e1d58e375b5d393d605a26d200068d8f88b96",
@@ -334,7 +347,7 @@
       "Tests/Fixtures/companion/kimi-code-hooks.json": "7183a4f0d010d05869c8c3cb094d67f0ab01a6ddea2d0af775f8997e6f80c35f",
       "Tests/Fixtures/companion/observation-events.json": "21fc320b0adf5abb3a5dc3b2d047c0c701fe606da234b388defcd138373da382",
       "Tests/TowerIslandTests/ACPCustomAgentConfigurationTests.swift": "63cce63fad70a59667dab986212f6c2925bfc9df7ed3dc08a965b8505d9c34a3",
-      "Tests/TowerIslandTests/ACPEventObserverTests.swift": "b27edd88f1a5e1c658566fb812766be93dffb84e67f73e9324a113c4cf78f02a",
+      "Tests/TowerIslandTests/ACPEventObserverTests.swift": "6ef44b69d795bd8b7781f755cdc7076a979e594e735bc095d072eae84205cefa",
       "Tests/TowerIslandTests/AgentFlowAggregatorTests.swift": "9d4ad6b28df85d47b79188ebd7b7f917d3843d185b0a0e3ef10d19054a1e5f43",
       "Tests/TowerIslandTests/AgentFlowViewTests.swift": "38037da9b8224f268ecbbb46c43d1339ee88171fcac6baf67507eecfbadaa652",
       "Tests/TowerIslandTests/AgentRegistryFallbackTests.swift": "a9fb78d8ccbb72e7a5a3773ba9803ec701ac88ccc15ec55f9dfced698dd05d45",
@@ -473,37 +486,37 @@
       "test-acp-proxy": {
         "status": "passed",
         "scenarios": 6,
-        "reportSHA256": "2fa487cd9f64b725f5f46232848f6c3331fb9c9adb63ae4529dff13655c73eaa",
+        "reportSHA256": "8874dca851004d87888898991d6b81bea8b236d41965ac679e6b95cea62339ec",
         "scope": "Offline fixture or exported-plugin command, not native vendor execution"
       },
       "test-aider-wrapper": {
         "status": "passed",
         "scenarios": 7,
-        "reportSHA256": "cfa115b6690e57b06a09e5424e35264a7eb4c09e49708cfb014783b5f6d4d048",
+        "reportSHA256": "b5128ac9a46166074a42076303cdd70fe8743cf33c084868c966fadd2c3f104f",
         "scope": "Offline fixture or exported-plugin command, not native vendor execution"
       },
       "test-amazonq-wrapper": {
         "status": "passed",
         "scenarios": 9,
-        "reportSHA256": "391dccbed77afda8baf540eca0d908199b7792c865033919b1c91afbafbd8d7b",
+        "reportSHA256": "d76315eca4a4f698a7d5c29ddfa60b42045decc1a6b777f04dfb857a51ea4341",
         "scope": "Offline fixture or exported-plugin command, not native vendor execution"
       },
       "test-continue-state": {
         "status": "passed",
         "scenarios": 6,
-        "reportSHA256": "0fec4b1a53fb3563310417762baeeee15f4846d6846086b346dd4ddafcf5d9df",
+        "reportSHA256": "5b334e510c6c81106cbc0d6937af6e1049e06cd8d13dae774de8389f4f36650a",
         "scope": "Offline fixture or exported-plugin command, not native vendor execution"
       },
       "test-cody-proxy": {
         "status": "passed",
         "scenarios": 5,
-        "reportSHA256": "1d81ea12fa2856e31f33752f241469127068f87e524e1632449612f4ae9df8b5",
+        "reportSHA256": "f329bb838be2bb46b093b8d1a008a154404b06b2f6d0d767d198ae2ea90b3c90",
         "scope": "Offline fixture or exported-plugin command, not native vendor execution"
       },
       "test-workbuddy-plugin": {
         "status": "passed",
         "scenarios": 11,
-        "reportSHA256": "7df8d71f3ba99e749e66cd6334a8a434cceaecedea9b863374fcb1f9359d5c3e",
+        "reportSHA256": "386b6a8b5c63551113c3eb0f9e263769071f8ea69b2720bb83bd62b419a2a7b0",
         "scope": "Offline fixture or exported-plugin command, not native vendor execution"
       }
     },
@@ -527,11 +540,11 @@
       "realProviderVerified": false,
       "reports": {
         "read": {
-          "sha256": "5f4751b747455c68040424f36c650b429062916b4f78177e4f894f78b989b9be",
+          "sha256": "49313a10988d93700f971edf4d640ea3f324378c937a21d8aa8add382d0d32b1",
           "driverSHA256": "439722c99a63f9c5ce60bc5c3c782343a2bea001aefe2bfd95f025a0901d49f7"
         },
         "reject": {
-          "sha256": "1b2ace89f3ec9133019f1007e099f605670c8caa90cf1f23e3eb473f9dcbb858",
+          "sha256": "ef6003e2a95239dba21343822c9a4e46cd39d03bea94366e986b12d5f387083e",
           "driverSHA256": "439722c99a63f9c5ce60bc5c3c782343a2bea001aefe2bfd95f025a0901d49f7"
         }
       }
@@ -548,6 +561,15 @@
       "assertionFailures": 4,
       "logSHA256": "306e09e3f9c359bfab57752b4ee1e0fbb62c02527ff318f529e8dd35465c4159",
       "resolution": "Updated three obsolete Kiro/GLM route-status assertions; isolated the backup-failure test target from its SwiftData fixture writer while retaining byte equality. The original database-byte failure was not reproduced in 20 standalone diagnostic runs; its exact timing cause remains unproven."
+    },
+    "sourceCommit": "38cfe072f2e673606cd63262fa5ec60e59937e00",
+    "ciCompilerFix": {
+      "initialRun": "https://github.com/Meteorkid/XIsland/actions/runs/38880243793",
+      "error": "Xcode 16.4 type-check timeout in deeply nested ACP retained-byte reduction",
+      "change": "Equivalent explicit loops; UTF-8 aggregate memory-budget regression added",
+      "focusedTests": 19,
+      "focusedFailures": 0,
+      "logSHA256": "d2d9c456ee8ec33e364017bce393a7f50da9f2460cdcea35d801666c8c031fe4"
     }
   },
   "historicalEvidence": [

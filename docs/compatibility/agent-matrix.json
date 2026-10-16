@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "checkedAt": "2026-10-15",
+  "checkedAt": "2026-10-16",
   "goal": "全部30项真实适配，逐项保留未完成与能力限制",
   "verificationRule": "只有协议证据、契约测试和真实版本验收均通过，才能标记该目标已完成。接口缺口不等于完成。",
   "targets": [
@@ -11,12 +11,12 @@
       "protocolEvidence": "verified",
       "implementation": "implemented_contract_tested",
       "component": "NativeHookProfile",
-      "contractTests": "Swift 992 with three rendering suites, 0 failures; 109 compiled bridge scenarios; two tool-finality regressions passed after eight initial assertion failures",
-      "runtimeVerification": "Claude Code 2.1.234 isolated native Read and island AX denial of Write with local mock model; 12 hooks / 7 event types / 6 App snapshots / 2 final durable-history checkpoints on App 35fbe0185595",
+      "contractTests": "Release 2.0.0: 1017 Swift tests including all opt-in rendering, 122 compiled bridge scenarios; isolated native Read with pre-response prompt history and island denial passed",
+      "runtimeVerification": "Claude Code 2.1.234 with local mock model on release App 66b5dbbaf3a5: Read, early prompt history and XIsland denial; 12 hooks / 7 event types / 6 App snapshots / 2 final full-history checkpoints",
       "verifiedVersions": [],
       "complete": false,
       "limits": "2.1.234真实Read和岛上拒绝已通过；明确SessionEnd将未决调用保留为完成未确认，不再显示运行中。原生权限hook缺tool_use_id，不能猜测逐调用拒绝归属；运行中会话与首提示现已即时保存，失败可重试；最终发行构建的原生复验另列。允许/取消/超时、并发权限、子代理、执行失败、TUI、前置问答、真实服务商与其他版本仍待验收。",
-      "lastCheckedAt": "2026-10-15",
+      "lastCheckedAt": "2026-10-16",
       "mainStopVerification": {
         "state": "completionUnconfirmed",
         "scope": "synthetic vendor events; no native client launch"
@@ -37,7 +37,7 @@
           "Stop",
           "UserPromptSubmit"
         ],
-        "appSHA256": "35fbe0185595b6ef1160ec6c52d4ec8b90abe94845a804ebceea999e98606f03"
+        "appSHA256": "66b5dbbaf3a5e43822e231bd184b893474a7dfa6c87efcab340d4727ef83cd01"
       },
       "publicVerification": "release-verification-2.0.0.json"
     },
