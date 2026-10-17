@@ -68,6 +68,7 @@ final class SessionManager {
     private var closedAmazonQWrapperIDs: Set<String> = []
     var audioEngine: AudioEngine?
     var persistenceManager: SessionPersistenceManager?
+    @ObservationIgnored var onIntegrationActivity: ((AgentType) -> Void)?
     private(set) var unsavedSessionIDs: Set<String> = []
     @ObservationIgnored private var unsavedKimiBackgroundTasks: [String: [String: DINativeBackgroundTask]] = [:]
     /// 诊断回执计数；包含被忽略的消息，只在同步处理和持久化路径返回后递增。
@@ -626,6 +627,31 @@ final class SessionManager {
         resolvedAgentType(for: message) == .kimi && message.nativeEvent?.hasPrefix("kimi_code.") == true
     }
 
+    /// 只由消息的接受分支调用；历史加载和默认来源推断不能证明客户端已接通。
+    private func reportIntegrationActivity(_ message: DIMessage, session: AgentSession) {
+        guard message.nativeMessageReplay != true, session.status != .observationUnavailable else { return }
+        let identifiers = [message.sessionId, message.nativeTurnId, message.nativeMessageId, message.nativeAgentId,
+                           message.nativeRequestId].compactMap { $0 }
+        guard identifiers.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !$0.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) }) else { return }
+        let source: AgentType?
+        if let explicit = message.agentType { source = AgentType.from(explicit) }
+        else {
+            source = message.sessionId.split(separator: "-", maxSplits: 1).first
+                .flatMap { AgentType(rawValue: String($0)) }
+        }
+        guard let source, source.isSupported, source != .glm else { return }
+        let agent = resolvedAgentType(for: message)
+        guard agent == session.agentType else { return }
+        if agent == .codex, let turn = message.nativeTurnId, let known = codexTurns[session.id],
+           known.current != turn {
+            let beginsNewTurn = ["UserPromptSubmit", "PreCompact"].contains(message.nativeEvent ?? "")
+                && !known.observed.contains(turn)
+            guard beginsNewTurn else { return }
+        }
+        onIntegrationActivity?(agent)
+    }
+
     private func isCodexTurnObservation(_ message: DIMessage) -> Bool {
         resolvedAgentType(for: message) == .codex
             && ["Interrupt", "PreCompact", "PostCompact"].contains(message.nativeEvent ?? "")
@@ -673,6 +699,7 @@ final class SessionManager {
                 if existing == nil, orphan.baseStatus == .completed { observation.endSession() }
             }
             mergeUnsavedKimiBackgroundTasks(into: &observation, sessionID: message.sessionId)
+            let previousTask = observation.backgroundTasks?[task.id]
             observation.observeBackgroundTask(task)
             guard let recorded = observation.backgroundTasks?[task.id] else { return true }
             if let existing {
@@ -690,7 +717,11 @@ final class SessionManager {
                     // 隐藏历史对象不在 sessions 中，必须另存事实供恢复写入后重试。
                     unsavedKimiBackgroundTasks[existing.id] = existing.kimiCodeApprovalObservation?.backgroundTasks ?? [:]
                 }
-                return recorded.kind == "agent" || visible == nil || closed
+                let handled = recorded.kind == "agent" || visible == nil || closed
+                if handled, !closed, sessionById(existing.id) != nil, previousTask != recorded {
+                    reportIntegrationActivity(message, session: existing)
+                }
+                return handled
             }
             if recorded.status != "running" || observation.baseStatus == .completed {
                 persistKimiCodeOrphan(observation, sessionID: message.sessionId)
@@ -706,6 +737,7 @@ final class SessionManager {
             synchronizeKimiCodeBackgroundTasks(session)
             applyKimiCodeProjection(session)
             persistSession(session)
+            reportIntegrationActivity(message, session: session)
         } catch {
             print("[SessionManager] Kimi background task facts could not be loaded: \(error.localizedDescription)")
         }
@@ -776,6 +808,7 @@ final class SessionManager {
                 }
                 var observation = existing.kimiCodeApprovalObservation
                     ?? KimiCodeApprovalObservation(baseStatus: existing.status, baseStatusText: existing.statusText)
+                let previous = observation
                 if isRequest { observation.observeRequest(kimiCodeRequest(message)) }
                 else { observation.observeResult(kimiCodeRequest(message)) }
                 existing.kimiCodeApprovalObservation = observation
@@ -785,6 +818,13 @@ final class SessionManager {
                     updateIndexForAppend(existing, at: sessions.count - 1)
                 }
                 persistSession(existing)
+                if !closed, sessionById(existing.id) != nil, let request = kimiCodeRequest(message) {
+                    let acceptedRequest = isRequest && observation.pending[request.id] == request
+                        && previous.pending[request.id] != request
+                    let acceptedResult = isResult && previous.pending[request.id] == request
+                        && observation.resolved[request.id] == request
+                    if acceptedRequest || acceptedResult { reportIntegrationActivity(message, session: existing) }
+                }
                 return true
             }
             var observation = try loadKimiCodeOrphan(message.sessionId)
@@ -808,6 +848,9 @@ final class SessionManager {
             session.kimiCodeApprovalObservation = observation
             applyKimiCodeProjection(session)
             persistSession(session)
+            if let request = kimiCodeRequest(message), observation.pending[request.id] == request {
+                reportIntegrationActivity(message, session: session)
+            }
         } catch {
             // 历史/ledger 读取失败时保留磁盘事实，不能退回空状态继续处理。
             print("[SessionManager] Kimi approval observation could not be restored: \(error.localizedDescription)")
@@ -1066,6 +1109,11 @@ final class SessionManager {
 
         // 有审批时强制置顶显示
         forceToShowForApproval()
+        if message.type == .permissionRequest,
+           [message.tool, message.permDescription, message.nativeRequestId].compactMap({ $0 })
+            .contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            reportIntegrationActivity(message, session: session)
+        }
     }
 
     func handleQuestionRequest(_ message: DIMessage, delivery: InteractionDelivery? = nil, respond: @escaping @Sendable (String) -> Void, cancel: (@Sendable () -> Void)? = nil) {
@@ -1127,6 +1175,7 @@ final class SessionManager {
 
         // 有交互时强制置顶显示
         forceToShowForApproval()
+        if message.type == .question { reportIntegrationActivity(message, session: session) }
     }
 
     func handlePlanReview(_ message: DIMessage, delivery: InteractionDelivery? = nil, cancel: (@Sendable () -> Void)? = nil, respond: @escaping @Sendable (Bool, String?) -> Void) {
@@ -1156,6 +1205,10 @@ final class SessionManager {
 
         // 有审批时强制置顶显示
         forceToShowForApproval()
+        if message.type == .planReview,
+           !(message.planMarkdown ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            reportIntegrationActivity(message, session: session)
+        }
     }
 
     private func handleInteractionResolved(_ message: DIMessage) {
@@ -1189,6 +1242,7 @@ final class SessionManager {
         }
         // 原端已处理的请求不再占用显示权，也不触发本地审批后的窗口切换。
         approvalInterruption.cancelIfFinished(hasPendingInteractions: hasInteraction)
+        reportIntegrationActivity(message, session: session)
     }
 
     func approvePermission(session: AgentSession, requestID: UUID? = nil) {
@@ -1342,6 +1396,7 @@ final class SessionManager {
         if acceptsActivity {
             selectedSessionId = session.id
             selectNextInteraction()
+            reportIntegrationActivity(message, session: session)
         }
     }
 
@@ -1350,6 +1405,7 @@ final class SessionManager {
 
         guard let session = sessionForEndMessage(message) else { return }
         let alreadyCompleted = session.status == .completed
+        let wasUnavailable = session.status == .observationUnavailable
         cancelPendingInteractions(session)
         selectNextInteraction()
         updateTokenUsage(session: session, message: message)
@@ -1397,6 +1453,7 @@ final class SessionManager {
         if session.status == .completed, selectedSessionId == session.id {
             selectedSessionId = activeSessions.first?.id
         }
+        if !alreadyCompleted, !wasUnavailable { reportIntegrationActivity(message, session: session) }
     }
 
     private func cancelPendingInteractions(_ session: AgentSession) {
@@ -1540,6 +1597,7 @@ final class SessionManager {
                 if message.nativeMessageReplay != true, session.status != .completed, session.status != .observationUnavailable {
                     session.events[index].isComplete = false
                     if index == session.events.lastIndex(where: { $0.isRunning }) { session.currentTool = session.events[index].tool }
+                    reportIntegrationActivity(message, session: session)
                 }
             }
             return
@@ -1553,6 +1611,7 @@ final class SessionManager {
         session.currentTool = message.tool
         if refreshCheckpoint { persistSession(session) }
         audioEngine?.play(.toolStart, session: session)
+        reportIntegrationActivity(message, session: session)
     }
 
     private func handleToolComplete(_ message: DIMessage) {
@@ -1593,11 +1652,13 @@ final class SessionManager {
         if preservesTerminalState, resolvedAgentType(for: message) == .claudeCode {
             persistSession(session)
         }
+        if !preservesTerminalState { reportIntegrationActivity(message, session: session) }
     }
 
     private func handleStatus(_ message: DIMessage) {
         let session = findOrCreateSession(message)
         let previousStatus = session.status
+        let wasClosed = previousStatus == .completed || previousStatus == .observationUnavailable
         let completionUnconfirmed = message.observedState == SessionStatus.completionUnconfirmed.rawValue
         let informational = message.statusIsAssistantReply == false && message.observedState == nil
         let preserveExistingState = (completionUnconfirmed || informational) && (session.hasPendingInteraction
@@ -1615,6 +1676,13 @@ final class SessionManager {
         }
         let text = message.status ?? ""
         var latestMessage = true
+        defer {
+            let resumed = session.status != .completed && session.status != .observationUnavailable
+            let knownState = message.observedState.flatMap(SessionStatus.init(rawValue:)) != nil
+            if latestMessage, (!wasClosed || resumed), knownState || !text.isEmpty || !(message.prompt ?? "").isEmpty {
+                reportIntegrationActivity(message, session: session)
+            }
+        }
         if message.status == "", message.statusIsAssistantReply == true,
            let id = nativeChatID(message, role: .assistant), let index = session.chatHistory.firstIndex(where: { $0.id == id }) {
             let wasLatest = index == session.chatHistory.indices.last
@@ -1749,6 +1817,7 @@ final class SessionManager {
                parent.events[index].completionUnconfirmed, !parent.events[index].isComplete {
                 parent.events[index].completionUnconfirmed = false
                 parent.lastActivityTime = Date()
+                reportIntegrationActivity(message, session: parent)
             }
             return
         }
@@ -1759,6 +1828,7 @@ final class SessionManager {
         parent.lastActivityTime = Date()
         let event = ToolEvent(tool: "Subagent", input: message.prompt, toolCallId: message.subagentId)
         parent.events.append(event)
+        reportIntegrationActivity(message, session: parent)
     }
 
     private func handleSubagentEnd(_ message: DIMessage) {
@@ -1785,6 +1855,7 @@ final class SessionManager {
             if parent.currentTool == "Subagent" {
                 parent.currentTool = parent.events.last(where: { $0.isRunning })?.tool
             }
+            reportIntegrationActivity(message, session: parent)
             return
         }
         parent.lastActivityTime = Date()
@@ -1803,6 +1874,7 @@ final class SessionManager {
                 parent.currentTool = parent.events.last(where: { $0.isRunning })?.tool
             }
             if hasCodewhaleOutcome { persistSession(parent) }
+            reportIntegrationActivity(message, session: parent)
         }
     }
 
@@ -1814,6 +1886,7 @@ final class SessionManager {
         audioEngine?.play(.contextCompacting, session: session)
         updateTokenUsage(session: session, message: message)
         if refreshCheckpoint || isCodexTurnObservation(message) { persistSession(session) }
+        reportIntegrationActivity(message, session: session)
         // 有原生压缩结果的入口等待事实，不用旧客户端的计时器推断恢复。
         if isKimiCodeMessage(message), message.nativeEvent == "kimi_code.PreCompact" { return }
         if isCodexTurnObservation(message), message.nativeEvent == "PreCompact" { return }
@@ -1836,6 +1909,8 @@ final class SessionManager {
     private func handleRecap(_ message: DIMessage) {
         let session = findOrCreateSession(message)
         session.recapText = message.recapText
+        if session.status != .completed, session.status != .observationUnavailable,
+           !(message.recapText ?? "").isEmpty { reportIntegrationActivity(message, session: session) }
     }
 
     /// Legacy activity may imply an external response; native requests require

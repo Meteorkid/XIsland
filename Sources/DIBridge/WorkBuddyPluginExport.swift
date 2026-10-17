@@ -1,25 +1,15 @@
 import Foundation
 import Darwin
+import DIShared
 
 /// 仅向调用方指定的新目录导出；不修改 WorkBuddy 插件市场、启用状态或用户 settings。
 enum WorkBuddyPluginExport {
     enum ExportError: Error { case invalidPath, destinationExists }
-    static let events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-                         "Stop", "FinalStop", "SessionEnd", "SubagentStart", "SubagentStop", "Notification"]
+    static let events = WorkBuddyPluginConfiguration.events
 
     static func files(bridgePath: String) throws -> [String: Data] {
-        guard bridgePath.hasPrefix("/"), !bridgePath.utf8.contains(0), !bridgePath.contains("\n") else { throw ExportError.invalidPath }
-        let hooks = Dictionary(uniqueKeysWithValues: events.map { event in
-            (event, [["hooks": [["type": "command", "command": AiderLauncher.shellQuote(bridgePath)
-                + " --agent workbuddy --adapter workbuddy_5_7_6 --hook " + event, "timeout": 3]]]])
-        })
-        let manifest = ["name": "xisland-workbuddy-observer", "version": "0.1.0",
-            "description": "XIsland observation contract reviewed against WorkBuddy 5.7.6 and 5.7.7. Native client acceptance pending; no permission decisions."]
-        let marketplace: [String: Any] = ["name": "xisland-workbuddy-local", "owner": ["name": "XIsland"],
-            "plugins": [["name": manifest["name"]!, "source": "./", "version": manifest["version"]!,
-                         "description": manifest["description"]!]]]
-        return [".codebuddy-plugin/plugin.json": try encode(manifest), "hooks/hooks.json": try encode(["hooks": hooks]),
-                ".codebuddy-plugin/marketplace.json": try encode(marketplace)]
+        do { return try WorkBuddyPluginConfiguration.files(bridgePath: bridgePath) }
+        catch WorkBuddyPluginConfiguration.ConfigurationError.invalidBridgePath { throw ExportError.invalidPath }
     }
 
     static func write(to destination: URL, bridgePath: String) throws {
@@ -66,11 +56,5 @@ enum WorkBuddyPluginExport {
             fputs("[XIsland] 导出失败：需要新目录，且父目录必须存在；未修改 WorkBuddy 配置。\n", stderr)
             return 65
         }
-    }
-
-    private static func encode(_ object: Any) throws -> Data {
-        var data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
-        data.append(10)
-        return data
     }
 }

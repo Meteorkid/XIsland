@@ -50,8 +50,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let quotaTracker: QuotaTracker
     let persistenceManager = SessionPersistenceManager()
     let themeManager = ThemeManager()
+    let integrationSetupManager: IntegrationSetupManager
     private var socketServer: SocketServer?
     private var hookRepairTimer: Timer?
+    private var integrationRefreshTask: Task<Void, Never>?
+    private var integrationReminderTask: Task<Void, Never>?
+    private var integrationWindow: NSWindow?
+    private var integrationWindowObserver: NSObjectProtocol?
+    private var integrationActivationObserver: NSObjectProtocol?
+    private var recheckIntegrationOnActivation = false
     var notchWindow: NotchWindow?
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
@@ -75,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.launchHooks = launchHooks
         self.sessionManager = SessionManager(testConfiguration: testConfiguration)
         self.quotaTracker = QuotaTracker(testConfiguration: testConfiguration)
+        self.integrationSetupManager = IntegrationSetupManager(environment: testConfiguration.isEnabled ? .isolated : nil)
         super.init()
     }
 
@@ -175,6 +183,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         socketServer?.stop()
+        hookRepairTimer?.invalidate()
+        integrationRefreshTask?.cancel()
+        integrationReminderTask?.cancel()
+        if let observer = integrationWindowObserver { NotificationCenter.default.removeObserver(observer) }
+        if let observer = integrationActivationObserver { NotificationCenter.default.removeObserver(observer) }
         if let observer = islandHideObserver {
             DistributedNotificationCenter.default().removeObserver(observer)
             islandHideObserver = nil
@@ -379,7 +392,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Show Island", action: #selector(showNotch), keyEquivalent: "s"))
-        menu.addItem(NSMenuItem(title: "Configure Agents...", action: #selector(reconfigure), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: integrationSetupTitle, action: #selector(showIntegrationSetup), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         let checkForUpdatesItem = NSMenuItem(
             title: "Check for Updates...",
@@ -437,11 +450,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func performProductionGlobalStartup() {
+        sessionManager.onIntegrationActivity = { [weak self] agent in
+            self?.integrationSetupManager.recordActivity(from: agent)
+        }
+        integrationSetupManager.onNeedsAttention = { [weak self] in
+            self?.scheduleIntegrationReminder()
+        }
         startSocketServer()
-        ZeroConfigManager.configureAllAgents()
-
-        hookRepairTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in
-            ZeroConfigManager.repairHooksIfNeeded()
+        integrationRefreshTask = Task { [weak self] in
+            await self?.integrationSetupManager.refresh(prepareAutomatically: true)
+        }
+        hookRepairTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.integrationSetupManager.refresh(prepareAutomatically: true)
+            }
+        }
+        integrationActivationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: NSApp, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.recheckIntegrationOnActivation else { return }
+                self.recheckIntegrationOnActivation = false
+                await self.integrationSetupManager.refresh()
+            }
         }
     }
 
@@ -561,8 +592,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func reconfigure() {
-        ZeroConfigManager.configureAllAgents()
+    private var integrationSetupTitle: String {
+        L10n.effectiveLanguage.hasPrefix("zh") ? "软件接入与授权…" : "App Connections…"
+    }
+
+    private func scheduleIntegrationReminder() {
+        guard !testConfiguration.isEnabled, integrationWindow?.isVisible != true,
+              integrationReminderTask == nil else { return }
+        integrationReminderTask = Task { [weak self] in
+            defer { self?.integrationReminderTask = nil }
+            // 不盖住用户正在处理的真实审批；不因正在忙而丢掉首次提醒。
+            while let self, !Task.isCancelled, self.integrationSetupManager.hasUnpresentedReminder {
+                let hasInteraction = self.sessionManager.sessions.contains {
+                    $0.pendingPermission != nil || $0.pendingQuestion != nil || $0.pendingPlanReview != nil
+                }
+                if !hasInteraction {
+                    self.showIntegrationSetup()
+                    return
+                }
+                try? await Task.sleep(for: .seconds(10))
+            }
+        }
+    }
+
+    @objc func showIntegrationSetup() {
+        if let window = integrationWindow, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 640),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        panel.title = L10n.effectiveLanguage.hasPrefix("zh") ? "X Island · 软件接入与授权" : "X Island · App Connections"
+        panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = false
+        panel.contentView = NSHostingView(rootView: IntegrationSetupHost(
+            manager: integrationSetupManager,
+            onOpenClient: { [weak self] in self?.openIntegrationClient($0) },
+            onOpenGuide: { agent in
+                if let url = IntegrationSetupDescriptor.descriptor(for: agent).setupURL { NSWorkspace.shared.open(url) }
+            },
+            onLater: { [weak self] in self?.integrationWindow?.close() },
+            onPrepareFiles: { [weak self] agent in
+                guard let self, !self.testConfiguration.isEnabled,
+                      let url = self.integrationSetupManager.prepareFiles(for: agent) else { return }
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }))
+        panel.center()
+        integrationWindow = panel
+        integrationSetupManager.markPresented()
+        if let observer = integrationWindowObserver { NotificationCenter.default.removeObserver(observer) }
+        integrationWindowObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: panel, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.integrationSetupManager.markPresented()
+                self?.integrationWindow = nil
+            }
+        }
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        // 测试进程只呈现注入的界面，不访问生产客户端或配置。
+        if !testConfiguration.isEnabled, integrationSetupManager.rows.isEmpty {
+            Task { [weak self] in await self?.integrationSetupManager.refresh() }
+        }
+    }
+
+    private func openIntegrationClient(_ agent: AgentType) {
+        guard !testConfiguration.isEnabled else { return }
+        if let url = integrationSetupManager.appURL(for: agent) {
+            recheckIntegrationOnActivation = true
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        } else if let guide = IntegrationSetupDescriptor.descriptor(for: agent).setupURL {
+            NSWorkspace.shared.open(guide)
+        }
     }
 
     @objc func checkForUpdatesFromMenu() {

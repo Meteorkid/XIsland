@@ -19,9 +19,12 @@ enum ZeroConfigManager {
     private static let home = FileManager.default.homeDirectoryForCurrentUser.path
     private static let autoConfigKeyPrefix = "autoConfigure."
 
-    static func configureAllAgents() {
+    @MainActor
+    static func configureAllAgents(agents: Set<AgentType>? = nil) {
+        let detected = IntegrationSetupDiscovery.automaticAgents(in: IntegrationSetupDiscovery.scan(), requested: agents)
+        guard !detected.isEmpty else { return }
         syncCommandLineTools()
-        for agent in AgentType.allCases where isAutoConfigEnabled(for: agent) {
+        for agent in AgentType.allCases where detected.contains(agent) && isAutoConfigEnabled(for: agent) {
             configure(agent)
         }
         print("[ZeroConfig] Supported agent configurations checked")
@@ -431,11 +434,13 @@ enum ZeroConfigManager {
         return !WindsurfHookConfiguration.isConfigured(in: config, bridgePath: bridge)
     }
 
-    static func repairHooksIfNeeded() {
+    @MainActor
+    static func repairHooksIfNeeded(agents: Set<AgentType>? = nil) {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let detected = IntegrationSetupDiscovery.automaticAgents(in: IntegrationSetupDiscovery.scan(), requested: agents)
 
         // 按完整事件集合检测；只剩一条旧命令不能视为配置正常。
-        for agent in AgentType.allCases where isAutoConfigEnabled(for: agent) {
+        for agent in AgentType.allCases where detected.contains(agent) && isAutoConfigEnabled(for: agent) {
             if shouldRepairNativeHooks(for: agent, homeDirectory: home) {
                 configure(agent)
             }
@@ -449,7 +454,7 @@ enum ZeroConfigManager {
         ]
 
         for (agent, path) in fileAgents {
-            guard isAutoConfigEnabled(for: agent) else { continue }
+            guard detected.contains(agent), isAutoConfigEnabled(for: agent) else { continue }
             if let text = try? String(contentsOfFile: path, encoding: .utf8),
                ([AgentType.amp, .pi, .openCode].contains(agent) ? !hasConfiguration(for: agent) : !text.contains("di-bridge")) {
                 configure(agent)
@@ -463,7 +468,7 @@ enum ZeroConfigManager {
         ]
 
         for (agent, path) in wrapperAgents {
-            guard isAutoConfigEnabled(for: agent),
+            guard detected.contains(agent), isAutoConfigEnabled(for: agent),
                   !FileManager.default.fileExists(atPath: path) else { continue }
             configure(agent)
             print("[ZeroConfig] Repaired \(agent.displayName) wrapper at \(path)")
@@ -477,7 +482,7 @@ enum ZeroConfigManager {
         return stable
     }
 
-    private static func syncCommandLineTools() {
+    static func syncCommandLineTools() {
         let binDir = "\(home)/.xisland/bin"
         ensureDir(binDir)
         ensureDir("\(binDir)/lib")
@@ -1029,7 +1034,7 @@ enum ZeroConfigManager {
         ]
     }
 
-    private static func hasConfiguration(for agent: AgentType) -> Bool {
+    static func hasConfiguration(for agent: AgentType) -> Bool {
         if usesCompanionExtension(agent) || usesACPBridge(agent) || usesStateObserver(agent) || usesCodyBridge(agent) || usesAmazonQWrapper(agent) || usesWorkBuddyPlugin(agent) || hasUnverifiedIntegration(agent) { return false }
         if agent == .codeBuddy {
             let url = URL(fileURLWithPath: home).appendingPathComponent(CodeBuddyHookConfiguration.relativeConfigPath)

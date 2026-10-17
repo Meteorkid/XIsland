@@ -36,6 +36,23 @@ final class StartupIsolationTests: XCTestCase {
         XCTAssertTrue(tracker.quotas.isEmpty)
     }
 
+    func testAppDelegateIntegrationRefreshUsesIsolatedEnvironmentDuringTests() async {
+        for configuration in [isolatedConfiguration(), AppTestConfiguration.make(arguments: [], environment: [:])] {
+            let delegate = AppDelegate(testConfiguration: configuration)
+            let manager = delegate.integrationSetupManager
+
+            await manager.refresh(prepareAutomatically: true)
+
+            XCTAssertEqual(manager.rows.count, AgentType.allCases.filter(\.isSupported).count)
+            XCTAssertTrue(manager.rows.allSatisfy { $0.phase == .notInstalled })
+            XCTAssertFalse(manager.hasUnpresentedReminder)
+            XCTAssertEqual(manager.attentionCount, 0)
+            XCTAssertFalse(manager.isRefreshing)
+            XCTAssertNil(manager.prepareFiles(for: .workBuddy))
+            XCTAssertNil(manager.prepareFiles(for: .kiro))
+        }
+    }
+
     func testKeychainEntryPointsRejectAccessDuringXCTest() {
         let provider = "test-isolation-" + UUID().uuidString
 

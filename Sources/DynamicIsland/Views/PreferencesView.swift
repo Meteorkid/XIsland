@@ -566,24 +566,27 @@ struct PreferencesView: View {
 
     private var agentsPane: some View {
         VStack(alignment: .leading, spacing: 20) {
+            agentIntegrationEntry
             section(L10n.sectionCLIHooks) {
                 card {
-                    ForEach(Array(AgentType.allCases.enumerated()), id: \.element.id) { index, agent in
+                    ForEach(Array(AgentType.allCases.filter(\.isSupported).enumerated()), id: \.element.id) { index, agent in
                         hookRow(agent)
-                        if index < AgentType.allCases.count - 1 {
+                        if index < AgentType.allCases.filter(\.isSupported).count - 1 {
                             dividerLine
                         }
                     }
                 }
 
-                Button("Reconfigure All Hooks") {
-                    ZeroConfigManager.configureAllAgents()
+                Button(integrationCopy("管理接入与授权", "Manage connections and authorization")) {
+                    AppDelegate.shared?.showIntegrationSetup()
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.blue)
+                .accessibilityIdentifier("preferences.integration-setup.manage")
 
-                Text("Hooks auto-configure on launch. Use toggles to control per-agent setup.")
+                Text(integrationCopy("配置完成不代表已连接。首次授权或信任请在对应客户端确认。",
+                                     "A prepared configuration does not confirm a connection. Complete any first-time authorization or trust in the original app."))
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
             }
@@ -691,6 +694,9 @@ struct PreferencesView: View {
             kimiAPIKey = QuotaTracker.loadAPIKey(for: "kimi") ?? ""
             deepseekAPIKey = QuotaTracker.loadAPIKey(for: "deepseek") ?? ""
             glmAPIKey = QuotaTracker.loadAPIKey(for: "glm") ?? ""
+        }
+        .task {
+            await AppDelegate.shared?.integrationSetupManager.refresh()
         }
         .sheet(isPresented: $showAddServerSheet) {
             addServerSheet
@@ -1096,11 +1102,39 @@ struct PreferencesView: View {
 
     // MARK: - Agent rows
 
+    private var agentIntegrationEntry: some View {
+        let manager = AppDelegate.shared?.integrationSetupManager
+        return section(integrationCopy("软件接入与授权", "App connections and authorization")) {
+            card {
+                row(integrationCopy("完成软件接入", "Connect your apps"),
+                    subtitle: integrationCopy("仅支持的项目能自动配置；其他项目按步骤在客户端启用。",
+                                              "Supported integrations can be configured automatically; enable the others in their apps.")) {
+                    VStack(alignment: .trailing, spacing: 8) {
+                        if let manager {
+                            if manager.isRefreshing {
+                                ProgressView().controlSize(.small)
+                            } else if manager.attentionCount > 0 {
+                                StatusPill(title: integrationCopy("\(manager.attentionCount) 项待处理", "\(manager.attentionCount) need attention"),
+                                           color: .orange)
+                                    .accessibilityIdentifier("preferences.integration-setup.attention-count")
+                            }
+                        }
+                        Button(integrationCopy("查看与处理", "Review connections")) {
+                            AppDelegate.shared?.showIntegrationSetup()
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("preferences.integration-setup.open")
+                    }
+                }
+            }
+        }
+    }
+
     private func hookRow(_ agent: AgentType) -> some View {
         let status = ZeroConfigManager.hookStatus(for: agent)
-        let label: String = switch status {
-        case .active: L10n.hookActive
-        case .inactive: L10n.hookOff
+        let setup = AppDelegate.shared?.integrationSetupManager.rows.first { $0.agent == agent }
+        let routeLabel: String? = switch status {
+        case .active, .inactive: nil
         case .externalExtension: L10n.hookViaExtension
         case .unverified: L10n.hookPending
         case .externalWorkBuddy: L10n.hookViaWorkBuddy
@@ -1111,16 +1145,26 @@ struct PreferencesView: View {
         case .modelSource: L10n.hookViaModelClient
         case .externalKiro: L10n.hookViaKiro
         }
-        return row(agent.displayName) {
+        let label = (agent == .glm ? routeLabel : setup.map { integrationStatusLabel($0.phase) })
+            ?? routeLabel
+            ?? integrationCopy(status == .active ? "配置待验证" : "未配置",
+                               status == .active ? "Configuration unverified" : "Not configured")
+        let color: Color = switch setup?.phase {
+        case .connected: .green
+        case .needsAuthorization, .checkFailed: .orange
+        default: .secondary.opacity(0.4)
+        }
+        return row(agent.displayName, subtitle: setup == nil ? nil : routeLabel) {
             HStack(spacing: 10) {
                 HStack(spacing: 4) {
                     Circle()
-                        .fill(status == .active ? .green : Color.secondary.opacity(0.4))
+                        .fill(color)
                         .frame(width: 6, height: 6)
                     Text(label)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
+                .accessibilityIdentifier("preferences.integration-status.\(agent.rawValue)")
                 .help(status == .externalKiro ? L10n.hookKiroHint : status == .modelSource ? L10n.hookModelClientHint : status == .externalWorkBuddy ? L10n.hookWorkBuddyHint : status == .externalAmazonQ ? L10n.hookAmazonQHint : status == .externalCody ? L10n.hookCodyHint : status == .externalObserver ? L10n.hookObserverHint : status == .externalAgent ? L10n.hookACPHint : status == .unverified ? L10n.hookPendingHint : status == .externalExtension ? L10n.hookExtensionHint : L10n.hookConfigurationHint)
 
                 if status == .modelSource || status == .externalKiro {
@@ -1131,13 +1175,34 @@ struct PreferencesView: View {
                         "",
                         isOn: Binding(
                             get: { ZeroConfigManager.isAutoConfigEnabled(for: agent) },
-                            set: { ZeroConfigManager.setAutoConfigEnabled($0, for: agent) }
+                            set: {
+                                ZeroConfigManager.setAutoConfigEnabled($0, for: agent)
+                                Task { await AppDelegate.shared?.integrationSetupManager.refresh() }
+                            }
                         )
                     )
                     .labelsHidden()
+                    .accessibilityIdentifier("preferences.integration-enabled.\(agent.rawValue)")
                 }
             }
         }
+    }
+
+    private func integrationStatusLabel(_ phase: IntegrationSetupPhase) -> String {
+        switch phase {
+        case .notInstalled: integrationCopy("未检测到", "Not detected")
+        case .disabled: integrationCopy("已关闭", "Disabled")
+        case .needsConfiguration: integrationCopy("待配置", "Needs configuration")
+        case .needsAuthorization: integrationCopy("待授权", "Needs authorization")
+        case .needsSetup: integrationCopy("待完成设置", "Needs setup")
+        case .waitingForActivity: integrationCopy("配置待验证", "Configuration unverified")
+        case .connected: integrationCopy("已接通", "Connected")
+        case .checkFailed: integrationCopy("检查失败", "Check failed")
+        }
+    }
+
+    private func integrationCopy(_ chinese: String, _ english: String) -> String {
+        L10n.effectiveLanguage == "zh" ? chinese : english
     }
 
     private func ideRow(name: String, bundleId: String) -> some View {
