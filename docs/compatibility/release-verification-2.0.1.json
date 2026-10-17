@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "releaseVersion": "2.0.1",
+  "generatedAt": "2026-10-17T07:17:15.798321+00:00",
+  "status": "local_release_artifacts_verified",
+  "sourceCommit": "bf41f2721c9037c5844b2f9cdf0b588de4b88f6d",
+  "scope": "macOS automatic setup and authorization onboarding; no new Windows release or native-client acceptance claim",
+  "targetScope": {
+    "catalogEntries": 31,
+    "fullCompatibilityAcceptanceComplete": false,
+    "nativeTrustGrantedByThisReleaseProcess": false
+  },
+  "releaseArtifacts": {
+    "macOS": {
+      "architecture": "arm64",
+      "minimumOS": "14.0",
+      "dmgName": "XIsland-2.0.1.dmg",
+      "dmgSHA256": "b78d898a5b0aa4268e4f45b1eb2fe0aada1e7c1173ef49d8be454b64d1e25c14",
+      "appSHA256": "5911d11a058cb326b15fc37636500cc19acb8af8484236886e1f1c108dd1be95",
+      "bridgeSHA256": "f5f699f316db6859aa81a94972440e67a561b20558f18c06ea098522d586009a",
+      "signature": "ad-hoc verified on read-only mounted DMG",
+      "notarized": false
+    },
+    "vscodeCompanion": {
+      "version": "1.0.0",
+      "assetName": "xisland-vscode-1.0.0.vsix",
+      "sha256": "676bfe748ad6d681c5c84ec17f61de8a2079f70c04d66554243bec8700a78d46",
+      "unchangedFrom": "2.0.0"
+    },
+    "windows": {
+      "publishedInThisRelease": false
+    }
+  },
+  "releaseValidation": {
+    "sourceInputsSHA256": "db2bdf7137b713f88bbdfcbb640d9ec9e82f0f2631cc668e6fd960168ef34426",
+    "sourceInputFiles": 402,
+    "buildInputsUnchangedAfterValidation": true,
+    "swift": {
+      "status": "passed",
+      "tests": 1132,
+      "failures": 0,
+      "skipped": 0,
+      "logSHA256": "fe747dedc3a6dfa394766fcfa59cc1bd5864c02ecc5c22b409cff7ee85745639",
+      "setupSnapshots": 10,
+      "renderSuitesEnabled": [
+        "integration_setup",
+        "custom_question",
+        "subagent_finality",
+        "session_finality"
+      ]
+    },
+    "compiledBridge": {
+      "status": "passed",
+      "scenarios": 122,
+      "reportSHA256": "d042c12c0c71450ce4e5d5c1e342d88ea4153fb45292aa53ac43f865edb3b323",
+      "realClientVerified": false
+    },
+    "workbuddyExport": {
+      "status": "passed",
+      "events": 11,
+      "reportSHA256": "7079c7eccd25501da35e7641e0aad55670c42b605d113bf7957fa08c1b2bc6f5",
+      "scope": "Exported commands through final packaged bridge and isolated socket; synthetic payloads",
+      "realClientVerified": false
+    },
+    "codexLifecycleApp": {
+      "status": "passed",
+      "syntheticMessages": 21,
+      "checkpoints": 23,
+      "reportSHA256": "09f4ee5bb8603618f1322010dde97f3117aa9372a1e15fa4c4ee51beae6a14f0",
+      "scope": "Final packaged XIsland and bridge with synthetic Codex events in isolated preferences/socket/history",
+      "realClientVerified": false
+    },
+    "dmgContentsAndSignature": {
+      "status": "passed",
+      "version": "2.0.1",
+      "readOnlyMounted": true,
+      "architecture": "arm64",
+      "minimumOS": "14.0",
+      "signatureVerified": true,
+      "notarized": false,
+      "binariesMatchTestedBuild": true,
+      "dmgSHA256": "b78d898a5b0aa4268e4f45b1eb2fe0aada1e7c1173ef49d8be454b64d1e25c14",
+      "binarySHA256": {
+        "XIsland": "5911d11a058cb326b15fc37636500cc19acb8af8484236886e1f1c108dd1be95",
+        "di-bridge": "f5f699f316db6859aa81a94972440e67a561b20558f18c06ea098522d586009a"
+      }
+    },
+    "githubCI": {
+      "requiredBeforePublication": true,
+      "resultLocation": "Release notes and GitHub checks on the release tag commit"
+    },
+    "publishedAssetDownload": {
+      "requiredAfterPublication": true,
+      "resultLocation": "Release notes; downloaded files must match SHA256SUMS.txt"
+    }
+  },
+  "historicalEvidence": {
+    "summary": "release-verification-2.0.0.json",
+    "appliesToThisReleaseBuild": false
+  },
+  "knownAcceptanceGaps": [
+    "Codex trust must still be granted by the user in Codex before native hooks execute.",
+    "WorkBuddy native plugin import, enablement and task execution remain unverified.",
+    "Kiro files use the 2.31.0 V3 template baseline; export does not verify installed version or native loading.",
+    "External agent and service routes retain one-time client setup.",
+    "Connected means observed current-configuration activity, not complete feature or client acceptance.",
+    "CLI upgrade was not end-to-end verified in this release."
+  ],
+  "reproduce": {
+    "swift": "X_ISLAND_RENDER_INTEGRATION_SETUP=1 X_ISLAND_RENDER_SESSION_FINALITY=1 X_ISLAND_RENDER_CUSTOM_QUESTION=1 X_ISLAND_RENDER_SUBAGENT_FINALITY=1 swift test",
+    "build": "X_ISLAND_SKIP_BRIDGE_INSTALL=1 X_ISLAND_SKIP_PATH_CONFIGURE=1 X_ISLAND_BUILD_DMG=1 bash Scripts/build.sh",
+    "compiledBridge": "python3 Scripts/test-native-hook-bridge.py --binary \".build/X Island.app/Contents/MacOS/di-bridge\"",
+    "workbuddy": "python3 Scripts/test-workbuddy-plugin.py --binary \".build/X Island.app/Contents/MacOS/di-bridge\""
+  },
+  "publicationPolicy": {
+    "rawRuntimeEvidence": "local only",
+    "parallelWindowsChangesExcluded": true,
+    "installedApplicationReplaced": false
+  }
+}

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "checkedAt": "2026-10-16",
+  "checkedAt": "2026-10-17",
   "goal": "全部30项真实适配，逐项保留未完成与能力限制",
   "verificationRule": "只有协议证据、契约测试和真实版本验收均通过，才能标记该目标已完成。接口缺口不等于完成。",
   "targets": [
@@ -624,7 +624,7 @@
         "5.7.7 static bundle only; five reviewed resources byte-identical to 5.7.6"
       ],
       "complete": false,
-      "automaticConfiguration": "disabled_manual_plugin_export",
+      "automaticConfiguration": "prepares_reviewable_plugin_files_only; native import, enablement and trust remain manual",
       "limits": "No permission decisions; SessionEnd/SubagentStop never close parent; nested agent attribution and native client acceptance pending",
       "lastCheckedAt": "2026-10-11",
       "mainStopVerification": {
@@ -650,7 +650,16 @@
     "realClientVerified": false,
     "scope": "Unit and isolated application with synthetic vendor events; detailed limits in checkpoint"
   },
-  "publicVerification": "release-verification-2.0.0.json",
-  "evidenceScope": "Each target retains its historical protocol and runtime evidence bounds. Historical test totals are not final v2.0.0 release results; see publicVerification for the current release build.",
-  "releaseVersion": "2.0.0"
+  "publicVerification": "release-verification-2.0.1.json",
+  "evidenceScope": "Each target retains its historical protocol and runtime evidence bounds. Historical test totals and native runs are not final v2.0.1 release results; see publicVerification for the current release build.",
+  "releaseVersion": "2.0.1",
+  "integrationOnboarding": {
+    "release": "2.0.1",
+    "catalogEntries": 31,
+    "configurationIsNotConnection": true,
+    "codexTrustProbe": "read-only hooks/list for exact XIsland commands; user grants trust in Codex",
+    "reminders": "persisted per configuration fingerprint; changed definitions and revoked trust prompt again",
+    "workbuddyAndKiro": "automatically prepare owned reviewable artifacts; native enablement/load still required",
+    "realClientFullAcceptanceComplete": false
+  }
 }
