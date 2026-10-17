@@ -5,6 +5,8 @@ import { mountIsland, type IslandPlatform, type IslandSettings } from './ui';
 import { fixtures } from './fixtures';
 import { loadSettings } from './ui/settings';
 import { installNativeDrag } from './platform/native-drag';
+import { startIntegrationSetup, acceptedIntegrationActivity, AcceptedActivityQueue } from './platform/setup-owner';
+import type { ConnectionActivityReceipt } from './integrations/connection-health';
 import './platform/native.css';
 import type { SoundEvent } from './ui/audio';
 
@@ -13,10 +15,14 @@ const query = new URLSearchParams(location.search);
 const preferencesWindow = native && query.get('window') === 'settings';
 const store = new SessionStore({ readOnly: preferencesWindow });
 const root = document.querySelector<HTMLElement>('#app')!;
-type Envelope = { message: DIMessage; requestId?: string; expiresAt?: number };
+type Envelope = { message: DIMessage; requestId?: string; expiresAt?: number; activityReceipt?: ConnectionActivityReceipt };
 type HistoryAction = { kind: 'dismiss'; sessionId: string } | { kind: 'clear' };
 let ui: ReturnType<typeof mountIsland>;
 let ownerFrozen = false;
+let activityOwnerToken: string | undefined;
+let setupOwner: Awaited<ReturnType<typeof startIntegrationSetup>> | undefined;
+let activityQueue: AcceptedActivityQueue | undefined;
+let activityBeforeSetup = false;
 const deferredEvents: Array<() => void> = [];
 function mutateOwner(action: () => void): void {
   if (ownerFrozen) deferredEvents.push(action); else action();
@@ -28,6 +34,10 @@ function report(error: unknown): void {
 
 const platform: IslandPlatform = native ? {
   preview: false,
+  islandPeerStatus: () => invoke('island_peer_status'),
+  switchIsland: () => invoke('switch_island'),
+  getIslandPreferences: () => invoke('island_get_preferences'),
+  setIslandPreferences: preferences => invoke('island_set_preferences', { preferences }),
   preferencesWindow,
   initialSettingsPane: query.get('pane') ?? 'general',
   resize: (width, height, expanded) => preferencesWindow ? Promise.resolve() : invoke('resize_island', { width, height, expanded }),
@@ -42,7 +52,19 @@ const platform: IslandPlatform = native ? {
   clearHistory: () => invoke('history_action', { action: { kind: 'clear' } }),
   previewSound: event => invoke('preview_sound', { event }),
   integrations: {
+    setup: {
+      snapshot: () => invoke('read_setup_snapshot'),
+      subscribe: handler => listen('setup-snapshot', event => handler(event.payload as import('./integrations/setup-coordinator').SetupSnapshot)),
+      refresh: prepareAutomatically => invoke('setup_action', { action: { kind: 'refresh', prepareAutomatically } }),
+      setEnabled: (agent, enabled) => invoke('setup_action', { action: { kind: 'setEnabled', agent, enabled } }),
+      presented: () => invoke('setup_action', { action: { kind: 'presented' } }),
+    },
     exportWorkBuddy: () => invoke('integration_command', { agent: 'workbuddy', action: 'export' }),
+    workBuddyStatus: () => invoke('integration_command', { agent: 'workbuddy', action: 'status' }),
+    prepareWorkBuddy: () => invoke('integration_command', { agent: 'workbuddy', action: 'prepare' }),
+    openWorkBuddyFolder: path => invoke('open_integration_folder', { path }),
+    kiroStatus: () => invoke('integration_command', { agent: 'kiro', action: 'status' }),
+    prepareKiro: () => invoke('integration_command', { agent: 'kiro', action: 'prepare' }),
     status: agent => invoke('integration_command', { agent, action: 'status' }),
     plan: (agent, operation) => invoke('integration_command', { agent, action: 'plan', operation }),
     apply: (agent, operation, revision) => invoke('integration_command', { agent, action: 'apply', operation, revision }),
@@ -71,9 +93,13 @@ const cancel = (requestId: string) => invoke('cancel_request', { requestId }).ca
 function applyEnvelope(envelope: Envelope): void {
   if (ownerFrozen) { deferredEvents.push(() => applyEnvelope(envelope)); return; }
   const transport = envelope.requestId && envelope.expiresAt ? { requestId: envelope.requestId, expiresAt: envelope.expiresAt } : undefined;
+  const beforeRevision = store.snapshot().revision;
   const result = store.apply(envelope.message, transport);
   for (const id of result.cancelRequestIds) void cancel(id);
   if (!result.accepted && result.reason) report(`事件未接纳：${result.reason}`);
+  if (activityOwnerToken && envelope.activityReceipt && acceptedIntegrationActivity(envelope.message, result.accepted, beforeRevision, store.snapshot().revision)) {
+    activityQueue?.push(envelope.activityReceipt);
+  }
 }
 
 async function syncSettings(): Promise<void> {
@@ -164,8 +190,14 @@ async function connectOwner(): Promise<void> {
   const ended = (requestId: string) => mutateOwner(() => { store.endTransport(requestId, '连接已结束，请回原客户端处理'); });
   await listen<string>('di-request-ended', event => { if (booting) live.push(event.payload); else ended(event.payload); });
   await listen<string>('di-error', event => report(event.payload));
+  await listen<string>('island-link-error', event => report(event.payload));
   const initial = await invoke<{ events: Envelope[]; endedRequestIds: string[]; ownerToken: string; error?: string }>('frontend_ready');
   ownerToken = initial.ownerToken;
+  activityOwnerToken = ownerToken;
+  activityQueue = new AcceptedActivityQueue(async receipt => {
+    const result = await invoke<{ recorded: boolean }>('record_integration_activity', { ownerToken, receipt });
+    if (result.recorded) { if (setupOwner) setupOwner.activityReceived(); else activityBeforeSetup = true; }
+  }, report);
   for (const envelope of initial.events) applyEnvelope(envelope);
   for (const requestId of initial.endedRequestIds) ended(requestId);
   for (const event of live) typeof event === 'string' ? ended(event) : applyEnvelope(event);
@@ -173,6 +205,13 @@ async function connectOwner(): Promise<void> {
   publish(store.snapshot());
   if (initial.error) report(initial.error);
   setInterval(() => mutateOwner(() => { for (const id of store.expire()) void cancel(id); }), 1000);
+  setupOwner = await startIntegrationSetup(platform.integrations!, store, ownerToken, {
+    invoke, listen,
+    setInterval: (handler, milliseconds) => setInterval(handler, milliseconds),
+    clearInterval: handle => clearInterval(handle as ReturnType<typeof setInterval>),
+  }, report);
+  if (activityBeforeSetup) { activityBeforeSetup = false; setupOwner.activityReceived(); }
+  window.addEventListener('pagehide', () => { activityOwnerToken = undefined; activityQueue?.dispose(); setupOwner?.dispose(); }, { once: true });
 }
 
 async function connect(): Promise<void> {

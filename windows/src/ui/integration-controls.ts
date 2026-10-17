@@ -1,8 +1,11 @@
 import { agentName, badge, button, el, mascot } from './components';
 import { t } from './i18n';
 import type { IntegrationAgent, IntegrationApplyResult, IntegrationOperation, IntegrationPlanSummary, IntegrationPlatform, IntegrationStatus } from './platform';
+import type { SetupRow, SetupSnapshot } from '../integrations/setup-coordinator';
+import type { WorkBuddySetupStatus } from '../integrations/workbuddy-plugin';
+import type { KiroSetupStatus } from '../integrations/kiro-plugin';
 
-const AGENTS: IntegrationAgent[] = ['claude_code', 'codex', 'cursor', 'gemini_cli', 'windsurf', 'trae_cn'];
+const AGENTS: IntegrationAgent[] = ['claude_code', 'codex', 'cursor', 'gemini_cli', 'windsurf', 'trae_cn', 'qwen', 'code_buddy', 'droid', 'opencode', 'kimi_code'];
 interface AgentState { loading: boolean; status?: IntegrationStatus; error?: string; result?: IntegrationApplyResult }
 interface Review { agent: IntegrationAgent; operation: IntegrationOperation; plan?: IntegrationPlanSummary; loading: boolean; applying: boolean; error?: string }
 function errorMessage(error: unknown): string {
@@ -21,23 +24,37 @@ export class IntegrationControls {
   private exporting = false;
   private exportedPath?: string;
   private exportError?: string;
+  private setup?: SetupSnapshot;
+  private stopSetup?: () => void;
+  private presentedToken?: string;
+  private workBuddyStatus?: WorkBuddySetupStatus;
+  private checkingWorkBuddy = false;
+  private pendingWorkBuddyCheck = false;
+  private kiroStatus?: KiroSetupStatus;
+  private kiroError?: string;
+  private checkingKiro = false;
+  private pendingKiroCheck = false;
+  private preparingKiro = false;
   constructor(private readonly api: IntegrationPlatform | undefined, private readonly preview: boolean, private readonly rerender: () => void) {}
   get isReviewing(): boolean { return this.review !== undefined; }
 
   view(): HTMLElement {
     if (!this.opened && this.api && !this.preview) {
       this.opened = true;
-      queueMicrotask(() => { if (!this.disposed) void this.refresh(); });
+      queueMicrotask(() => { if (!this.disposed) void (this.api?.setup ? this.connectSetup() : this.refresh()); });
     }
     if (this.review) return this.reviewView(this.review);
     const section = el('section', 'integration-controls');
     const header = el('div', 'integration-section-header');
-    header.append(el('h2', 'settings-section-title', t('Agent 接入')));
+    header.append(el('h2', 'settings-section-title', t('软件接入与授权')));
     if (this.api && !this.preview) header.append(button(t('刷新接入状态'), 'text-button', () => { void this.refresh(); }));
     section.append(header, el('p', 'settings-note integration-evidence-note', t('配置状态不等于兼容性验收；实际客户端均待验证。')));
+    if (this.api?.setup && !this.preview) section.append(el('p', 'settings-note', t('自动准备已启用软件的配置；授权仍需在原客户端确认。关闭自动接入不会移除已有配置。')));
+    if (this.setup?.error) { const error = el('p', 'integration-error', this.setup.error); error.setAttribute('role', 'alert'); section.append(error); }
     if (!this.api || this.preview) section.append(el('p', 'integration-unavailable', t(this.preview ? '浏览器预览不安装或移除接入，请在 Windows 客户端操作。' : '当前客户端尚未接入配置服务。')));
     for (const agent of AGENTS) section.append(this.agentCard(agent));
     section.append(this.workBuddyCard());
+    section.append(this.kiroCard());
     return section;
   }
 
@@ -47,21 +64,30 @@ export class IntegrationControls {
     header.append(mascot('workbuddy', 'idle', 24), el('strong', '', 'WorkBuddy'), el('span', 'header-spacer'), badge(t('观察模式')));
     card.append(header, el('p', 'settings-note', t('观察会话、工具结果和等待确认；审批与回答仍在 WorkBuddy 中完成。')),
       el('span', 'integration-verification', t('实际客户端未验收')));
+    if (this.workBuddyStatus) card.append(badge(t(this.workBuddyStatus.exportedPath ? '文件已准备，待原客户端启用'
+      : this.workBuddyStatus.client.state === 'detected' ? '待准备接入文件' : '未检测到软件')));
+    if (this.api?.prepareWorkBuddy && !this.preview) {
+      const prepare = button(t('准备 WorkBuddy 接入文件'), 'settings-action', () => { void this.exportWorkBuddy(true); });
+      prepare.disabled = this.exporting || this.workBuddyStatus?.runtimeReady === false; card.append(prepare);
+    }
     if (this.api?.exportWorkBuddy && !this.preview) {
       const exportButton = button(t(this.exporting ? '正在导出…' : '导出 WorkBuddy 插件…'), 'settings-action', () => { void this.exportWorkBuddy(); });
       exportButton.disabled = this.exporting; card.append(exportButton);
     } else card.append(el('p', 'settings-note', t('请在 Windows 客户端导出插件。')));
     if (this.exportedPath) card.append(el('p', 'integration-result', t('插件已导出，尚未安装。请在 WorkBuddy 添加本地市场，选择下方目录，再安装并启用插件。')),
       el('code', 'integration-path', this.exportedPath));
+    if (this.exportedPath && this.api?.openWorkBuddyFolder) card.append(button(t('打开接入文件夹'), 'settings-action', () => {
+      void this.api!.openWorkBuddyFolder!(this.exportedPath!).catch(error => { this.exportError = errorMessage(error); this.changed(); });
+    }));
     if (this.exportError) { const error = el('p', 'integration-error', this.exportError); error.setAttribute('role', 'alert'); card.append(error); }
     return card;
   }
 
-  private async exportWorkBuddy(): Promise<void> {
+  private async exportWorkBuddy(prepare = false): Promise<void> {
     if (!this.api?.exportWorkBuddy || this.preview || this.exporting || this.disposed) return;
     this.exporting = true; this.exportError = undefined; this.rerender();
     try {
-      const result = await this.api.exportWorkBuddy();
+      const result = await (prepare && this.api.prepareWorkBuddy ? this.api.prepareWorkBuddy() : this.api.exportWorkBuddy());
       if (!this.disposed) this.exportedPath = result.exportedPath;
     } catch (error) { if (!this.disposed) this.exportError = errorMessage(error); }
     finally { this.exporting = false; if (!this.disposed) this.rerender(); }
@@ -70,13 +96,43 @@ export class IntegrationControls {
   private agentCard(agent: IntegrationAgent): HTMLElement {
     const state = this.states.get(agent);
     const status = state?.status;
+    const setupRow = this.setup?.rows.find(row => row.agent === agent);
     const card = el('article', 'integration-card'); card.dataset.integrationAgent = agent;
     const header = el('div', 'integration-card-header');
     header.append(mascot(agent, status?.installed ? 'idle' : 'observationUnavailable', 24), el('strong', '', agentName(agent)), el('span', 'header-spacer'));
     const statusLabel = !this.api || this.preview ? t('当前平台不可用') : state?.loading ? t('正在检查…') : state?.error ? t('检查失败') :
       !status ? t('等待检查') : !status.platformSupported ? t('当前平台不可用') : status.configurationKnown === false || status.installed === null ? t('运行时未就绪，配置状态未知') : !status.runtimeReady ? t('缺少运行时') : status.installed ? t('已配置') : (status.managedHandlers ?? 0) > 0 ? t('需更新') : t('未配置');
-    header.append(badge(statusLabel, status?.installed && status.runtimeReady ? 'var(--green)' : 'var(--muted)'));
+    const phases: Record<SetupRow['phase'], string> = { notInstalled: '未检测到软件', disabled: '自动接入已关闭', needsConfiguration: '待配置',
+      needsAuthorization: '待授权', waitingForActivity: '等待活动', connected: '已接入', checkFailed: '检查失败' };
+    if (setupRow) card.dataset.setupPhase = setupRow.phase;
+    header.append(badge(setupRow ? t(phases[setupRow.phase]) : statusLabel,
+      setupRow ? setupRow.phase === 'connected' ? 'var(--green)' : 'var(--muted)' : status?.installed && status.runtimeReady ? 'var(--green)' : 'var(--muted)'));
     card.append(header);
+    if (setupRow) {
+      const label = el('label', 'settings-toggle');
+      const toggle = el('input'); toggle.type = 'checkbox'; toggle.checked = setupRow.enabled;
+      toggle.setAttribute('aria-label', t('自动接入 {agent}', { agent: agentName(agent) }));
+      toggle.addEventListener('change', () => { void this.api!.setup!.setEnabled(agent, toggle.checked).catch(error => this.setupError(error)); });
+      label.append(toggle, el('span', '', t('自动接入'))); card.append(label);
+      const guidance = setupRow.phase === 'needsAuthorization' ? '在 Codex 中打开 /hooks，审阅 XIsland 命令并确认信任，然后开始新任务。'
+        : setupRow.phase === 'waitingForActivity' ? '配置已准备。请在原客户端开始新任务，收到有效事件后显示已接入。'
+        : setupRow.phase === 'connected' ? '当前配置已收到有效活动；完整客户端验收仍需单独完成。' : undefined;
+      if (guidance) card.append(el('p', 'settings-note', t(guidance)));
+    }
+    if (status?.client) {
+      const labels = { detected: '检测到客户端', not_found: '未找到客户端入口', unconfirmed: '客户端类型待确认' } as const;
+      card.append(badge(t(labels[status.client.state]), status.client.state === 'detected' ? 'var(--cyan)' : 'var(--muted)'),
+        el('p', 'settings-note', status.client.detail));
+      if (status.client.version) card.append(el('span', 'settings-note', `${t('检测版本')}：${status.client.version}`));
+    }
+    if (status?.trust) {
+      const labels = { granted: 'Codex 已信任当前接入', required: '需要在 Codex 中授权', unavailable: 'Codex 信任状态未知' } as const;
+      card.append(badge(t(labels[status.trust.state]), status.trust.state === 'granted' ? 'var(--green)' : 'var(--orange)'));
+      if (status.trust.reason) card.append(el('p', 'settings-note', status.trust.reason));
+    }
+    if (status?.activity && (!status.trust || status.trust.state === 'granted')) {
+      card.append(el('p', 'settings-note', `${t('当前配置最近收到事件')}：${new Date(status.activity.receivedAt).toLocaleString()} · ${status.activity.event}`));
+    }
     if (status?.configPath) card.append(el('code', 'integration-path', status.configPath));
     if (status?.reason) card.append(el('p', 'settings-note', status.reason));
     card.append(el('span', 'integration-verification', t('实际客户端未验收')));
@@ -90,7 +146,7 @@ export class IntegrationControls {
     if (this.api && !this.preview) {
       const actions = el('div', 'integration-actions');
       const install = button(t(status?.installed ? '查看更新计划' : status && (status.managedHandlers ?? 0) > 0 ? '更新接入…' : '启用接入…'), 'settings-action', () => { void this.plan(agent, 'install'); });
-      install.disabled = !!state?.loading || !!state?.error || !status?.platformSupported || !status.runtimeReady;
+      install.disabled = !!state?.loading || !!state?.error || !status?.platformSupported || !status.runtimeReady || status.foreignPlugin === true;
       const uninstall = button(t('移除接入…'), 'settings-action danger', () => { void this.plan(agent, 'uninstall'); });
       // 运行时丢失时仍可移除旧 hook；只有确实存在本工具托管项才提供移除。
       uninstall.disabled = !!state?.loading || !!state?.error || !status?.platformSupported || !((status.managedHandlers ?? 0) > 0);
@@ -109,11 +165,15 @@ export class IntegrationControls {
 
   private async refresh(): Promise<void> {
     if (!this.api || this.preview || this.disposed) return;
+    void this.refreshWorkBuddy();
+    void this.refreshKiro();
+    if (this.api.setup) { try { await this.api.setup.refresh(false); } catch (error) { this.setupError(error); } return; }
     await Promise.allSettled(AGENTS.map(agent => this.refreshAgent(agent)));
   }
 
   private async refreshAgent(agent: IntegrationAgent): Promise<void> {
     if (!this.api || this.disposed) return;
+    if (this.api.setup) { await this.api.setup.refresh(false); return; }
     const epoch = (this.statusEpochs.get(agent) ?? 0) + 1;
     this.statusEpochs.set(agent, epoch);
     const previous = this.states.get(agent);
@@ -186,10 +246,12 @@ export class IntegrationControls {
     if (!this.api || this.preview || !review?.plan || review.error || review.applying || !review.plan.changed) return;
     review.applying = true; this.changed();
     try {
+      if (review.operation === 'uninstall') await this.api.setup?.setEnabled(review.agent, false);
       const result = await this.api.apply(review.agent, review.operation, review.plan.revision);
       if (result.agent !== review.agent || result.operation !== review.operation || typeof result.applied !== 'boolean') throw new Error(t('接入服务未返回有效结果，请刷新状态确认。'));
       this.states.set(review.agent, { ...this.states.get(review.agent), loading: false, result });
       this.review = undefined; this.changed();
+      if (review.operation === 'install') await this.api.setup?.setEnabled(review.agent, true);
       await this.refreshAgent(review.agent);
     } catch (error) {
       review.applying = false; review.error = errorMessage(error); this.review = review; this.changed();
@@ -197,5 +259,95 @@ export class IntegrationControls {
   }
 
   private changed(): void { if (!this.disposed) this.rerender(); }
-  destroy(): void { this.disposed = true; this.generation++; }
+  private setupError(error: unknown): void {
+    this.setup = { rows: this.setup?.rows ?? [], refreshing: false, attentionCount: 0, needsAttention: false,
+      error: errorMessage(error) }; this.changed();
+  }
+  private async connectSetup(): Promise<void> {
+    const api = this.api?.setup; if (!api) return;
+    void this.refreshWorkBuddy();
+    void this.refreshKiro();
+    let received = false;
+    const accept = (snapshot: SetupSnapshot) => {
+      if (this.disposed) return;
+      this.setup = snapshot;
+      if (!snapshot.rows.length) this.states.clear();
+      for (const row of snapshot.rows) this.states.set(row.agent, { status: row.status, loading: snapshot.refreshing,
+        error: row.error, result: this.states.get(row.agent)?.result });
+      this.changed();
+      const token = JSON.stringify(snapshot.rows.map(row => [row.agent, row.phase, row.fingerprint]));
+      if (!snapshot.refreshing && token !== this.presentedToken) {
+        this.presentedToken = token; void api.presented().catch(error => this.setupError(error));
+        void this.refreshWorkBuddy();
+        void this.refreshKiro();
+      }
+    };
+    try {
+      const stop = await api.subscribe(snapshot => { received = true; accept(snapshot); });
+      if (this.disposed) { stop(); return; } this.stopSetup = stop;
+      const initial = await api.snapshot(); if (initial && !received) accept(initial);
+      await api.presented();
+      if (!initial && !received) await api.refresh(false);
+    } catch (error) { this.setupError(error); }
+  }
+  private async refreshWorkBuddy(): Promise<void> {
+    if (!this.api?.workBuddyStatus || this.preview || this.disposed) return;
+    if (this.checkingWorkBuddy) { this.pendingWorkBuddyCheck = true; return; }
+    this.checkingWorkBuddy = true;
+    this.pendingWorkBuddyCheck = false;
+    try {
+      const status = await this.api.workBuddyStatus();
+      if (this.disposed) return;
+      this.workBuddyStatus = status;
+      if (status.exportedPath) this.exportedPath = status.exportedPath;
+      this.exportError = undefined;
+    } catch (error) { if (!this.disposed) this.exportError = errorMessage(error); }
+    finally {
+      this.checkingWorkBuddy = false; this.changed();
+      if (this.pendingWorkBuddyCheck) void this.refreshWorkBuddy();
+    }
+  }
+  private kiroCard(): HTMLElement {
+    const card = el('article', 'integration-card'); card.dataset.integrationAgent = 'kiro';
+    const header = el('div', 'integration-card-header');
+    header.append(mascot('kiro', 'idle', 24), el('strong', '', 'Kiro CLI'), el('span', 'header-spacer'), badge(t('观察模式')));
+    card.append(header, el('p', 'settings-note', t('Kiro CLI 2.31.0 V3 配置模板；准备文件后按说明放入原客户端 hooks 目录，使用 chat --v3 启动。')),
+      el('span', 'integration-verification', t('实际客户端未验收')));
+    if (this.kiroStatus) card.append(badge(t(this.kiroStatus.exportedPath ? '文件已准备，待原客户端启用'
+      : this.kiroStatus.client.state === 'detected' ? '待准备接入文件' : '未检测到软件')));
+    if (this.api?.prepareKiro && !this.preview) {
+      const prepare = button(t('准备 Kiro 接入文件'), 'settings-action', () => {
+        if (this.preparingKiro) return; this.preparingKiro = true; this.kiroError = undefined; this.changed();
+        void this.api!.prepareKiro!().then(result => {
+          this.kiroStatus = { agent: 'kiro', runtimeReady: true, needsPreparation: false, exportedPath: result.exportedPath,
+            client: this.kiroStatus?.client ?? { state: 'unconfirmed', detail: '' } };
+          this.changed(); return this.refreshKiro();
+        }).catch(error => { this.kiroError = errorMessage(error); })
+          .finally(() => { this.preparingKiro = false; this.changed(); });
+      });
+      prepare.disabled = this.preparingKiro || this.kiroStatus?.runtimeReady === false; card.append(prepare);
+    }
+    const path = this.kiroStatus?.exportedPath;
+    if (path) {
+      card.append(el('code', 'integration-path', path));
+      if (this.api?.openWorkBuddyFolder) card.append(button(t('打开接入文件夹'), 'settings-action', () => {
+        void this.api!.openWorkBuddyFolder!(path).catch(error => { this.kiroError = errorMessage(error); this.changed(); });
+      }));
+    }
+    if (this.kiroError) { const error = el('p', 'integration-error', this.kiroError); error.setAttribute('role', 'alert'); card.append(error); }
+    return card;
+  }
+  private async refreshKiro(): Promise<void> {
+    if (!this.api?.kiroStatus || this.preview || this.disposed) return;
+    if (this.checkingKiro) { this.pendingKiroCheck = true; return; }
+    this.checkingKiro = true;
+    this.pendingKiroCheck = false;
+    try { const status = await this.api.kiroStatus(); if (!this.disposed) { this.kiroStatus = status; this.kiroError = undefined; } }
+    catch (error) { if (!this.disposed) this.kiroError = errorMessage(error); }
+    finally {
+      this.checkingKiro = false; this.changed();
+      if (this.pendingKiroCheck) void this.refreshKiro();
+    }
+  }
+  destroy(): void { this.disposed = true; this.generation++; this.stopSetup?.(); }
 }

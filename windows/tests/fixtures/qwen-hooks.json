@@ -1,0 +1,19 @@
+{
+  "source": "https://qwenlm.github.io/qwen-code-docs/en/users/features/hooks/",
+  "evidence": "Constructed contract fixtures; not captured from a native Windows client.",
+  "session": { "session_id": "qwen-中文-session", "cwd": "C:\\项目 空格", "permission_mode": "default" },
+  "events": [
+    { "hook_event_name": "SessionStart", "source": "startup" },
+    { "hook_event_name": "UserPromptSubmit", "prompt": "检查项目" },
+    { "hook_event_name": "PreToolUse", "tool_use_id": "toolu-1", "tool_call_id": "call-1", "tool_name": "run_shell_command", "tool_input": { "command": "dir" } },
+    { "hook_event_name": "PostToolUse", "tool_use_id": "toolu-1", "tool_call_id": "call-1", "tool_name": "run_shell_command", "tool_input": { "command": "dir" }, "tool_response": { "output": "README.md" } },
+    { "hook_event_name": "PostToolUseFailure", "tool_use_id": "toolu-2", "tool_name": "run_shell_command", "tool_input": { "command": "invalid-command" }, "error": "Command not found" },
+    { "hook_event_name": "PermissionRequest", "tool_name": "write_file", "tool_input": { "file_path": "C:\\项目 空格\\README.md", "content": "hello" } },
+    { "hook_event_name": "Notification", "notification_type": "permission_prompt", "message": "Waiting for permission" },
+    { "hook_event_name": "Stop", "stop_hook_active": false, "last_assistant_message": "检查完成，等待后续输入" },
+    { "hook_event_name": "SessionEnd", "reason": "exit" },
+    { "hook_event_name": "SubagentStart", "agent_id": "child-1", "agent_type": "Explorer" },
+    { "hook_event_name": "SubagentStop", "agent_id": "child-1", "agent_type": "Explorer", "stop_hook_active": false, "last_assistant_message": "child output" },
+    { "hook_event_name": "PreCompact", "trigger": "auto", "custom_instructions": "" }
+  ]
+}

@@ -189,7 +189,7 @@ pub use desktop::{WindowController, WindowReport};
 mod desktop {
     use super::*;
     use serde::Serialize;
-    use tauri::WebviewWindow;
+    use tauri::{Manager, WebviewWindow};
     #[cfg(not(windows))]
     use tauri::{PhysicalPosition, PhysicalSize};
 
@@ -212,6 +212,11 @@ mod desktop {
     }
 
     impl WindowController {
+        pub fn show_owned(&mut self, window: &WebviewWindow) -> Result<WindowReport, String> {
+            self.initialized = true;
+            self.refresh(window, true)
+        }
+
         pub fn resize(&mut self, window: &WebviewWindow, width: f64, height: f64, expanded: bool) -> Result<WindowReport, String> {
             require_main(window)?;
             self.policy.resize(width, height, expanded)?;
@@ -277,6 +282,7 @@ mod desktop {
             let placement = self.policy.placement(&displays, cursor(window))?;
             let display = displays.iter().find(|display| display.id == placement.monitor_id).ok_or("显示器已断开")?;
             let hidden = self.policy.should_hide(foreground_window(), display);
+            let owns_display = window.app_handle().try_state::<crate::desktop_link::LinkState>().is_none_or(|state|state.owns_display());
             if self.initialized {
                 let actual_matches = window.outer_position().ok().zip(window.outer_size().ok()).is_some_and(|(position, size)|
                     position.x == placement.rect.x && position.y == placement.rect.y
@@ -286,7 +292,7 @@ mod desktop {
                     position_without_activation(window, placement.rect)?;
                     self.last_placement = Some(placement.clone());
                 }
-                if hidden {
+                if hidden || !owns_display {
                     if window.is_visible().map_err(|error| error.to_string())? { window.hide().map_err(|error| error.to_string())?; }
                 } else if show_requested || self.hidden_for_fullscreen {
                     show_without_activation(window)?;

@@ -13,10 +13,10 @@ struct FrontendQueue {
     ended: Vec<String>,
 }
 
-struct DesktopState {
+pub(crate) struct DesktopState {
     bridge: Arc<Bridge>,
     queue: Mutex<FrontendQueue>,
-    window: Mutex<WindowController>,
+    pub(crate) window: Mutex<WindowController>,
 }
 
 #[derive(Serialize)]
@@ -166,10 +166,12 @@ pub fn run() {
     };
     let state = DesktopState { bridge: Arc::new(Bridge::new(descriptor)), queue: Mutex::new(FrontendQueue::default()), window: Mutex::new(WindowController::default()) };
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app,_,_| { if let Some(window)=app.get_webview_window("main") { let _=window.show(); } }))
+        .plugin(tauri_plugin_single_instance::init(|app,_,_| { crate::desktop_link::show_from_native(app); }))
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .manage(WindowSync::default())
+        .manage(crate::setup_sync::SetupSync::default())
+        .manage(crate::desktop_link::LinkState::default())
         .on_page_load(|webview,payload| {
             if webview.label()=="main" && payload.event()==tauri::webview::PageLoadEvent::Started {
                 if let Some(state)=webview.app_handle().try_state::<DesktopState>() {
@@ -177,26 +179,36 @@ pub fn run() {
                     if was_ready { let _=state.bridge.cancel_all(); }
                 }
                 if let Some(sync)=webview.app_handle().try_state::<WindowSync>() { sync.invalidate_owner(); }
+                if let Some(setup)=webview.app_handle().try_state::<crate::setup_sync::SetupSync>() { setup.invalidate(webview.app_handle()); }
             }
         })
         .invoke_handler(tauri::generate_handler![frontend_ready,respond,cancel_request,resize_island,focus_input,load_history,save_history,export_history,jump_to_session,save_preferences,
             desktop_sync::publish_snapshot,desktop_sync::read_snapshot,desktop_sync::history_action,desktop_sync::finish_history_action,
             desktop_sync::open_preferences,desktop_sync::close_preferences,desktop_sync::read_preferences,platform_info,protect_interaction,drag_island,
-            crate::integrations::integration_command,desktop_sync::preview_sound,desktop_sync::finish_sound_preview])
+            crate::desktop_link::island_peer_status,crate::desktop_link::switch_island,crate::desktop_link::island_get_preferences,crate::desktop_link::island_set_preferences,
+            crate::integrations::integration_command,crate::integrations::record_integration_activity,crate::integrations::open_integration_folder,
+            crate::setup_sync::read_setup_state,crate::setup_sync::save_setup_state,crate::setup_sync::read_setup_snapshot,
+            crate::setup_sync::publish_setup_snapshot,crate::setup_sync::setup_action,crate::setup_sync::finish_setup_action,
+            desktop_sync::preview_sound,desktop_sync::finish_sound_preview])
         .on_window_event(|window,event| {
             if window.label() == "main" && matches!(event,tauri::WindowEvent::Focused(false)) { let _=window.set_focusable(false); }
+            if window.label() == "preferences" && matches!(event,tauri::WindowEvent::CloseRequested{..}) {
+                let _=window.app_handle().emit_to("main", "setup-dismissed", ());
+            }
         })
         .setup(|app| {
             use tauri::{menu::{Menu,MenuItem},tray::TrayIconBuilder};
             let show=MenuItem::with_id(app,"show","显示 X Island",true,None::<&str>)?;
             let preferences=MenuItem::with_id(app,"preferences","设置…",true,None::<&str>)?;
+            let integrations=MenuItem::with_id(app,"integrations","软件接入与授权…",true,None::<&str>)?;
             let quit=MenuItem::with_id(app,"quit","退出",true,None::<&str>)?;
-            let menu=Menu::with_items(app,&[&show,&preferences,&quit])?;
+            let menu=Menu::with_items(app,&[&show,&integrations,&preferences,&quit])?;
             let mut tray=TrayIconBuilder::new().menu(&menu).tooltip("X Island").on_menu_event(|app,event| {
-                match event.id.as_ref() { "show" => { if let Some(window)=app.get_webview_window("main") { let _=window.show(); } }, "preferences"=> { let _=desktop_sync::open_preferences(app.clone(),"general".into()); }, "quit"=>app.exit(0), _=>{} }
+                match event.id.as_ref() { "show" => { crate::desktop_link::show_from_native(app); }, "integrations"=> { let _=desktop_sync::open_preferences(app.clone(),"agents".into()); }, "preferences"=> { let _=desktop_sync::open_preferences(app.clone(),"general".into()); }, "quit"=>app.exit(0), _=>{} }
             });
             if let Some(icon)=app.default_window_icon() { tray=tray.icon(icon.clone()); }
             tray.build(app)?;
+            crate::desktop_link::setup(app.handle()).map_err(std::io::Error::other)?;
             let handle=app.handle().clone();
             if let (Ok(Some(settings)),Some(window))=(desktop_sync::read_preferences_file(),app.get_webview_window("main")) {
                 if let Ok(mut controller)=app.state::<DesktopState>().window.lock() {
@@ -257,6 +269,7 @@ pub fn run() {
         .expect("XIsland 桌面运行时初始化失败")
         .run(|app,event| {
             if matches!(event,tauri::RunEvent::Exit) {
+                app.state::<crate::desktop_link::LinkState>().shutdown();
                 let state=app.state::<DesktopState>();
                 if let Ok(descriptor)=runtime::read_descriptor() {
                     if descriptor.token==state.bridge.descriptor.token {

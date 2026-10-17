@@ -1,0 +1,17 @@
+{
+  "source": "https://www.codebuddy.ai/docs/cli/hooks",
+  "evidence": "Constructed CLI contract fixtures; not WorkBuddy and not captured from a native Windows client.",
+  "session": { "session_id": "buddy-中文-session", "cwd": "C:\\项目 空格", "generation_id": "generation-1", "permission_mode": "default" },
+  "events": [
+    { "hook_event_name": "SessionStart", "source": "startup" },
+    { "hook_event_name": "UserPromptSubmit", "prompt": "检查项目" },
+    { "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": { "file_path": "C:\\项目 空格\\README.md", "content": "hello" } },
+    { "hook_event_name": "PostToolUse", "tool_name": "Write", "tool_input": { "file_path": "C:\\项目 空格\\README.md", "content": "hello" }, "tool_response": { "success": true } },
+    { "hook_event_name": "Notification", "notification_type": "permission_prompt", "message": "Waiting for permission" },
+    { "hook_event_name": "Stop", "stop_hook_active": true },
+    { "hook_event_name": "SubagentStop", "stop_hook_active": false },
+    { "hook_event_name": "PreCompact", "trigger": "auto", "custom_instructions": "" },
+    { "hook_event_name": "PostCompact", "trigger": "auto", "compact_summary": "保留了项目约束" },
+    { "hook_event_name": "SessionEnd", "reason": "other" }
+  ]
+}

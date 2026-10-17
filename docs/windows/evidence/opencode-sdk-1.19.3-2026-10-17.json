@@ -1,0 +1,16 @@
+[
+  {
+    "sdk": "@opencode-ai/sdk@1.19.3/v1",
+    "permissions": true,
+    "questions": true,
+    "injectedTransport": true,
+    "nativeWindowsClient": false
+  },
+  {
+    "sdk": "@opencode-ai/sdk@1.19.3/v2",
+    "permissions": true,
+    "questions": true,
+    "injectedTransport": true,
+    "nativeWindowsClient": false
+  }
+]

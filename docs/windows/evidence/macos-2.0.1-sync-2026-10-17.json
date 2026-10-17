@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-17",
+  "windowsVersion": "0.1.7",
+  "macOSBaseline": {
+    "version": "2.0.1",
+    "releaseCommit": "e335c5d71e91c07c68c1b67385cd527583a97674",
+    "behaviorCommit": "bf41f2721c9037c5844b2f9cdf0b588de4b88f6d"
+  },
+  "adapterCount": 13,
+  "managedIntegrationCount": 11,
+  "preparedArtifacts": [
+    "workbuddy",
+    "kiro"
+  ],
+  "tests": {
+    "typescript": 383,
+    "browser": 32,
+    "rustUnit": 34,
+    "rustProcessIPC": 1
+  },
+  "officialOpenCode": {
+    "version": "1.19.3",
+    "macOSNativeClientExecuted": true,
+    "scenarios": 3,
+    "actualPackagedHookBytesVerified": true,
+    "realProviderUsed": false,
+    "rustTransportExecuted": false,
+    "graphicalUiExecuted": false,
+    "report": "opencode-native-packaged-hook-0.1.7.json"
+  },
+  "windowsTargetCheckPassed": true,
+  "windowsRuntimeVerified": false,
+  "fullMacParityVerified": false,
+  "delivery": {
+    "version": "0.1.7",
+    "zip": ".build/XIsland-Windows-0.1.7-preview-test-kit.zip",
+    "size": 26453399,
+    "sha256": "31c15590e182fba0766112d3b857157bfcc1bb02be1bf27bf37a9e3826d92588",
+    "installerSha256": "505fabfcb4f5b6d05d772982ea5f471c4a322ce598498af6d0110a159c65b5b9",
+    "zipCRCVerified": true,
+    "manifestHashesVerified": true,
+    "entries": 7,
+    "buildInputDigest": "97d8c7604e3131b425e7abe92dde8e297b539578687c8b7f54c494639f400cd2",
+    "buildInputFileCount": 158,
+    "windowsRuntimeVerified": false,
+    "signed": false
+  },
+  "logs": {
+    "tests": {
+      "path": ".build/windows-mac201-tests.log",
+      "sha256": "bd3e7d92e7818553fd0fb84a03376d2dc67ab9503d0b11bb4913998c29b616ce"
+    },
+    "ui": {
+      "path": ".build/windows-mac201-ui.log",
+      "sha256": "43e224fc0e0630acf73537b56b6a71e8dbdb5334c95791d4c9e941fe6eace3e2"
+    },
+    "rust": {
+      "path": ".build/windows-mac201-rust.log",
+      "sha256": "21fbfae881f95a97a9807a92b7c20c14ceab584caa21c7e26be4aa1547d147df"
+    },
+    "windows-check": {
+      "path": ".build/windows-mac201-windows-check.log",
+      "sha256": "f56937533d67e379cdd1df7487b77d722ca70ff43fc4e2c723016393b01b8fe0"
+    },
+    "package-build": {
+      "path": ".build/windows-mac201-package-build.log",
+      "sha256": "019a9b17697839c69c5004d0d4bd101e6c9740a0723df3c490d2479363175573"
+    },
+    "opencode-packaged": {
+      "path": ".build/windows-mac201-opencode-packaged.log",
+      "sha256": "a2af33307bd3b304f38bb9ca26f8b349373b38510d23d54e4c8ce51f15102bed"
+    }
+  }
+}

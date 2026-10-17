@@ -24,6 +24,7 @@ if (mode === 'oversized') { process.stdout.write(Buffer.alloc(${MAX_MESSAGE_BYTE
 let response = {ok:true};
 if (mode === 'deny') response = {type:'permission_response', sessionId:message.sessionId, timestamp:message.timestamp, approved:false};
 if (mode === 'question' || mode === 'split') response = {type:'question_response',sessionId:message.sessionId,timestamp:message.timestamp,answer:'自定义😀'};
+if (mode === 'answers') response = {type:'question_response',sessionId:message.sessionId,timestamp:message.timestamp,selectedAnswers:['A','B']};
 if (mode === 'wrong-session') response = {type:'permission_response',sessionId:'other',timestamp:message.timestamp,approved:true};
 const bytes = Buffer.from(JSON.stringify(response));
 if (mode === 'split') { const at = bytes.indexOf(Buffer.from('自')) + 1; process.stdout.write(bytes.subarray(0,at)); setTimeout(()=>process.stdout.write(bytes.subarray(at)),30); }
@@ -55,6 +56,39 @@ async function run(agent: string, payload: unknown, mode = 'ack', options: { raw
 
 const native = (name: string, fields = {}) => ({ hook_event_name: name, session_id: 'one', cwd: 'C:\\中文', ...fields });
 const cursor = (name: string, fields = {}) => ({ hook_event_name: name, conversation_id: 'one', cwd: 'C:\\中文', ...fields });
+
+test('five added adapter entries traverse the compiled hook process with their native event fields', async () => {
+  const kimiFixture=JSON.parse(await readFile(resolve('src/fixtures/companion/kimi-code-hooks.json'),'utf8'));
+  for(const [agent,payload,expected]of [
+    ['qwen',native('SessionStart',{source:'startup'}),'qwen'],
+    ['code_buddy',native('SessionStart',{source:'startup'}),'code_buddy'],
+    ['droid',native('SessionStart',{source:'startup'}),'droid'],
+    ['kimi_code',kimiFixture.cases.find((row:{event:string})=>row.event==='SessionStart').input,'kimi'],
+    ['opencode',{native_event:'session.created',session_id:'one',cwd:'C:\\中文'},'opencode'],
+  ]as const){
+    const event=agent==='opencode'?'session.created':'SessionStart';
+    const result=await run(agent,payload,'ack',{args:['--hook',event]});
+    assert.equal(result.code,0,agent);assert.equal((result.delivered as {agentType:string}).agentType,expected);
+  }
+});
+
+test('compiled Qwen permission and OpenCode multiselect outputs use the exact native codecs', async () => {
+  const qwen=await run('qwen',native('PermissionRequest',{tool_name:'Bash',tool_input:{command:'dir'}}),'deny');
+  assert.equal(qwen.code,0);assert.equal(JSON.parse(qwen.stdout).hookSpecificOutput.decision.behavior,'deny');
+  const open=await run('opencode',{native_event:'question.asked',session_id:'one',native_request_id:'question',native_request_kind:'question',
+    question:'选择两项',options:['A','B'],allow_multiple_answers:true,allow_custom_answer:false},'answers',{args:['--hook','question.asked']});
+  assert.equal(open.code,0);assert.deepEqual(JSON.parse(open.stdout),{answers:['A','B']});
+});
+
+test('compiled Kiro observer keeps Stop without an answer and returns empty neutral output', async () => {
+  for (const mode of ['ack', 'fail', 'wrong-session']) {
+    const result = await run('kiro', native('Stop'), mode, { args: ['--hook', 'Stop'] });
+    assert.equal(result.code, 0); assert.equal(result.stdout, '');
+    const delivered = result.delivered as { agentType: string; observedState: string; statusIsAssistantReply: boolean };
+    assert.equal(delivered.agentType, 'kiro'); assert.equal(delivered.observedState, 'completionUnconfirmed');
+    assert.equal(delivered.statusIsAssistantReply, false); assert.equal(result.stderr.includes('secret-native-content'), false);
+  }
+});
 
 test('WorkBuddy subprocess observes lifecycle, rejects invalid input and never emits a native decision', async () => {
   for (const mode of ['ack', 'fail', 'wrong-session']) {
@@ -169,6 +203,30 @@ test('invalid or oversized stdin is rejected before bridge spawn, with event-awa
 test('test bridge override cannot run outside explicit test mode', async () => {
   const result = await run('claude_code', native('SessionStart'), 'ack', { testMode: false });
   assert.equal(result.delivered, undefined); assert.deepEqual(JSON.parse(result.stdout), {});
+});
+
+test('Native payload cannot forge activity metadata and test mode never issues a receipt', async () => {
+  const forged = { agent: 'codex', configurationRevision: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64), event: 'SessionStart' };
+  const result = await run('qwen', native('SessionStart', { __xislandActivity: forged }), 'ack');
+  assert.equal(result.code, 0);
+  assert.equal((result.delivered as Record<string, unknown>).__xislandActivity, undefined);
+  assert.equal(result.stdout.includes('configurationRevision'), false);
+});
+
+test('Accepted-activity CLI refuses test mode and non-Windows without reading stdin or exposing arguments', async () => {
+  for (const testMode of process.platform === 'win32' ? ['1'] : ['0', '1']) {
+    const child = spawn(process.execPath, [hook, '--record-accepted-activity', '--agent', 'qwen',
+      '--configuration-revision', 'private-config-value', '--runtime-fingerprint', 'b'.repeat(64), '--hook', 'SessionStart'], {
+      env: { ...process.env, XISLAND_TEST_MODE: testMode }, stdio: ['pipe', 'pipe', 'pipe'], timeout: 3000,
+    });
+    const output: Buffer[] = [], errors: Buffer[] = [];
+    child.stdout.on('data', bytes => output.push(bytes)); child.stderr.on('data', bytes => errors.push(bytes));
+    // 不关闭 stdin：状态命令不得等待或读取原生会话正文。
+    const code = await new Promise<number | null>((resolveCode, reject) => { child.on('error', reject); child.on('close', resolveCode); });
+    const stdout = Buffer.concat(output).toString('utf8');
+    assert.equal(code, 1); assert.equal(JSON.parse(stdout).error.code, 'integration_failed');
+    assert.equal(stdout.includes('private-config-value'), false); assert.equal(Buffer.concat(errors).length, 0);
+  }
 });
 
 test('stdin limit is enforced while the producer keeps its stream open', async () => {

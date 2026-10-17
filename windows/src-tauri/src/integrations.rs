@@ -9,7 +9,7 @@ use {
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Action { Status, Plan, Apply, Export }
+enum Action { Status, Plan, Apply, Export, Prepare }
 
 #[derive(Debug)]
 struct Request {
@@ -26,14 +26,15 @@ fn valid_revision(value: &str) -> bool {
 }
 
 fn validate_request(agent: String, action: String, operation: Option<String>, revision: Option<String>) -> Result<Request, String> {
-    if agent == "workbuddy" {
-        if action != "export" || operation.is_some() || revision.is_some() {
-            return Err("WorkBuddy 仅支持导出观察插件；安装与启用请在原客户端完成。".into());
+    if agent == "workbuddy" || agent == "kiro" {
+        if !["export", "status", "prepare"].contains(&action.as_str()) || (agent == "kiro" && action == "export") || operation.is_some() || revision.is_some() {
+            return Err("WorkBuddy 仅支持检查和准备观察插件；安装与启用请在原客户端完成。".into());
         }
-        return Ok(Request { agent, action: Action::Export, operation: "export".into(), revision: None });
+        let kind = match action.as_str() { "status" => Action::Status, "prepare" => Action::Prepare, _ => Action::Export };
+        return Ok(Request { agent, action: kind, operation: action, revision: None });
     }
-    if !["claude_code", "codex", "cursor", "gemini_cli", "windsurf", "trae_cn"].contains(&agent.as_str()) {
-        return Err("不支持的客户端；目前可配置 Claude、Codex、Cursor、Gemini CLI、Windsurf 和 Trae CN。".into());
+    if !["claude_code", "codex", "cursor", "gemini_cli", "windsurf", "trae_cn", "qwen", "code_buddy", "droid", "opencode", "kimi_code"].contains(&agent.as_str()) {
+        return Err("当前版本不支持该客户端的自动配置。".into());
     }
     let action = match action.as_str() {
         "status" => Action::Status,
@@ -53,7 +54,11 @@ fn validate_request(agent: String, action: String, operation: Option<String>, re
 
 #[cfg(any(windows, test))]
 fn cli_arguments(request: &Request) -> Vec<String> {
-    let flag = match request.action { Action::Status => "--integration-status", Action::Plan => "--integration-plan", Action::Apply => "--integration-apply", Action::Export => "--workbuddy-export" };
+    let flag = match request.action { Action::Status if request.agent == "kiro" => "--kiro-status",
+        Action::Prepare if request.agent == "kiro" => "--kiro-prepare",
+        Action::Status if request.agent == "workbuddy" => "--workbuddy-status",
+        Action::Status => "--integration-status", Action::Plan => "--integration-plan", Action::Apply => "--integration-apply",
+        Action::Export => "--workbuddy-export", Action::Prepare => "--workbuddy-prepare" };
     let mut arguments = vec![flag.into(), "--agent".into(), request.agent.clone()];
     if matches!(request.action, Action::Plan | Action::Apply) {
         arguments.extend(["--operation".into(), request.operation.clone()]);
@@ -83,6 +88,12 @@ fn service_error(value: &Value) -> String {
         Some("installation_busy") => "另一个安装操作持有配置锁，请稍后重试。",
         Some("unsafe_path") | Some("invalid_backup") => "配置路径或备份引用不安全，操作已停止。",
         Some("unsupported_platform") => "接入安装仅在 Windows 客户端执行。",
+        Some("invalid_config_home") => "客户端自定义配置目录无效；没有回退到其他目录或修改配置。",
+        Some("custom_config_outside_home") => "当前安装器只支持用户目录内的自定义配置位置；外部目录没有修改。",
+        Some("foreign_plugin") => "目标插件被用户修改或不属于 XIsland，已保留；请先检查该文件。",
+        Some("invalid_toml") => "Kimi Code TOML 或托管区块无法安全修改，原文件已保留。",
+        Some("modified_kiro_artifact") => "已有 Kiro 接入文件被修改，已保留；请先审阅文件。",
+        Some("modified_workbuddy_artifact") => "已有 WorkBuddy 接入文件被修改，已保留；请检查原文件或手动导出新目录。",
         _ => "接入服务未完成操作；请刷新状态后重试。",
     }.into()
 }
@@ -91,17 +102,34 @@ fn service_error(value: &Value) -> String {
 fn validate_summary(value: Value, request: &Request) -> Result<Value, String> {
     if value.get("error").is_some() { return Err(service_error(&value)); }
     let summary = value.as_object().ok_or("接入服务没有返回有效摘要。")?;
-    if request.action == Action::Export {
+    if ["workbuddy", "kiro"].contains(&request.agent.as_str()) && request.action == Action::Status {
+        const FIELDS: &[&str] = &["agent", "client", "runtimeReady", "needsPreparation", "exportedPath"];
+        if summary.keys().any(|key| !FIELDS.contains(&key.as_str())) || value["agent"] != request.agent
+            || !value["runtimeReady"].is_boolean() || !value["needsPreparation"].is_boolean()
+            || !matches!(value["client"]["state"].as_str(), Some("detected" | "not_found" | "unconfirmed"))
+            || value["client"]["detail"].as_str().is_none_or(|s| s.len() > 2048 || s.contains('\0'))
+            || value["client"].as_object().is_none_or(|fields| fields.keys().any(|key| !["state", "executablePath", "version", "detail"].contains(&key.as_str())))
+            || summary.get("exportedPath").is_some_and(|path| path.as_str().is_none_or(|s| s.is_empty() || s.len() > 4096 || s.contains('\0'))) {
+            return Err("WorkBuddy 接入检查摘要无效。".into());
+        }
+        for key in ["executablePath", "version"] {
+            if value["client"].get(key).is_some_and(|field| field.as_str().is_none_or(|s| s.len() > 4096 || s.contains('\0'))) {
+                return Err("WorkBuddy 客户端摘要无效。".into());
+            }
+        }
+        return Ok(value);
+    }
+    if matches!(request.action, Action::Export | Action::Prepare) {
         const EXPORT_FIELDS: &[&str] = &["agent", "exportedPath", "eventCount", "observationOnly", "clientVerified", "runtimeReady"];
         if summary.len() != EXPORT_FIELDS.len() || summary.keys().any(|key| !EXPORT_FIELDS.contains(&key.as_str()))
-            || value["agent"] != "workbuddy" || value["eventCount"] != 11
+            || value["agent"] != request.agent || value["eventCount"] != if request.agent == "kiro" { 6 } else { 11 }
             || value["observationOnly"] != true || value["clientVerified"] != false || value["runtimeReady"] != true
             || value["exportedPath"].as_str().is_none_or(|path| path.is_empty() || path.len() > 4096 || path.contains('\0')) {
             return Err("WorkBuddy 插件导出摘要无效。".into());
         }
         return Ok(value);
     }
-    const ALLOWED: &[&str] = &["agent", "operation", "configPath", "changed", "addedHandlers", "removedHandlers", "backup", "warnings", "sources", "revision", "runtimeReady", "applied", "backupId", "platformSupported", "installed", "managedHandlers"];
+    const ALLOWED: &[&str] = &["agent", "operation", "configPath", "changed", "addedHandlers", "removedHandlers", "backup", "warnings", "sources", "revision", "runtimeReady", "applied", "backupId", "platformSupported", "installed", "managedHandlers", "client", "trust", "activity", "foreignPlugin", "updateAvailable"];
     if summary.keys().any(|key| !ALLOWED.contains(&key.as_str())) || value["agent"].as_str() != Some(request.agent.as_str()) {
         return Err("接入服务返回了不匹配的摘要。".into());
     }
@@ -112,7 +140,7 @@ fn validate_summary(value: Value, request: &Request) -> Result<Value, String> {
     if request.action != Action::Status && !value["revision"].as_str().is_some_and(valid_revision) {
         return Err("接入摘要缺少有效配置版本。".into());
     }
-    for key in ["changed", "applied", "platformSupported", "installed"] {
+    for key in ["changed", "applied", "platformSupported", "installed", "foreignPlugin", "updateAvailable"] {
         if summary.get(key).is_some_and(|field| !field.is_boolean()) { return Err("接入摘要状态字段无效。".into()); }
     }
     for key in ["addedHandlers", "removedHandlers", "managedHandlers"] {
@@ -130,6 +158,34 @@ fn validate_summary(value: Value, request: &Request) -> Result<Value, String> {
                 return Err("接入摘要列表过大或无效。".into());
             }
         }
+    }
+    if let Some(client) = summary.get("client") {
+        let fields = client.as_object().ok_or("客户端发现信息无效。")?;
+        if fields.keys().any(|key| !["state", "executablePath", "version", "detail"].contains(&key.as_str()))
+            || !matches!(client["state"].as_str(), Some("detected" | "not_found" | "unconfirmed"))
+            || client["detail"].as_str().is_none_or(|s| s.len() > 2048 || s.contains('\0')) {
+            return Err("客户端发现摘要无效。".into());
+        }
+        for key in ["executablePath", "version"] {
+            if fields.get(key).is_some_and(|field| field.as_str().is_none_or(|s| s.len() > 4096 || s.contains('\0'))) { return Err("客户端发现文本无效。".into()); }
+        }
+    }
+    if let Some(trust) = summary.get("trust") {
+        let fields = trust.as_object().ok_or("授权摘要无效。")?;
+        if request.agent != "codex" || fields.keys().any(|key| !["state", "configuredCount", "trustedCount", "fingerprint", "reason"].contains(&key.as_str()))
+            || !matches!(trust["state"].as_str(), Some("granted" | "required" | "unavailable"))
+            || trust["configuredCount"].as_u64().is_none_or(|count| count > 1000)
+            || trust["trustedCount"].as_u64().is_none_or(|count| count > trust["configuredCount"].as_u64().unwrap_or(0))
+            || fields.get("fingerprint").is_some_and(|value| !value.as_str().is_some_and(valid_revision))
+            || fields.get("reason").is_some_and(|value| value.as_str().is_none_or(|s| s.len() > 2048 || s.contains('\0'))) {
+            return Err("授权摘要字段无效。".into());
+        }
+    }
+    if let Some(activity) = summary.get("activity") {
+        let fields = activity.as_object().ok_or("活动摘要无效。")?;
+        if fields.len() != 2 || fields.keys().any(|key| !["event", "receivedAt"].contains(&key.as_str()))
+            || activity["event"].as_str().is_none_or(|s| s.is_empty() || s.len() > 128 || s.contains('\0'))
+            || activity["receivedAt"].as_u64().is_none_or(|time| time == 0) { return Err("活动摘要字段无效。".into()); }
     }
     if let Some(field) = summary.get("backup") {
         let backup = field.as_object().ok_or("备份摘要无效。")?;
@@ -207,8 +263,28 @@ async fn discover_node(bundled: &Path) -> Result<(PathBuf, String), String> {
 
 #[cfg(windows)]
 fn unavailable(request: &Request, reason: &str, warning: String) -> Value {
+    if ["workbuddy", "kiro"].contains(&request.agent.as_str()) { return json!({"agent":request.agent,"runtimeReady":false,"needsPreparation":false,
+        "client":{"state":"unconfirmed","detail":warning}}); }
     json!({"agent":request.agent,"platformSupported":true,"runtimeReady":false,"configurationKnown":false,
         "installed":null,"managedHandlers":null,"reason":reason,"warnings":[warning]})
+}
+
+#[tauri::command]
+pub async fn open_integration_folder(path: String) -> Result<(), String> {
+    #[cfg(not(windows))]
+    { let _ = path; Err("请在 Windows 中打开接入文件夹。".into()) }
+    #[cfg(windows)]
+    {
+        let home = std::env::var_os("USERPROFILE").ok_or("无法定位用户目录")?;
+        let base = std::fs::canonicalize(PathBuf::from(home).join("XIsland-Plugins")).map_err(|_| "接入目录不存在")?;
+        let folder = std::fs::canonicalize(path).map_err(|_| "接入目录不存在")?;
+        if folder.parent() != Some(base.as_path()) || !folder.is_dir()
+            || folder.file_name().and_then(|name| name.to_str()).is_none_or(|name| !["workbuddy-", "kiro-"].iter().any(|prefix| name.starts_with(prefix))) {
+            return Err("只能打开 XIsland 准备的接入目录。".into());
+        }
+        Command::new("explorer.exe").arg(folder).spawn().map_err(|_| "无法打开文件资源管理器")?;
+        Ok(())
+    }
 }
 
 #[cfg(windows)]
@@ -243,12 +319,41 @@ async fn execute(app: &AppHandle, request: &Request) -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub async fn record_integration_activity(window: tauri::WebviewWindow, app: AppHandle,
+    sync: tauri::State<'_, crate::desktop_sync::WindowSync>, owner_token: String, receipt: Value) -> Result<Value, String> {
+    crate::desktop_sync::owner(&window)?;
+    sync.with_owner(&owner_token, || Ok(()))?;
+    if !crate::transport::valid_activity_receipt(&receipt) { return Err("接入活动回执无效。".into()); }
+    #[cfg(not(windows))]
+    { let _ = app; Ok(json!({"recorded":false})) }
+    #[cfg(windows)]
+    {
+        timeout(Duration::from_secs(15), async {
+            let script = resource_script(&app).await?;
+            let (node, _) = discover_node(&script.parent().ok_or("hook 路径无效")?.join("node.exe")).await?;
+            let mut arguments = vec![script.into_os_string(), "--record-accepted-activity".into()];
+            for (flag, field) in [("--agent", "agent"), ("--configuration-revision", "configurationRevision"),
+                ("--runtime-fingerprint", "runtimeFingerprint"), ("--hook", "event")] {
+                arguments.extend([flag.into(), receipt[field].as_str().unwrap_or_default().into()]);
+            }
+            let (status, bytes) = capture(&node, &arguments, 4096).await?;
+            let result: Value = serde_json::from_slice(&bytes).map_err(|_| "活动确认没有返回有效摘要")?;
+            if !status.success() || result.as_object().is_none_or(|fields| fields.len() != 1)
+                || !result["recorded"].is_boolean() { return Err("接入活动未确认。".into()); }
+            Ok(result)
+        }).await.map_err(|_| "接入活动确认超时".to_owned())?
+    }
+}
+
+#[tauri::command]
 pub async fn integration_command(app: AppHandle, agent: String, action: String, operation: Option<String>, revision: Option<String>) -> Result<Value, String> {
     let request = validate_request(agent, action, operation, revision)?;
     #[cfg(not(windows))]
     {
         let _ = app;
         if request.action == Action::Status {
+            if ["workbuddy", "kiro"].contains(&request.agent.as_str()) { return Ok(json!({"agent":request.agent,"runtimeReady":false,"needsPreparation":false,
+                "client":{"state":"unconfirmed","detail":"请在 Windows 客户端检查接入。"}})); }
             return Ok(json!({"agent":request.agent,"platformSupported":false,"runtimeReady":false,"installed":false,
                 "managedHandlers":0,"warnings":["接入安装仅在 Windows 客户端执行；当前平台没有读取用户配置。"]}));
         }
@@ -314,7 +419,24 @@ mod tests {
         assert!(error.contains("JSON")); assert!(!error.contains("secret-config-content"));
     }
     #[test]
-    fn workbuddy_only_exports_and_cannot_claim_native_acceptance() {
+    fn new_adapters_use_fixed_service_actions_and_bounded_discovery_summaries() {
+        for agent in ["qwen", "code_buddy", "droid", "opencode", "kimi_code"] {
+            let request = validate_request(agent.into(), "status".into(), None, None).unwrap();
+            assert_eq!(cli_arguments(&request), ["--integration-status", "--agent", agent]);
+            let summary = json!({"agent":agent,"runtimeReady":true,"installed":true,"managedHandlers":1,
+                "client":{"state":"detected","detail":"discovered"},"activity":{"event":"SessionStart","receivedAt":1}});
+            assert!(validate_summary(summary.clone(), &request).is_ok());
+            let mut private = summary; private["client"]["configuration"] = json!({"secret":"never-echo"});
+            assert!(validate_summary(private, &request).is_err());
+        }
+        let request = validate_request("codex".into(), "status".into(), None, None).unwrap();
+        let mut summary = json!({"agent":"codex","runtimeReady":true,
+            "trust":{"state":"required","configuredCount":12,"trustedCount":0}});
+        assert!(validate_summary(summary.clone(), &request).is_ok());
+        summary["trust"]["trustedCount"] = json!(13); assert!(validate_summary(summary, &request).is_err());
+    }
+    #[test]
+    fn observer_artifacts_only_prepare_files_and_cannot_claim_native_acceptance() {
         let request = validate_request("workbuddy".into(), "export".into(), None, None).unwrap();
         assert_eq!(cli_arguments(&request), ["--workbuddy-export", "--agent", "workbuddy"]);
         assert!(validate_request("workbuddy".into(), "apply".into(), None, None).is_err());
@@ -324,5 +446,16 @@ mod tests {
         assert!(validate_summary(summary.clone(), &request).is_ok());
         summary["clientVerified"] = json!(true);
         assert!(validate_summary(summary, &request).is_err());
+        for (agent, count) in [("workbuddy", 11), ("kiro", 6)] {
+            let prepare = validate_request(agent.into(), "prepare".into(), None, None).unwrap();
+            assert_eq!(cli_arguments(&prepare)[0], format!("--{agent}-prepare"));
+            assert!(validate_summary(json!({"agent":agent,"exportedPath":"C:\\fixture","eventCount":count,
+                "observationOnly":true,"clientVerified":false,"runtimeReady":true}), &prepare).is_ok());
+            let status = validate_request(agent.into(), "status".into(), None, None).unwrap();
+            assert_eq!(cli_arguments(&status)[0], format!("--{agent}-status"));
+            assert!(validate_summary(json!({"agent":agent,"runtimeReady":true,"needsPreparation":true,
+                "client":{"state":"detected","detail":"fixture"}}), &status).is_ok());
+            assert!(validate_request(agent.into(), "apply".into(), None, None).is_err());
+        }
     }
 }

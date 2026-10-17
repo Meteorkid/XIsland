@@ -1,0 +1,13 @@
+{
+  "version": "0.1.6",
+  "zip": ".build/XIsland-Windows-0.1.6-preview-test-kit.zip",
+  "size": 26421239,
+  "sha256": "81f7ee11f0c2ebd1455552c38dcfd9c4af71e57dece6fc68b53bac5a2bd4694d",
+  "installerSha256": "d376e91647fe35fa9b5e2630d58c22e60087131db50e38cd94a3f350e6b84238",
+  "zipCRCVerified": true,
+  "manifestHashesVerified": true,
+  "entries": 7,
+  "buildInputDigest": "2f6d1016387d118e202bb0ac2a125e724cb07ea5245f02d0acc9a5466035ea98",
+  "windowsRuntimeVerified": false,
+  "signed": false
+}

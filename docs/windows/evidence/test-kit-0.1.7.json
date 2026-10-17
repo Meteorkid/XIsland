@@ -1,0 +1,14 @@
+{
+  "version": "0.1.7",
+  "zip": ".build/XIsland-Windows-0.1.7-preview-test-kit.zip",
+  "size": 26453399,
+  "sha256": "31c15590e182fba0766112d3b857157bfcc1bb02be1bf27bf37a9e3826d92588",
+  "installerSha256": "505fabfcb4f5b6d05d772982ea5f471c4a322ce598498af6d0110a159c65b5b9",
+  "zipCRCVerified": true,
+  "manifestHashesVerified": true,
+  "entries": 7,
+  "buildInputDigest": "97d8c7604e3131b425e7abe92dde8e297b539578687c8b7f54c494639f400cd2",
+  "buildInputFileCount": 158,
+  "windowsRuntimeVerified": false,
+  "signed": false
+}

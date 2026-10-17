@@ -1,8 +1,8 @@
 {
   "product": "XIsland for Windows",
-  "version": "0.1.3",
+  "version": "0.1.7",
   "channel": "development-preview",
-  "createdAt": "2026-10-15T09:24:17.381Z",
+  "createdAt": "2026-10-17T12:18:49.400Z",
   "target": "x86_64-pc-windows-msvc",
   "crossCompiled": true,
   "signed": false,
@@ -10,9 +10,9 @@
   "fullMacParityVerified": false,
   "artifacts": [
     {
-      "name": "XIsland-Windows-0.1.3-preview-x64-setup.exe",
-      "size": 26289667,
-      "sha256": "2c140bb4c6852652b528933bb7acfde2db664685808fb27fb63d0697fe997d71"
+      "name": "XIsland-Windows-0.1.7-preview-x64-setup.exe",
+      "size": 26418057,
+      "sha256": "505fabfcb4f5b6d05d772982ea5f471c4a322ce598498af6d0110a159c65b5b9"
     },
     {
       "name": "Test-XIsland.ps1",
@@ -21,13 +21,13 @@
     },
     {
       "name": "Windows验收说明.md",
-      "size": 4971,
-      "sha256": "e6514c0da9d048875d7e2535b0371a7a28a361839efe8b1e550d572c311503d2"
+      "size": 8009,
+      "sha256": "b9e357e494138d6e130d75f40a2168b11ebfd295c32c999febd84508891d795e"
     },
     {
       "name": "README.md",
-      "size": 6926,
-      "sha256": "0292a0b9e642285dbae8db2a22f5a47df55da7b36ef5a821446be662598beb44"
+      "size": 10494,
+      "sha256": "9b3824df0c4393ccf470f1c1ce39bde0a4abee4ee3352e20411fc12cb24720ab"
     },
     {
       "name": "LICENSE-node.txt",
@@ -40,43 +40,28 @@
       "sha256": "d2cc6f0f8571ecf7d5407f2dc0b0a9b95c0221c95b2c547eb69b965f27a3d83b"
     }
   ],
-  "unbundledExecutableSha256": "8d10890b092689c30e04b1d9d1d16a587b9f706238a6d913fbb0032b222c8b4d",
-  "installedExecutableSha256": "78db71faec0e9eb25bae0385859eca627655b521e3f928ec550d9b689aaf9c09",
+  "unbundledExecutableSha256": "0169029cebec3881536c55e3cb7bf9b241be7b905eb3dbcda7e01f6e40705269",
+  "installedExecutableSha256": "6558e2144b6f66aca816f7f1759ba40934a06dccf9ed2ce1a965f551d1e996a1",
   "bundleInspection": {
-    "date": "2026-10-15",
-    "version": "0.1.3",
-    "inspection": "independent NSIS extraction with 7-Zip",
-    "installerSha256": "2c140bb4c6852652b528933bb7acfde2db664685808fb27fb63d0697fe997d71",
+    "date": "2026-10-17",
+    "version": "0.1.7",
+    "inspection": "independent NSIS extraction with 7-Zip 26.04",
+    "installerSha256": "505fabfcb4f5b6d05d772982ea5f471c4a322ce598498af6d0110a159c65b5b9",
     "packagedApplicationDifference": "Only verified Tauri bundle marker UNK -> NSS (3 bytes)",
     "bundledNodeMatchesOfficialChecksum": true,
-    "hookContainsBoundedWorkBuddyLauncher": true,
-    "bridgeContainsTraeOriginLabels": true,
+    "allBundledResourcesMatchSourceBytes": true,
+    "newSetupAndKiroSymbolsPresent": true,
     "windowsExecutionVerified": false,
     "files": [
       {
         "path": "xisland.exe",
-        "size": 10226176,
-        "sha256": "78db71faec0e9eb25bae0385859eca627655b521e3f928ec550d9b689aaf9c09"
+        "size": 10713600,
+        "sha256": "6558e2144b6f66aca816f7f1759ba40934a06dccf9ed2ce1a965f551d1e996a1"
       },
       {
-        "path": "resources/xisland-bridge.exe",
-        "size": 745472,
-        "sha256": "7a0e31f836e3c47e0e3dd2ae8a305f700658fed10edfa99e8d5fece7bc8e8f7b"
-      },
-      {
-        "path": "resources/xisland-hook.cjs",
-        "size": 98088,
-        "sha256": "7a75ca1b45f569126d84d90f64e55ac0ff55db769be71c98fb70bdb9b9c0f169"
-      },
-      {
-        "path": "resources/node.exe",
-        "size": 93580104,
-        "sha256": "ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32"
-      },
-      {
-        "path": "resources/LICENSE-node.txt",
-        "size": 157609,
-        "sha256": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace"
+        "path": "xisland-bridge.exe",
+        "size": 870912,
+        "sha256": "c98f0288a72d3b25c2be7d74cf1e4fe591486549633e8f73e14447a7457c5303"
       },
       {
         "path": "resources/LICENSE-XIsland.txt",
@@ -84,20 +69,69 @@
         "sha256": "d2cc6f0f8571ecf7d5407f2dc0b0a9b95c0221c95b2c547eb69b965f27a3d83b"
       },
       {
+        "path": "resources/LICENSE-node.txt",
+        "size": 157609,
+        "sha256": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace"
+      },
+      {
+        "path": "resources/README.txt",
+        "size": 446,
+        "sha256": "af8a64af46abf1ed70ea8537980e76292381cb9e1a363673cd8aebe8e1362983"
+      },
+      {
         "path": "resources/node-runtime.json",
         "size": 335,
         "sha256": "0ad125c17c4946d30b3ac19d4819a3b0fa718e1a7670a58f0b8719b34d38f4fe"
+      },
+      {
+        "path": "resources/node.exe",
+        "size": 93580104,
+        "sha256": "ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32"
+      },
+      {
+        "path": "resources/xisland-bridge.exe",
+        "size": 745472,
+        "sha256": "b5a8eeaf37c230b4aa74c4c75e4453539b92ef71118b0b2eb50732fc6ee14f85"
+      },
+      {
+        "path": "resources/xisland-hook.cjs",
+        "size": 257059,
+        "sha256": "357b84b0337f8e7b266e38c1b041d92597f9a5cc3b32d1f181fcdbc8ca7c453a"
       }
     ]
   },
   "buildInputs": {
-    "version": "0.1.3",
-    "capturedAt": "2026-10-15T09:21:20.510Z",
-    "digest": "c0d940f5ec3f609cd77c959daa095a66484a514425ef8ddf0a1e72b76afede59",
+    "version": "0.1.7",
+    "capturedAt": "2026-10-17T12:16:45.473Z",
+    "digest": "97d8c7604e3131b425e7abe92dde8e297b539578687c8b7f54c494639f400cd2",
     "files": [
       {
         "path": "../LICENSE",
         "sha256": "d2cc6f0f8571ecf7d5407f2dc0b0a9b95c0221c95b2c547eb69b965f27a3d83b"
+      },
+      {
+        "path": "crates/island-link/Cargo.lock",
+        "sha256": "7b2e559cd3b67c07a79f9259904a9f865dd2683d8765610507d13f2d4e2b3df4"
+      },
+      {
+        "path": "crates/island-link/Cargo.toml",
+        "sha256": "ce0f69a135f1e5c27278da29d2c2b4a14a0ba875fc3d59554f12adb2e22f0502"
+      },
+      {
+        "path": "crates/island-link/src/lib.rs",
+        "sha256": "2f19a07dcc68375952697a24be7d469c26e2e25f1eca96fa787f6197c17ac9ad"
+      },
+      {
+        "path": "crates/island-link/src/preferences.rs",
+        "sha256": "cd36ae046212b31708a8cfb2974c87a6beb6613b3736a74388c5f4782eaa1dc4"
+      },
+      {
+        "path": "crates/island-link/tests/peer.rs",
+        "sha256": "1d14626e205046bd143962e35050435bc227fae22bb986afec093a28e890d337"
+      },
+      {
+        "path": "crates/island-link/tests/subprocess.rs",
+        "sha256": "65e5f5e8836f1a7fd110fe03ae42a3812f875283f0d08f4147fa8e8c8891c3a1"
       },
       {
         "path": "index.html",
@@ -105,15 +139,15 @@
       },
       {
         "path": "package-lock.json",
-        "sha256": "4de838afec9275f91ac3289fbe4ea8835d7695c85f432ff2cf9a129230f7f86c"
+        "sha256": "8639484085e833f85189e213035b7a087e22d321300ce8a3f6a08eb93c012197"
       },
       {
         "path": "package.json",
-        "sha256": "7f7ff1fe60d3330a5aa06b8760f6f4af7d88234272558991b6e269985f314909"
+        "sha256": "7a8bf7f73fb66b0bf6d0e60157a6805fcd46cc472f66894a0f8df964ba79d988"
       },
       {
         "path": "playwright.config.ts",
-        "sha256": "4dce22f49d362164e61307ca75bca9f4117cad09bacdc49db07f14c67c4d3285"
+        "sha256": "5072d5ac797ab74c8086094960dfc85d787cc7c0e438e0767fa237d937c2c2d3"
       },
       {
         "path": "scripts/build-hook.mjs",
@@ -134,6 +168,10 @@
       {
         "path": "scripts/prepare-node-runtime.mjs",
         "sha256": "cf28e9b9950c9e9e6b1194dde2ac5650ce1068b3d00ae5bf4ea7aa72451f45a5"
+      },
+      {
+        "path": "scripts/test-opencode-native.mjs",
+        "sha256": "f5ee7f3c2d12a225d19550119638b2e7139f3942d52b88e8c39291f82acae357"
       },
       {
         "path": "scripts/Test-XIsland.ps1",
@@ -157,11 +195,11 @@
       },
       {
         "path": "src-tauri/Cargo.lock",
-        "sha256": "d8c45d6e8ffa7982918a98cf248a3510cd28ca0cc12d0c56b3ec49e361c3628d"
+        "sha256": "25e3fb833479acb5cbd6a2f66a07830c01621d75396e57e0f19fef06c00d983f"
       },
       {
         "path": "src-tauri/Cargo.toml",
-        "sha256": "398350285a13fdaf14db013cb099a0374cfea30ea2fc485b45471447f7701c89"
+        "sha256": "334d5378a9ae44f556e471e4a6e26409dfb65705a1112a20eb7420525204f816"
       },
       {
         "path": "src-tauri/icons/128x128.png",
@@ -209,7 +247,7 @@
       },
       {
         "path": "src-tauri/resources/xisland-bridge.exe",
-        "sha256": "7a0e31f836e3c47e0e3dd2ae8a305f700658fed10edfa99e8d5fece7bc8e8f7b"
+        "sha256": "b5a8eeaf37c230b4aa74c4c75e4453539b92ef71118b0b2eb50732fc6ee14f85"
       },
       {
         "path": "src-tauri/src/bin/bridge.rs",
@@ -220,20 +258,24 @@
         "sha256": "8a8b2ef60e4ca6b26b78a8e90f619de5f940e98c2b15a72faffe654b8c02a265"
       },
       {
+        "path": "src-tauri/src/desktop_link.rs",
+        "sha256": "d1c80885d8f1a2d55713b694309c4a8c384e43dc798f7817f8e1654bf2eb4a36"
+      },
+      {
         "path": "src-tauri/src/desktop_sync.rs",
-        "sha256": "65701ffc869ef5df22f48a93c5bc330dc63c35738c0fd39e3b8c1340fefb5da2"
+        "sha256": "f29ef637cad2b0eb889f0055f51edf8e7f4cbad2ecf10ce6add467fe11ae1df4"
       },
       {
         "path": "src-tauri/src/desktop.rs",
-        "sha256": "f09198fc5155fe83a8a556067c69811bbc1bf5148473f7d3d39c90501066c6cd"
+        "sha256": "fc0820fe496e332af6d89b65bfdcf7983ecccf921490e2e1b99fef91f707aa45"
       },
       {
         "path": "src-tauri/src/integrations.rs",
-        "sha256": "c9ebf46076aa02bd152f8bd021517b45f3bb13df47268a0d6d755e67b0173e42"
+        "sha256": "eed00c9afb8f86ca578dd94950ec519248351c1e55fccea11aa9fab6671b4f4b"
       },
       {
         "path": "src-tauri/src/lib.rs",
-        "sha256": "5863f2ac509a6255fd9fdd7f4d1485aecf4261ce2af44cc039a59355750e2b43"
+        "sha256": "4b0e1198cfed429c22df114fd1eac3baaf17a64217023613b267f5f4f729e7c8"
       },
       {
         "path": "src-tauri/src/main.rs",
@@ -244,16 +286,20 @@
         "sha256": "d55f94b1ed8b6bf1f536466be0413b91c6e52c8e3530ac2745b0d2f05e27cb26"
       },
       {
+        "path": "src-tauri/src/setup_sync.rs",
+        "sha256": "adbcd1f517510181f3739174df6cdf9558a22aee20294e4235bdf2c06e7e1603"
+      },
+      {
         "path": "src-tauri/src/transport.rs",
-        "sha256": "740214f3c9ef871120bf85fe332d9a230b3af097a9eff90081db85fd192b3b24"
+        "sha256": "fdce70d0bb0bd71a8d0cbae787c927902581bf2562799bdff288c99bd806f2f5"
       },
       {
         "path": "src-tauri/src/windowing.rs",
-        "sha256": "13e812a105a1865492b3aebb0f5a3611198698116a9d972f95a7cc30e58ddc55"
+        "sha256": "9ec8302c02ca6ff8c6e8e0f663eccbafba510d0411e7a030da7e90c3b2d7a148"
       },
       {
         "path": "src-tauri/tauri.conf.json",
-        "sha256": "e166e44f8d31d13d6570499486f806aff357e3b5029401933909de18cca61a60"
+        "sha256": "962b471040f50c4a85db8c39b9d4a3c57687edaf6c09e6a5896e3326a7c0d302"
       },
       {
         "path": "src-tauri/tests/fixtures/traework-cn-0.2.2-product.json",
@@ -261,11 +307,15 @@
       },
       {
         "path": "src-tauri/tests/transport_integration.rs",
-        "sha256": "9d9c3211f95631d3de11882f26c200861f2d250f0505151952e8bcd028903971"
+        "sha256": "f56297d7dd72949de35c1da173a8ed4619d23bdbf2940a4c4b30c072ac2ccea9"
       },
       {
         "path": "src/adapters/claude.ts",
         "sha256": "a218a953cdff1aa2155511f550861b57bc75c6cb232bffe82bf50433b36cda7f"
+      },
+      {
+        "path": "src/adapters/codebuddy.ts",
+        "sha256": "6c1c5c8b0d2e8c653749e02912e01639e92b59f7ead1afc02eb486c509b19d66"
       },
       {
         "path": "src/adapters/codex.ts",
@@ -276,12 +326,32 @@
         "sha256": "33c8897139a7191c0ef8fadcf081cafacb448483cac793751cce37ec9f2268e8"
       },
       {
+        "path": "src/adapters/droid.ts",
+        "sha256": "f5b995c023e46dc9df3b9f101a8870c88a9cf3c4597d732fc36964e0c1978c05"
+      },
+      {
         "path": "src/adapters/gemini.ts",
         "sha256": "97df61f54fb28adf544513e9e099ed97eb823b4d0e1ba60b1c3608ee311f9b72"
       },
       {
+        "path": "src/adapters/kimi-code.ts",
+        "sha256": "b00aefae09b4abae432259b3cfd8de49583f3098b1c4d10a901b7a80d5698d60"
+      },
+      {
+        "path": "src/adapters/kiro.ts",
+        "sha256": "1228a9ebaa6bd21242db2e250767fff8f4863b8edbb556b86334b4fddfc39043"
+      },
+      {
+        "path": "src/adapters/opencode.ts",
+        "sha256": "c5dec6baa88dcd518d4fd5aa2acdae86631a061482b80e6bc9bcc93f783a5b38"
+      },
+      {
+        "path": "src/adapters/qwen.ts",
+        "sha256": "f14294aa7d3855b710e74adf383540c988f61b0fbedcd8aff086bcc1c4136e85"
+      },
+      {
         "path": "src/adapters/registry.ts",
-        "sha256": "586d2576ab1ccada642de4af1e6fbdc41082d88e731411fe8bae8fc0e3312dee"
+        "sha256": "99d8e095f73c7190ddff49bed66b3e090169a4e49363d84c98aebe44aeeb1f39"
       },
       {
         "path": "src/adapters/trae.ts",
@@ -296,12 +366,16 @@
         "sha256": "9b7837f2f3454bb32030caac07febf2cf61d08791ed3bbe1d19e57dfcd6ab170"
       },
       {
+        "path": "src/core/history-summary.ts",
+        "sha256": "adca74fe5d1612217a933acecb11c451a90db1924eb0945acfd20866473534dc"
+      },
+      {
         "path": "src/core/index.ts",
         "sha256": "2c03605f58735ce85dea351eb510e60b0adf51fed250427675c7768b38ee2e6c"
       },
       {
         "path": "src/core/kimi-tasks.ts",
-        "sha256": "cc6a320412b2406c2f7c1b112e92006470e52acc3fa94e2adaf54dbf616110af"
+        "sha256": "c20ca6c2e73c0aaf3744cc05bc481e3cda444fbfe7cc8e5244b98fad220a01ee"
       },
       {
         "path": "src/core/observation.ts",
@@ -313,11 +387,11 @@
       },
       {
         "path": "src/core/session-store.ts",
-        "sha256": "0fb80825754b7d3ee12ddccaacc7d49efb104e813862236592cf15393c0188cd"
+        "sha256": "f537576d1e4f3a2036a0e8c69dae950c54bc0009bace0f30a80f7f53551d13a8"
       },
       {
         "path": "src/core/types.ts",
-        "sha256": "865bc7a654637ddbdc7956351a5512e1a88105cf9dd1a2522c33c77a111872cf"
+        "sha256": "a74662d3a9c24279f71bfbfd20927e0d20d190f3bfd0cda486b906722fc59ea4"
       },
       {
         "path": "src/fixtures.ts",
@@ -356,28 +430,72 @@
         "sha256": "64c1987e48830110d461fcd07c102d41f5f5accafb664af95281bb8ec62419b9"
       },
       {
+        "path": "src/fixtures/companion/kimi-code-hooks.json",
+        "sha256": "7183a4f0d010d05869c8c3cb094d67f0ab01a6ddea2d0af775f8997e6f80c35f"
+      },
+      {
         "path": "src/fixtures/companion/observation-events.json",
         "sha256": "21fc320b0adf5abb3a5dc3b2d047c0c701fe606da234b388defcd138373da382"
       },
       {
         "path": "src/hook.ts",
-        "sha256": "662ef469c3dd12b7cc72b85997a1d9001baa841c04b1ec05d7f4507b2e659959"
+        "sha256": "5840175e32713b4cff0c0ddd0d00b6695ee5632435a57b03413f6c93ed0d096f"
+      },
+      {
+        "path": "src/integrations/codex-trust.ts",
+        "sha256": "2c8a008c70c904004fba987f0b0a843b132e06312dc05f97e89053260824fee0"
+      },
+      {
+        "path": "src/integrations/connection-health.ts",
+        "sha256": "4411836f4a75dfd9ab53c4c4a9af97f0d673a1d16834f38433de9e193b66defe"
+      },
+      {
+        "path": "src/integrations/discovery.ts",
+        "sha256": "c30335d1a8e841128a67f28f8e5458bd73b8bf67889da748c09e3db061cb98fc"
       },
       {
         "path": "src/integrations/installer.ts",
-        "sha256": "08068ad1f608562548c323e22a267e5cc38fbd1ebc7048d6ee389e4b19c87cac"
+        "sha256": "6a9af7697835bce4682c7151948023175a9326d3d10899adb3a3c223bd564397"
+      },
+      {
+        "path": "src/integrations/kimi-config.ts",
+        "sha256": "0feb9992287f617ed826e4d7fb613d91aca9ba0e2dbce8990e48e17e035a8692"
+      },
+      {
+        "path": "src/integrations/kimi-installation.ts",
+        "sha256": "15232c582c914931eaf490dcdc5c41cd4ef682e6d9b859681e717fc8152b8850"
+      },
+      {
+        "path": "src/integrations/kiro-plugin.ts",
+        "sha256": "c057dbf72178c2c7eb7f6a1772e06a11dd3d7271a1c6c35ec089096463e62b6e"
+      },
+      {
+        "path": "src/integrations/opencode-installation.ts",
+        "sha256": "622e82e95dd71410922d6b9aa0c09bb21d78c8858a5cfc50ddfa68accd491377"
+      },
+      {
+        "path": "src/integrations/opencode-plugin.ts",
+        "sha256": "684a7697c96da025601bf61d0a70dab0cc7410bf07c3fb8739d54589a96bf25e"
       },
       {
         "path": "src/integrations/plan.ts",
-        "sha256": "b8729d75dc65d3f2930fdba7390ce7424cb706d998ee5b214bf8c08bf34e4fff"
+        "sha256": "9403d029347e6f20cd15186abdcd1cae950cf83d8cd5a1be6cafe2625519c644"
+      },
+      {
+        "path": "src/integrations/service.ts",
+        "sha256": "354ad359cebd617788d693881aed9c7903e84a9f7a4d6565bdd62dbd384dd92b"
+      },
+      {
+        "path": "src/integrations/setup-coordinator.ts",
+        "sha256": "46b813c20d31ccbb291ec05327ed60f0ec65be95bc32ce95cb7f4d3619daf5a7"
       },
       {
         "path": "src/integrations/workbuddy-plugin.ts",
-        "sha256": "d2970d947535c6c6bdff5c6212a2aae79d104431d350c1343ba659da4924f6a1"
+        "sha256": "a26f402edb6495d3581df3bdfaf1cd01f9a263d9f40151a7f218f21c5e35e55b"
       },
       {
         "path": "src/main.ts",
-        "sha256": "4f5a00fc5c8b7a21f7ac20e37a35aa4ef83c6cc00b8106eb087aeb8ac2337243"
+        "sha256": "fc179b61b9b3cbd8de4823b1ee2f946c825e0bd70fb64bd59b51a18329b50604"
       },
       {
         "path": "src/platform/native-drag.ts",
@@ -388,24 +506,32 @@
         "sha256": "f934fbb718ea3ab47e96f90abff93c67c5fa94326b094ea33a79b3a2dc82bec8"
       },
       {
+        "path": "src/platform/setup-owner.ts",
+        "sha256": "18697576810f712c362e9843362ff8ecb9a9fe6ab51f145cea23079d6a6c5faa"
+      },
+      {
         "path": "src/ui/audio.ts",
         "sha256": "39a4e679016476fbec57ab4fed608f39ba23d82161ef4f39495e3f5781918b0c"
       },
       {
         "path": "src/ui/components.ts",
-        "sha256": "35c700be27359590717527295e5788f56f60c9963ee0042dba7d4c412a3787d5"
+        "sha256": "83d049b7f63594108b3e4511aaf1e02d3ae059d70fb45e51bc2002141193d23f"
       },
       {
         "path": "src/ui/i18n.ts",
-        "sha256": "eb17ab8d7363c20850bcef0be1abb24332d1638fbbc31409549f33bf2893be2a"
+        "sha256": "aa6022a1bdd4e6d8f5d53bebcee05f85fe00f81cfe22f8525705858c549b6005"
       },
       {
         "path": "src/ui/index.ts",
-        "sha256": "265f6edbd7bb1fd680846e4c649560794c55549c7ba9faaae31e3f4c2d8cd69e"
+        "sha256": "a99152601e8b2ff7f15e7cabb0b3331fe82af18508c5b60822526b4f2a0b3e6f"
       },
       {
         "path": "src/ui/integration-controls.ts",
-        "sha256": "e43434ce6ca57846fe63cabb1e3503a137d3a94aff70da17e6c878c35ead5de7"
+        "sha256": "3b486531ba6ce354c847202a94dbc068ea7c6288586edaf7dd2458e4abf30c5b"
+      },
+      {
+        "path": "src/ui/island-switch.ts",
+        "sha256": "c588239690ef168164e2b66520e626ddf68296d52d285a385f334c727408dc9b"
       },
       {
         "path": "src/ui/motion.ts",
@@ -413,7 +539,7 @@
       },
       {
         "path": "src/ui/platform.ts",
-        "sha256": "de57176437199c0f8111a1614ee6604537a010183c5e39a31d70475667cab1dd"
+        "sha256": "30a9702ee61c0c9e1daf60655541d862adb2a2e54543b651c95cf33c62f713fa"
       },
       {
         "path": "src/ui/settings.ts",
@@ -421,7 +547,7 @@
       },
       {
         "path": "src/ui/styles.css",
-        "sha256": "7982dd9e44c39910f74d22b2da2414d0f1c1841c8b48121f75dc89450e850ddc"
+        "sha256": "46b160bf130afaf4b40daf87ff609c4a69eb6c8105e126064156084dd2372d8d"
       },
       {
         "path": "tests/audio.test.ts",
@@ -432,12 +558,28 @@
         "sha256": "263f64577c370f2b33a11c668bc266a211aee631f43e4e3813d610577e0778cb"
       },
       {
+        "path": "tests/codebuddy.test.ts",
+        "sha256": "05c599ed43d64390546eb9f91dfcc202b7b3a958388e14ed5fe3b01ffc62d6e7"
+      },
+      {
         "path": "tests/codex-lifecycle.test.ts",
         "sha256": "0cbb9d44945bbe5c6907562c45c23ec32d8b029d63c1fbf08dffe15e0ac5c720"
       },
       {
+        "path": "tests/codex-trust.test.ts",
+        "sha256": "04c07ad87f8f90c60bd09d2281c0a94b7fc479f3174b70277b9421a6bac8e794"
+      },
+      {
         "path": "tests/codex.test.ts",
         "sha256": "aa58e200345876affc0779de4f6d6ef5ab055a828259168c9742c2984aeb434f"
+      },
+      {
+        "path": "tests/completion-notifications.test.ts",
+        "sha256": "b76be05c9373718c6c149fc2e49dbf51e63ad1e6aabd367038d1a4d36b5062e4"
+      },
+      {
+        "path": "tests/connection-health.test.ts",
+        "sha256": "53b949d9ee31b7009ef26ebad6b3daaaf11ef4569004992484c7cc9bcc770f3a"
       },
       {
         "path": "tests/core.test.ts",
@@ -448,28 +590,116 @@
         "sha256": "565bf709792058f0a71073fc0f47cf46769d51fb282faf5d88259c666e383aec"
       },
       {
+        "path": "tests/discovery.test.ts",
+        "sha256": "8c8a83745ec59c59391b7162b23c2b7a502bd6254655bd0a29acc974cd09b439"
+      },
+      {
+        "path": "tests/droid.test.ts",
+        "sha256": "867b2ab8839f2cb67bfe125806b2bfcdd0506718ef9bc37bb5fa7b026f33708a"
+      },
+      {
+        "path": "tests/fixtures/codebuddy-hooks.json",
+        "sha256": "657807ec3ce5d463941ccbc4d510a8ac7f8dce3e23662a8cbb2a0f87dab736d2"
+      },
+      {
+        "path": "tests/fixtures/droid-hooks.json",
+        "sha256": "56d10ed2b5e645ffd282d04b29255f5e751fddcbb5bdeecd0c4a3226d7e8e242"
+      },
+      {
+        "path": "tests/fixtures/qwen-hooks.json",
+        "sha256": "175bdd95f0a3026430f0c30245633bb5490bf954ceb9845e74ded3637d8c11c3"
+      },
+      {
         "path": "tests/gemini.test.ts",
         "sha256": "154f5ff12bae54ebf637d7f1e28f87b1028e9bdab8655250cc1dab08e6785c31"
       },
       {
+        "path": "tests/history-summary.test.ts",
+        "sha256": "ffb4ed15b18710226a9352f88b96c4981436255aed1bd93edddce9f63fdc22a6"
+      },
+      {
         "path": "tests/hook.test.ts",
-        "sha256": "b2faac51c87545bc56e486448514977cf610455bbc6ca9ee8fed09d2c1821ee1"
+        "sha256": "86762e3add8e371863da52eb05ffd87c922f21f06c69dc796b9c0d103ae658c9"
       },
       {
         "path": "tests/integration-installer.test.ts",
-        "sha256": "29b12eaf4d8d3e105c77cf282106480a8c1a214bbfa1c8843635914841e0f41c"
+        "sha256": "d1484e33c966c7e5ee5e0856170645c036edba61cf5e5ffc3d798c47e8f76241"
       },
       {
         "path": "tests/integrations.test.ts",
         "sha256": "e4a2a1a44a549253ad5464965961539d3733effd7183237a05388105caba184b"
       },
       {
+        "path": "tests/island-switch.test.ts",
+        "sha256": "32080ee20a6235ba4075d5f0d78522c07ebf9a73cc0541b89fd52c4d2ddd987d"
+      },
+      {
+        "path": "tests/kimi-code-session.test.ts",
+        "sha256": "7ff90b4ffa82721e6065193680c685371b4dd1d7c8af137a910c693e344d4031"
+      },
+      {
+        "path": "tests/kimi-code.test.ts",
+        "sha256": "98e7c9f7373c18c58bc290339b29e911df6500c216bca238a3f48f8c0afa7dda"
+      },
+      {
+        "path": "tests/kimi-config.test.ts",
+        "sha256": "0c5def7c363a4ef87292227265b2525c249be995c9c44c2621dccb2de420fb36"
+      },
+      {
+        "path": "tests/kimi-installation.test.ts",
+        "sha256": "88ffb91e272a8a0e3416654a0221071a94fd82e27f9e6df493d04b7abe6f0847"
+      },
+      {
         "path": "tests/kimi-tasks.test.ts",
-        "sha256": "12be074377125a952bb209d2e9e082bae7e3691c5cf4ed145685a92ceb2523d9"
+        "sha256": "86436ab2486aa4c58294857cad05546b5d7fb2fde92d0efce0172a706494dbe3"
+      },
+      {
+        "path": "tests/kiro-plugin.test.ts",
+        "sha256": "56393e1475d85f66b11fe240a590e334e6aba3351d04077f5853e29879852f4e"
+      },
+      {
+        "path": "tests/kiro.test.ts",
+        "sha256": "f977b75662a9a528a5afa9348d66581b06a95e2ada840b66c116674053d53add"
       },
       {
         "path": "tests/multiwindow-regression.test.ts",
-        "sha256": "c8f23e6c9ed4c9e3997ad708584dd48d5cc9aaae20c7646118c64a91a5b6f6cd"
+        "sha256": "f3a6595d1fbe627b1d277ad6f6fcf0e791b06d99e4a529ab218df904ba5f12ef"
+      },
+      {
+        "path": "tests/opencode-flow.test.ts",
+        "sha256": "6cc31289a3e736e215d5e5a2a3f7a58d6ff65a0d4625f00fdbed6e7aadea5a91"
+      },
+      {
+        "path": "tests/opencode-installation.test.ts",
+        "sha256": "b8b7cdbeca4e6363d986000fc300cfb83c10b5756e3b5d9e3e6b74432cad89b0"
+      },
+      {
+        "path": "tests/opencode-plugin.test.ts",
+        "sha256": "72dc11ba6c0dd903cd83fb94121846a4d168066c070fca52ceacff85ecb00487"
+      },
+      {
+        "path": "tests/opencode-session.test.ts",
+        "sha256": "e9dd8827352b1b007c6cae38b9cff8c235d11c1203137e6e949cfc52a1c987c7"
+      },
+      {
+        "path": "tests/opencode.test.ts",
+        "sha256": "3b054685baf86a973874c7be5ad6bb0acd52b67ef9aa584b1b069bdf7e152fa6"
+      },
+      {
+        "path": "tests/qwen.test.ts",
+        "sha256": "e8469c5f7953e3e79ec258a31ca712ac7120c8f90932622b3a1b3546fcf0ee2a"
+      },
+      {
+        "path": "tests/setup-coordinator.test.ts",
+        "sha256": "656b1aeacd0246fc9aeebe49e7e462d0a280bdad2d804d6d00ee3a6250a1e421"
+      },
+      {
+        "path": "tests/setup-owner.test.ts",
+        "sha256": "8d3a15cc8d1bf71e4542680574ffd7b8fd770e5e0b76dc7f32cfa0605b790103"
+      },
+      {
+        "path": "tests/setup-ui.spec.ts",
+        "sha256": "1091a733b1871bd267afe1ff4b77a23a7523dc0275fca809dae5341b244ac23b"
       },
       {
         "path": "tests/trae.test.ts",
@@ -481,7 +711,7 @@
       },
       {
         "path": "tests/ui.spec.ts",
-        "sha256": "1340a69ec5c40cdfee8998fcf4023a2368626bb588d560acb2537a39b342494c"
+        "sha256": "229693d58853a7c27b1a069cd57fea8b60c1ef090ee48c8dd7d286b6e74cf38e"
       },
       {
         "path": "tests/window-sync.test.ts",
@@ -490,6 +720,10 @@
       {
         "path": "tests/windsurf.test.ts",
         "sha256": "e2b091638e6d8a1e231177bf609f3d862a531117a4f7608265da8ebb847faf45"
+      },
+      {
+        "path": "tests/workbuddy-setup.test.ts",
+        "sha256": "2c85f365a84f34e2d07fbed2a4d44cf2e168b7e6ae4bf895101e8540671b1e0c"
       },
       {
         "path": "tests/workbuddy.test.ts",
@@ -506,24 +740,44 @@
     ]
   },
   "workingTreeSnapshot": {
-    "capturedAt": "2026-10-15T09:24:17.385Z",
+    "capturedAt": "2026-10-17T12:18:49.405Z",
     "artifactSourceMatchVerified": true,
     "files": [
+      {
+        "path": "crates/island-link/Cargo.toml",
+        "sha256": "ce0f69a135f1e5c27278da29d2c2b4a14a0ba875fc3d59554f12adb2e22f0502"
+      },
+      {
+        "path": "crates/island-link/src/lib.rs",
+        "sha256": "2f19a07dcc68375952697a24be7d469c26e2e25f1eca96fa787f6197c17ac9ad"
+      },
+      {
+        "path": "crates/island-link/src/preferences.rs",
+        "sha256": "cd36ae046212b31708a8cfb2974c87a6beb6613b3736a74388c5f4782eaa1dc4"
+      },
+      {
+        "path": "crates/island-link/tests/peer.rs",
+        "sha256": "1d14626e205046bd143962e35050435bc227fae22bb986afec093a28e890d337"
+      },
+      {
+        "path": "crates/island-link/tests/subprocess.rs",
+        "sha256": "65e5f5e8836f1a7fd110fe03ae42a3812f875283f0d08f4147fa8e8c8891c3a1"
+      },
       {
         "path": "index.html",
         "sha256": "620c4f0cefc984dd5b338896cdd2f62d9cad35f060d04e6f7f6464a9d6cd11e7"
       },
       {
         "path": "package-lock.json",
-        "sha256": "4de838afec9275f91ac3289fbe4ea8835d7695c85f432ff2cf9a129230f7f86c"
+        "sha256": "8639484085e833f85189e213035b7a087e22d321300ce8a3f6a08eb93c012197"
       },
       {
         "path": "package.json",
-        "sha256": "7f7ff1fe60d3330a5aa06b8760f6f4af7d88234272558991b6e269985f314909"
+        "sha256": "7a8bf7f73fb66b0bf6d0e60157a6805fcd46cc472f66894a0f8df964ba79d988"
       },
       {
         "path": "playwright.config.ts",
-        "sha256": "4dce22f49d362164e61307ca75bca9f4117cad09bacdc49db07f14c67c4d3285"
+        "sha256": "5072d5ac797ab74c8086094960dfc85d787cc7c0e438e0767fa237d937c2c2d3"
       },
       {
         "path": "scripts/build-hook.mjs",
@@ -544,6 +798,10 @@
       {
         "path": "scripts/prepare-node-runtime.mjs",
         "sha256": "cf28e9b9950c9e9e6b1194dde2ac5650ce1068b3d00ae5bf4ea7aa72451f45a5"
+      },
+      {
+        "path": "scripts/test-opencode-native.mjs",
+        "sha256": "f5ee7f3c2d12a225d19550119638b2e7139f3942d52b88e8c39291f82acae357"
       },
       {
         "path": "scripts/Test-XIsland.ps1",
@@ -567,7 +825,7 @@
       },
       {
         "path": "src-tauri/Cargo.toml",
-        "sha256": "398350285a13fdaf14db013cb099a0374cfea30ea2fc485b45471447f7701c89"
+        "sha256": "334d5378a9ae44f556e471e4a6e26409dfb65705a1112a20eb7420525204f816"
       },
       {
         "path": "src-tauri/resources/node-runtime.json",
@@ -582,20 +840,24 @@
         "sha256": "8a8b2ef60e4ca6b26b78a8e90f619de5f940e98c2b15a72faffe654b8c02a265"
       },
       {
+        "path": "src-tauri/src/desktop_link.rs",
+        "sha256": "d1c80885d8f1a2d55713b694309c4a8c384e43dc798f7817f8e1654bf2eb4a36"
+      },
+      {
         "path": "src-tauri/src/desktop_sync.rs",
-        "sha256": "65701ffc869ef5df22f48a93c5bc330dc63c35738c0fd39e3b8c1340fefb5da2"
+        "sha256": "f29ef637cad2b0eb889f0055f51edf8e7f4cbad2ecf10ce6add467fe11ae1df4"
       },
       {
         "path": "src-tauri/src/desktop.rs",
-        "sha256": "f09198fc5155fe83a8a556067c69811bbc1bf5148473f7d3d39c90501066c6cd"
+        "sha256": "fc0820fe496e332af6d89b65bfdcf7983ecccf921490e2e1b99fef91f707aa45"
       },
       {
         "path": "src-tauri/src/integrations.rs",
-        "sha256": "c9ebf46076aa02bd152f8bd021517b45f3bb13df47268a0d6d755e67b0173e42"
+        "sha256": "eed00c9afb8f86ca578dd94950ec519248351c1e55fccea11aa9fab6671b4f4b"
       },
       {
         "path": "src-tauri/src/lib.rs",
-        "sha256": "5863f2ac509a6255fd9fdd7f4d1485aecf4261ce2af44cc039a59355750e2b43"
+        "sha256": "4b0e1198cfed429c22df114fd1eac3baaf17a64217023613b267f5f4f729e7c8"
       },
       {
         "path": "src-tauri/src/main.rs",
@@ -606,16 +868,20 @@
         "sha256": "d55f94b1ed8b6bf1f536466be0413b91c6e52c8e3530ac2745b0d2f05e27cb26"
       },
       {
+        "path": "src-tauri/src/setup_sync.rs",
+        "sha256": "adbcd1f517510181f3739174df6cdf9558a22aee20294e4235bdf2c06e7e1603"
+      },
+      {
         "path": "src-tauri/src/transport.rs",
-        "sha256": "740214f3c9ef871120bf85fe332d9a230b3af097a9eff90081db85fd192b3b24"
+        "sha256": "fdce70d0bb0bd71a8d0cbae787c927902581bf2562799bdff288c99bd806f2f5"
       },
       {
         "path": "src-tauri/src/windowing.rs",
-        "sha256": "13e812a105a1865492b3aebb0f5a3611198698116a9d972f95a7cc30e58ddc55"
+        "sha256": "9ec8302c02ca6ff8c6e8e0f663eccbafba510d0411e7a030da7e90c3b2d7a148"
       },
       {
         "path": "src-tauri/tauri.conf.json",
-        "sha256": "e166e44f8d31d13d6570499486f806aff357e3b5029401933909de18cca61a60"
+        "sha256": "962b471040f50c4a85db8c39b9d4a3c57687edaf6c09e6a5896e3326a7c0d302"
       },
       {
         "path": "src-tauri/tests/fixtures/traework-cn-0.2.2-product.json",
@@ -623,11 +889,15 @@
       },
       {
         "path": "src-tauri/tests/transport_integration.rs",
-        "sha256": "9d9c3211f95631d3de11882f26c200861f2d250f0505151952e8bcd028903971"
+        "sha256": "f56297d7dd72949de35c1da173a8ed4619d23bdbf2940a4c4b30c072ac2ccea9"
       },
       {
         "path": "src/adapters/claude.ts",
         "sha256": "a218a953cdff1aa2155511f550861b57bc75c6cb232bffe82bf50433b36cda7f"
+      },
+      {
+        "path": "src/adapters/codebuddy.ts",
+        "sha256": "6c1c5c8b0d2e8c653749e02912e01639e92b59f7ead1afc02eb486c509b19d66"
       },
       {
         "path": "src/adapters/codex.ts",
@@ -638,12 +908,32 @@
         "sha256": "33c8897139a7191c0ef8fadcf081cafacb448483cac793751cce37ec9f2268e8"
       },
       {
+        "path": "src/adapters/droid.ts",
+        "sha256": "f5b995c023e46dc9df3b9f101a8870c88a9cf3c4597d732fc36964e0c1978c05"
+      },
+      {
         "path": "src/adapters/gemini.ts",
         "sha256": "97df61f54fb28adf544513e9e099ed97eb823b4d0e1ba60b1c3608ee311f9b72"
       },
       {
+        "path": "src/adapters/kimi-code.ts",
+        "sha256": "b00aefae09b4abae432259b3cfd8de49583f3098b1c4d10a901b7a80d5698d60"
+      },
+      {
+        "path": "src/adapters/kiro.ts",
+        "sha256": "1228a9ebaa6bd21242db2e250767fff8f4863b8edbb556b86334b4fddfc39043"
+      },
+      {
+        "path": "src/adapters/opencode.ts",
+        "sha256": "c5dec6baa88dcd518d4fd5aa2acdae86631a061482b80e6bc9bcc93f783a5b38"
+      },
+      {
+        "path": "src/adapters/qwen.ts",
+        "sha256": "f14294aa7d3855b710e74adf383540c988f61b0fbedcd8aff086bcc1c4136e85"
+      },
+      {
         "path": "src/adapters/registry.ts",
-        "sha256": "586d2576ab1ccada642de4af1e6fbdc41082d88e731411fe8bae8fc0e3312dee"
+        "sha256": "99d8e095f73c7190ddff49bed66b3e090169a4e49363d84c98aebe44aeeb1f39"
       },
       {
         "path": "src/adapters/trae.ts",
@@ -658,12 +948,16 @@
         "sha256": "9b7837f2f3454bb32030caac07febf2cf61d08791ed3bbe1d19e57dfcd6ab170"
       },
       {
+        "path": "src/core/history-summary.ts",
+        "sha256": "adca74fe5d1612217a933acecb11c451a90db1924eb0945acfd20866473534dc"
+      },
+      {
         "path": "src/core/index.ts",
         "sha256": "2c03605f58735ce85dea351eb510e60b0adf51fed250427675c7768b38ee2e6c"
       },
       {
         "path": "src/core/kimi-tasks.ts",
-        "sha256": "cc6a320412b2406c2f7c1b112e92006470e52acc3fa94e2adaf54dbf616110af"
+        "sha256": "c20ca6c2e73c0aaf3744cc05bc481e3cda444fbfe7cc8e5244b98fad220a01ee"
       },
       {
         "path": "src/core/observation.ts",
@@ -675,11 +969,11 @@
       },
       {
         "path": "src/core/session-store.ts",
-        "sha256": "0fb80825754b7d3ee12ddccaacc7d49efb104e813862236592cf15393c0188cd"
+        "sha256": "f537576d1e4f3a2036a0e8c69dae950c54bc0009bace0f30a80f7f53551d13a8"
       },
       {
         "path": "src/core/types.ts",
-        "sha256": "865bc7a654637ddbdc7956351a5512e1a88105cf9dd1a2522c33c77a111872cf"
+        "sha256": "a74662d3a9c24279f71bfbfd20927e0d20d190f3bfd0cda486b906722fc59ea4"
       },
       {
         "path": "src/fixtures.ts",
@@ -718,28 +1012,72 @@
         "sha256": "64c1987e48830110d461fcd07c102d41f5f5accafb664af95281bb8ec62419b9"
       },
       {
+        "path": "src/fixtures/companion/kimi-code-hooks.json",
+        "sha256": "7183a4f0d010d05869c8c3cb094d67f0ab01a6ddea2d0af775f8997e6f80c35f"
+      },
+      {
         "path": "src/fixtures/companion/observation-events.json",
         "sha256": "21fc320b0adf5abb3a5dc3b2d047c0c701fe606da234b388defcd138373da382"
       },
       {
         "path": "src/hook.ts",
-        "sha256": "662ef469c3dd12b7cc72b85997a1d9001baa841c04b1ec05d7f4507b2e659959"
+        "sha256": "5840175e32713b4cff0c0ddd0d00b6695ee5632435a57b03413f6c93ed0d096f"
+      },
+      {
+        "path": "src/integrations/codex-trust.ts",
+        "sha256": "2c8a008c70c904004fba987f0b0a843b132e06312dc05f97e89053260824fee0"
+      },
+      {
+        "path": "src/integrations/connection-health.ts",
+        "sha256": "4411836f4a75dfd9ab53c4c4a9af97f0d673a1d16834f38433de9e193b66defe"
+      },
+      {
+        "path": "src/integrations/discovery.ts",
+        "sha256": "c30335d1a8e841128a67f28f8e5458bd73b8bf67889da748c09e3db061cb98fc"
       },
       {
         "path": "src/integrations/installer.ts",
-        "sha256": "08068ad1f608562548c323e22a267e5cc38fbd1ebc7048d6ee389e4b19c87cac"
+        "sha256": "6a9af7697835bce4682c7151948023175a9326d3d10899adb3a3c223bd564397"
+      },
+      {
+        "path": "src/integrations/kimi-config.ts",
+        "sha256": "0feb9992287f617ed826e4d7fb613d91aca9ba0e2dbce8990e48e17e035a8692"
+      },
+      {
+        "path": "src/integrations/kimi-installation.ts",
+        "sha256": "15232c582c914931eaf490dcdc5c41cd4ef682e6d9b859681e717fc8152b8850"
+      },
+      {
+        "path": "src/integrations/kiro-plugin.ts",
+        "sha256": "c057dbf72178c2c7eb7f6a1772e06a11dd3d7271a1c6c35ec089096463e62b6e"
+      },
+      {
+        "path": "src/integrations/opencode-installation.ts",
+        "sha256": "622e82e95dd71410922d6b9aa0c09bb21d78c8858a5cfc50ddfa68accd491377"
+      },
+      {
+        "path": "src/integrations/opencode-plugin.ts",
+        "sha256": "684a7697c96da025601bf61d0a70dab0cc7410bf07c3fb8739d54589a96bf25e"
       },
       {
         "path": "src/integrations/plan.ts",
-        "sha256": "b8729d75dc65d3f2930fdba7390ce7424cb706d998ee5b214bf8c08bf34e4fff"
+        "sha256": "9403d029347e6f20cd15186abdcd1cae950cf83d8cd5a1be6cafe2625519c644"
+      },
+      {
+        "path": "src/integrations/service.ts",
+        "sha256": "354ad359cebd617788d693881aed9c7903e84a9f7a4d6565bdd62dbd384dd92b"
+      },
+      {
+        "path": "src/integrations/setup-coordinator.ts",
+        "sha256": "46b813c20d31ccbb291ec05327ed60f0ec65be95bc32ce95cb7f4d3619daf5a7"
       },
       {
         "path": "src/integrations/workbuddy-plugin.ts",
-        "sha256": "d2970d947535c6c6bdff5c6212a2aae79d104431d350c1343ba659da4924f6a1"
+        "sha256": "a26f402edb6495d3581df3bdfaf1cd01f9a263d9f40151a7f218f21c5e35e55b"
       },
       {
         "path": "src/main.ts",
-        "sha256": "4f5a00fc5c8b7a21f7ac20e37a35aa4ef83c6cc00b8106eb087aeb8ac2337243"
+        "sha256": "fc179b61b9b3cbd8de4823b1ee2f946c825e0bd70fb64bd59b51a18329b50604"
       },
       {
         "path": "src/platform/native-drag.ts",
@@ -750,24 +1088,32 @@
         "sha256": "f934fbb718ea3ab47e96f90abff93c67c5fa94326b094ea33a79b3a2dc82bec8"
       },
       {
+        "path": "src/platform/setup-owner.ts",
+        "sha256": "18697576810f712c362e9843362ff8ecb9a9fe6ab51f145cea23079d6a6c5faa"
+      },
+      {
         "path": "src/ui/audio.ts",
         "sha256": "39a4e679016476fbec57ab4fed608f39ba23d82161ef4f39495e3f5781918b0c"
       },
       {
         "path": "src/ui/components.ts",
-        "sha256": "35c700be27359590717527295e5788f56f60c9963ee0042dba7d4c412a3787d5"
+        "sha256": "83d049b7f63594108b3e4511aaf1e02d3ae059d70fb45e51bc2002141193d23f"
       },
       {
         "path": "src/ui/i18n.ts",
-        "sha256": "eb17ab8d7363c20850bcef0be1abb24332d1638fbbc31409549f33bf2893be2a"
+        "sha256": "aa6022a1bdd4e6d8f5d53bebcee05f85fe00f81cfe22f8525705858c549b6005"
       },
       {
         "path": "src/ui/index.ts",
-        "sha256": "265f6edbd7bb1fd680846e4c649560794c55549c7ba9faaae31e3f4c2d8cd69e"
+        "sha256": "a99152601e8b2ff7f15e7cabb0b3331fe82af18508c5b60822526b4f2a0b3e6f"
       },
       {
         "path": "src/ui/integration-controls.ts",
-        "sha256": "e43434ce6ca57846fe63cabb1e3503a137d3a94aff70da17e6c878c35ead5de7"
+        "sha256": "3b486531ba6ce354c847202a94dbc068ea7c6288586edaf7dd2458e4abf30c5b"
+      },
+      {
+        "path": "src/ui/island-switch.ts",
+        "sha256": "c588239690ef168164e2b66520e626ddf68296d52d285a385f334c727408dc9b"
       },
       {
         "path": "src/ui/motion.ts",
@@ -775,7 +1121,7 @@
       },
       {
         "path": "src/ui/platform.ts",
-        "sha256": "de57176437199c0f8111a1614ee6604537a010183c5e39a31d70475667cab1dd"
+        "sha256": "30a9702ee61c0c9e1daf60655541d862adb2a2e54543b651c95cf33c62f713fa"
       },
       {
         "path": "src/ui/settings.ts",
@@ -783,7 +1129,7 @@
       },
       {
         "path": "src/ui/styles.css",
-        "sha256": "7982dd9e44c39910f74d22b2da2414d0f1c1841c8b48121f75dc89450e850ddc"
+        "sha256": "46b160bf130afaf4b40daf87ff609c4a69eb6c8105e126064156084dd2372d8d"
       },
       {
         "path": "tests/audio.test.ts",
@@ -794,12 +1140,28 @@
         "sha256": "263f64577c370f2b33a11c668bc266a211aee631f43e4e3813d610577e0778cb"
       },
       {
+        "path": "tests/codebuddy.test.ts",
+        "sha256": "05c599ed43d64390546eb9f91dfcc202b7b3a958388e14ed5fe3b01ffc62d6e7"
+      },
+      {
         "path": "tests/codex-lifecycle.test.ts",
         "sha256": "0cbb9d44945bbe5c6907562c45c23ec32d8b029d63c1fbf08dffe15e0ac5c720"
       },
       {
+        "path": "tests/codex-trust.test.ts",
+        "sha256": "04c07ad87f8f90c60bd09d2281c0a94b7fc479f3174b70277b9421a6bac8e794"
+      },
+      {
         "path": "tests/codex.test.ts",
         "sha256": "aa58e200345876affc0779de4f6d6ef5ab055a828259168c9742c2984aeb434f"
+      },
+      {
+        "path": "tests/completion-notifications.test.ts",
+        "sha256": "b76be05c9373718c6c149fc2e49dbf51e63ad1e6aabd367038d1a4d36b5062e4"
+      },
+      {
+        "path": "tests/connection-health.test.ts",
+        "sha256": "53b949d9ee31b7009ef26ebad6b3daaaf11ef4569004992484c7cc9bcc770f3a"
       },
       {
         "path": "tests/core.test.ts",
@@ -810,28 +1172,116 @@
         "sha256": "565bf709792058f0a71073fc0f47cf46769d51fb282faf5d88259c666e383aec"
       },
       {
+        "path": "tests/discovery.test.ts",
+        "sha256": "8c8a83745ec59c59391b7162b23c2b7a502bd6254655bd0a29acc974cd09b439"
+      },
+      {
+        "path": "tests/droid.test.ts",
+        "sha256": "867b2ab8839f2cb67bfe125806b2bfcdd0506718ef9bc37bb5fa7b026f33708a"
+      },
+      {
+        "path": "tests/fixtures/codebuddy-hooks.json",
+        "sha256": "657807ec3ce5d463941ccbc4d510a8ac7f8dce3e23662a8cbb2a0f87dab736d2"
+      },
+      {
+        "path": "tests/fixtures/droid-hooks.json",
+        "sha256": "56d10ed2b5e645ffd282d04b29255f5e751fddcbb5bdeecd0c4a3226d7e8e242"
+      },
+      {
+        "path": "tests/fixtures/qwen-hooks.json",
+        "sha256": "175bdd95f0a3026430f0c30245633bb5490bf954ceb9845e74ded3637d8c11c3"
+      },
+      {
         "path": "tests/gemini.test.ts",
         "sha256": "154f5ff12bae54ebf637d7f1e28f87b1028e9bdab8655250cc1dab08e6785c31"
       },
       {
+        "path": "tests/history-summary.test.ts",
+        "sha256": "ffb4ed15b18710226a9352f88b96c4981436255aed1bd93edddce9f63fdc22a6"
+      },
+      {
         "path": "tests/hook.test.ts",
-        "sha256": "b2faac51c87545bc56e486448514977cf610455bbc6ca9ee8fed09d2c1821ee1"
+        "sha256": "86762e3add8e371863da52eb05ffd87c922f21f06c69dc796b9c0d103ae658c9"
       },
       {
         "path": "tests/integration-installer.test.ts",
-        "sha256": "29b12eaf4d8d3e105c77cf282106480a8c1a214bbfa1c8843635914841e0f41c"
+        "sha256": "d1484e33c966c7e5ee5e0856170645c036edba61cf5e5ffc3d798c47e8f76241"
       },
       {
         "path": "tests/integrations.test.ts",
         "sha256": "e4a2a1a44a549253ad5464965961539d3733effd7183237a05388105caba184b"
       },
       {
+        "path": "tests/island-switch.test.ts",
+        "sha256": "32080ee20a6235ba4075d5f0d78522c07ebf9a73cc0541b89fd52c4d2ddd987d"
+      },
+      {
+        "path": "tests/kimi-code-session.test.ts",
+        "sha256": "7ff90b4ffa82721e6065193680c685371b4dd1d7c8af137a910c693e344d4031"
+      },
+      {
+        "path": "tests/kimi-code.test.ts",
+        "sha256": "98e7c9f7373c18c58bc290339b29e911df6500c216bca238a3f48f8c0afa7dda"
+      },
+      {
+        "path": "tests/kimi-config.test.ts",
+        "sha256": "0c5def7c363a4ef87292227265b2525c249be995c9c44c2621dccb2de420fb36"
+      },
+      {
+        "path": "tests/kimi-installation.test.ts",
+        "sha256": "88ffb91e272a8a0e3416654a0221071a94fd82e27f9e6df493d04b7abe6f0847"
+      },
+      {
         "path": "tests/kimi-tasks.test.ts",
-        "sha256": "12be074377125a952bb209d2e9e082bae7e3691c5cf4ed145685a92ceb2523d9"
+        "sha256": "86436ab2486aa4c58294857cad05546b5d7fb2fde92d0efce0172a706494dbe3"
+      },
+      {
+        "path": "tests/kiro-plugin.test.ts",
+        "sha256": "56393e1475d85f66b11fe240a590e334e6aba3351d04077f5853e29879852f4e"
+      },
+      {
+        "path": "tests/kiro.test.ts",
+        "sha256": "f977b75662a9a528a5afa9348d66581b06a95e2ada840b66c116674053d53add"
       },
       {
         "path": "tests/multiwindow-regression.test.ts",
-        "sha256": "c8f23e6c9ed4c9e3997ad708584dd48d5cc9aaae20c7646118c64a91a5b6f6cd"
+        "sha256": "f3a6595d1fbe627b1d277ad6f6fcf0e791b06d99e4a529ab218df904ba5f12ef"
+      },
+      {
+        "path": "tests/opencode-flow.test.ts",
+        "sha256": "6cc31289a3e736e215d5e5a2a3f7a58d6ff65a0d4625f00fdbed6e7aadea5a91"
+      },
+      {
+        "path": "tests/opencode-installation.test.ts",
+        "sha256": "b8b7cdbeca4e6363d986000fc300cfb83c10b5756e3b5d9e3e6b74432cad89b0"
+      },
+      {
+        "path": "tests/opencode-plugin.test.ts",
+        "sha256": "72dc11ba6c0dd903cd83fb94121846a4d168066c070fca52ceacff85ecb00487"
+      },
+      {
+        "path": "tests/opencode-session.test.ts",
+        "sha256": "e9dd8827352b1b007c6cae38b9cff8c235d11c1203137e6e949cfc52a1c987c7"
+      },
+      {
+        "path": "tests/opencode.test.ts",
+        "sha256": "3b054685baf86a973874c7be5ad6bb0acd52b67ef9aa584b1b069bdf7e152fa6"
+      },
+      {
+        "path": "tests/qwen.test.ts",
+        "sha256": "e8469c5f7953e3e79ec258a31ca712ac7120c8f90932622b3a1b3546fcf0ee2a"
+      },
+      {
+        "path": "tests/setup-coordinator.test.ts",
+        "sha256": "656b1aeacd0246fc9aeebe49e7e462d0a280bdad2d804d6d00ee3a6250a1e421"
+      },
+      {
+        "path": "tests/setup-owner.test.ts",
+        "sha256": "8d3a15cc8d1bf71e4542680574ffd7b8fd770e5e0b76dc7f32cfa0605b790103"
+      },
+      {
+        "path": "tests/setup-ui.spec.ts",
+        "sha256": "1091a733b1871bd267afe1ff4b77a23a7523dc0275fca809dae5341b244ac23b"
       },
       {
         "path": "tests/trae.test.ts",
@@ -843,7 +1293,7 @@
       },
       {
         "path": "tests/ui.spec.ts",
-        "sha256": "1340a69ec5c40cdfee8998fcf4023a2368626bb588d560acb2537a39b342494c"
+        "sha256": "229693d58853a7c27b1a069cd57fea8b60c1ef090ee48c8dd7d286b6e74cf38e"
       },
       {
         "path": "tests/window-sync.test.ts",
@@ -852,6 +1302,10 @@
       {
         "path": "tests/windsurf.test.ts",
         "sha256": "e2b091638e6d8a1e231177bf609f3d862a531117a4f7608265da8ebb847faf45"
+      },
+      {
+        "path": "tests/workbuddy-setup.test.ts",
+        "sha256": "2c85f365a84f34e2d07fbed2a4d44cf2e168b7e6ae4bf895101e8540671b1e0c"
       },
       {
         "path": "tests/workbuddy.test.ts",

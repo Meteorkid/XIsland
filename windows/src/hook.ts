@@ -2,15 +2,18 @@ import { spawn } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { adapterFor, CONFIGURABLE_AGENTS, type ConfigurableAgent, type HookAdapter, type HookOutput } from './adapters/registry';
-import { exportWorkBuddyPlugin } from './integrations/workbuddy-plugin';
+import { adapterFor, CONFIGURABLE_AGENTS, MANAGED_AGENTS, type ManagedAgent, type ConfigurableAgent, type HookAdapter, type HookOutput } from './adapters/registry';
+import { exportWorkBuddyPlugin, prepareWorkBuddyPlugin, workBuddySetupStatus } from './integrations/workbuddy-plugin';
+import { prepareKiroPlugin, kiroSetupStatus } from './integrations/kiro-plugin';
 import { isRecord, MAX_MESSAGE_BYTES, parseDIMessage, type DIMessage, type DIResponse } from './core/protocol';
 import { createIntegrationPlan, integrationPlanSummary } from './integrations/plan';
-import { applyIntegration, getIntegrationStatus, IntegrationError, planIntegration, type IntegrationOperation } from './integrations/installer';
+import { IntegrationError, type IntegrationOperation } from './integrations/installer';
+import { integrationService, readManagedStatus } from './integrations/service';
+import { connectionIdentity, recordAcceptedIntegrationActivity, type ConnectionActivityReceipt } from './integrations/connection-health';
 
 function argumentsMap(args: string[]): Map<string, string> {
-  const allowed = new Set(['--agent', '--hook', '--managed-by', '--test-bridge-script', '--plan', '--home', '--node', '--script', '--operation', '--expected-revision']);
-  const flags = new Set(['--integration-status', '--integration-plan', '--integration-apply', '--workbuddy-export']);
+  const allowed = new Set(['--agent', '--hook', '--managed-by', '--test-bridge-script', '--plan', '--home', '--node', '--script', '--operation', '--expected-revision', '--configuration-revision', '--runtime-fingerprint']);
+  const flags = new Set(['--integration-status', '--integration-plan', '--integration-apply', '--workbuddy-export', '--workbuddy-prepare', '--workbuddy-status', '--kiro-prepare', '--kiro-status', '--record-accepted-activity']);
   const result = new Map<string, string>();
   for (let index = 0; index < args.length; index++) {
     const key = args[index]!;
@@ -56,7 +59,7 @@ function bridgeCommand(testScript?: string): { executable: string; args: string[
   return { executable, args: [] };
 }
 
-async function bridge(message: DIMessage, testScript?: string, timeoutMs = 125_000): Promise<DIResponse | null> {
+async function bridge(message: DIMessage, testScript?: string, timeoutMs = 125_000, activityReceipt?: ConnectionActivityReceipt): Promise<DIResponse | null> {
   const command = bridgeCommand(testScript);
   return new Promise((resolveResponse, reject) => {
     const child = spawn(command.executable, command.args, { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -85,7 +88,8 @@ async function bridge(message: DIMessage, testScript?: string, timeoutMs = 125_0
     child.stderr.resume();
     child.stdin.on('error', () => finish(new Error('bridge_input_closed')));
     child.on('close', code => finish(code === 0 ? undefined : new Error('bridge_unavailable')));
-    child.stdin.end(JSON.stringify(message));
+    // 元数据只能来自本进程投递前的读取，原生输入中的同名字段不能进入信任边界。
+    child.stdin.end(JSON.stringify({ ...message, __xislandActivity: activityReceipt }));
   });
 }
 
@@ -98,28 +102,46 @@ async function main(): Promise<void> {
   let payload: unknown, adapter: HookAdapter | undefined, expectedEvent: string | undefined;
   let eventField = 'hook_event_name';
   let planning = false;
-  const serviceMode = process.argv.slice(2).some(value => value.startsWith('--integration-') || value === '--workbuddy-export');
+  const serviceMode = process.argv.slice(2).some(value => value.startsWith('--integration-') || value.startsWith('--workbuddy-') || value.startsWith('--kiro-') || value === '--record-accepted-activity');
   try {
     const args = argumentsMap(process.argv.slice(2));
     adapter = adapterFor(args.get('--agent') ?? 'claude_code');
-    if (args.has('--workbuddy-export')) {
-      if (args.size !== 2 || args.get('--agent') !== 'workbuddy') throw new Error('invalid_arguments');
-      writeOutput({ stdout: JSON.stringify(await exportWorkBuddyPlugin()), exitCode: 0 });
+    if (args.has('--kiro-status') || args.has('--kiro-prepare')) {
+      if (args.size !== 2 || args.get('--agent') !== 'kiro') throw new Error('invalid_arguments');
+      writeOutput({ stdout: JSON.stringify(args.has('--kiro-status') ? await kiroSetupStatus() : await prepareKiroPlugin()), exitCode: 0 });
       return;
     }
-    eventField = args.get('--agent') === 'windsurf' ? 'agent_action_name' : 'hook_event_name';
+    if (args.has('--record-accepted-activity')) {
+      if (process.platform !== 'win32' || process.env.XISLAND_TEST_MODE === '1') throw new Error('unsupported_platform');
+      const agent = args.get('--agent'), event = args.get('--hook');
+      const configurationRevision = args.get('--configuration-revision'), runtimeFingerprint = args.get('--runtime-fingerprint');
+      if (args.size !== 5 || !agent || !(MANAGED_AGENTS as readonly string[]).includes(agent)
+        || !event || !adapter.events.includes(event) || !configurationRevision || !/^[a-f0-9]{64}$/.test(configurationRevision)
+        || !runtimeFingerprint || !/^[a-f0-9]{64}$/.test(runtimeFingerprint)) throw new Error('invalid_activity_receipt');
+      const recorded = await recordAcceptedIntegrationActivity(await readManagedStatus(agent as ManagedAgent),
+        { agent, event, configurationRevision, runtimeFingerprint });
+      writeOutput({ stdout: JSON.stringify({ recorded }), exitCode: 0 });
+      return;
+    }
+    if (['--workbuddy-export', '--workbuddy-prepare', '--workbuddy-status'].some(flag => args.has(flag))) {
+      if (args.size !== 2 || args.get('--agent') !== 'workbuddy') throw new Error('invalid_arguments');
+      const result = args.has('--workbuddy-status') ? await workBuddySetupStatus()
+        : args.has('--workbuddy-prepare') ? await prepareWorkBuddyPlugin() : await exportWorkBuddyPlugin();
+      writeOutput({ stdout: JSON.stringify(result), exitCode: 0 });
+      return;
+    }
+    eventField = args.get('--agent') === 'windsurf' ? 'agent_action_name' : args.get('--agent') === 'opencode' ? 'native_event' : 'hook_event_name';
     expectedEvent = args.get('--hook');
     planning = args.has('--plan');
     if (serviceMode) {
-      if (!(CONFIGURABLE_AGENTS as readonly string[]).includes(args.get('--agent') ?? 'claude_code')) throw new Error('unsupported_configuration_agent');
+      if (!(MANAGED_AGENTS as readonly string[]).includes(args.get('--agent') ?? 'claude_code')) throw new Error('unsupported_configuration_agent');
       const flags = ['--integration-status', '--integration-plan', '--integration-apply'].filter(flag => args.has(flag));
       if (flags.length !== 1 || [...args.keys()].some(key => ![...flags, '--agent', '--operation', '--expected-revision'].includes(key))) throw new Error('invalid_arguments');
       const operation = args.get('--operation') ?? 'install';
       if (!['install', 'uninstall'].includes(operation)) throw new Error('invalid_operation');
-      const agent = (args.get('--agent') ?? 'claude_code') as ConfigurableAgent;
-      const result = flags[0] === '--integration-status' ? await getIntegrationStatus(agent)
-        : flags[0] === '--integration-plan' ? await planIntegration(agent, operation as IntegrationOperation)
-          : await applyIntegration(agent, operation as IntegrationOperation, args.get('--expected-revision') ?? '');
+      const agent = (args.get('--agent') ?? 'claude_code') as ManagedAgent;
+      const action = flags[0] === '--integration-status' ? 'status' : flags[0] === '--integration-plan' ? 'plan' : 'apply';
+      const result = await integrationService(agent, action, operation as IntegrationOperation, args.get('--expected-revision') ?? '');
       writeOutput({ stdout: JSON.stringify(result), exitCode: 0 });
       return;
     }
@@ -139,11 +161,21 @@ async function main(): Promise<void> {
     }
     if (expectedEvent && (!isRecord(payload) || payload[eventField] !== expectedEvent)) throw new Error('hook_event_mismatch');
     const message = adapter.normalize(payload);
-    const response = await bridge(message, args.get('--test-bridge-script'), adapter.timeoutMs);
-    writeOutput(adapter.respond(payload, response));
+    let identity: Awaited<ReturnType<typeof connectionIdentity>>;
+    if (process.platform === 'win32' && process.env.XISLAND_TEST_MODE !== '1' && (MANAGED_AGENTS as readonly string[]).includes(args.get('--agent') ?? 'claude_code')) {
+      try { identity = await connectionIdentity(await readManagedStatus((args.get('--agent') ?? 'claude_code') as ManagedAgent)); }
+      catch { /* 状态检查失败不能阻断原客户端的事件或审批。 */ }
+    }
+    const activityEvent = isRecord(payload) ? payload[eventField] : undefined;
+    const activityReceipt = identity && typeof activityEvent === 'string'
+      ? { ...identity, event: activityEvent } : undefined;
+    const response = await bridge(message, args.get('--test-bridge-script'), adapter.timeoutMs, activityReceipt);
+    const output = adapter.respond(payload, response);
+    writeOutput(output);
   } catch (error) {
     if (serviceMode) {
-      const code = error instanceof IntegrationError ? error.code : 'integration_failed';
+      const code = error instanceof IntegrationError ? error.code : error instanceof Error
+        && ['modified_workbuddy_artifact', 'modified_kiro_artifact', 'unsafe_export_directory'].includes(error.message) ? error.message : 'integration_failed';
       const message = error instanceof IntegrationError ? error.message : '接入配置操作未完成，请重新检查状态。';
       writeOutput({ stdout: JSON.stringify({ error: { code, message } }), exitCode: 1 });
       return;

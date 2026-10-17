@@ -1,21 +1,43 @@
 import type { Decision, DIResponse, Session } from '../core/index';
-import type { ConfigurableAgent } from '../adapters/registry';
+import type { ManagedAgent } from '../adapters/registry';
+import type { ClientDiscovery } from '../integrations/discovery';
+import type { HookTrustSnapshot } from '../integrations/codex-trust';
 import type { SoundEvent } from './audio';
-import type { WorkBuddyExportResult } from '../integrations/workbuddy-plugin';
+import type { WorkBuddyExportResult, WorkBuddySetupStatus } from '../integrations/workbuddy-plugin';
+import type { KiroExportResult, KiroSetupStatus } from '../integrations/kiro-plugin';
 import type { IntegrationOperation, InstallationSummary, applyIntegration, getIntegrationStatus } from '../integrations/installer';
+import type { SetupSnapshot } from '../integrations/setup-coordinator';
 
-export type IntegrationAgent = ConfigurableAgent;
+export type IntegrationAgent = ManagedAgent;
 export type { IntegrationOperation };
-export type IntegrationStatus = Omit<Awaited<ReturnType<typeof getIntegrationStatus>>, 'installed' | 'managedHandlers'> & {
+export type IntegrationStatus = Omit<Awaited<ReturnType<typeof getIntegrationStatus>>, 'installed' | 'managedHandlers' | 'agent'> & {
+  agent: IntegrationAgent;
+  client?: ClientDiscovery;
+  trust?: HookTrustSnapshot;
+  activity?: { event: string; receivedAt: number };
+  foreignPlugin?: boolean;
+  updateAvailable?: boolean;
   installed: boolean | null;
   managedHandlers: number | null;
   configurationKnown?: boolean;
   reason?: string;
 };
-export type IntegrationPlanSummary = InstallationSummary;
-export type IntegrationApplyResult = Awaited<ReturnType<typeof applyIntegration>>;
+export type IntegrationPlanSummary = Omit<InstallationSummary, 'agent'> & { agent: IntegrationAgent };
+export type IntegrationApplyResult = Omit<Awaited<ReturnType<typeof applyIntegration>>, 'agent'> & { agent: IntegrationAgent; backupId?: string };
 export interface IntegrationPlatform {
+  setup?: {
+    snapshot(): Promise<SetupSnapshot | null>;
+    subscribe(listener: (snapshot: SetupSnapshot) => void): Promise<() => void>;
+    refresh(prepareAutomatically: boolean): Promise<void>;
+    setEnabled(agent: IntegrationAgent, enabled: boolean): Promise<void>;
+    presented(): Promise<void>;
+  };
   exportWorkBuddy?(): Promise<WorkBuddyExportResult>;
+  workBuddyStatus?(): Promise<WorkBuddySetupStatus>;
+  prepareWorkBuddy?(): Promise<WorkBuddyExportResult>;
+  openWorkBuddyFolder?(path: string): Promise<void>;
+  kiroStatus?(): Promise<KiroSetupStatus>;
+  prepareKiro?(): Promise<KiroExportResult>;
   status(agent: IntegrationAgent): Promise<IntegrationStatus>;
   plan(agent: IntegrationAgent, operation: IntegrationOperation): Promise<IntegrationPlanSummary>;
   apply(agent: IntegrationAgent, operation: IntegrationOperation, revision: string): Promise<IntegrationApplyResult>;
@@ -50,6 +72,10 @@ export interface IslandSettings {
 }
 
 export interface IslandPlatform {
+  getIslandPreferences?(): Promise<IslandLinkPreferences>;
+  setIslandPreferences?(preferences: IslandLinkPreferences): Promise<IslandLinkPreferences>;
+  islandPeerStatus?(): Promise<{ installed: boolean; running: boolean; compatible: boolean; detail: string }>;
+  switchIsland?(): Promise<void>;
   resize(width: number, height: number, expanded: boolean): Promise<void>;
   focus(): Promise<void>;
   respond(requestId: string, response: DIResponse): Promise<void>;
@@ -69,6 +95,12 @@ export interface IslandPlatform {
   preferencesWindow?: boolean;
   initialSettingsPane?: string;
   integrations?: IntegrationPlatform;
+}
+
+export interface IslandLinkPreferences {
+  swipeEnabled: boolean;
+  sensitivity: 'low' | 'medium' | 'high';
+  startupDisplay: 'lastUsed' | 'xnook' | 'xisland';
 }
 
 export type IslandDecision = Decision;

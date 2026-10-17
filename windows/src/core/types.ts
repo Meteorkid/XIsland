@@ -46,6 +46,8 @@ export interface ToolEvent {
   linesRemoved?: number;
   isComplete: boolean;
   completionUnconfirmed: boolean;
+  backgroundTaskStatus?: string;
+  isFailed?: boolean;
   timestamp: number;
 }
 export interface ChatEntry {
@@ -83,5 +85,8 @@ export interface Session {
   backgroundTasks: DINativeBackgroundTask[];
 }
 export interface StoreSnapshot { sessions: Session[]; selectedSessionId?: string; revision: number; ownerInstanceId?: string }
+export function isArchivedSession(session: Pick<Session, 'status' | 'observationEndedAt'>): boolean {
+  return ['completed', 'observationUnavailable'].includes(session.status) || (session.status === 'error' && session.observationEndedAt !== undefined);
+}
 export interface TransportRequest { requestId: string; expiresAt: number }
 export interface ApplyResult { accepted: boolean; reason?: string; cancelRequestIds: string[] }

@@ -17,7 +17,7 @@ async function fixture(t: TestContext) {
 }
 
 async function configuration(home: string, value: unknown, agent: ConfigurableAgent = 'claude_code') {
-  const directory = join(home, { claude_code: '.claude', codex: '.codex', cursor: '.cursor', gemini_cli: '.gemini', windsurf: '.codeium/windsurf', trae_cn: '.trae-cn' }[agent]);
+  const directory = join(home, { claude_code: '.claude', codex: '.codex', cursor: '.cursor', gemini_cli: '.gemini', windsurf: '.codeium/windsurf', trae_cn: '.trae-cn', qwen: '.qwen', code_buddy: '.codebuddy', droid: '.factory' }[agent]);
   await mkdir(directory, { recursive: true });
   const path = join(directory, ['codex', 'cursor', 'windsurf', 'trae_cn'].includes(agent) ? 'hooks.json' : 'settings.json');
   const bytes = typeof value === 'string' || Buffer.isBuffer(value) ? value : JSON.stringify(value, null, 2) + '\r\n';
@@ -26,6 +26,33 @@ async function configuration(home: string, value: unknown, agent: ConfigurableAg
 }
 
 const rejectsCode = (code: string) => (error: unknown) => error instanceof IntegrationError && error.code === code;
+
+test('Droid preserves standalone hooks and never shadows the legacy file when selecting its target', async t => {
+  const {home,options}=await fixture(t);
+  const legacy=await configuration(home,{theme:'preserve',hooks:{}},'droid');
+  const standalone=join(legacy.directory,'hooks.json');
+  const foreign={matcher:'Read',hooks:[{type:'command',command:'user-owned-command'}]};
+  await writeFile(standalone,JSON.stringify({PreToolUse:[foreign]}));
+  const plan=await planIntegration('droid','install',options);
+  assert.equal(plan.configPath,standalone);
+  const installed=await applyIntegration('droid','install',plan.revision,options);
+  const data=JSON.parse(await readFile(standalone,'utf8'));
+  assert.equal(data.hooks,undefined);assert.deepEqual(data.PreToolUse[0],foreign);
+  assert.deepEqual(JSON.parse(await readFile(legacy.path,'utf8')),{theme:'preserve',hooks:{}});
+  await applyIntegration('droid','uninstall',installed.revision,options);
+  assert.deepEqual(JSON.parse(await readFile(standalone,'utf8')),{PreToolUse:[foreign]});
+});
+
+test('Droid review is invalidated when the selected configuration changes even with identical bytes', async t => {
+  const {home,options}=await fixture(t);const legacy=await configuration(home,'{}','droid');
+  const plan=await planIntegration('droid','install',options);
+  const standalone=join(legacy.directory,'hooks.json');await writeFile(standalone,'{}');
+  await assert.rejects(applyIntegration('droid','install',plan.revision,options),rejectsCode('revision_conflict'));
+  assert.equal(await readFile(legacy.path,'utf8'),'{}');assert.equal(await readFile(standalone,'utf8'),'{}');
+  await unlink(standalone);
+  await assert.rejects(applyIntegration('droid','install',plan.revision,{...options,beforeReplace:()=>writeFile(standalone,'{}')}),rejectsCode('revision_conflict'));
+  assert.equal(await readFile(legacy.path,'utf8'),'{}');
+});
 
 test('all registered installers read, plan, write, and repeat without duplicate handlers', async t => {
   const { home, options } = await fixture(t);

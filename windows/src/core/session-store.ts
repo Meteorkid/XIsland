@@ -1,11 +1,13 @@
 import { hasObservationMetadata, isRecord, parseDIMessage, ProtocolError, utf8Length, type DIMessage, type DIResponse } from './protocol';
 import { ObservationLedger, type ObservationSource } from './observation';
-import { SESSION_STATUSES, type ApplyResult, type ChatEntry, type InteractionDecision, type InteractionKind,
+import { foldKimiCodeObservation, isKimiCodeMessage, isValidKimiTask, KimiCodeObservationLedger,
+  KIMI_TASK_STATUSES, parseKimiObservationState, type KimiCodeFoldResult, type KimiObservationState } from './kimi-tasks';
+import { SESSION_STATUSES, isArchivedSession, type ApplyResult, type ChatEntry, type InteractionDecision, type InteractionKind,
   type PendingInteraction, type PreparedResponse, type Session, type SessionStatus, type StoreSnapshot,
   type ToolEvent, type TransportRequest } from './types';
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
-const terminal = (session: Session): boolean => ['completed', 'observationUnavailable'].includes(session.status);
+const terminal = isArchivedSession;
 const family = (agent: string): boolean => ['cursor', 'trae', 'windsurf'].includes(agent);
 const responseTypes = new Set(['permission_response', 'question_response', 'plan_response']);
 const activeStates = new Set<SessionStatus>(['active', 'idle', 'waitingPermission', 'waitingAnswer', 'waitingPlanReview']);
@@ -28,7 +30,14 @@ export interface SessionStoreOptions {
   ownerInstanceId?: string;
 }
 
-export interface HistoryRemoval { sessionIds: string[]; serialized: string }
+export interface HistoryRemoval { sessionIds: string[]; serialized: string; kimiObservationIds?: string[] }
+interface KimiStoredObservation {
+  sessionId: string;
+  sourceNamespace?: string;
+  sourceInstanceId?: string;
+  nativeTaskId?: string;
+  state: KimiObservationState;
+}
 
 export function acceptsAnswer(request: PendingInteraction, answer: string): boolean {
   return typeof answer === 'string' && (request.options.includes(answer) || (request.allowsCustomAnswer
@@ -51,6 +60,9 @@ export class SessionStore {
   private retiredOwners = new Set<string>();
   private sessions = new Map<string, Session>();
   private listeners = new Set<(snapshot: StoreSnapshot) => void>();
+  private completionListeners = new Set<(sessionId: string) => void>();
+  private lastCompletionAt = new Map<string, number>();
+  private notifiedReplies = new Set<string>();
   private selectedSessionId?: string;
   private revision = 0;
   private sequence = 0;
@@ -62,6 +74,7 @@ export class SessionStore {
   private closedWrappers = new Set<string>();
   private closedDeepSeek = new Set<string>();
   private codexTurns = new Map<string, { current: string; observed: Set<string> }>();
+  private kimiCodeObservations = new Map<string, KimiStoredObservation>();
   private readonly now: () => number;
   private readonly monotonicNow: () => number;
   private readonly nextId: () => string;
@@ -106,6 +119,12 @@ export class SessionStore {
     return () => { this.listeners.delete(listener); };
   }
 
+  /** 临时通知只来自本实例接受的业务事件，不随历史或设置窗口快照重放。 */
+  subscribeCompletion(listener: (sessionId: string) => void): () => void {
+    this.completionListeners.add(listener);
+    return () => { this.completionListeners.delete(listener); };
+  }
+
   select(id: string): void {
     if (!this.sessions.has(id) || this.selectedSessionId === id) return;
     this.selectedSessionId = id; this.emit();
@@ -127,7 +146,7 @@ export class SessionStore {
     if (transport && this.usedTransports.has(transport.requestId)) return reject('Duplicate transport request', false);
     const observed = hasObservationMetadata(message);
     let existing = this.findSession(message);
-    const observationOnlyAgents = ['workbuddy', 'trae_ide_cn', 'traework_cn'];
+    const observationOnlyAgents = ['workbuddy', 'trae_ide_cn', 'traework_cn', 'kimi', 'kimi_code', 'code_buddy', 'droid', 'kiro'];
     if (kind && observationOnlyAgents.some(agent => message.agentType === agent || existing?.agentType === agent || message.sessionId.startsWith(agent + '-'))) {
       return reject('This client source only supports observations');
     }
@@ -152,7 +171,11 @@ export class SessionStore {
       if (decision.kind === 'ended') { this.endObservation(decision.source, cancelled); this.emit(); return { accepted: true, cancelRequestIds: cancelled }; }
       if (decision.kind === 'heartbeat') return { accepted: true, cancelRequestIds: cancelled };
     }
-    if (this.closedWrappers.has(message.sessionId)) return reject('Wrapper is closed');
+    if (this.closedWrappers.has(message.sessionId)) {
+      if (message.agentType === 'opencode' && message.type === 'session_start' && message.nativeEvent === 'prompt.submitted' && !message.nativeMessageReplay) {
+        this.closedWrappers.delete(message.sessionId);
+      } else return reject('Wrapper is closed');
+    }
     if (message.agentType === 'amazon_q' || message.agentType === 'amazonq') {
       if (message.nativeEvent === 'amazonq_wrapper_end') this.closedWrappers.add(message.sessionId);
     }
@@ -163,7 +186,35 @@ export class SessionStore {
     }
     if (existing && family(existing.agentType) && message.sessionId.startsWith('claude_code-')
       && ['session_start', 'session_end'].includes(message.type)) return reject('Mirrored lifecycle is owned by the IDE');
-    if (this.dismissed.has(message.sessionId) && !this.isFreshActivity(message)) return reject('Late event for removed session');
+    let kimi: KimiCodeFoldResult | undefined;
+    if (isKimiCodeMessage(message)) {
+      const stored = this.kimiCodeObservations.get(message.sessionId);
+      if (stored && (stored.sourceNamespace !== message.sourceNamespace || stored.sourceInstanceId !== message.sourceInstanceId
+        || stored.nativeTaskId !== message.nativeTaskId)) return reject('Kimi observation source mismatch');
+      try { kimi = foldKimiCodeObservation(stored?.state, message, { status: existing?.status, statusText: existing?.statusText }); }
+      catch (error) { return reject(error instanceof Error ? error.message : 'Invalid Kimi observation'); }
+    }
+    if (this.dismissed.has(message.sessionId) && !(kimi ? kimi.canRevive : this.isFreshActivity(message))) return reject('Late event for removed session');
+    if (kimi) {
+      // 心跳/重放不建立孤立账本，也不刷新可见活动时间。
+      if (message.nativeEvent === 'kimi_code.SessionHeartbeat' || message.nativeMessageReplay) return { accepted: true, cancelRequestIds: cancelled };
+      const stored = this.kimiCodeObservations.get(message.sessionId);
+      const changed = JSON.stringify(stored?.state) !== JSON.stringify(kimi.state);
+      this.kimiCodeObservations.set(message.sessionId, { sessionId: message.sessionId, sourceNamespace: message.sourceNamespace,
+        sourceInstanceId: message.sourceInstanceId, nativeTaskId: message.nativeTaskId, state: kimi.state });
+      if (!existing && !kimi.allowCreateSession) {
+        if (changed) this.emit();
+        return { accepted: true, cancelRequestIds: cancelled };
+      }
+      if (kimi.handled) {
+        const session = existing ?? this.createSession(message);
+        this.applyKimiProjection(session, kimi);
+        if (message.workingDir) session.workingDirectory = message.workingDir;
+        if (changed && !terminal(session)) session.lastActivityAt = this.now();
+        if (changed || !existing) this.emit();
+        return { accepted: true, cancelRequestIds: cancelled };
+      }
+    }
     if (message.type === 'interaction_resolved') {
       if (!existing || !message.nativeRequestId || !['permission', 'question'].includes(message.nativeRequestKind ?? '')) return reject('Unmatched interaction resolution');
       const request = existing.pendingInteractions.find(item => item.kind === message.nativeRequestKind && item.nativeRequestId === message.nativeRequestId);
@@ -176,16 +227,24 @@ export class SessionStore {
       if (!parent || terminal(parent) || (!observed && parent.sourceInstanceId) || !this.sameSource(parent, message)) return reject('Unknown, foreign or closed parent');
       this.applySubagent(parent, message); this.emit(); return { accepted: true, cancelRequestIds: cancelled };
     }
-    if (message.type === 'session_end' && !existing) return reject('Unknown session end');
+    if (message.type === 'session_end' && !existing) {
+      if (message.agentType === 'opencode' && message.nativeEvent === 'session.deleted') {
+        this.closedWrappers.add(message.sessionId); this.emit();
+        return { accepted: true, cancelRequestIds: cancelled };
+      }
+      return reject('Unknown session end');
+    }
     if (kind === 'question' && (!message.questionText?.trim()
       || (message.questionText.trim() === 'Question' && !message.options?.length && !message.nativeRequestId && !message.allowsCustomAnswer))) return reject('Question placeholder');
     if (kind && message.nativeRequestId && this.resolvedRequests.has(this.requestKey(message, kind))) return reject('Native request already resolved');
     const session = existing ?? this.createSession(message);
+    const wasTerminal = terminal(session);
+    const latestChatTimestamp = session.chatHistory.at(-1)?.timestamp;
     if (message.agentType && family(message.agentType) && session.id.startsWith('claude_code-')) session.agentType = message.agentType;
     if (message.workingDir) session.workingDirectory = message.workingDir;
     if (message.terminal) session.terminal = message.terminal;
     if (message.termSessionId) session.termSessionId = message.termSessionId;
-    if (message.nativeBackgroundTask) {
+    if (message.nativeBackgroundTask && !kimi) {
       const index = session.backgroundTasks.findIndex(task => task.id === message.nativeBackgroundTask!.id);
       if (index < 0) session.backgroundTasks.push(clone(message.nativeBackgroundTask));
       else session.backgroundTasks[index] = clone(message.nativeBackgroundTask);
@@ -213,9 +272,17 @@ export class SessionStore {
       this.cancel(session, () => true, cancelled);
       if (message.status) { session.statusText = message.status;
         if (message.statusIsAssistantReply !== false) { session.agentResponse = message.status; this.upsertChat(session, message, 'assistant', message.status); } }
-      // 未给出最终事实的轮次结束保持 idle，适配器应显式发送 completed。
-      session.status = message.observedState === 'completed' ? 'completed' : 'idle';
-      if (session.status === 'completed') session.completedAt = this.now();
+      if (message.observedState === 'observationUnavailable') {
+        // 删除或归档结束观察，不意味着任务成功；已有错误和已证终态不能被覆盖。
+        if (!['error', 'completed'].includes(session.status)) session.status = 'observationUnavailable';
+        session.observationEndedAt ??= this.now();
+        for (const event of session.events) if (!event.isComplete) event.completionUnconfirmed = true;
+        if (message.agentType === 'opencode' && message.nativeEvent === 'session.deleted') this.closedWrappers.add(message.sessionId);
+      } else {
+        // 未给出最终事实的轮次结束保持 idle，适配器应显式发送 completed。
+        session.status = message.observedState === 'completed' ? 'completed' : 'idle';
+        if (session.status === 'completed') session.completedAt = this.now();
+      }
       session.currentTool = undefined;
     } else if (message.type === 'tool_start') {
       const event = message.toolCallId ? session.events.find(item => item.toolCallId === message.toolCallId) : undefined;
@@ -247,6 +314,7 @@ export class SessionStore {
       session.recapText = message.recapText ?? message.status ?? '';
     }
     this.updateUsage(session, message);
+    if (kimi) this.applyKimiProjection(session, kimi);
     if (codex && session.agentType === 'codex' && message.nativeTurnId && !message.nativeMessageReplay &&
       ['UserPromptSubmit', 'PreCompact', 'PreToolUse', 'PostToolUse', 'PermissionRequest', 'Stop'].includes(message.nativeEvent ?? '')) {
       if (['UserPromptSubmit', 'PreCompact'].includes(message.nativeEvent!) || !this.codexTurns.has(session.id)) {
@@ -255,7 +323,9 @@ export class SessionStore {
       }
     }
     if (!message.nativeMessageReplay && !terminal(session)) session.lastActivityAt = this.now();
-    this.emit(); return { accepted: true, cancelRequestIds: cancelled };
+    this.emit();
+    this.notifyCompletion(session, message, wasTerminal, latestChatTimestamp);
+    return { accepted: true, cancelRequestIds: cancelled };
   }
 
   prepareResponse(sessionId: string, interactionId: string, decision: InteractionDecision): PreparedResponse | null {
@@ -330,7 +400,7 @@ export class SessionStore {
     if (this.readOnly) return false;
     const session = this.sessions.get(sessionId);
     if (!session || !terminal(session) || session.pendingInteractions.length) return false;
-    this.sessions.delete(sessionId); this.dismissed.add(sessionId);
+    this.sessions.delete(sessionId); this.kimiCodeObservations.delete(sessionId); this.dismissed.add(sessionId);
     if (this.selectedSessionId === sessionId) this.selectedSessionId = this.sessions.keys().next().value;
     this.emit(); return true;
   }
@@ -338,9 +408,11 @@ export class SessionStore {
   clearHistory(): number {
     if (this.readOnly) return 0;
     const ids = [...this.sessions.values()].filter(session => terminal(session) && !session.pendingInteractions.length).map(session => session.id);
-    for (const id of ids) { this.sessions.delete(id); this.dismissed.add(id); }
+    const orphanIds = this.archivedKimiOrphanIds();
+    for (const id of ids) { this.sessions.delete(id); this.kimiCodeObservations.delete(id); this.dismissed.add(id); }
+    for (const id of orphanIds) { this.kimiCodeObservations.delete(id); this.dismissed.add(id); }
     if (this.selectedSessionId && !this.sessions.has(this.selectedSessionId)) this.selectedSessionId = this.sessions.keys().next().value;
-    if (ids.length) this.emit(); return ids.length;
+    if (ids.length || orphanIds.length) this.emit(); return ids.length;
   }
 
   serialize(): string {
@@ -352,7 +424,8 @@ export class SessionStore {
     const candidates = [...this.sessions.values()].filter(session => terminal(session) && !session.pendingInteractions.length);
     const sessionIds = sessionId === undefined ? candidates.map(session => session.id) : candidates.filter(session => session.id === sessionId).map(session => session.id);
     if (sessionId !== undefined && !sessionIds.length) throw new Error('会话仍在运行或存在待处理请求，不能删除');
-    return { sessionIds, serialized: this.serializeHistory(new Set(sessionIds)) };
+    const kimiObservationIds = sessionId === undefined ? this.archivedKimiOrphanIds() : [];
+    return { sessionIds, serialized: this.serializeHistory(new Set([...sessionIds, ...kimiObservationIds])), kimiObservationIds };
   }
 
   commitHistoryRemoval(plan: HistoryRemoval): void {
@@ -361,9 +434,19 @@ export class SessionStore {
       const session = this.sessions.get(id);
       if (!session || !terminal(session) || session.pendingInteractions.length) throw new Error('删除计划已失效');
     }
-    for (const id of plan.sessionIds) { this.sessions.delete(id); this.dismissed.add(id); }
+    const orphanIds = new Set(this.archivedKimiOrphanIds());
+    if (plan.kimiObservationIds?.some(id => !orphanIds.has(id))) throw new Error('孤立观察删除计划已失效');
+    for (const id of plan.sessionIds) { this.sessions.delete(id); this.kimiCodeObservations.delete(id); this.dismissed.add(id); }
+    for (const id of plan.kimiObservationIds ?? []) { this.kimiCodeObservations.delete(id); this.dismissed.add(id); }
     if (this.selectedSessionId && !this.sessions.has(this.selectedSessionId)) this.selectedSessionId = this.sessions.keys().next().value;
-    if (plan.sessionIds.length) this.emit();
+    if (plan.sessionIds.length || plan.kimiObservationIds?.length) this.emit();
+  }
+
+  private archivedKimiOrphanIds(): string[] {
+    return [...this.kimiCodeObservations.values()].filter(row => !this.sessions.has(row.sessionId)
+      && (['completed', 'observationUnavailable'].includes(row.state.baseStatus)
+        || (!row.state.pending.length && !row.state.hasUnidentifiedRequest && !row.state.backgroundTasks.some(task => task.status === 'running'))))
+      .map(row => row.sessionId);
   }
 
   private serializeHistory(excluded: Set<string>): string {
@@ -375,7 +458,9 @@ export class SessionStore {
     }
     const selectedSessionId = this.selectedSessionId && !excluded.has(this.selectedSessionId) ? this.selectedSessionId : sessions[0]?.id;
     return JSON.stringify({ version: 1, sessions, selectedSessionId, dismissed: [...new Set([...this.dismissed, ...excluded])],
-      observations: this.observation.serialize() });
+      closedOpenCodeSessions: [...this.closedWrappers].filter(id => id.startsWith('opencode-')),
+      observations: this.observation.serialize(),
+      kimiCodeObservations: [...this.kimiCodeObservations.values()].filter(row => !excluded.has(row.sessionId) && !this.dismissed.has(row.sessionId)) });
   }
 
   restore(serialized: string): void {
@@ -385,9 +470,15 @@ export class SessionStore {
     if (new Set(sessions.map(session => session.id)).size !== sessions.length) throw new ProtocolError('history.duplicateSession');
     if (data.selectedSessionId !== undefined && typeof data.selectedSessionId !== 'string') throw new ProtocolError('history.selectedSessionId');
     if (data.dismissed !== undefined && (!Array.isArray(data.dismissed) || !data.dismissed.every(id => typeof id === 'string'))) throw new ProtocolError('history.dismissed');
+    const closedOpenCodeSessions = data.closedOpenCodeSessions ?? [];
+    if (!Array.isArray(closedOpenCodeSessions) || closedOpenCodeSessions.some(id => typeof id !== 'string' || !id.startsWith('opencode-') || id.length <= 9 || id.includes('\0'))
+      || new Set(closedOpenCodeSessions).size !== closedOpenCodeSessions.length) throw new ProtocolError('history.closedOpenCodeSessions');
     const observation = new ObservationLedger();
     observation.restore(data.observations ?? [], this.monotonicNow());
+    const kimiCodeObservations = parseKimiStoredObservations(data.kimiCodeObservations ?? [], sessions);
     for (const session of sessions) {
+      const legacyKimiApproval = session.agentType === 'kimi' && session.id.startsWith('kimi_code-')
+        && session.status === 'waitingPermission' && !kimiCodeObservations.has(session.id);
       for (const request of session.pendingInteractions) {
         delete request.transportRequestId; delete request.expiresAt;
         request.phase = 'failed'; request.error = '应用已重启，请在原应用重新发起请求';
@@ -397,10 +488,33 @@ export class SessionStore {
         session.status = 'observationUnavailable'; session.statusText = '已恢复历史，等待原应用的新事件';
         session.observationEndedAt ??= this.now(); session.currentTool = undefined;
       }
+      if (session.agentType === 'kimi' && session.id.startsWith('kimi_code-')) {
+        const stored = kimiCodeObservations.get(session.id);
+        const ledger = new KimiCodeObservationLedger(stored?.state);
+        if (!stored) {
+          ledger.setBase(session.status, session.statusText);
+          for (const task of session.backgroundTasks) ledger.observeTask(task);
+          if (legacyKimiApproval) ledger.observeRequest();
+        }
+        if (session.status === 'completed') ledger.endSession();
+        else if (session.status === 'observationUnavailable') {
+          ledger.setBase(session.status, session.statusText); ledger.markTasksUnconfirmed(); ledger.observeInterrupt();
+        }
+        const state = ledger.snapshot();
+        session.backgroundTasks = state.backgroundTasks;
+        const events = ledger.taskEvents(session.id, this.now(), session.events);
+        session.events = session.events.filter(event => !events.some(task => task.id === event.id)).concat(events);
+        kimiCodeObservations.set(session.id, { sessionId: session.id, sourceNamespace: session.sourceNamespace,
+          sourceInstanceId: session.sourceInstanceId, nativeTaskId: session.nativeTaskId, state });
+      }
     }
     this.reset(); this.sessions = new Map(sessions.map(session => [session.id, session]));
     this.observation = observation;
+    this.kimiCodeObservations = kimiCodeObservations;
+    for (const id of this.closedWrappers) if (id.startsWith('opencode-')) this.closedWrappers.delete(id);
+    for (const id of closedOpenCodeSessions) this.closedWrappers.add(id);
     this.dismissed = new Set(data.dismissed as string[] | undefined);
+    for (const id of this.dismissed) this.kimiCodeObservations.delete(id);
     this.selectedSessionId = typeof data.selectedSessionId === 'string' && this.sessions.has(data.selectedSessionId) ? data.selectedSessionId : sessions[0]?.id;
     this.emit();
   }
@@ -440,9 +554,24 @@ export class SessionStore {
     this.sessions.clear(); this.submitted.clear(); this.resolvedRequests.clear(); this.usedTransports.clear(); this.dismissed.clear();
     this.closedWrappers.clear(); this.closedDeepSeek.clear(); this.observation = new ObservationLedger();
     this.codexTurns.clear();
+    this.kimiCodeObservations.clear();
+    this.lastCompletionAt.clear(); this.notifiedReplies.clear();
   }
 
   private emit(): void { this.revision++; for (const listener of this.listeners) listener(this.snapshot()); }
+
+  private applyKimiProjection(session: Session, fold: KimiCodeFoldResult): void {
+    session.status = fold.status; session.statusText = fold.statusText;
+    if (fold.canRevive) { delete session.completedAt; delete session.observationEndedAt; }
+    if (fold.status === 'completed') session.completedAt ??= this.now();
+    session.backgroundTasks = clone(fold.state.backgroundTasks);
+    const events = new KimiCodeObservationLedger(fold.state).taskEvents(session.id, this.now(), session.events);
+    const ids = new Set(events.map(event => event.id));
+    session.events = session.events.filter(event => !ids.has(event.id)).concat(events);
+    if (terminal(session) || fold.status === 'completionUnconfirmed') session.currentTool = undefined;
+    else if (events.some(event => !event.isComplete && !event.completionUnconfirmed)) session.currentTool ??= 'Subagent';
+    else if (session.currentTool === 'Subagent') session.currentTool = [...session.events].reverse().find(event => !event.isComplete && !event.completionUnconfirmed)?.tool;
+  }
 
   private createSession(message: DIMessage): Session {
     const session: Session = { id: message.sessionId, agentType: message.agentType ?? message.sessionId.split('-')[0] ?? 'unknown',
@@ -530,6 +659,31 @@ export class SessionStore {
     return id && utf8Length(id) <= 512 && !id.includes('\0') ? JSON.stringify([message.sessionId, role, id]) : undefined;
   }
 
+  private notifyCompletion(session: Session, message: DIMessage, wasTerminal: boolean, latestChatTimestamp?: number): void {
+    if (message.nativeMessageReplay || message.nativeMessagePartial || (wasTerminal && terminal(session))) return;
+    const ended = message.type === 'session_end' && session.status === 'completed';
+    const replyEvent = ['status_update', 'progress', 'session_end'].includes(message.type);
+    const hasReply = message.statusIsAssistantReply !== false && !!message.status?.trim();
+    const replyState = message.observedState === undefined || message.observedState === 'idle'
+      || (message.observedState === 'completionUnconfirmed' && message.statusIsAssistantReply === true);
+    if (!ended && (!replyEvent || !replyState || !hasReply)) return;
+    if (latestChatTimestamp !== undefined && Date.parse(message.timestamp) < latestChatTimestamp) return;
+    const replyId = this.chatId(message, 'assistant');
+    if (!ended || hasReply) {
+      const latest = session.chatHistory.at(-1);
+      if (latest?.role !== 'assistant' || (message.nativeMessageId !== undefined && (!replyId || latest.id !== replyId))) return;
+    }
+    if (replyId) {
+      const key = JSON.stringify([session.id, replyId]);
+      if (this.notifiedReplies.has(key)) return;
+      this.notifiedReplies.add(key);
+    }
+    const now = this.monotonicNow(), last = this.lastCompletionAt.get(session.id);
+    if (last !== undefined && now - last < 1800) return;
+    this.lastCompletionAt.set(session.id, now);
+    for (const listener of this.completionListeners) listener(session.id);
+  }
+
   private upsertChat(session: Session, message: DIMessage, role: ChatEntry['role'], content: string): void {
     const id = this.chatId(message, role);
     const index = id ? session.chatHistory.findIndex(chat => chat.id === id) : -1;
@@ -608,8 +762,37 @@ export class SessionStore {
       && session.sourceInstanceId === source.instance && session.status !== 'completed') {
       this.cancel(session, () => true, cancelled); session.status = 'observationUnavailable';
       session.statusText = '观察已中断，请在原应用确认任务状态'; session.observationEndedAt ??= this.now(); session.currentTool = undefined;
+      const stored = this.kimiCodeObservations.get(session.id);
+      if (stored) {
+        const ledger = new KimiCodeObservationLedger(stored.state);
+        ledger.setBase(session.status, session.statusText); ledger.markTasksUnconfirmed(); ledger.observeInterrupt();
+        stored.state = ledger.snapshot();
+        this.applyKimiProjection(session, { state: stored.state, handled: true, allowCreateSession: false, canRevive: false,
+          status: session.status, statusText: session.statusText });
+      }
     }
   }
+}
+
+function parseKimiStoredObservations(value: unknown, sessions: Session[]): Map<string, KimiStoredObservation> {
+  if (!Array.isArray(value)) throw new ProtocolError('history.kimiCodeObservations');
+  const result = new Map<string, KimiStoredObservation>();
+  for (const row of value) {
+    if (!isRecord(row) || typeof row.sessionId !== 'string' || !row.sessionId.startsWith('kimi_code-')
+      || row.sessionId.length === 'kimi_code-'.length || row.sessionId.includes('\0') || result.has(row.sessionId)) throw new ProtocolError('history.kimiCodeObservation');
+    for (const key of ['sourceNamespace', 'sourceInstanceId', 'nativeTaskId']) {
+      if (row[key] !== undefined && typeof row[key] !== 'string') throw new ProtocolError(`history.kimiCodeObservation.${key}`);
+    }
+    const session = sessions.find(item => item.id === row.sessionId);
+    if (session && (session.agentType !== 'kimi' || session.sourceNamespace !== row.sourceNamespace
+      || session.sourceInstanceId !== row.sourceInstanceId || session.nativeTaskId !== row.nativeTaskId)) throw new ProtocolError('history.kimiCodeObservation.source');
+    const ledger = new KimiCodeObservationLedger(parseKimiObservationState(row.state));
+    // 孤立任务的 running 也不是重启后仍存活的证据。
+    if (!session) ledger.markTasksUnconfirmed();
+    result.set(row.sessionId, { sessionId: row.sessionId, sourceNamespace: row.sourceNamespace as string | undefined,
+      sourceInstanceId: row.sourceInstanceId as string | undefined, nativeTaskId: row.nativeTaskId as string | undefined, state: ledger.snapshot() });
+  }
+  return result;
 }
 
 function validateSession(value: unknown): Session {
@@ -634,6 +817,8 @@ function validateSession(value: unknown): Session {
       || typeof event.completionUnconfirmed !== 'boolean' || typeof event.timestamp !== 'number' || !Number.isFinite(event.timestamp)) throw new ProtocolError('history.event');
     for (const key of ['toolCallId', 'input', 'result']) if (event[key] !== undefined && typeof event[key] !== 'string') throw new ProtocolError(`history.event.${key}`);
     for (const key of ['linesAdded', 'linesRemoved']) if (event[key] !== undefined && !Number.isSafeInteger(event[key])) throw new ProtocolError(`history.event.${key}`);
+    if (event.isFailed !== undefined && typeof event.isFailed !== 'boolean') throw new ProtocolError('history.event.isFailed');
+    if (event.backgroundTaskStatus !== undefined && !KIMI_TASK_STATUSES.includes(event.backgroundTaskStatus as typeof KIMI_TASK_STATUSES[number])) throw new ProtocolError('history.event.backgroundTaskStatus');
   }
   for (const chat of value.chatHistory as unknown[]) if (!isRecord(chat) || typeof chat.id !== 'string' || !['user', 'assistant', 'system'].includes(chat.role as string)
     || typeof chat.content !== 'string' || typeof chat.timestamp !== 'number' || !Number.isFinite(chat.timestamp)) throw new ProtocolError('history.chat');
@@ -646,6 +831,9 @@ function validateSession(value: unknown): Session {
       if (request[key] !== undefined && typeof request[key] !== 'string') throw new ProtocolError(`history.interaction.${key}`);
     }
   }
-  for (const task of value.backgroundTasks as unknown[]) parseDIMessage({ type: 'status_update', sessionId: value.id, timestamp: '2026-10-13T00:00:00Z', nativeBackgroundTask: task });
+  for (const task of value.backgroundTasks as unknown[]) {
+    parseDIMessage({ type: 'status_update', sessionId: value.id, timestamp: '2026-10-13T00:00:00Z', nativeBackgroundTask: task });
+    if (value.agentType === 'kimi' && (value.id as string).startsWith('kimi_code-') && !isValidKimiTask(task)) throw new ProtocolError('history.kimiBackgroundTask');
+  }
   return clone(value) as unknown as Session;
 }

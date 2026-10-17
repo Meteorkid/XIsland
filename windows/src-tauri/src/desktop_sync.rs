@@ -146,6 +146,7 @@ pub fn open_preferences(app: tauri::AppHandle, pane: String) -> Result<(), Strin
 #[tauri::command]
 pub fn close_preferences(window: tauri::WebviewWindow) -> Result<(), String> {
     if window.label() != "preferences" { return Err("当前不是设置窗口".into()); }
+    window.app_handle().emit_to("main", "setup-dismissed", ()).map_err(|e| e.to_string())?;
     window.close().map_err(|e| e.to_string())
 }
 

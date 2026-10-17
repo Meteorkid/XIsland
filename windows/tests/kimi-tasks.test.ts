@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { KimiCodeObservationLedger, mergeKimiTask, kimiTaskEventId, parseKimiObservationState } from '../src/core/kimi-tasks';
+import { KimiCodeObservationLedger, mergeKimiTask, kimiTaskEventId, parseKimiObservationState, foldKimiCodeObservation } from '../src/core/kimi-tasks';
+import type { DIMessage } from '../src/core/protocol';
 
 const request = { id: 'approval-1', agentId: 'agent-1', turnId: 'turn-1', toolCallId: 'tool-1' };
 
@@ -60,4 +61,67 @@ test('ledger snapshots are isolated and malformed duplicate identities are rejec
   assert.throws(() => parseKimiObservationState(bad));
   assert.equal(ledger.snapshot().pending.length, 1);
   assert.throws(() => parseKimiObservationState({ ...ledger.snapshot(), backgroundTasks: [{ id: 'a', status: 'made-up' }] }));
+});
+
+const message = (event: string, fields: Partial<DIMessage> = {}): DIMessage => ({ type: 'status_update', sessionId: 'kimi_code-session',
+  timestamp: '2026-10-17T00:00:00Z', agentType: 'kimi', nativeEvent: `kimi_code.${event}`, statusIsAssistantReply: false, ...fields });
+const approval = { nativeRequestId: request.id, nativeAgentId: request.agentId, nativeTurnId: request.turnId, toolCallId: request.toolCallId };
+
+test('production fold retains result-before-request orphans across serialized restoration', () => {
+  const early = foldKimiCodeObservation(undefined, message('PermissionResult', approval));
+  assert.equal(early.handled, true); assert.equal(early.allowCreateSession, false);
+  const restored = parseKimiObservationState(JSON.parse(JSON.stringify(early.state)));
+  const late = foldKimiCodeObservation(restored, message('PermissionRequest', approval));
+  assert.equal(late.allowCreateSession, false); assert.equal(late.state.pending.length, 0);
+  assert.equal(late.state.resolved.length, 1);
+});
+
+test('production fold preserves native approval projection across tool starts, interruption and unrelated results', () => {
+  const pending = foldKimiCodeObservation(undefined, message('PermissionRequest', approval), { status: 'idle' });
+  assert.equal(pending.allowCreateSession, true); assert.equal(pending.status, 'waitingPermission');
+  const tool = foldKimiCodeObservation(pending.state, message('PreToolUse', { type: 'tool_start' }));
+  assert.equal(tool.status, 'waitingPermission'); assert.equal(tool.state.baseStatus, 'active');
+  const interrupted = foldKimiCodeObservation(tool.state, message('Interrupt', { observedState: 'completionUnconfirmed' }));
+  assert.equal(interrupted.status, 'completionUnconfirmed');
+  const unrelated = foldKimiCodeObservation(interrupted.state, message('PermissionResult', { ...approval, nativeTurnId: 'wrong' }));
+  assert.equal(unrelated.state.pending.length, 1);
+  const done = foldKimiCodeObservation(unrelated.state, message('PermissionResult', approval));
+  assert.equal(done.state.pending.length, 0); assert.equal(done.state.wasInterrupted, false);
+  assert.equal(done.status, 'completionUnconfirmed');
+});
+
+test('production fold never creates unknown terminal task sessions and never resurrects tasks after terminal facts', () => {
+  const early = foldKimiCodeObservation(undefined, message('Notification', { nativeBackgroundTask: { id: 'task', status: 'failed', result: 'failure' } }));
+  assert.equal(early.allowCreateSession, false); assert.equal(early.handled, true);
+  const late = foldKimiCodeObservation(early.state, message('TaskStarted', { nativeBackgroundTask: { id: 'task', kind: 'agent', status: 'running' } }));
+  assert.equal(late.allowCreateSession, false); assert.equal(late.state.backgroundTasks[0].status, 'failed');
+  const other = foldKimiCodeObservation(late.state, message('TaskStarted', { nativeBackgroundTask: { id: 'other', kind: 'agent', status: 'running' } }));
+  assert.equal(other.allowCreateSession, true);
+  const projection = new KimiCodeObservationLedger(other.state).taskEvents('kimi_code-session', 100);
+  assert.equal(projection.find(event => event.isFailed)?.isComplete, true);
+  assert.equal(projection.every(event => event.toolCallId === undefined), true);
+});
+
+test('closed orphan ledgers gate submission, requests and late running tasks until a real execution event', () => {
+  const ended = foldKimiCodeObservation(undefined, message('SessionEnd', { type: 'session_end', observedState: 'completed' }));
+  assert.equal(ended.allowCreateSession, false);
+  const late = foldKimiCodeObservation(ended.state, message('TaskStarted', { nativeBackgroundTask: { id: 'task', kind: 'agent', status: 'running' } }));
+  assert.equal(late.state.backgroundTasks[0].status, 'unconfirmed'); assert.equal(late.allowCreateSession, false);
+  assert.equal(foldKimiCodeObservation(late.state, message('PermissionRequest', approval)).state.pending.length, 0);
+  const submit = foldKimiCodeObservation(late.state, message('UserPromptSubmit', { type: 'session_start', prompt: 'blocked prompt' }));
+  assert.equal(submit.status, 'completed'); assert.equal(submit.handled, true); assert.equal(submit.canRevive, false);
+  const turn = foldKimiCodeObservation(submit.state, message('TurnStarted', { observedState: 'active' }));
+  assert.equal(turn.status, 'active'); assert.equal(turn.allowCreateSession, true); assert.equal(turn.canRevive, true);
+  assert.equal(turn.state.backgroundTasks[0].status, 'unconfirmed');
+});
+
+test('submission does not start execution, heartbeat and replay do not fabricate activity', () => {
+  const submit = foldKimiCodeObservation(undefined, message('UserPromptSubmit', { type: 'session_start', prompt: 'text' }));
+  assert.equal(submit.status, 'idle'); assert.equal(submit.canRevive, false);
+  const heartbeat = foldKimiCodeObservation(submit.state, message('SessionHeartbeat'));
+  assert.equal(heartbeat.handled, true); assert.equal(heartbeat.allowCreateSession, false); assert.deepEqual(heartbeat.state, submit.state);
+  const replay = foldKimiCodeObservation(submit.state, message('PermissionRequest', { ...approval, nativeMessageReplay: true }));
+  assert.equal(replay.allowCreateSession, false); assert.deepEqual(replay.state, submit.state);
+  const error = foldKimiCodeObservation(undefined, message('StopFailure', { observedState: 'error', status: 'failure' }));
+  assert.equal(foldKimiCodeObservation(error.state, message('Stop', { observedState: 'completionUnconfirmed' })).status, 'error');
 });

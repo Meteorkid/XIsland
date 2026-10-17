@@ -1,12 +1,14 @@
 import { t, locale, setLanguage } from './i18n';
-import type { Decision, PendingInteraction, Session, SessionStore, StoreSnapshot } from '../core/index';
+import { isArchivedSession, type Decision, type PendingInteraction, type Session, type SessionStore, type StoreSnapshot, type ToolEvent } from '../core/index';
+import { aggregateHistoryUsage, compareHistorySessions, historyDate } from '../core/history-summary';
 import { agentColor, agentName, badge, button, el, icon, markdown, mascot, statusColor, statusLabel } from './components';
 import { DEFAULT_SETTINGS, IslandSound, isQuiet, loadSettings, normalizeSettings, saveSettings } from './settings';
-import type { IslandPlatform, IslandSettings } from './platform';
+import type { IslandPlatform, IslandSettings, IslandLinkPreferences } from './platform';
 import { IslandMotion, motionPolicy } from './motion';
 import { IntegrationControls } from './integration-controls';
 import { SOUND_EVENTS, SOUND_LABELS, type SoundEvent } from './audio';
 import './styles.css';
+import { IslandSwitchGesture } from './island-switch';
 
 export type { IslandPlatform, IslandSettings } from './platform';
 
@@ -15,19 +17,42 @@ const PANES: Array<[SettingsPane, string, string]> = [
   ['general', '通用', 'settings'], ['display', '显示', 'screen'], ['integration', '集成', 'flow'], ['agents', 'Agents', 'terminal'],
   ['sound', '声音', 'sound'], ['history', '历史', 'history'], ['statistics', '统计', 'chart'], ['about', '关于', 'info'],
 ];
-const TERMINAL = new Set(['completed', 'observationUnavailable']);
 const LIVE = new Set(['active', 'thinking', 'compacting']);
+
+function toolOutcome(event: ToolEvent): { symbol: string; icon: string; color: string } {
+  if (event.isFailed || ['failed', 'timed_out', 'killed'].includes(event.backgroundTaskStatus ?? '')) return { symbol: '✕', icon: 'warning', color: 'var(--red)' };
+  if (event.completionUnconfirmed || ['lost', 'unconfirmed'].includes(event.backgroundTaskStatus ?? '')) return { symbol: '?', icon: 'question', color: 'var(--orange)' };
+  return event.isComplete ? { symbol: '✓', icon: 'check', color: 'var(--green)' } : { symbol: '…', icon: 'terminal', color: 'var(--muted)' };
+}
+
+function displayedEvents(session: Session): ToolEvent[] {
+  // 原生进程/未知类型任务单独显示，不伪装成子 Agent，也不按名称猜配工具调用。
+  return [...session.events, ...session.backgroundTasks.filter(task => task.kind !== 'agent').map(task => ({
+    id: `native-background:${task.id}`, tool: `${t(task.kind === 'process' ? '后台进程' : '后台任务')} · ${task.description || task.id}`,
+    timestamp: task.startedAtMilliseconds ?? session.lastActivityAt,
+    isComplete: ['completed', 'failed', 'timed_out', 'killed'].includes(task.status),
+    completionUnconfirmed: ['lost', 'unconfirmed'].includes(task.status),
+    isFailed: ['failed', 'timed_out', 'killed'].includes(task.status), backgroundTaskStatus: task.status, result: task.result,
+  }))];
+}
 
 function title(session: Session): string {
   return session.prompt.split('\n').find(line => line.trim())?.trim() || workspace(session) || agentName(session.agentType);
 }
 function workspace(session: Session): string { return session.workingDirectory.split(/[\\/]/).filter(Boolean).at(-1) ?? ''; }
 function duration(session: Session): string {
-  const elapsed = Math.max(0, Math.floor(((session.completedAt ?? session.observationEndedAt ?? Date.now()) - session.startedAt) / 1000));
+  return durationText((session.completedAt ?? session.observationEndedAt ?? Date.now()) - session.startedAt);
+}
+function durationText(milliseconds: number): string {
+  const elapsed = Math.max(0, Math.floor(milliseconds / 1000));
   return elapsed < 60 ? '<1m' : elapsed < 3600 ? `${Math.floor(elapsed / 60)}m` : `${Math.floor(elapsed / 3600)}h ${Math.floor(elapsed % 3600 / 60)}m`;
 }
 function time(timestamp: number): string { return new Date(timestamp).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }); }
 function formatNumber(value: number): string { return new Intl.NumberFormat(locale(), { notation: 'compact', maximumFractionDigits: 1 }).format(value); }
+function modelLabel(model: string): HTMLElement {
+  const label = el('span', 'session-model', model); label.title = model;
+  label.setAttribute('aria-label', t('模型：{model}', { model })); return label;
+}
 
 export function mountIsland(element: HTMLElement, store: SessionStore, platform: IslandPlatform) {
   let snapshot: StoreSnapshot = store.snapshot();
@@ -48,6 +73,11 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let resizeTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
+  let switchingIsland = false;
+  let linkPreferences: IslandLinkPreferences = { swipeEnabled: true, sensitivity: 'medium', startupDisplay: 'lastUsed' };
+  let linkPreferencesReady = !platform.getIslandPreferences, linkReadBusy = false, linkWriteBusy = false, linkRevision = 0;
+  let linkPreferencesError = '';
+  const switchGesture = new IslandSwitchGesture();
   let composing = false, renderAfterComposition = false;
   const details = new Set<string>(), childGroups = new Set<string>(), projectGroups = new Set<string>();
   const drafts = new Map<string, string>(), choices = new Map<string, Set<string>>();
@@ -67,10 +97,59 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
   const integrations = new IntegrationControls(platform.integrations,!!platform.preview,render);
 
   const pendingCount = () => snapshot.sessions.reduce((sum, session) => sum + session.pendingInteractions.length, 0);
-  const visibleSessions = () => snapshot.sessions.filter(session => !TERMINAL.has(session.status) || session.pendingInteractions.length > 0 ||
+  const visibleSessions = () => snapshot.sessions.filter(session => !isArchivedSession(session) || session.pendingInteractions.length > 0 ||
     (session.status === 'completed' && session.completedAt !== undefined && Date.now() - session.completedAt < 120_000));
   const showError = (error: unknown) => showMessage(error instanceof Error ? error.message : String(error));
   const run = (task: () => Promise<unknown>) => { void task().catch(showError); };
+
+  async function switchIsland() {
+    if (switchingIsland || !platform.switchIsland || platform.preferencesWindow) return;
+    switchingIsland = true; render();
+    try {
+      const status = await platform.islandPeerStatus?.();
+      if (status && (!status.installed || !status.compatible)) throw new Error(status.detail);
+      await platform.switchIsland();
+    } catch (error) { showError(error); }
+    finally { switchingIsland = false; if (!disposed) render(); }
+  }
+
+  async function refreshLinkPreferences() {
+    if (!platform.getIslandPreferences || linkReadBusy || linkWriteBusy || disposed) return;
+    linkReadBusy = true; const revision = linkRevision;
+    try {
+      const value = await platform.getIslandPreferences();
+      if (revision !== linkRevision || disposed) return;
+      const changed = !linkPreferencesReady || JSON.stringify(value) !== JSON.stringify(linkPreferences) || !!linkPreferencesError;
+      linkPreferences = value; linkPreferencesReady = true; linkPreferencesError = '';
+      if (changed && settingsPane === 'general' && !shell.querySelector('input:focus,select:focus,textarea:focus')) render();
+    } catch (error) {
+      linkPreferencesError = error instanceof Error ? error.message : String(error);
+    } finally { linkReadBusy = false; }
+  }
+  async function changeLinkPreferences(patch: Partial<IslandLinkPreferences>) {
+    if (!platform.setIslandPreferences || !linkPreferencesReady || linkWriteBusy) return;
+    linkWriteBusy = true; linkRevision++; render();
+    try { linkPreferences = await platform.setIslandPreferences({ ...linkPreferences, ...patch }); linkPreferencesError = ''; }
+    catch (error) { showError(error); }
+    finally { linkWriteBusy = false; if (!disposed) render(); }
+  }
+  function linkPreferencesCard(): HTMLElement {
+    const zh = locale().startsWith('zh');
+    const enabled = el('label','setting-row');
+    enabled.append(rowLabel(zh?'横滑切换 XNook':'Swipe to switch XNook',zh?'两个应用共享此设置；按钮切换仍可使用。':'Shared by both apps; the switch button remains available.'));
+    const toggle = el('input','switch'); toggle.type='checkbox';toggle.checked=linkPreferences.swipeEnabled;
+    toggle.disabled=!linkPreferencesReady||linkWriteBusy||!platform.setIslandPreferences;
+    toggle.setAttribute('aria-label',zh?'横滑切换 XNook':'Swipe to switch XNook');
+    toggle.addEventListener('change',()=>{void changeLinkPreferences({swipeEnabled:toggle.checked});});enabled.append(toggle);
+    const sensitivity = el('label','setting-row');sensitivity.append(rowLabel(zh?'切换灵敏度':'Switch sensitivity',''));
+    const level=select(zh?'切换灵敏度':'Switch sensitivity', [['low',zh?'低':'Low'],['medium',zh?'中':'Medium'],['high',zh?'高':'High']],linkPreferences.sensitivity,value=>{void changeLinkPreferences({sensitivity:value as IslandLinkPreferences['sensitivity']});});
+    level.disabled=toggle.disabled;sensitivity.append(level);
+    const startup = el('label','setting-row');startup.append(rowLabel(zh?'启动时显示':'Show at startup',zh?'首选应用不可用时显示当前应用。':'Falls back to this app if the preferred app is unavailable.'));
+    const target=select(zh?'启动时显示':'Show at startup',[['lastUsed',zh?'上次使用':'Last used'],['xnook','XNook'],['xisland','XIsland']],linkPreferences.startupDisplay,value=>{void changeLinkPreferences({startupDisplay:value as IslandLinkPreferences['startupDisplay']});});target.disabled=toggle.disabled;startup.append(target);
+    const card=settingCard(enabled,sensitivity,startup);
+    if(linkPreferencesError)card.append(el('p','setting-description',linkPreferencesError));
+    return card;
+  }
 
   function showMessage(text: string) {
     message = text;
@@ -260,6 +339,13 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
     const header = el('header', 'island-header');
     header.append(button(settings.soundEnabled ? t('静音') : t('开启声音'), 'icon-button', () => { void changeSettings({ soundEnabled: !settings.soundEnabled }); }, settings.soundEnabled ? 'sound' : 'mute'));
     header.append(button(t('设置'), 'icon-button', () => showSettings(), 'settings'));
+    if (platform.switchIsland) {
+      const peerButton = button('切换到 XNook', 'text-button island-peer-button', () => { void switchIsland(); });
+      peerButton.textContent = switchingIsland ? '切换中…' : 'XNook →';
+      peerButton.title = '切换到 XNook（也可在标题区横向滚动）';
+      peerButton.disabled = switchingIsland;
+      header.append(peerButton);
+    }
     const count = visibleSessions().filter(session => LIVE.has(session.status)).length;
     header.append(el('span', 'header-spacer'));
     if (platform.preview) header.append(el('span', 'preview-tag', t('样例预览')));
@@ -347,11 +433,11 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
     target.replaceChildren();
     const header=el('div','session-header'); header.append(mascot(session.agentType,session.status));
     const dot=el('span','status-dot'); dot.style.background=statusColor(session.status); dot.title=statusLabel(session.status); header.append(dot);
-    const labels=el('div','session-labels'); labels.append(el('strong','session-title',title(session)),el('span','workspace',workspace(session)||statusLabel(session.status))); header.append(labels);
+    const labels=el('div','session-labels'); labels.append(el('strong','session-title',title(session)),el('span','workspace',workspace(session)||statusLabel(session.status))); if(session.usage.model)labels.append(modelLabel(session.usage.model)); header.append(labels);
     header.append(badge(agentName(session.agentType),agentColor(session.agentType)),badge(duration(session))); target.append(header);
     if(session.agentResponse) target.append(el('p','session-response',session.agentResponse));
     if(session.currentTool){const tool=el('div','current-tool');tool.append(el('span','spinner'),el('span','',session.currentTool));target.append(tool);}
-    if(session.events.length){const event=session.events.at(-1)!;const line=el('div','last-event');line.append(icon(event.isComplete?'check':'terminal'),el('span','',`${event.tool}${event.input ? ` · ${event.input}` : ''}`));target.append(line);}
+    const activities=displayedEvents(session);if(activities.length){const event=activities.at(-1)!;const line=el('div','last-event');const outcome=toolOutcome(event);const glyph=icon(outcome.icon);glyph.style.color=outcome.color;line.append(glyph,el('span','',`${event.tool}${event.input ? ` · ${event.input}` : ''}`));target.append(line);}
     card.append(target);
     const footer=el('div','session-footer');footer.append(el('span','session-state',statusLabel(session.status)));
     footer.append(button(t('查看活动与对话'),'text-button',()=>{detailSession=session.id;store.select(session.id);render();}));
@@ -419,18 +505,18 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
 
   function activityPanel():HTMLElement{
     const panel=el('section','activity-panel');panel.append(el('h3','',t('最近活动')));
-    const entries=snapshot.sessions.flatMap(session=>session.events.map(event=>({session,event}))).sort((a,b)=>b.event.timestamp-a.event.timestamp).slice(0,20);
-    const list=el('div','activity-list');for(const {session,event}of entries){const row=el('div','activity-row');row.append(el('span','activity-time',time(event.timestamp)),el('span','activity-agent',agentName(session.agentType)),el('span','activity-tool',event.tool),el('span',event.isComplete?'complete':'muted',event.isComplete?'✓':'…'));list.append(row);}if(!entries.length)list.append(el('p','muted',t('尚无工具活动')));panel.append(list);return panel;
+    const entries=snapshot.sessions.flatMap(session=>displayedEvents(session).map(event=>({session,event}))).sort((a,b)=>b.event.timestamp-a.event.timestamp).slice(0,20);
+    const list=el('div','activity-list');for(const {session,event}of entries){const row=el('div','activity-row');const outcome=toolOutcome(event),mark=el('span','tool-outcome',outcome.symbol);mark.style.color=outcome.color;row.append(el('span','activity-time',time(event.timestamp)),el('span','activity-agent',agentName(session.agentType)),el('span','activity-tool',event.tool),mark);list.append(row);}if(!entries.length)list.append(el('p','muted',t('尚无工具活动')));panel.append(list);return panel;
   }
 
   function sessionDetail(session:Session):HTMLElement{
     const detail=el('section','session-detail');const bar=el('div','detail-toolbar');bar.append(button(t('返回会话列表'),'text-button',()=>{detailSession=undefined;render();}),button(t('打开 Agent'),'icon-button',()=>run(()=>platform.jump(session)),'jump'));detail.append(bar);
-    const heading=el('div','detail-heading');heading.append(mascot(session.agentType,session.status),el('strong','',title(session)));detail.append(heading);
+    const heading=el('div','detail-heading'),labels=el('div','session-labels');labels.append(el('strong','',title(session)));if(session.usage.model)labels.append(modelLabel(session.usage.model));heading.append(mascot(session.agentType,session.status),labels);detail.append(heading);
     const list=el('div','session-scroll chat-history');
     if(session.chatHistory.length)for(const entry of session.chatHistory){const bubble=el('article',`chat-entry ${entry.role}`);bubble.append(el('div','chat-meta',`${entry.role==='user'?t('你'):entry.role==='system'?t('系统'):agentName(session.agentType)} · ${time(entry.timestamp)}`),markdown(entry.content));list.append(bubble);}
     else if(session.agentResponse)list.append(markdown(session.agentResponse));
     else list.append(emptyState(t('暂无对话内容'),t('工具活动仍会显示在下方。')));
-    for(const event of session.events){const row=el('details','event-detail');const summary=el('summary','',`${time(event.timestamp)} · ${event.tool} ${event.isComplete?'✓':''}`);row.append(summary);if(event.input)row.append(el('pre','',event.input));if(event.result)row.append(el('pre','',event.result));list.append(row);}
+    for(const event of displayedEvents(session)){const row=el('details','event-detail');const outcome=toolOutcome(event);const summary=el('summary','',`${time(event.timestamp)} · ${event.tool} ${outcome.symbol}`);row.append(summary);if(event.input)row.append(el('pre','',event.input));if(event.result)row.append(el('pre','',event.result));list.append(row);}
     detail.append(list);return detail;
   }
 
@@ -442,6 +528,7 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
     const content=el('div','settings-content');
     if (detailSession && platform.preferencesWindow) { const session=snapshot.sessions.find(item=>item.id===detailSession);if(session){content.append(sessionDetail(session));return content;}detailSession=undefined; }
     if(settingsPane==='general'){
+      if(platform.getIslandPreferences)content.append(sectionTitle(locale().startsWith('zh')?'与 XNook 联动':'XNook integration'),linkPreferencesCard());
       content.append(sectionTitle(t('语言')), settingCard(selectRow(t('语言'),t('界面语言立即生效，Agent 原文保持不变。'),'language',[
         ['system',t('跟随系统')],['zh','简体中文'],['en','English'],['ja','日本語'],['ko','한국어'],['fr','Français'],
       ])));
@@ -475,17 +562,18 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
       content.append(el('p','settings-note',isQuiet(settings)?t('当前处于勿扰时段。'):t('当前不在勿扰时段。')));
     }else if(settingsPane==='history'){
       content.append(sectionTitle(t('会话历史')));
-      const history=snapshot.sessions.filter(session=>TERMINAL.has(session.status)||session.status==='completionUnconfirmed').sort((a,b)=>b.lastActivityAt-a.lastActivityAt);
+      const history=snapshot.sessions.filter(session=>isArchivedSession(session)||session.status==='completionUnconfirmed').sort(compareHistorySessions);
       if(!history.length)content.append(emptyState(t('暂无历史记录'),t('已结束或观测中断的会话会显示在这里。')));
-      for(const session of history){const row=el('div','history-row');const labels=el('div','session-labels');labels.append(el('strong','',title(session)),el('span','muted',`${agentName(session.agentType)} · ${duration(session)} · ${statusLabel(session.status)}`));row.append(labels,button(t('查看记录'),'text-button',()=>{if(!platform.preferencesWindow)settingsPane=undefined;detailSession=session.id;expanded=true;render();}),button(t('导出此会话'),'icon-button',()=>run(()=>platform.exportHistory(JSON.stringify({version:1,sessions:[session]},null,2))),'download'));if(TERMINAL.has(session.status)&&!session.pendingInteractions.length)row.append(button(t('删除此记录'),'icon-button danger',()=>{if(confirm(t('删除这条本地会话记录？'))){if(platform.deleteHistory)run(()=>platform.deleteHistory!(session.id));else store.dismiss(session.id);}},'trash'));content.append(row);}
+      for(const session of history){const row=el('div','history-row');const labels=el('div','session-labels');labels.append(el('strong','',title(session)),el('span','muted',`${agentName(session.agentType)} · ${duration(session)} · ${statusLabel(session.status)}`));const date=new Date(historyDate(session)),dateLabel=session.completedAt!==undefined?t('已完成于'):session.observationEndedAt!==undefined?t('观测中断于'):t('开始于');const timestamp=el('time','history-date',`${dateLabel} ${date.toLocaleString(locale(),{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`);timestamp.dateTime=date.toISOString();labels.append(timestamp);row.append(labels,button(t('查看记录'),'text-button',()=>{if(!platform.preferencesWindow)settingsPane=undefined;detailSession=session.id;expanded=true;render();}),button(t('导出此会话'),'icon-button',()=>run(()=>platform.exportHistory(JSON.stringify({version:1,sessions:[session]},null,2))),'download'));if(isArchivedSession(session)&&!session.pendingInteractions.length)row.append(button(t('删除此记录'),'icon-button danger',()=>{if(confirm(t('删除这条本地会话记录？'))){if(platform.deleteHistory)run(()=>platform.deleteHistory!(session.id));else store.dismiss(session.id);}},'trash'));content.append(row);}
       if(history.length)content.append(actionRow(t('导出记录'),t('导出当前所有会话，可用于备份与排查。'),t('导出 JSON'),exportAll));
-      if(history.some(session=>TERMINAL.has(session.status)&&!session.pendingInteractions.length))content.append(actionRow(t('清空已归档记录'),t('仅删除已完成或观测中断且没有待办的本地记录。'),t('清空历史'),()=>{
+      if(history.some(session=>isArchivedSession(session)&&!session.pendingInteractions.length))content.append(actionRow(t('清空已归档记录'),t('仅删除已完成或观测中断且没有待办的本地记录。'),t('清空历史'),()=>{
         if(confirm(t('清空所有已归档记录？'))){if(platform.clearHistory)run(()=>platform.clearHistory!());else store.clearHistory();}
       }));
     }else if(settingsPane==='statistics'){
       content.append(sectionTitle(t('本地会话统计')));
-      const totals=snapshot.sessions.reduce((sum,session)=>({input:sum.input+session.usage.inputTokens,output:sum.output+session.usage.outputTokens,total:sum.total+session.usage.totalTokens,cost:sum.cost+session.usage.costUSD}),{input:0,output:0,total:0,cost:0});
-      const grid=el('div','stats-grid');for(const [label,value]of [[t('会话'),String(snapshot.sessions.length)],[t('活跃'),String(snapshot.sessions.filter(session=>LIVE.has(session.status)).length)],[t('输入 token'),formatNumber(totals.input)],[t('输出 token'),formatNumber(totals.output)],[t('总 token'),formatNumber(totals.total)],[t('已上报费用'),`$${totals.cost.toFixed(4)}`]]){const item=el('div','stat-card');item.append(el('strong','',value),el('span','muted',label));grid.append(item);}content.append(grid,el('p','settings-note',t('统计来自 Agent 已上报事件。未上报用量不代表真实用量为零；这里不显示推算的额度或余额。')));
+      const summaries=aggregateHistoryUsage(snapshot.sessions);
+      const totals=summaries.reduce((sum,session)=>({input:sum.input+session.inputTokens,output:sum.output+session.outputTokens,total:sum.total+session.totalTokens,cost:sum.cost+session.costUSD,duration:sum.duration+session.durationMs}),{input:0,output:0,total:0,cost:0,duration:0});
+      const grid=el('div','stats-grid');for(const [label,value]of [[t('会话'),String(summaries.length)],[t('活跃'),String(summaries.filter(session=>session.active).length)],[t('输入 token'),formatNumber(totals.input)],[t('输出 token'),formatNumber(totals.output)],[t('总 token'),formatNumber(totals.total)],[t('已上报费用'),`$${totals.cost.toFixed(4)}`],[t('总时长'),durationText(totals.duration)]]){const item=el('div','stat-card');item.append(el('strong','',value),el('span','muted',label));grid.append(item);}content.append(grid,el('p','settings-note',t('统计来自 Agent 已上报事件。未上报用量不代表真实用量为零；这里不显示推算的额度或余额。')));
     }else if(settingsPane==='agents'){
       content.append(integrations.view());
       if(integrations.isReviewing)return content;
@@ -523,7 +611,7 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
     let hasNewRequest=false;
     for(const session of next.sessions){
       const previous=previousStatuses.get(session.id);
-      if(previous&&previous!==session.status){if(session.status==='completed')notify('session_end');else if(session.status==='error')notify('error');else if(session.status==='compacting')notify('context_compacting');}
+      if(previous&&previous!==session.status){if(session.status==='error')notify('error');else if(session.status==='compacting')notify('context_compacting');}
       const userMessage=session.chatHistory.filter(message=>message.role==='user').at(-1)?.id;
       if(userMessage&&previousUserMessages.get(session.id)!==userMessage&&LIVE.has(session.status))notify('session_start');
       previousUserMessages.set(session.id,userMessage);
@@ -537,6 +625,7 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
   }
 
   const unsubscribe=store.subscribe(onSnapshot);
+  const unsubscribeCompletion=store.subscribeCompletion(()=>notify('session_end'));
   const onPointerDown=(event:PointerEvent)=>{if(!platform.preferencesWindow)void sound.prime();scheduleAutoHide();if(event.target instanceof HTMLInputElement||event.target instanceof HTMLTextAreaElement||event.target instanceof HTMLSelectElement)run(()=>platform.focus());};
   let previousPointerY=Number.POSITIVE_INFINITY;
   const onPointerMove=(event:PointerEvent)=>{motion.pointer(event.clientX,event.clientY,settings.collapsedHeight);previousPointerY=event.clientY;};
@@ -553,15 +642,24 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
     if(platform.preferencesWindow)return;
     if(event.ctrlKey||event.metaKey){const session=snapshot.sessions.find(item=>item.id===snapshot.selectedSessionId&&item.pendingInteractions.length)||snapshot.sessions.find(item=>item.pendingInteractions.length);const request=session?.pendingInteractions[0];if(!session||!request)return;const key=event.key.toLowerCase();if(request.kind==='permission'&&(key==='y'||key==='n')){event.preventDefault();void decide(session,request,{kind:'permission',approved:key==='y'});}else if(request.kind==='question'&&!request.allowsMultipleAnswers&&/^[1-9]$/.test(key)){const answer=request.options[Number(key)-1];if(answer){event.preventDefault();void decide(session,request,{kind:'question',answer});}}}
   };
+  const onWheel = (event: WheelEvent) => {
+    const target = event.target instanceof Element ? event.target : undefined;
+    if (!linkPreferencesReady || !linkPreferences.swipeEnabled || platform.preferencesWindow || !platform.switchIsland || switchingIsland || event.ctrlKey || event.metaKey ||
+      !target?.closest('.island-header, .collapsed-body') || target.closest('input, textarea, select, [contenteditable=true]')) return;
+    if (switchGesture.accept(event.deltaX, event.deltaY, event.deltaMode, performance.now(), linkPreferences.sensitivity)) { event.preventDefault(); void switchIsland(); }
+  };
+  shell.addEventListener('wheel', onWheel, { passive: false });
   shell.addEventListener('pointerdown',onPointerDown,true);shell.addEventListener('pointerenter',onPointerEnter);shell.addEventListener('pointerleave',onPointerLeave);shell.addEventListener('focusin',onFocus);shell.addEventListener('keydown',onKey);shell.addEventListener('compositionstart',onCompositionStart);shell.addEventListener('compositionend',onCompositionEnd);
   const onScheme=()=>render();scheme.addEventListener('change',onScheme);
   systemMotion.addEventListener('change',onScheme);window.addEventListener('pointermove',onPointerMove);
   const countInterval=setInterval(()=>{if(!expanded){const count=shell.querySelector('.collapsed-count');if(count){const total=Math.floor(Date.now()/5000)%2===1;count.replaceChildren(el('b','',String(total?snapshot.sessions.length:visibleSessions().filter(session=>LIVE.has(session.status)).length)),el('span','',total?t('全部'):t('活跃')));}}},5000);
   if(message)showMessage(message);
   render();
+  void refreshLinkPreferences();
+  const linkInterval=setInterval(()=>{void refreshLinkPreferences();},2500);
   const onLanguage=()=>{if(settings.language==='system')render();};window.addEventListener('languagechange',onLanguage);
   let viewportFrame:number|undefined;
   const onViewport=()=>{if(!platform.preferencesWindow)return;if(viewportFrame!==undefined)cancelAnimationFrame(viewportFrame);viewportFrame=requestAnimationFrame(()=>{viewportFrame=undefined;render();});};
   window.addEventListener('resize',onViewport);
-  return {expand,collapse,showSettings:(pane?:string)=>showSettings(PANES.some(([id])=>id===pane)?pane as SettingsPane:'general'),applySettings,previewSound,showError:showMessage,destroy(){disposed=true;unsubscribe();clearInterval(countInterval);for(const timer of[autoHide,hoverExit,toastTimer,resizeTimer])if(timer)clearTimeout(timer);if(viewportFrame!==undefined)cancelAnimationFrame(viewportFrame);scheme.removeEventListener('change',onScheme);systemMotion.removeEventListener('change',onScheme);window.removeEventListener('pointermove',onPointerMove);window.removeEventListener('languagechange',onLanguage);window.removeEventListener('resize',onViewport);integrations.destroy();motion.destroy();sound.destroy();element.replaceChildren();}};
+  return {expand,collapse,showSettings:(pane?:string)=>showSettings(PANES.some(([id])=>id===pane)?pane as SettingsPane:'general'),applySettings,previewSound,showError:showMessage,destroy(){disposed=true;unsubscribe();unsubscribeCompletion();clearInterval(countInterval);clearInterval(linkInterval);for(const timer of[autoHide,hoverExit,toastTimer,resizeTimer])if(timer)clearTimeout(timer);if(viewportFrame!==undefined)cancelAnimationFrame(viewportFrame);scheme.removeEventListener('change',onScheme);systemMotion.removeEventListener('change',onScheme);window.removeEventListener('pointermove',onPointerMove);window.removeEventListener('languagechange',onLanguage);window.removeEventListener('resize',onViewport);integrations.destroy();motion.destroy();sound.destroy();element.replaceChildren();}};
 }

@@ -72,7 +72,7 @@ test('计划反馈与详情可操作，批准后移除对应请求', async ({ pa
   await expect(page.locator('.interaction-plan')).toHaveCount(0);
 });
 
-async function mountHarness(page: Page, options: { preferencesWindow?: boolean; externalSettings?: boolean; integrations?: boolean; unknownRuntime?: boolean } = {}) {
+async function mountHarness(page: Page, options: { preferencesWindow?: boolean; externalSettings?: boolean; integrations?: boolean; unknownRuntime?: boolean; connectionEvidence?: boolean } = {}) {
   await page.goto('/');
   await page.evaluate(async options => {
     const corePath = '/src/core/index.ts', uiPath = '/src/ui/index.ts';
@@ -104,6 +104,10 @@ async function mountHarness(page: Page, options: { preferencesWindow?: boolean; 
         status: async (agent:string) => {
           harness.integrationCalls.push({action:'status',agent});
           if(options.unknownRuntime)return {agent,platformSupported:true,runtimeReady:false,configurationKnown:false,installed:null,managedHandlers:null,reason:'node_not_found',warnings:['Node runtime is unavailable.']};
+          if(options.connectionEvidence&&(agent==='qwen'||agent==='codex'))return {agent,platformSupported:true,runtimeReady:true,installed:true,managedHandlers:12,
+            configPath:configPath(agent),revision:harness.integrationRevision,warnings:[],client:{state:'detected',detail:'隔离客户端发现样例'},
+            trust:agent==='codex'?{state:'required',configuredCount:12,trustedCount:0,reason:'请在原客户端授权'}:undefined,
+            activity:{event:'SessionStart',receivedAt:Date.now()}};
           return {agent,platformSupported:agent!=='gemini_cli',runtimeReady:agent!=='cursor'&&agent!=='gemini_cli',installed:installed.has(agent),managedHandlers:installed.has(agent)?7:removed.has(agent)?0:agent==='codex'||agent==='cursor'?3:0,configPath:configPath(agent),revision:harness.integrationRevision,warnings:[]};
         },
         plan: async (agent:string,operation:string) => {harness.integrationCalls.push({action:'plan',agent,operation});return plan(agent,operation);},
@@ -406,7 +410,7 @@ test('普通浏览器预览不会假装能够安装接入', async ({ page }) => 
   await page.getByRole('button',{name:'Agents',exact:true}).click();
   await expect(page.getByText('浏览器预览不安装或移除接入，请在 Windows 客户端操作。',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'启用接入…',exact:true})).toHaveCount(0);
-  await expect(page.getByText('实际客户端未验收',{exact:true})).toHaveCount(7);
+  await expect(page.getByText('实际客户端未验收',{exact:true})).toHaveCount(13);
   await expect(page.getByRole('button',{name:'导出 WorkBuddy 插件…',exact:true})).toHaveCount(0);
 });
 
@@ -445,9 +449,43 @@ test('识别后的TraeWork和Trae IDE在共享配置下分别显示来源', asyn
 test('运行时不可用时配置状态保持未知，不误报为未配置', async ({ page }) => {
   await mountHarness(page,{preferencesWindow:true,integrations:true,unknownRuntime:true});
   await page.getByRole('button',{name:'Agents',exact:true}).click();
-  await expect(page.getByText('运行时未就绪，配置状态未知',{exact:true})).toHaveCount(6);
+  await expect(page.getByText('运行时未就绪，配置状态未知',{exact:true})).toHaveCount(11);
   await expect(page.getByText('未配置',{exact:true})).toHaveCount(0);
   for(const agent of ['claude_code','codex','cursor','gemini_cli','windsurf','trae_cn'])await expect(page.locator(`[data-integration-agent="${agent}"]`).getByRole('button',{name:'启用接入…',exact:true})).toBeDisabled();
+});
+
+test('新增接入均有配置入口，授权未完成时不显示旧活动证据', async ({page})=>{
+  await mountHarness(page,{preferencesWindow:true,integrations:true,connectionEvidence:true});
+  await page.getByRole('button',{name:'Agents',exact:true}).click();
+  for(const agent of ['qwen','code_buddy','droid','opencode','kimi_code'])await expect(page.locator(`[data-integration-agent="${agent}"]`)).toHaveCount(1);
+  const qwen=page.locator('[data-integration-agent="qwen"]'),codex=page.locator('[data-integration-agent="codex"]');
+  await expect(qwen.getByText('检测到客户端',{exact:true})).toBeVisible();
+  await expect(qwen.getByText(/当前配置最近收到事件/)).toHaveCount(1);
+  await expect(codex.getByText('需要在 Codex 中授权',{exact:true})).toBeVisible();
+  await expect(codex.getByText(/当前配置最近收到事件/)).toHaveCount(0);
+  await page.locator('[data-integration-agent="opencode"]').getByRole('button',{name:'启用接入…',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'确认启用或更新 OpenCode',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'确认应用变更',exact:true}).click();
+  await expect(page.locator('[data-integration-agent="opencode"]').getByText('已配置',{exact:true})).toBeVisible();
+  await qwen.scrollIntoViewIfNeeded();await capture(page,'ui-agent-discovery-mock.png');
+});
+
+test('后台任务失败和未确认在活动及详情中不显示成功勾', async ({page})=>{
+  await mountHarness(page);
+  await page.evaluate(async()=>{
+    const store=(window as unknown as {__islandTest:{store:{loadFixture(value:unknown):void;apply(value:unknown):{accepted:boolean;reason?:string};snapshot():{sessions:Array<{backgroundTasks:unknown[]}>}}}}).__islandTest.store;
+    const adapterPath='/src/adapters/kimi-code.ts';const {normalizeKimiCodeHook}=await import(adapterPath);
+    const fixture=await(await fetch('/src/fixtures/companion/kimi-code-hooks.json')).json();
+    const send=(event:string,patch:Record<string,unknown>={})=>{const result=store.apply(normalizeKimiCodeHook({...fixture.cases.find((row:{event:string})=>row.event===event).input,...patch}));if(!result.accepted)throw new Error(`${event}: ${result.reason}`);};
+    store.loadFixture({sessions:[]});send('SessionStart');send('TurnStarted');
+    send('TaskStarted',{task_id:'failed-task',description:'失败任务'});send('TaskStarted',{task_id:'unknown-task',description:'未确认任务'});
+    send('Notification',{source_id:'failed-task',notification_type:'task.failed'});
+    send('Notification',{source_id:'unknown-task',notification_type:'task.lost'});
+    if(store.snapshot().sessions[0]?.backgroundTasks.length!==2)throw new Error('Task projection: '+JSON.stringify(store.snapshot()));
+  });
+  await page.getByRole('button',{name:'展开活动记录',exact:true}).click();
+  await expect(page.locator('.activity-row .tool-outcome')).toHaveText(['✕','?']);
+  await capture(page,'ui-kimi-task-outcomes-mock.png');
 });
 
 test('独立设置按小屏可用区域适配，工具栏可横滚且关闭按钮始终可用', async ({ page }) => {
@@ -469,4 +507,117 @@ test('独立设置按小屏可用区域适配，工具栏可横滚且关闭按�
   await capture(page,'ui-preferences-420x360.png');
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   expect(await page.evaluate(()=>(window as unknown as {__islandTest:{calls:unknown[]}}).__islandTest.calls)).toEqual([{kind:'closeSettings'}]);
+});
+
+type ParityHarness = {
+  store: import('../src/core/session-store').SessionStore;
+  ui: ReturnType<typeof import('../src/ui/index').mountIsland>;
+  notifications: string[];
+  advance(ms: number): void;
+  send(patch?: Partial<import('../src/core/protocol').DIMessage>): void;
+};
+
+async function mountParityHarness(page: Page, preferencesWindow = false) {
+  await page.goto('/');
+  await page.evaluate(async preferencesWindow => {
+    const corePath = '/src/core/session-store.ts', uiPath = '/src/ui/index.ts';
+    const { SessionStore } = await import(corePath), { mountIsland } = await import(uiPath);
+    let now = Date.parse('2026-10-17T10:00:00Z'), mono = 0;
+    const store = new SessionStore({ now: () => now, monotonicNow: () => mono });
+    const notifications: string[] = [];
+    const target = document.createElement('div'); target.id = 'app'; document.body.replaceChildren(target);
+    const ui = mountIsland(target, store, { preview: false, preferencesWindow,
+      resize: async () => {}, focus: async () => {}, respond: async () => {}, jump: async () => {}, exportHistory: async () => {},
+      notify: (kind: string) => notifications.push(kind) });
+    (window as unknown as { __parityTest: ParityHarness }).__parityTest = { store, ui, notifications,
+      advance(ms) { now += ms; mono += ms; },
+      send(patch = {}) {
+        const result = store.apply({ type: 'status_update', sessionId: 'claude_code-parity', agentType: 'claude_code',
+          timestamp: new Date(now).toISOString(), status: '相同的最终内容', statusIsAssistantReply: true, observedState: 'idle',
+          nativeMessageId: 'reply-1', ...patch });
+        if (!result.accepted) throw new Error(result.reason);
+      } };
+  }, preferencesWindow);
+}
+
+test('Mac 行为对齐：累计统计合并观察片段，历史按结束日期显示', async ({ page }, testInfo) => {
+  await mountParityHarness(page, true);
+  await page.evaluate(() => {
+    const { store, ui } = (window as unknown as { __parityTest: ParityHarness }).__parityTest;
+    store.loadFixture({ sessions: [{ id: 'earlier', agentType: 'roo_code', status: 'completed', prompt: '较早完成' },
+      { id: 'later', agentType: 'roo_code', status: 'observationUnavailable', prompt: '较晚中断' }] });
+    const sessions = store.snapshot().sessions, epoch = Date.parse('2026-10-17T10:00:00Z');
+    for (const [index, session] of sessions.entries()) {
+      session.startedAt = epoch + index * 30_000; session.lastActivityAt = epoch + (1 - index) * 50_000;
+      session.sourceNamespace = 'a'.repeat(24); session.sourceInstanceId = `instance-${index}`; session.nativeTaskId = 'same-task';
+      session.usage = { inputTokens: index ? 120 : 100, outputTokens: index ? 30 : 0, totalTokens: 0, costUSD: index ? 1.5 : 1, model: '' };
+      if (index) { delete session.completedAt; session.observationEndedAt = epoch + 90_000; }
+      else session.completedAt = epoch + 60_000;
+    }
+    store.restore(JSON.stringify({ version: 1, sessions })); ui.showSettings('statistics');
+  });
+  const stat = (label: string) => page.locator('.stat-card').filter({ has: page.getByText(label, { exact: true }) }).locator('strong');
+  await expect(stat('会话')).toHaveText('1'); await expect(stat('输入 token')).toHaveText('120');
+  await expect(stat('输出 token')).toHaveText('30'); await expect(stat('总 token')).toHaveText('150');
+  await expect(stat('已上报费用')).toHaveText('$1.5000'); await expect(stat('总时长')).toHaveText('1m');
+  await page.locator('.island-shell').screenshot({ path: testInfo.outputPath('mac-parity-statistics.png') });
+  await page.getByRole('button', { name: '历史', exact: true }).click();
+  await expect(page.locator('.history-row strong')).toHaveText(['较晚中断', '较早完成']);
+  await expect(page.locator('.history-date').first()).toContainText('观测中断于');
+  await expect(page.locator('.history-date').first()).toHaveAttribute('datetime', '2026-10-17T10:01:30.000Z');
+  await expect(page.locator('.history-date').last()).toContainText('已完成于');
+  await page.locator('.island-shell').screenshot({ path: testInfo.outputPath('mac-parity-history.png') });
+});
+
+test('Mac 行为对齐：模型名称在卡片与详情显示，长名称截断且保留完整提示', async ({ page }, testInfo) => {
+  await mountParityHarness(page);
+  const model = `model-${'long-name-'.repeat(15)}<script>text only</script>`;
+  await page.evaluate(model => {
+    const { store, ui, send } = (window as unknown as { __parityTest: ParityHarness }).__parityTest;
+    store.loadFixture({ sessions: [{ id: 'claude_code-parity', agentType: 'claude_code', status: 'active', prompt: '包含模型' },
+      { id: 'codex-empty', agentType: 'codex', status: 'active', prompt: '没有模型' }] });
+    send({ model, status: undefined, statusIsAssistantReply: false, observedState: undefined }); ui.expand();
+  }, model);
+  const card = page.locator('[data-session-id="claude_code-parity"]');
+  await expect(card.locator('.session-model')).toHaveText(model); await expect(card.locator('.session-model')).toHaveAttribute('title', model);
+  await expect(page.locator('[data-session-id="codex-empty"] .session-model')).toHaveCount(0);
+  expect(await card.locator('.session-model').evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
+  await expect(card.locator('.session-model')).toHaveCSS('text-overflow', 'ellipsis');
+  await card.getByRole('button', { name: '查看活动与对话', exact: true }).click();
+  await expect(page.locator('.detail-heading .session-model')).toHaveText(model);
+  await expect(page.locator('.detail-heading .session-model')).toHaveAttribute('title', model);
+  expect(await page.locator('.detail-heading').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await page.locator('.island-shell').screenshot({ path: testInfo.outputPath('mac-parity-model.png') });
+});
+
+test('Mac 行为对齐：最终回复完成音来自核心事件，静音与设置窗口仍抑制通知', async ({ page }) => {
+  await mountParityHarness(page);
+  const notifications = () => page.evaluate(() => (window as unknown as { __parityTest: ParityHarness }).__parityTest.notifications);
+  await page.evaluate(() => {
+    const { send } = (window as unknown as { __parityTest: ParityHarness }).__parityTest;
+    send({ nativeMessagePartial: true }); send({ nativeMessageReplay: true });
+  });
+  expect(await notifications()).toEqual([]);
+  await page.evaluate(() => (window as unknown as { __parityTest: ParityHarness }).__parityTest.send());
+  expect(await notifications()).toEqual(['session_end']);
+  await page.evaluate(() => {
+    const { send, advance } = (window as unknown as { __parityTest: ParityHarness }).__parityTest;
+    advance(1799); send({ nativeMessageId: 'reply-2' }); advance(1); send({ nativeMessageId: 'reply-3' });
+    advance(1800); send({ nativeMessageId: 'reply-1' });
+  });
+  expect(await notifications()).toEqual(['session_end', 'session_end']);
+  await page.evaluate(async () => {
+    const settingsPath = '/src/ui/settings.ts', { DEFAULT_SETTINGS } = await import(settingsPath);
+    const { send, ui, advance } = (window as unknown as { __parityTest: ParityHarness }).__parityTest;
+    ui.applySettings({ ...DEFAULT_SETTINGS, soundEnabled: false }); advance(1800); send({ nativeMessageId: 'muted-reply' });
+    ui.applySettings({ ...DEFAULT_SETTINGS, eventSounds: { ...DEFAULT_SETTINGS.eventSounds, session_end: false } });
+    advance(1800); send({ nativeMessageId: 'disabled-event' });
+    const start = new Date(Date.now() - 300_000), end = new Date(Date.now() + 300_000);
+    ui.applySettings({ ...DEFAULT_SETTINGS, quietHours: true, quietStart: start.toTimeString().slice(0, 5), quietEnd: end.toTimeString().slice(0, 5) });
+    advance(1800); send({ nativeMessageId: 'quiet-reply' });
+  });
+  expect(await notifications()).toEqual(['session_end', 'session_end']);
+  await mountParityHarness(page, true);
+  await page.evaluate(() => (window as unknown as { __parityTest: ParityHarness }).__parityTest.send());
+  expect(await notifications()).toEqual([]);
 });

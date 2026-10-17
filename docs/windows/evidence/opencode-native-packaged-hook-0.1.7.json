@@ -1,0 +1,1375 @@
+{
+  "schemaVersion": 1,
+  "applicationVersion": "0.1.7",
+  "startedAt": "2026-10-17T12:20:20.465Z",
+  "platform": "darwin",
+  "arch": "arm64",
+  "version": "1.19.3",
+  "binarySha256": "6d3e6458fce4b649edf974c19959d5dbfe1e7f255a503dcfc01215b24ad3ea5b",
+  "cli": "/tmp/xisland-opencode-native-1.19.3/package/bin/opencode",
+  "isolatedDirectory": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK",
+  "distribution": {
+    "package": "opencode-darwin-arm64@1.19.3",
+    "url": "https://registry.npmjs.org/opencode-darwin-arm64/-/opencode-darwin-arm64-1.19.3.tgz",
+    "tarballSha256": "6b0d3cf1f00f9df971702f96d812562e8b94ae870c5a74ca149d8e00b2187b32",
+    "npmIntegrity": "sha512-NmDF28jD8W7m9a/k4mc3rajEWftDemGecrzBJItzTWwN0Eu5WFSEFBocvmmasUr4nh8ei9Zl1pwRvv66R4dN6A==",
+    "licenseSource": "https://github.com/anomalyco/opencode/blob/v1.19.3/LICENSE"
+  },
+  "nativeClientExecuted": true,
+  "realProviderUsed": false,
+  "windowsNativeClientExecuted": false,
+  "rustBridgeExecuted": false,
+  "graphicalUiExecuted": false,
+  "bridge": "real generated plugin -> real bundled hook/adapter -> temporary Node TCP transport -> real SessionStore",
+  "isolation": {
+    "homeUnmodified": true,
+    "codexHomeUnmodified": true,
+    "realCredentialsInherited": false,
+    "xdgRoots": true,
+    "opencodeTestHome": true,
+    "opencodeTestManagedConfigDir": true,
+    "projectConfigurationDisabled": true,
+    "provider": "localhost OpenAI-compatible deterministic fixture",
+    "automaticUpdateDisabled": true,
+    "defaultPluginsDisabled": true,
+    "externalSkillsDisabled": true,
+    "claudeCompatibilityDisabled": true,
+    "modelsFetchDisabled": true,
+    "publicNpmInstallPerformed": false,
+    "environmentKeys": [
+      "HOME",
+      "LANG",
+      "OPENCODE_AUTH_CONTENT",
+      "OPENCODE_CONFIG",
+      "OPENCODE_CONFIG_DIR",
+      "OPENCODE_DISABLE_AUTOCOMPACT",
+      "OPENCODE_DISABLE_AUTOUPDATE",
+      "OPENCODE_DISABLE_CLAUDE_CODE",
+      "OPENCODE_DISABLE_DEFAULT_PLUGINS",
+      "OPENCODE_DISABLE_EMBEDDED_WEB_UI",
+      "OPENCODE_DISABLE_EXTERNAL_SKILLS",
+      "OPENCODE_DISABLE_LSP_DOWNLOAD",
+      "OPENCODE_DISABLE_MODELS_FETCH",
+      "OPENCODE_DISABLE_PROJECT_CONFIG",
+      "OPENCODE_ENABLE_QUESTION_TOOL",
+      "OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER",
+      "OPENCODE_SERVER_PASSWORD",
+      "OPENCODE_TEST_HOME",
+      "OPENCODE_TEST_MANAGED_CONFIG_DIR",
+      "PATH",
+      "TMPDIR",
+      "XDG_CACHE_HOME",
+      "XDG_CONFIG_HOME",
+      "XDG_DATA_HOME",
+      "XDG_STATE_HOME",
+      "XISLAND_TEST_MODE",
+      "npm_config_registry"
+    ]
+  },
+  "scenarios": [
+    {
+      "scenario": "allow-read",
+      "sessionId": "ses_eb631aa27ffes45b4v6e5Vuytv",
+      "nativeReplyConfirmed": true,
+      "interactionCount": 1,
+      "modelRequests": 2,
+      "finalText": "NATIVE_DONE:allow-read",
+      "nativeParts": [
+        {
+          "type": "step-start",
+          "id": "prt_149ce5b06001MY03HSd3dJ1Mpm",
+          "sessionID": "ses_eb631aa27ffes45b4v6e5Vuytv",
+          "messageID": "msg_149ce5af5001EPIsJ5GghxxIYQ"
+        },
+        {
+          "type": "text",
+          "text": "NATIVE_DONE:allow-read",
+          "time": {
+            "start": 1792239622919,
+            "end": 1792239622921
+          },
+          "id": "prt_149ce5b070013bGGtQH2SQavWl",
+          "sessionID": "ses_eb631aa27ffes45b4v6e5Vuytv",
+          "messageID": "msg_149ce5af5001EPIsJ5GghxxIYQ"
+        },
+        {
+          "reason": "stop",
+          "type": "step-finish",
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 0
+            }
+          },
+          "cost": 0,
+          "id": "prt_149ce5b0a001pDM48yNwKJ2IDt",
+          "sessionID": "ses_eb631aa27ffes45b4v6e5Vuytv",
+          "messageID": "msg_149ce5af5001EPIsJ5GghxxIYQ"
+        }
+      ],
+      "storePendingCount": 0,
+      "storeStatus": "idle"
+    },
+    {
+      "scenario": "deny-read",
+      "sessionId": "ses_eb631a333ffeEUWsyT5NhCGSyM",
+      "nativeReplyConfirmed": true,
+      "interactionCount": 1,
+      "modelRequests": 1,
+      "finalText": null,
+      "nativeParts": [
+        {
+          "type": "step-start",
+          "id": "prt_149ce5d76001iOoV8cVgl1w2Kq",
+          "sessionID": "ses_eb631a333ffeEUWsyT5NhCGSyM",
+          "messageID": "msg_149ce5d70001nv9DoGj8gLNN6A"
+        },
+        {
+          "type": "tool",
+          "tool": "read",
+          "callID": "call_deny_read",
+          "state": {
+            "status": "error",
+            "input": {
+              "filePath": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt"
+            },
+            "error": "The user rejected permission to use this specific tool call.",
+            "time": {
+              "start": 1792239623544,
+              "end": 1792239623865
+            }
+          },
+          "id": "prt_149ce5d770018uFUShpPpHQaUg",
+          "sessionID": "ses_eb631a333ffeEUWsyT5NhCGSyM",
+          "messageID": "msg_149ce5d70001nv9DoGj8gLNN6A"
+        },
+        {
+          "reason": "tool-calls",
+          "type": "step-finish",
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 0
+            }
+          },
+          "cost": 0,
+          "id": "prt_149ce5eba001kvsprlYC2vdJSt",
+          "sessionID": "ses_eb631a333ffeEUWsyT5NhCGSyM",
+          "messageID": "msg_149ce5d70001nv9DoGj8gLNN6A"
+        }
+      ],
+      "storePendingCount": 0,
+      "storeStatus": "idle"
+    },
+    {
+      "scenario": "questions",
+      "sessionId": "ses_eb631a03affer5SxeDysVVWRm5",
+      "nativeReplyConfirmed": true,
+      "interactionCount": 3,
+      "modelRequests": 2,
+      "finalText": "NATIVE_DONE:questions",
+      "nativeParts": [
+        {
+          "type": "step-start",
+          "id": "prt_149ce63250019muL3Z4QkPf1T9",
+          "sessionID": "ses_eb631a03affer5SxeDysVVWRm5",
+          "messageID": "msg_149ce631f001xvODl7teyBNyg5"
+        },
+        {
+          "type": "text",
+          "text": "NATIVE_DONE:questions",
+          "time": {
+            "start": 1792239624998,
+            "end": 1792239624998
+          },
+          "id": "prt_149ce6326001I4keaSDpMe1nwX",
+          "sessionID": "ses_eb631a03affer5SxeDysVVWRm5",
+          "messageID": "msg_149ce631f001xvODl7teyBNyg5"
+        },
+        {
+          "reason": "stop",
+          "type": "step-finish",
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 0
+            }
+          },
+          "cost": 0,
+          "id": "prt_149ce6327001p1Oz7258KJ2UtF",
+          "sessionID": "ses_eb631a03affer5SxeDysVVWRm5",
+          "messageID": "msg_149ce631f001xvODl7teyBNyg5"
+        }
+      ],
+      "storePendingCount": 0,
+      "storeStatus": "idle"
+    }
+  ],
+  "sources": {
+    "src/hook.ts": "5840175e32713b4cff0c0ddd0d00b6695ee5632435a57b03413f6c93ed0d096f",
+    "src/adapters/opencode.ts": "c5dec6baa88dcd518d4fd5aa2acdae86631a061482b80e6bc9bcc93f783a5b38",
+    "src/core/session-store.ts": "f537576d1e4f3a2036a0e8c69dae950c54bc0009bace0f30a80f7f53551d13a8",
+    "src/integrations/opencode-plugin.ts": "684a7697c96da025601bf61d0a70dab0cc7410bf07c3fb8739d54589a96bf25e"
+  },
+  "receipts": [
+    {
+      "message": {
+        "type": "session_start",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:21.645Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.created",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "session_start",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:21.725Z",
+        "agentType": "opencode",
+        "nativeEvent": "prompt.submitted",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "prompt": "SCENARIO:allow-read. Use only the supplied deterministic fixture tool call.",
+        "model": "fixture",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:21.817Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:22.478Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "tool_start",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:22.603Z",
+        "agentType": "opencode",
+        "nativeEvent": "tool.started",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "toolCallId": "call_allow_read",
+        "tool": "read",
+        "toolInput": "{\"filePath\":\"/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt\"}",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "permission_request",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:22.689Z",
+        "agentType": "opencode",
+        "nativeEvent": "permission.asked",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "tool": "read",
+        "toolInput": "{}",
+        "nativeRequestId": "per_149ce59f5001gcRW8n45mJmVQm",
+        "nativeRequestKind": "permission",
+        "permDescription": "private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      },
+      "transportRequestId": "native-1"
+    },
+    {
+      "message": {
+        "type": "interaction_resolved",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:22.777Z",
+        "agentType": "opencode",
+        "nativeEvent": "interaction.resolved",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "nativeRequestId": "per_149ce59f5001gcRW8n45mJmVQm",
+        "nativeRequestKind": "permission",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": false,
+        "reason": "Unmatched interaction resolution",
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "tool_complete",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:22.855Z",
+        "agentType": "opencode",
+        "nativeEvent": "tool.completed",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "toolCallId": "call_allow_read",
+        "tool": "read",
+        "toolInput": "{\"filePath\":\"/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt\"}",
+        "toolResult": "<path>/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt</path>\n<type>file</type>\n<content>\n1: XISLAND_NATIVE_FIXTURE_b5a0e82272e8716dae7d\n\n(End of file - total 1 lines)\n</content>",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:22.935Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:23.016Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:23.095Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:23.174Z",
+        "agentType": "opencode",
+        "nativeEvent": "assistant.message",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "status": "NATIVE_DONE:allow-read",
+        "statusIsAssistantReply": true
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:23.252Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:23.332Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.idle",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "idle",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:23.412Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.idle",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "idle",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "session_start",
+        "sessionId": "opencode-ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "timestamp": "2026-10-17T12:20:23.418Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.created",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "session_start",
+        "sessionId": "opencode-ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "timestamp": "2026-10-17T12:20:23.494Z",
+        "agentType": "opencode",
+        "nativeEvent": "prompt.submitted",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "prompt": "SCENARIO:deny-read. Use only the supplied deterministic fixture tool call.",
+        "model": "fixture",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "timestamp": "2026-10-17T12:20:23.581Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "timestamp": "2026-10-17T12:20:23.659Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "tool_start",
+        "sessionId": "opencode-ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "timestamp": "2026-10-17T12:20:23.738Z",
+        "agentType": "opencode",
+        "nativeEvent": "tool.started",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "toolCallId": "call_deny_read",
+        "tool": "read",
+        "toolInput": "{\"filePath\":\"/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt\"}",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "permission_request",
+        "sessionId": "opencode-ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "timestamp": "2026-10-17T12:20:23.823Z",
+        "agentType": "opencode",
+        "nativeEvent": "permission.asked",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "tool": "read",
+        "toolInput": "{}",
+        "nativeRequestId": "per_149ce5e5e001mA4n3EvcEDA7As",
+        "nativeRequestKind": "permission",
+        "permDescription": "private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      },
+      "transportRequestId": "native-2"
+    },
+    {
+      "message": {
+        "type": "interaction_resolved",
+        "sessionId": "opencode-ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "timestamp": "2026-10-17T12:20:23.908Z",
+        "agentType": "opencode",
+        "nativeEvent": "interaction.resolved",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "nativeRequestId": "per_149ce5e5e001mA4n3EvcEDA7As",
+        "nativeRequestKind": "permission",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": false,
+        "reason": "Unmatched interaction resolution",
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "tool_complete",
+        "sessionId": "opencode-ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "timestamp": "2026-10-17T12:20:24.000Z",
+        "agentType": "opencode",
+        "nativeEvent": "tool.failed",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "toolCallId": "call_deny_read",
+        "tool": "read",
+        "toolInput": "{\"filePath\":\"/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt\"}",
+        "toolResult": "The user rejected permission to use this specific tool call.",
+        "observedState": "error",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "timestamp": "2026-10-17T12:20:24.087Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.idle",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "idle",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "timestamp": "2026-10-17T12:20:24.169Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.idle",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "idle",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "session_start",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:24.181Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.created",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "timestamp": "2026-10-17T12:20:24.254Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.idle",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "idle",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "session_start",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:24.266Z",
+        "agentType": "opencode",
+        "nativeEvent": "prompt.submitted",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "prompt": "SCENARIO:questions. Use only the supplied deterministic fixture tool call.",
+        "model": "fixture",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:24.378Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:24.472Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "tool_start",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:24.553Z",
+        "agentType": "opencode",
+        "nativeEvent": "tool.started",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "toolCallId": "call_questions",
+        "tool": "question",
+        "toolInput": "{\"questions\":[{\"header\":\"分支\",\"question\":\"选择分支\",\"options\":[{\"label\":\"main\",\"description\":\"主分支\"},{\"label\":\"dev\",\"description\":\"开发分支\"}],\"custom\":false},{\"header\":\"功能\",\"question\":\"选择功能\",\"options\":[{\"label\":\"A\",\"description\":\"功能 A\"},{\"label\":\"B\",\"description\":\"功能 B\"}],\"multiple\":true,\"custom\":true},{\"header\":\"说明\",\"question\":\"补充说明\",\"options\":[],\"custom\":true}]}",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "question",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:24.632Z",
+        "agentType": "opencode",
+        "nativeEvent": "question.asked",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "nativeRequestId": "que_149ce618c001Mmlk51oJcMB76y",
+        "nativeRequestKind": "question",
+        "questionText": "[1/3] 选择分支",
+        "allowsCustomAnswer": true,
+        "allowsMultipleAnswers": false,
+        "statusIsAssistantReply": false,
+        "options": [
+          "main",
+          "dev"
+        ]
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      },
+      "transportRequestId": "native-3"
+    },
+    {
+      "message": {
+        "type": "question",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:24.709Z",
+        "agentType": "opencode",
+        "nativeEvent": "question.asked",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "nativeRequestId": "que_149ce618c001Mmlk51oJcMB76y",
+        "nativeRequestKind": "question",
+        "questionText": "[2/3] 选择功能",
+        "allowsCustomAnswer": true,
+        "allowsMultipleAnswers": true,
+        "statusIsAssistantReply": false,
+        "options": [
+          "A",
+          "B"
+        ]
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      },
+      "transportRequestId": "native-4"
+    },
+    {
+      "message": {
+        "type": "question",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:24.787Z",
+        "agentType": "opencode",
+        "nativeEvent": "question.asked",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "nativeRequestId": "que_149ce618c001Mmlk51oJcMB76y",
+        "nativeRequestKind": "question",
+        "questionText": "[3/3] 补充说明",
+        "allowsCustomAnswer": true,
+        "allowsMultipleAnswers": false,
+        "statusIsAssistantReply": false,
+        "options": []
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      },
+      "transportRequestId": "native-5"
+    },
+    {
+      "message": {
+        "type": "interaction_resolved",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:24.871Z",
+        "agentType": "opencode",
+        "nativeEvent": "interaction.resolved",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "nativeRequestId": "que_149ce618c001Mmlk51oJcMB76y",
+        "nativeRequestKind": "question",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": false,
+        "reason": "Unmatched interaction resolution",
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "tool_complete",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:24.951Z",
+        "agentType": "opencode",
+        "nativeEvent": "tool.completed",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "toolCallId": "call_questions",
+        "tool": "question",
+        "toolInput": "{\"questions\":[{\"header\":\"分支\",\"question\":\"选择分支\",\"options\":[{\"label\":\"main\",\"description\":\"主分支\"},{\"label\":\"dev\",\"description\":\"开发分支\"}],\"custom\":false},{\"header\":\"功能\",\"question\":\"选择功能\",\"options\":[{\"label\":\"A\",\"description\":\"功能 A\"},{\"label\":\"B\",\"description\":\"功能 B\"}],\"multiple\":true,\"custom\":true},{\"header\":\"说明\",\"question\":\"补充说明\",\"options\":[],\"custom\":true}]}",
+        "toolResult": "User has answered your questions: \"选择分支\"=\"dev\", \"选择功能\"=\"A, B, 自定义😀\", \"补充说明\"=\"中文自由文本\". You can now continue with the user's answers in mind.",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:25.031Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:25.111Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:25.191Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:25.273Z",
+        "agentType": "opencode",
+        "nativeEvent": "assistant.message",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "status": "NATIVE_DONE:questions",
+        "statusIsAssistantReply": true
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:25.359Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.busy",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "active",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    },
+    {
+      "message": {
+        "type": "status_update",
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:25.445Z",
+        "agentType": "opencode",
+        "nativeEvent": "session.idle",
+        "workingDir": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "observedState": "idle",
+        "statusIsAssistantReply": false
+      },
+      "applied": {
+        "accepted": true,
+        "cancelRequestIds": []
+      }
+    }
+  ],
+  "responses": [
+    {
+      "scenario": "allow-read",
+      "nativeRequestId": "per_149ce59f5001gcRW8n45mJmVQm",
+      "decision": {
+        "kind": "permission",
+        "approved": true
+      },
+      "response": {
+        "sessionId": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "timestamp": "2026-10-17T12:20:22Z",
+        "type": "permission_response",
+        "approved": true
+      }
+    },
+    {
+      "scenario": "deny-read",
+      "nativeRequestId": "per_149ce5e5e001mA4n3EvcEDA7As",
+      "decision": {
+        "kind": "permission",
+        "approved": false
+      },
+      "response": {
+        "sessionId": "opencode-ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "timestamp": "2026-10-17T12:20:23Z",
+        "type": "permission_response",
+        "approved": false
+      }
+    },
+    {
+      "scenario": "questions",
+      "nativeRequestId": "que_149ce618c001Mmlk51oJcMB76y",
+      "decision": {
+        "kind": "question",
+        "answer": "dev"
+      },
+      "response": {
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:24Z",
+        "type": "question_response",
+        "answer": "dev"
+      }
+    },
+    {
+      "scenario": "questions",
+      "nativeRequestId": "que_149ce618c001Mmlk51oJcMB76y",
+      "decision": {
+        "kind": "question",
+        "selectedAnswers": [
+          "B",
+          "A",
+          "自定义😀"
+        ]
+      },
+      "response": {
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:24Z",
+        "type": "question_response",
+        "selectedAnswers": [
+          "A",
+          "B",
+          "自定义😀"
+        ]
+      }
+    },
+    {
+      "scenario": "questions",
+      "nativeRequestId": "que_149ce618c001Mmlk51oJcMB76y",
+      "decision": {
+        "kind": "question",
+        "answer": "中文自由文本"
+      },
+      "response": {
+        "sessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "timestamp": "2026-10-17T12:20:24Z",
+        "type": "question_response",
+        "answer": "中文自由文本"
+      }
+    }
+  ],
+  "modelRequests": [
+    {
+      "scenario": "allow-read",
+      "path": "/v1/chat/completions",
+      "model": "fixture",
+      "tools": [
+        "question",
+        "read"
+      ],
+      "toolResults": []
+    },
+    {
+      "scenario": "allow-read",
+      "path": "/v1/chat/completions",
+      "model": "fixture",
+      "tools": [
+        "question",
+        "read"
+      ],
+      "toolResults": [
+        {
+          "toolCallId": "call_allow_read",
+          "content": "<path>/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt</path>\n<type>file</type>\n<content>\n1: XISLAND_NATIVE_FIXTURE_b5a0e82272e8716dae7d\n\n(End of file - total 1 lines)\n</content>"
+        }
+      ]
+    },
+    {
+      "scenario": "deny-read",
+      "path": "/v1/chat/completions",
+      "model": "fixture",
+      "tools": [
+        "question",
+        "read"
+      ],
+      "toolResults": []
+    },
+    {
+      "scenario": "questions",
+      "path": "/v1/chat/completions",
+      "model": "fixture",
+      "tools": [
+        "question",
+        "read"
+      ],
+      "toolResults": []
+    },
+    {
+      "scenario": "questions",
+      "path": "/v1/chat/completions",
+      "model": "fixture",
+      "tools": [
+        "question",
+        "read"
+      ],
+      "toolResults": [
+        {
+          "toolCallId": "call_questions",
+          "content": "User has answered your questions: \"选择分支\"=\"dev\", \"选择功能\"=\"A, B, 自定义😀\", \"补充说明\"=\"中文自由文本\". You can now continue with the user's answers in mind."
+        }
+      ]
+    }
+  ],
+  "nativeEvents": [
+    {
+      "id": "evt_149ce59f5002YtLgOYvPwFMUwi",
+      "type": "permission.asked",
+      "properties": {
+        "id": "per_149ce59f5001gcRW8n45mJmVQm",
+        "sessionID": "ses_eb631aa27ffes45b4v6e5Vuytv",
+        "permission": "read",
+        "patterns": [
+          "private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt"
+        ],
+        "metadata": {},
+        "always": [
+          "*"
+        ],
+        "tool": {
+          "messageID": "msg_149ce579b001BkZ92CyVAwiQWO",
+          "callID": "call_allow_read"
+        }
+      }
+    },
+    {
+      "id": "evt_149ce5a4a001yh4GBxlf3ZuKyp",
+      "type": "permission.replied",
+      "properties": {
+        "sessionID": "ses_eb631aa27ffes45b4v6e5Vuytv",
+        "requestID": "per_149ce59f5001gcRW8n45mJmVQm",
+        "reply": "once"
+      }
+    },
+    {
+      "id": "evt_149ce5e5e002bP2mci0QkxvEWo",
+      "type": "permission.asked",
+      "properties": {
+        "id": "per_149ce5e5e001mA4n3EvcEDA7As",
+        "sessionID": "ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "permission": "read",
+        "patterns": [
+          "private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt"
+        ],
+        "metadata": {},
+        "always": [
+          "*"
+        ],
+        "tool": {
+          "messageID": "msg_149ce5d70001nv9DoGj8gLNN6A",
+          "callID": "call_deny_read"
+        }
+      }
+    },
+    {
+      "id": "evt_149ce5eb60019OZGJS9xjURjoF",
+      "type": "permission.replied",
+      "properties": {
+        "sessionID": "ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "requestID": "per_149ce5e5e001mA4n3EvcEDA7As",
+        "reply": "reject"
+      }
+    },
+    {
+      "id": "evt_149ce618d001XoLBj3cRa5A81x",
+      "type": "question.asked",
+      "properties": {
+        "id": "que_149ce618c001Mmlk51oJcMB76y",
+        "sessionID": "ses_eb631a03affer5SxeDysVVWRm5",
+        "questions": [
+          {
+            "question": "选择分支",
+            "header": "分支",
+            "options": [
+              {
+                "label": "main",
+                "description": "主分支"
+              },
+              {
+                "label": "dev",
+                "description": "开发分支"
+              }
+            ]
+          },
+          {
+            "question": "选择功能",
+            "header": "功能",
+            "options": [
+              {
+                "label": "A",
+                "description": "功能 A"
+              },
+              {
+                "label": "B",
+                "description": "功能 B"
+              }
+            ],
+            "multiple": true
+          },
+          {
+            "question": "补充说明",
+            "header": "说明",
+            "options": []
+          }
+        ],
+        "tool": {
+          "messageID": "msg_149ce607b0011Sbh74rQO14aN0",
+          "callID": "call_questions"
+        }
+      }
+    },
+    {
+      "id": "evt_149ce627b001Qf0xbQEWzRf803",
+      "type": "question.replied",
+      "properties": {
+        "sessionID": "ses_eb631a03affer5SxeDysVVWRm5",
+        "requestID": "que_149ce618c001Mmlk51oJcMB76y",
+        "answers": [
+          [
+            "dev"
+          ],
+          [
+            "A",
+            "B",
+            "自定义😀"
+          ],
+          [
+            "中文自由文本"
+          ]
+        ]
+      }
+    }
+  ],
+  "failures": [],
+  "generatedPluginSha256": "e95219a992520195d268b4e8c72667c02ac1651cb1dafeb624d03e7e5bf67ab8",
+  "bundledHookSha256": "357b84b0337f8e7b266e38c1b041d92597f9a5cc3b32d1f181fcdbc8ca7c453a",
+  "harnessSha256": "05627fb48f062a3f92e97110d3acebb1ea80b33cc65d2ac03e9f3d6437027e6e",
+  "effectiveConfigVerified": true,
+  "passed": true,
+  "finishedAt": "2026-10-17T12:20:25.531Z",
+  "nativeStdout": "opencode server listening on http://127.0.0.1:4096\n",
+  "nativeStderr": "",
+  "store": {
+    "sessions": [
+      {
+        "id": "opencode-ses_eb631aa27ffes45b4v6e5Vuytv",
+        "agentType": "opencode",
+        "status": "idle",
+        "prompt": "SCENARIO:allow-read. Use only the supplied deterministic fixture tool call.",
+        "statusText": "NATIVE_DONE:allow-read",
+        "agentResponse": "NATIVE_DONE:allow-read",
+        "workingDirectory": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "startedAt": 1792239621674,
+        "lastActivityAt": 1792239623441,
+        "subagentIds": [],
+        "events": [
+          {
+            "id": "xi-mvcd73e1-2",
+            "tool": "read",
+            "toolCallId": "call_allow_read",
+            "input": "{\"filePath\":\"/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt\"}",
+            "isComplete": true,
+            "completionUnconfirmed": false,
+            "timestamp": 1792239622603,
+            "result": "<path>/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt</path>\n<type>file</type>\n<content>\n1: XISLAND_NATIVE_FIXTURE_b5a0e82272e8716dae7d\n\n(End of file - total 1 lines)\n</content>"
+          }
+        ],
+        "chatHistory": [
+          {
+            "id": "xi-mvcd72pn-1",
+            "role": "user",
+            "content": "SCENARIO:allow-read. Use only the supplied deterministic fixture tool call.",
+            "timestamp": 1792239621725
+          },
+          {
+            "id": "xi-mvcd73tt-4",
+            "role": "assistant",
+            "content": "NATIVE_DONE:allow-read",
+            "timestamp": 1792239623174
+          }
+        ],
+        "pendingInteractions": [],
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "totalTokens": 0,
+          "costUSD": 0,
+          "model": "fixture"
+        },
+        "backgroundTasks": []
+      },
+      {
+        "id": "opencode-ses_eb631a333ffeEUWsyT5NhCGSyM",
+        "agentType": "opencode",
+        "status": "idle",
+        "prompt": "SCENARIO:deny-read. Use only the supplied deterministic fixture tool call.",
+        "statusText": "",
+        "agentResponse": "",
+        "workingDirectory": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "startedAt": 1792239623444,
+        "lastActivityAt": 1792239624291,
+        "subagentIds": [],
+        "events": [
+          {
+            "id": "xi-mvcd749j-6",
+            "tool": "read",
+            "toolCallId": "call_deny_read",
+            "input": "{\"filePath\":\"/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace/fixture.txt\"}",
+            "isComplete": true,
+            "completionUnconfirmed": false,
+            "timestamp": 1792239623738,
+            "result": "The user rejected permission to use this specific tool call."
+          }
+        ],
+        "chatHistory": [
+          {
+            "id": "xi-mvcd742s-5",
+            "role": "user",
+            "content": "SCENARIO:deny-read. Use only the supplied deterministic fixture tool call.",
+            "timestamp": 1792239623494
+          }
+        ],
+        "pendingInteractions": [],
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "totalTokens": 0,
+          "costUSD": 0,
+          "model": "fixture"
+        },
+        "backgroundTasks": []
+      },
+      {
+        "id": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+        "agentType": "opencode",
+        "status": "idle",
+        "prompt": "SCENARIO:questions. Use only the supplied deterministic fixture tool call.",
+        "statusText": "NATIVE_DONE:questions",
+        "agentResponse": "NATIVE_DONE:questions",
+        "workingDirectory": "/private/var/folders/rn/s2c7mq1j7kb5zhgpnndnkb140000gn/T/xisland-opencode-native-6cW6yK/workspace",
+        "startedAt": 1792239624209,
+        "lastActivityAt": 1792239625482,
+        "subagentIds": [],
+        "events": [
+          {
+            "id": "xi-mvcd74w6-9",
+            "tool": "question",
+            "toolCallId": "call_questions",
+            "input": "{\"questions\":[{\"header\":\"分支\",\"question\":\"选择分支\",\"options\":[{\"label\":\"main\",\"description\":\"主分支\"},{\"label\":\"dev\",\"description\":\"开发分支\"}],\"custom\":false},{\"header\":\"功能\",\"question\":\"选择功能\",\"options\":[{\"label\":\"A\",\"description\":\"功能 A\"},{\"label\":\"B\",\"description\":\"功能 B\"}],\"multiple\":true,\"custom\":true},{\"header\":\"说明\",\"question\":\"补充说明\",\"options\":[],\"custom\":true}]}",
+            "isComplete": true,
+            "completionUnconfirmed": false,
+            "timestamp": 1792239624553,
+            "result": "User has answered your questions: \"选择分支\"=\"dev\", \"选择功能\"=\"A, B, 自定义😀\", \"补充说明\"=\"中文自由文本\". You can now continue with the user's answers in mind."
+          }
+        ],
+        "chatHistory": [
+          {
+            "id": "xi-mvcd74od-8",
+            "role": "user",
+            "content": "SCENARIO:questions. Use only the supplied deterministic fixture tool call.",
+            "timestamp": 1792239624266
+          },
+          {
+            "id": "xi-mvcd75g7-d",
+            "role": "assistant",
+            "content": "NATIVE_DONE:questions",
+            "timestamp": 1792239625273
+          }
+        ],
+        "pendingInteractions": [],
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "totalTokens": 0,
+          "costUSD": 0,
+          "model": "fixture"
+        },
+        "backgroundTasks": []
+      }
+    ],
+    "selectedSessionId": "opencode-ses_eb631a03affer5SxeDysVVWRm5",
+    "revision": 49,
+    "ownerInstanceId": "opencode-native-macos"
+  }
+}

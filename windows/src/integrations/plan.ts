@@ -10,6 +10,7 @@ export interface IntegrationPlanInput {
   nodeExecutable: string;
   hookScript: string;
   configuration?: unknown;
+  droidStandalone?: boolean;
 }
 export interface IntegrationPlan {
   agent: ConfigurableAgent;
@@ -34,6 +35,9 @@ const profiles = {
   gemini_cli: { path: '.gemini/settings.json', source: 'https://geminicli.com/docs/hooks/reference/', milliseconds: true },
   windsurf: { path: '.codeium/windsurf/hooks.json', source: 'https://docs.devin.ai/desktop/cascade/hooks', milliseconds: false },
   trae_cn: { path: '.trae-cn/hooks.json', source: 'https://docs.trae.cn/ide_hook-configuration-reference', milliseconds: false },
+  qwen: { path: '.qwen/settings.json', source: 'https://qwenlm.github.io/qwen-code-docs/en/users/features/hooks/', milliseconds: false },
+  code_buddy: { path: '.codebuddy/settings.json', source: 'https://www.codebuddy.cn/docs/cli/hooks', milliseconds: false },
+  droid: { path: '.factory/settings.json', source: 'https://docs.factory.ai/reference/hooks-reference', milliseconds: false },
 } as const;
 
 function windowsPath(value: string): string {
@@ -53,7 +57,7 @@ export function windowsHookCommand(nodeExecutable: string, hookScript: string, a
   if (!/\.exe$/i.test(node) || !/\.[cm]?js$/i.test(script) || !adapterFor(agent).events.includes(event)) throw new Error('无效 hook 启动参数');
   const manifest = Buffer.from(JSON.stringify({ node, script, agent, event }), 'utf8').toString('base64');
   const args = [script, '--agent', agent, '--hook', event, '--managed-by', OWNER].map(windowsArgument).join(' ');
-  const observationOnly = agent === 'workbuddy';
+  const observationOnly = ['workbuddy', 'kimi_code', 'code_buddy', 'droid', 'kiro'].includes(agent);
   const source = [
     `${MARKER}${manifest}`,
     '$ErrorActionPreference = "Stop"',
@@ -120,6 +124,15 @@ function ownedHandler(handler: unknown, agent: SupportedAgent): boolean {
   } catch { return false; }
 }
 
+export function ownsWindowsHookCommand(command: string, agent: SupportedAgent, event: string): boolean {
+  if (!ownedHandler({ type: 'command', command }, agent)) return false;
+  try {
+    const source = Buffer.from(command.slice(PREFIX.length), 'base64').toString('utf16le');
+    const manifest = JSON.parse(Buffer.from(source.split('\n')[0]!.slice(MARKER.length), 'base64').toString('utf8'));
+    return manifest.event === event;
+  } catch { return false; }
+}
+
 function validateKnownEvents(hooks: Configuration, agent: SupportedAgent): void {
   for (const event of adapterFor(agent).events) {
     const entries = hooks[event];
@@ -157,7 +170,8 @@ export function createIntegrationPlan(input: IntegrationPlanInput): IntegrationP
   if (!['install', 'uninstall'].includes(input.operation)) throw new Error('无效安装操作');
   const home = windowsPath(input.homeDirectory);
   if (input.configuration !== undefined && !isRecord(input.configuration)) throw new Error('配置根节点必须是 JSON 对象');
-  const original = input.configuration ?? {};
+  const standalone = input.agent === 'droid' && input.droidStandalone === true;
+  const original = standalone ? { hooks: input.configuration ?? {} } : input.configuration ?? {};
   const nextConfig = JSON.parse(JSON.stringify(original)) as Configuration;
   if (nextConfig.hooks !== undefined && !isRecord(nextConfig.hooks)) throw new Error('hooks 必须是 JSON 对象');
   if (input.agent === 'cursor' && nextConfig.version !== undefined && nextConfig.version !== 1) throw new Error('不支持的 Cursor hooks 配置版本');
@@ -187,7 +201,7 @@ export function createIntegrationPlan(input: IntegrationPlanInput): IntegrationP
       const command = windowsHookCommand(input.nodeExecutable, input.hookScript, input.agent, event);
       const interactive = event === 'PermissionRequest' || (input.agent === 'claude_code' && event === 'PreToolUse')
         || (input.agent === 'cursor' && ['beforeShellExecution', 'beforeMCPExecution', 'beforeReadFile'].includes(event));
-      const timeout = profile.milliseconds ? 5000 : interactive ? 130 : 5;
+      const timeout = profile.milliseconds ? 5000 : interactive ? 130 : ['code_buddy', 'droid'].includes(input.agent) ? 10 : 5;
       const handler: Configuration = { type: 'command', command, timeout };
       if (input.agent === 'cursor' && interactive) handler.failClosed = true;
       if (input.agent === 'codex') handler.commandWindows = command;
@@ -200,7 +214,7 @@ export function createIntegrationPlan(input: IntegrationPlanInput): IntegrationP
     nextConfig.hooks = hooks;
     if (input.agent === 'cursor' || input.agent === 'trae_cn') nextConfig.version = 1;
   }
-  const configPath = win32.join(home, profile.path);
+  const configPath = win32.join(home, standalone ? '.factory/hooks.json' : profile.path);
   const changed = JSON.stringify(original) !== JSON.stringify(nextConfig);
   const warnings = ['此计划未写入配置，也未证明客户端已加载；需在原客户端确认 hook 信任与实际事件。',
     'Node 路径必须来自实际发现结果；命令要求 Windows PowerShell。Windows 启动器仍需实机验证。'];
@@ -209,9 +223,12 @@ export function createIntegrationPlan(input: IntegrationPlanInput): IntegrationP
   }
   if (input.agent === 'codex') warnings.push('自定义 CODEX_HOME 或受管理 hooks 需由调用方核对；不修改 config.toml 或信任记录。');
   if (input.agent === 'windsurf') warnings.push('仅接入 Cascade 的 10 项观察事件；不接管原生审批，不读取 transcript，不适用于 Devin Local Agent。');
+  if (input.agent === 'qwen') warnings.push('支持原生 PermissionRequest 允许/拒绝；工具中的问答仍回 Qwen 原客户端处理。');
+  if (input.agent === 'code_buddy') warnings.push('此处是 CodeBuddy Code CLI，不是 WorkBuddy。Windows 需客户端可用的 Git Bash；本入口仅观察，原生审批与问答仍在客户端处理。');
+  if (input.agent === 'droid') warnings.push('遵循已有独立 hooks.json 优先、否则 settings.json.hooks 的规则；本入口仅观察，不强制拦截每次工具调用。');
   if (input.agent === 'trae_cn') warnings.push('Trae CN 与 TraeWork CN 共用此 6 事件观察入口和配置文件，只需安装一次。Windows 桥接根据启动进程与公开产品信息区分来源；识别失败时保留共享标签。审批、提问和文档审阅仍在原客户端处理。',
     'TraeWork CN 依据 0.2.2 公开安装资源核对；Windows 本地任务尚待实测，云端任务、国际版及其他旧 SOLO 版本不在已核对范围。');
-  return { agent: input.agent, operation: input.operation, configPath, nextConfig, changed,
+  return { agent: input.agent, operation: input.operation, configPath, nextConfig: standalone ? nextConfig.hooks as Configuration : nextConfig, changed,
     addedHandlers: changed ? addedHandlers : 0, removedHandlers: changed ? removedHandlers : 0,
     backup: { required: changed && input.configuration !== undefined, directory: win32.dirname(configPath),
       filenamePrefix: win32.basename(configPath) + '.xisland-backup-', exclusive: true }, warnings, sources: [profile.source] };

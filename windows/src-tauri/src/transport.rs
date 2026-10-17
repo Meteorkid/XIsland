@@ -12,6 +12,8 @@ const REQUEST_TTL: Duration = Duration::from_secs(120);
 pub struct EventEnvelope {
     pub message: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub activity_receipt: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<u64>,
@@ -120,7 +122,9 @@ impl Bridge {
         let frame: ClientFrame = serde_json::from_slice(&bytes)?;
         if frame.token != self.descriptor.token { return Err(io::Error::other("未授权的桥接请求")); }
         validate_message(&frame.message)?;
-        let message = frame.message;
+        let mut message = frame.message;
+        let activity_receipt = message.as_object_mut().and_then(|object| object.remove("__xislandActivity"))
+            .filter(valid_activity_receipt);
         let response_type = response_type(message["type"].as_str().unwrap_or(""));
         if let Some(response_type) = response_type {
             let request_id = uuid::Uuid::new_v4().to_string();
@@ -130,7 +134,7 @@ impl Bridge {
                 session_id: message["sessionId"].as_str().unwrap_or_default().into(), response_type: response_type.into(),
                 native_request_id: message["nativeRequestId"].as_str().map(str::to_owned), original:message.clone(), expires_at, sender,
             });
-            on_event(EventEnvelope { message, request_id: Some(request_id.clone()), expires_at: Some(expires_at) });
+            on_event(EventEnvelope { message, activity_receipt, request_id: Some(request_id.clone()), expires_at: Some(expires_at) });
             let mut extra = [0u8; 1];
             let response = tokio::select! {
                 result = timeout(REQUEST_TTL, receiver) => match result { Ok(Ok(response)) => Some(response), _ => None },
@@ -147,11 +151,20 @@ impl Bridge {
                 write_frame(stream.get_mut(), &json!({"error":"request_expired_or_disconnected"})).await?;
             }
         } else {
-            on_event(EventEnvelope { message, request_id: None, expires_at: None });
+            on_event(EventEnvelope { message, activity_receipt, request_id: None, expires_at: None });
             write_frame(stream.get_mut(), &json!({"ok":true})).await?;
         }
         Ok(())
     }
+}
+
+pub fn valid_activity_receipt(value: &Value) -> bool {
+    let Some(fields) = value.as_object() else { return false };
+    fields.len() == 4 && fields.keys().all(|key| ["agent", "configurationRevision", "runtimeFingerprint", "event"].contains(&key.as_str()))
+        && matches!(value["agent"].as_str(), Some("claude_code" | "codex" | "cursor" | "gemini_cli" | "windsurf" | "trae_cn" | "qwen" | "code_buddy" | "droid" | "opencode" | "kimi_code"))
+        && ["configurationRevision", "runtimeFingerprint"].iter().all(|key| value[*key].as_str().is_some_and(|text|
+            text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))))
+        && value["event"].as_str().is_some_and(|text| !text.is_empty() && text.len() <= 128 && !text.chars().any(char::is_control))
 }
 
 pub fn response_type(kind: &str) -> Option<&'static str> {
@@ -247,6 +260,17 @@ fn now_ms() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_defa
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn activity_receipts_are_bounded_and_do_not_accept_unknown_agents() {
+        let valid = json!({"agent":"codex","configurationRevision":"a".repeat(64),"runtimeFingerprint":"b".repeat(64),"event":"SessionStart"});
+        assert!(valid_activity_receipt(&valid));
+        for (key, value) in [("agent", json!("unknown")), ("event", json!("x\n")),
+            ("configurationRevision", json!("bad")), ("runtimeFingerprint", json!("A".repeat(64)))] {
+            let mut invalid = valid.clone(); invalid[key] = value; assert!(!valid_activity_receipt(&invalid));
+        }
+        let mut invalid = valid; invalid["payload"] = json!({"private":"not-allowed"});
+        assert!(!valid_activity_receipt(&invalid));
+    }
     #[tokio::test]
     async fn fragmented_frames_and_size_limit() {
         let mut reader = BufReader::new(&b"{\"type\":\"question\"}\nnext\n"[..]);

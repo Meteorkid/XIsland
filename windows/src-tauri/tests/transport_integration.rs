@@ -133,6 +133,14 @@ fn isolated_subprocess_transport_round_trips_and_rejects_invalid_decisions() {
         assert!(event.request_id.is_none());
         assert_eq!(observation.finish().await["value"]["ok"], true);
 
+        let receipt = json!({"agent":"codex","configurationRevision":"a".repeat(64),"runtimeFingerprint":"b".repeat(64),"event":"SessionStart"});
+        let mut with_receipt = message("session_start"); with_receipt["__xislandActivity"] = receipt.clone();
+        let mut observation = ClientProcess::start(&isolated.root, "send", with_receipt);
+        let event = next_event(&mut events).await;
+        assert_eq!(event.activity_receipt, Some(receipt));
+        assert!(event.message.get("__xislandActivity").is_none());
+        assert_eq!(observation.finish().await["value"]["ok"], true);
+
         let mut approval = ClientProcess::start(&isolated.root, "send", message("permission_request"));
         let event = next_event(&mut events).await;
         let request_id = event.request_id.as_ref().unwrap();

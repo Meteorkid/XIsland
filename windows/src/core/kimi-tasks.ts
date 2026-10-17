@@ -15,6 +15,15 @@ export interface KimiObservationState {
   backgroundTasks: DINativeBackgroundTask[];
 }
 export interface KimiTaskEvent extends ToolEvent { backgroundTaskStatus: KimiTaskStatus; isFailed: boolean }
+export interface KimiCodeFoldResult {
+  state: KimiObservationState;
+  /** true 时不走通用状态/聊天处理，但仍需持久化账本与同步任务投影。 */
+  handled: boolean;
+  allowCreateSession: boolean;
+  canRevive: boolean;
+  status: SessionStatus;
+  statusText: string;
+}
 export class KimiStateError extends Error {
   constructor(field: string) { super(`Invalid Kimi Code observation: ${field}`); this.name = 'KimiStateError'; }
 }
@@ -180,4 +189,68 @@ export class KimiCodeObservationLedger {
     this.state.wasInterrupted = this.hasPendingApproval && (this.state.wasInterrupted || other.wasInterrupted);
     for (const task of other.backgroundTasks) this.observeTask(task);
   }
+}
+
+/**
+ * 每个精确 sessionId 独立折叠。未知结果保存在孤立账本，调用方不能据此新建会话。
+ * 调用方须先校验 source 身份；通用 tool/chat 更新后再应用返回的状态投影。
+ */
+export function foldKimiCodeObservation(previous: KimiObservationState | undefined, message: DIMessage,
+  context: { status?: SessionStatus; statusText?: string } = {}): KimiCodeFoldResult {
+  if (!isKimiCodeMessage(message)) throw new KimiStateError('message source');
+  const ledger = new KimiCodeObservationLedger(previous);
+  if (!previous && context.status) ledger.setBase(context.status, context.statusText ?? '');
+  if (context.status === 'completed') ledger.endSession();
+  else if (context.status === 'observationUnavailable') {
+    ledger.setBase(context.status, context.statusText ?? ledger.snapshot().baseStatusText);
+    ledger.markTasksUnconfirmed(); ledger.observeInterrupt();
+  }
+  const event = message.nativeEvent!.slice('kimi_code.'.length);
+  const closed = ['completed', 'observationUnavailable'].includes(ledger.snapshot().baseStatus);
+  let handled = false, allowCreateSession = !closed;
+  const canRevive = !message.nativeMessageReplay && ['SessionStart', 'TurnStarted', 'PreToolUse', 'PreCompact'].includes(event);
+  const result = (): KimiCodeFoldResult => {
+    const state = ledger.snapshot();
+    const projection = ['completed', 'observationUnavailable'].includes(state.baseStatus) ? {} : ledger.projection();
+    return { state, handled, allowCreateSession, canRevive, status: projection.status ?? state.baseStatus,
+      statusText: projection.text ?? state.baseStatusText };
+  };
+  if (message.nativeMessageReplay) { handled = true; allowCreateSession = false; return result(); }
+  if (event === 'SessionHeartbeat') { handled = true; allowCreateSession = false; return result(); }
+  if (['TaskStarted', 'Notification'].includes(event) && message.nativeBackgroundTask) {
+    handled = true; ledger.observeTask(message.nativeBackgroundTask, closed);
+    allowCreateSession = ledger.canCreateSessionForTask(message.nativeBackgroundTask.id);
+    if (allowCreateSession && !previous && !context.status) ledger.setBase('active', '');
+    return result();
+  }
+  if (event === 'PermissionRequest' || event === 'PermissionResult') {
+    handled = true;
+    if (event === 'PermissionResult') { ledger.observeResult(kimiApprovalIdentity(message)); allowCreateSession = false; }
+    else {
+      if (!closed) ledger.observeRequest(kimiApprovalIdentity(message));
+      allowCreateSession = !closed && ledger.hasPendingApproval;
+    }
+    return result();
+  }
+  if (event === 'SessionEnd') {
+    ledger.endSession(); ledger.setBase('completed', message.status ?? ledger.snapshot().baseStatusText);
+    allowCreateSession = false; return result();
+  }
+  if (closed && !canRevive) {
+    // 迟到工具结果可补历史；提交/队列/Stop 等不能重启已结束的执行。
+    handled = event === 'UserPromptSubmit'; allowCreateSession = false; return result();
+  }
+  if (closed && canRevive) { ledger.setBase('idle', ''); allowCreateSession = true; }
+  if (event === 'Interrupt') ledger.observeInterrupt();
+  const current = ledger.snapshot();
+  let status = current.baseStatus, statusText = current.baseStatusText;
+  if (event !== 'UserPromptSubmit') {
+    if (message.type === 'tool_start') status = 'active';
+    else if (message.type === 'context_compact') status = 'compacting';
+    else if (['active', 'idle', 'error'].includes(message.observedState ?? '')) status = message.observedState as SessionStatus;
+    else if (message.observedState === 'completionUnconfirmed' && status !== 'error') status = 'completionUnconfirmed';
+    if (message.status !== undefined && !(current.baseStatus === 'error' && message.observedState === undefined)) statusText = message.status;
+    ledger.setBase(status, statusText);
+  }
+  return result();
 }

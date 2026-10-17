@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { Script } from 'node:vm';
 import { ModuleKind, ScriptTarget, transpileModule } from 'typescript';
 import * as core from '../src/core/index';
+import { AcceptedActivityQueue, acceptedIntegrationActivity } from '../src/platform/setup-owner';
 
 const timestamp = '2026-10-14T00:00:00Z';
 const message = (type: core.DIMessage['type'], sessionId: string, extra: Partial<core.DIMessage> = {}): core.DIMessage =>
@@ -75,6 +76,8 @@ async function bootOwner(options: {
       if (name === './ui/settings') return { loadSettings: () => ({}) };
       if (name === './fixtures') return { fixtures: {} };
       if (name === './platform/native-drag') return { installNativeDrag: () => () => {} };
+      if (name === './platform/setup-owner') return { startIntegrationSetup: async () => ({ dispose() {}, activityReceived() {} }),
+        AcceptedActivityQueue, acceptedIntegrationActivity };
       if (name === './platform/native.css') return {};
       throw new Error(`Unexpected import ${name}`);
     },

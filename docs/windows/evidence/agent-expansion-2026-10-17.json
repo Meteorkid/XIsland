@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-17",
+  "version": "0.1.6",
+  "typescriptTests": 302,
+  "browserTests": 26,
+  "rustUnitTests": 32,
+  "rustProcessIntegrationTests": 1,
+  "adapterCount": 12,
+  "managedIntegrationCount": 11,
+  "workbuddyExportSeparate": true,
+  "openCodeNativeMacos": {
+    "version": "1.19.3",
+    "scenarios": [
+      "allow-read",
+      "deny-read",
+      "questions"
+    ],
+    "sourceHashesVerified": true,
+    "realModelUsed": false,
+    "transport": "temporary Node TCP",
+    "desktopUIExecuted": false,
+    "lastRun": "2026-10-17T11:16:33.243Z"
+  },
+  "windowsRuntimeVerified": false,
+  "fullMacParityVerified": false,
+  "logs": {
+    "tests": {
+      "path": ".build/windows-agents-2026-10-17-tests.log",
+      "sha256": "1eea799aa2cd7b567fb063adb3458089f65d89ce104d4797f2c8aad3bf5a58da"
+    },
+    "ui": {
+      "path": ".build/windows-agents-2026-10-17-ui.log",
+      "sha256": "808aa388c62a821dc862b40294a7d0d9bcd34c7554d15c97afe928c34f314679"
+    },
+    "rust": {
+      "path": ".build/windows-agents-2026-10-17-rust.log",
+      "sha256": "154872763c9491c3db7316943176c84e8ad689c0020e41faaa7e57e50237239e"
+    }
+  },
+  "reviewFix": "canonical configuration path is included in activity identity; Kimi/OpenCode dual-directory regression passed"
+}

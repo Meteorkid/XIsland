@@ -1,0 +1,16 @@
+{
+  "source": "https://docs.factory.com/harness/hooks",
+  "evidence": "Constructed contract fixtures; not captured from a native Windows client.",
+  "session": { "session_id": "droid-中文-session", "cwd": "C:\\项目 空格", "message_id": "message-1", "permission_mode": "off" },
+  "events": [
+    { "hook_event_name": "SessionStart", "source": "startup" },
+    { "hook_event_name": "UserPromptSubmit", "prompt": "检查项目", "has_images": false },
+    { "hook_event_name": "PreToolUse", "tool_name": "Execute", "tool_input": { "command": "dir" } },
+    { "hook_event_name": "PostToolUse", "tool_name": "Execute", "tool_input": { "command": "dir" }, "tool_response": { "output": "README.md" } },
+    { "hook_event_name": "Notification", "notification_type": "permission_prompt", "message": "Waiting for permission" },
+    { "hook_event_name": "Stop", "stop_hook_active": false, "tool_execution_count": 1, "elapsed_time": 250 },
+    { "hook_event_name": "SessionEnd", "reason": "other", "session_duration_ms": 3000, "message_count": 1 },
+    { "hook_event_name": "SubagentStop", "task_name": "review", "task_result": "checks passed", "stop_hook_active": false },
+    { "hook_event_name": "PreCompact", "trigger": "auto", "custom_instructions": "", "message_count": 1, "estimated_tokens": 100 }
+  ]
+}

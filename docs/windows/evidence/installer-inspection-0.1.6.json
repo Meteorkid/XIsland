@@ -1,0 +1,58 @@
+{
+  "date": "2026-10-17",
+  "version": "0.1.6",
+  "inspection": "independent NSIS extraction with 7-Zip 26.04",
+  "installerSha256": "d376e91647fe35fa9b5e2630d58c22e60087131db50e38cd94a3f350e6b84238",
+  "packagedApplicationDifference": "Only verified Tauri bundle marker UNK -> NSS (3 bytes)",
+  "bundledNodeMatchesOfficialChecksum": true,
+  "allBundledResourcesMatchSourceBytes": true,
+  "newAdapterSymbolsPresent": true,
+  "windowsExecutionVerified": false,
+  "files": [
+    {
+      "path": "xisland.exe",
+      "size": 10558464,
+      "sha256": "0e90ef826a427fa27962348745af3b022b2b2b48a3890d1f8a34ba2a422773a1"
+    },
+    {
+      "path": "xisland-bridge.exe",
+      "size": 869888,
+      "sha256": "8eb346cf5b36bbdc966206653b35030ce1de0f9ee2112c5dfbe74a4d31fbff01"
+    },
+    {
+      "path": "resources/LICENSE-XIsland.txt",
+      "size": 2853,
+      "sha256": "d2cc6f0f8571ecf7d5407f2dc0b0a9b95c0221c95b2c547eb69b965f27a3d83b"
+    },
+    {
+      "path": "resources/LICENSE-node.txt",
+      "size": 157609,
+      "sha256": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace"
+    },
+    {
+      "path": "resources/README.txt",
+      "size": 446,
+      "sha256": "af8a64af46abf1ed70ea8537980e76292381cb9e1a363673cd8aebe8e1362983"
+    },
+    {
+      "path": "resources/node-runtime.json",
+      "size": 335,
+      "sha256": "0ad125c17c4946d30b3ac19d4819a3b0fa718e1a7670a58f0b8719b34d38f4fe"
+    },
+    {
+      "path": "resources/node.exe",
+      "size": 93580104,
+      "sha256": "ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32"
+    },
+    {
+      "path": "resources/xisland-bridge.exe",
+      "size": 745472,
+      "sha256": "401c5c70fe9c0058535df13885f7fa463f31d3f365d54d9e9ac465555efebcb6"
+    },
+    {
+      "path": "resources/xisland-hook.cjs",
+      "size": 227450,
+      "sha256": "23804d9df35c3a28bf4ace07c9bfc49415c1ff6d44127f74b3bd18cba3141db2"
+    }
+  ]
+}
