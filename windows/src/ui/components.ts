@@ -64,7 +64,7 @@ const names: Record<string, string> = {
   cursor: 'Cursor', gemini_cli: 'Gemini', geminiCli: 'Gemini', 'gemini-cli': 'Gemini', opencode: 'OpenCode',
   trae: 'TRAE CN / TraeWork CN', trae_cn: 'TRAE CN / TraeWork CN', trae_ide_cn: 'Trae CN', traework_cn: 'TraeWork CN',
   workbuddy: 'WorkBuddy', copilot: 'Copilot', windsurf: 'Windsurf', deepseek: 'DeepSeek', kimi: 'Kimi',
-  kimi_code: 'Kimi Code', qwen: 'Qwen Code', code_buddy: 'CodeBuddy', droid: 'Droid', kiro: 'Kiro CLI',
+  kimi_code: 'Kimi Code', qwen: 'Qwen Code', code_buddy: 'CodeBuddy', droid: 'Droid', kiro: 'Kiro CLI', copilot_cli: 'Copilot CLI', pi: 'Pi',
 };
 
 export function agentName(type: string): string { return names[type] ?? type; }

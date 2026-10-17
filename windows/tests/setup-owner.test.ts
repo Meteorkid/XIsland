@@ -203,7 +203,7 @@ test('WorkBuddy preparation completes before normal managed startup and is not r
   assert.equal(preparations, 1); assert.equal(h.calls.includes('read_setup_state'), false);
   prepared.resolve(workBuddyArtifact()); await flush();
   assert.ok(h.snapshots.some(snapshot => !snapshot.refreshing));
-  assert.equal(h.snapshots.at(-1)?.rows.length, 11);
+  assert.equal(h.snapshots.at(-1)?.rows.length, 13);
   h.tick(300_000); await flush(); assert.equal(preparations, 1);
   owner.dispose();
 });

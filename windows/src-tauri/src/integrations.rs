@@ -33,7 +33,7 @@ fn validate_request(agent: String, action: String, operation: Option<String>, re
         let kind = match action.as_str() { "status" => Action::Status, "prepare" => Action::Prepare, _ => Action::Export };
         return Ok(Request { agent, action: kind, operation: action, revision: None });
     }
-    if !["claude_code", "codex", "cursor", "gemini_cli", "windsurf", "trae_cn", "qwen", "code_buddy", "droid", "opencode", "kimi_code"].contains(&agent.as_str()) {
+    if !["claude_code", "codex", "cursor", "gemini_cli", "windsurf", "trae_cn", "qwen", "code_buddy", "droid", "opencode", "kimi_code", "copilot_cli", "pi"].contains(&agent.as_str()) {
         return Err("当前版本不支持该客户端的自动配置。".into());
     }
     let action = match action.as_str() {
@@ -420,7 +420,7 @@ mod tests {
     }
     #[test]
     fn new_adapters_use_fixed_service_actions_and_bounded_discovery_summaries() {
-        for agent in ["qwen", "code_buddy", "droid", "opencode", "kimi_code"] {
+        for agent in ["qwen", "code_buddy", "droid", "opencode", "kimi_code", "copilot_cli", "pi"] {
             let request = validate_request(agent.into(), "status".into(), None, None).unwrap();
             assert_eq!(cli_arguments(&request), ["--integration-status", "--agent", agent]);
             let summary = json!({"agent":agent,"runtimeReady":true,"installed":true,"managedHandlers":1,

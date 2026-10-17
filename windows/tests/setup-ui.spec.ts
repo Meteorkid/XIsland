@@ -12,7 +12,7 @@ async function setup(page: Page) {
     const { IntegrationSetupCoordinator } = await import(setupPath);
     const listeners = new Set<(value: any) => void>(), statuses: Record<string, any> = {};
     const calls: any[] = [];
-    for (const agent of ['claude_code', 'codex', 'cursor', 'gemini_cli', 'windsurf', 'trae_cn', 'qwen', 'code_buddy', 'droid', 'opencode', 'kimi_code']) {
+    for (const agent of ['claude_code', 'codex', 'cursor', 'gemini_cli', 'windsurf', 'trae_cn', 'qwen', 'code_buddy', 'droid', 'opencode', 'kimi_code', 'copilot_cli', 'pi']) {
       statuses[agent] = { agent, platformSupported: true, runtimeReady: true, installed: agent !== 'qwen', managedHandlers: agent === 'qwen' ? 0 : 2,
         configPath: `C:/Users/Fixture/${agent}/settings.json`, revision: 'a'.repeat(64), warnings: [],
         client: { state: ['qwen', 'codex', 'droid'].includes(agent) ? 'detected' : 'not_found', detail: '隔离软件检测样例' } };
@@ -115,4 +115,33 @@ test('准备Kiro期间旧状态返回后会补查，不丢失已经准备的目�
   await page.evaluate(() => (window as any).setupHarness.resolveKiroCheck());
   await expect(kiro.locator('.integration-path')).toHaveText('C:/Users/Fixture/XIsland-Plugins/kiro-new');
   await expect(kiro.getByText('文件已准备，待原客户端启用', { exact: true })).toBeVisible();
+});
+
+test('Copilot CLI与Pi使用统一自动接入和有效活动状态，不混作已授权的交互来源', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(async () => {
+    const h = (window as any).setupHarness;
+    for (const agent of ['copilot_cli', 'pi']) {
+      h.statuses[agent] = { ...h.statuses[agent], installed: false, managedHandlers: 0,
+        configPath: agent === 'pi' ? 'C:/Users/Fixture/.pi/agent/extensions/xisland.ts' : 'C:/Users/Fixture/.copilot/hooks/xisland.json',
+        client: { state: 'detected', detail: '隔离新客户端样例' } };
+    }
+    await h.coordinator.refresh(true);
+  });
+  for (const agent of ['copilot_cli', 'pi']) {
+    const card = page.locator(`[data-integration-agent="${agent}"]`);
+    await expect(card).toHaveAttribute('data-setup-phase', 'waitingForActivity');
+    await expect(card.getByRole('checkbox')).toBeChecked();
+  }
+  expect(await page.evaluate(() => (window as any).setupHarness.calls.filter((item: any) => ['copilot_cli', 'pi'].includes(item.agent))))
+    .toEqual([{ agent: 'copilot_cli', operation: 'install' }, { agent: 'pi', operation: 'install' }]);
+  await page.evaluate(async () => {
+    const h = (window as any).setupHarness;
+    h.statuses.pi.client.state = 'unconfirmed';
+    h.statuses.pi.activity = { event: 'session_start', receivedAt: Date.now() };
+    await h.coordinator.refresh(false);
+  });
+  await expect(page.locator('[data-integration-agent="pi"]')).toHaveAttribute('data-setup-phase', 'connected');
+  await page.locator('[data-integration-agent="copilot_cli"]').scrollIntoViewIfNeeded();
+  await page.locator('.island-shell').screenshot({ path: path.resolve('../docs/windows/evidence/ui-copilot-pi-setup-mock.png'), animations: 'disabled' });
 });

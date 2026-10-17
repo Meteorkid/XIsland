@@ -30,7 +30,7 @@ fn validate_action(action: &Value) -> Result<(), String> {
         Some("presented") if fields.len() == 1 => Ok(()),
         Some("refresh") if fields.len() == 2 && action["prepareAutomatically"].is_boolean() => Ok(()),
         Some("setEnabled") if fields.len() == 3 && action["enabled"].is_boolean()
-            && matches!(action["agent"].as_str(), Some("claude_code" | "codex" | "cursor" | "gemini_cli" | "windsurf" | "trae_cn" | "qwen" | "code_buddy" | "droid" | "opencode" | "kimi_code")) => Ok(()),
+            && matches!(action["agent"].as_str(), Some("claude_code" | "codex" | "cursor" | "gemini_cli" | "windsurf" | "trae_cn" | "qwen" | "code_buddy" | "droid" | "opencode" | "kimi_code" | "copilot_cli" | "pi")) => Ok(()),
         _ => Err("未知接入操作".into()),
     }
 }

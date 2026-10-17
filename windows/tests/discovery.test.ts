@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { win32 } from 'node:path';
-import { clientCandidates, discoverClient, isKimiCodeShim, type DiscoveryIO } from '../src/integrations/discovery';
+import { clientCandidates, discoverClient, isKimiCodeShim, isPiShim, type DiscoveryIO } from '../src/integrations/discovery';
 
 const env = { home: 'C:\\Users\\用户', path: 'C:\\Tools;C:\\Other', appData: 'C:\\Users\\用户\\AppData\\Roaming', localAppData: 'C:\\Users\\用户\\AppData\\Local' };
 const shim = '@echo off\r\nnode "%~dp0\\node_modules\\@moonshot-ai\\kimi-code\\dist\\main.mjs" %*\r\n';
@@ -54,4 +54,28 @@ test('An unrelated first Kimi command does not hide a later verified Node distri
   const result = await discoverClient('kimi_code', env, { isFile: async path => path === first || path === second || path.startsWith('C:\\Other\\node_modules'),
     packageAt: async () => ({ name: '@moonshot-ai/kimi-code', version: 'unexpected-version' }), readText: async path => path === first ? 'python -m kimi_cli %*' : shim });
   assert.equal(result.state, 'detected'); assert.equal(result.executablePath, second); assert.equal(result.version, undefined);
+});
+
+test('Pi discovery confirms the current official Node package and refuses legacy or unrelated pi commands', async () => {
+  const executable = 'C:\\Tools\\pi.cmd';
+  const root = win32.join(win32.dirname(executable), 'node_modules', '@earendil-works', 'pi-coding-agent');
+  const entry = 'dist\\bundle\\cli.js';
+  const source = npmShim.replaceAll('@moonshot-ai\\kimi-code\\dist\\main.mjs', '@earendil-works\\pi-coding-agent\\' + entry);
+  assert.equal(isPiShim(source), true); assert.equal(isPiShim(npmShim), false); assert.equal(isKimiCodeShim(source), false);
+  const io: DiscoveryIO = { isFile: async path => path === executable || path === win32.join(root, entry),
+    packageAt: async () => ({ name: '@earendil-works/pi-coding-agent', version: '1.3.0' }), readText: async () => source };
+  const client = await discoverClient('pi', env, io);
+  assert.equal(client.state, 'detected'); assert.equal(client.version, '1.3.0');
+  for (const change of [{ packageAt: async () => ({ name: '@mariozechner/pi-coding-agent' }) },
+    { readText: async () => source.replace('"%_prog%"', 'echo "%_prog%"') },
+    { isFile: async (path: string) => path === executable }]) {
+    assert.equal((await discoverClient('pi', env, { ...io, ...change })).state, 'unconfirmed');
+  }
+});
+
+test('Copilot CLI discovery includes its native binary and npm command without using VS Code installation evidence', () => {
+  const candidates = clientCandidates('copilot_cli', env);
+  assert.ok(candidates.includes('C:\\Users\\用户\\.copilot\\bin\\copilot.exe'));
+  assert.ok(candidates.includes('C:\\Users\\用户\\AppData\\Roaming\\npm\\copilot.cmd'));
+  assert.equal(candidates.some(path => /Code\.exe|extensions/i.test(path)), false);
 });

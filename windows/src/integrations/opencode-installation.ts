@@ -24,6 +24,12 @@ const within = (root: string, path: string): boolean => {
 };
 const sameIdentity = (left: Identity, right: Identity): boolean => left.dev === right.dev && left.ino === right.ino;
 
+/** 计划与活动回执共用，避免配置目录或运行时变化后沿用旧确认。 */
+export function openCodeConfigurationRevision(configPath: string, rawRevision: string, nodeExecutable: string, hookScript: string): string {
+  return createHash('sha256').update(JSON.stringify(['opencode', configPath, nodeExecutable, hookScript, rawRevision])).digest('hex');
+}
+const revision = (paths: Location, rawRevision: string): string => openCodeConfigurationRevision(paths.configPath, rawRevision, paths.node, paths.script);
+
 async function canonicalReference(path: string): Promise<string> {
   try { return await realpath(path); }
   catch (error) {
@@ -139,7 +145,7 @@ function summary(paths: Location, snapshot: Snapshot, operation: IntegrationOper
   const next = replacement(paths, operation);
   const changed = next === undefined ? snapshot.exists : !snapshot.exists || !snapshot.bytes.equals(next);
   return { agent: 'opencode', operation, configPath: paths.configPath, changed, addedHandlers: changed && next ? 1 : 0,
-    removedHandlers: changed && snapshot.exists ? 1 : 0, revision: snapshot.revision, runtimeReady: ready,
+    removedHandlers: changed && snapshot.exists ? 1 : 0, revision: revision(paths, snapshot.revision), runtimeReady: ready,
     backup: { required: changed && snapshot.exists, directory: dirname(paths.configPath), filenamePrefix: 'xisland.js.xisland-backup-', exclusive: true },
     warnings: ['此计划未写入插件；文件存在不代表 OpenCode 已加载，需要重启客户端并核对实际事件。',
       '只处理全局 xisland.js；保留 OpenCode JSON 配置、其他插件和权限设置。Windows 原生交互仍需实机验收。'],
@@ -153,7 +159,7 @@ export async function getOpenCodeStatus(options: OpenCodeInstallerOptions = {}) 
   await safeDirectory(paths.home, dirname(paths.configPath));
   const snapshot = await readSnapshot(paths.configPath), ready = await runtimeReady(paths);
   const current = snapshot.owned && snapshot.bytes.equals(replacement(paths, 'install')!);
-  return { agent: 'opencode' as const, platformSupported: true, configPath: paths.configPath, revision: snapshot.revision,
+  return { agent: 'opencode' as const, platformSupported: true, configPath: paths.configPath, revision: revision(paths, snapshot.revision),
     runtimeReady: ready, installed: current, managedHandlers: snapshot.owned ? 1 : 0,
     updateAvailable: snapshot.owned && !current, foreignPlugin: snapshot.exists && !snapshot.owned,
     warnings: snapshot.exists && !snapshot.owned ? ['现有 xisland.js 无法完整认领；用户文件已保留，安装和卸载都会拒绝覆盖。']
@@ -218,7 +224,7 @@ async function commit(paths: Location, snapshot: Snapshot, next: Buffer | undefi
     // 不先删除旧插件；Windows 文件被占用导致 rename 失败时原文件仍在。
     await (options.replaceFile ?? rename)(next ? temporary : paths.configPath, next ? paths.configPath : temporary);
     if (!next) temporaryIdentity = snapshot.identity;
-    return { backupId, revision: digest(next) };
+    return { backupId, revision: revision(paths, digest(next)) };
   } finally {
     if (temporaryIdentity) await removeOwnedTemporary(paths, temporary, temporaryIdentity);
   }
@@ -231,7 +237,7 @@ export async function applyOpenCodeIntegration(operation: IntegrationOperation, 
   await safeDirectory(paths.home, dirname(paths.configPath));
   const apply = async (write: boolean): Promise<OpenCodeInstallationResult | undefined> => {
     const snapshot = await readSnapshot(paths.configPath);
-    if (snapshot.revision !== expectedRevision) throw new IntegrationError('revision_conflict', '插件已改变，请重新查看并确认计划。');
+    if (revision(paths, snapshot.revision) !== expectedRevision) throw new IntegrationError('revision_conflict', '插件、目标目录或运行时已改变，请重新查看并确认计划。');
     requireOwnership(snapshot);
     const ready = await runtimeReady(paths);
     if (operation === 'install' && !ready) throw new IntegrationError('runtime_missing', 'Node、hook 或 bridge 文件缺失，原插件未修改。');

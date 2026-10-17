@@ -146,7 +146,7 @@ export class SessionStore {
     if (transport && this.usedTransports.has(transport.requestId)) return reject('Duplicate transport request', false);
     const observed = hasObservationMetadata(message);
     let existing = this.findSession(message);
-    const observationOnlyAgents = ['workbuddy', 'trae_ide_cn', 'traework_cn', 'kimi', 'kimi_code', 'code_buddy', 'droid', 'kiro'];
+    const observationOnlyAgents = ['workbuddy', 'trae_ide_cn', 'traework_cn', 'kimi', 'kimi_code', 'code_buddy', 'droid', 'kiro', 'copilot_cli', 'pi'];
     if (kind && observationOnlyAgents.some(agent => message.agentType === agent || existing?.agentType === agent || message.sessionId.startsWith(agent + '-'))) {
       return reject('This client source only supports observations');
     }

@@ -57,7 +57,7 @@ export function windowsHookCommand(nodeExecutable: string, hookScript: string, a
   if (!/\.exe$/i.test(node) || !/\.[cm]?js$/i.test(script) || !adapterFor(agent).events.includes(event)) throw new Error('无效 hook 启动参数');
   const manifest = Buffer.from(JSON.stringify({ node, script, agent, event }), 'utf8').toString('base64');
   const args = [script, '--agent', agent, '--hook', event, '--managed-by', OWNER].map(windowsArgument).join(' ');
-  const observationOnly = ['workbuddy', 'kimi_code', 'code_buddy', 'droid', 'kiro'].includes(agent);
+  const observationOnly = ['workbuddy', 'kimi_code', 'code_buddy', 'droid', 'kiro', 'copilot_cli', 'pi'].includes(agent);
   const source = [
     `${MARKER}${manifest}`,
     '$ErrorActionPreference = "Stop"',

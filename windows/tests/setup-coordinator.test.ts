@@ -58,7 +58,7 @@ test('startup prepares only detected clients and saves an attempt before any pla
   };
   const coordinator = f.make();
   await coordinator.start();
-  assert.equal(coordinator.snapshot().rows.length, 11);
+  assert.equal(coordinator.snapshot().rows.length, 13);
   assert.equal(f.applications().length, 1);
   assert.equal(f.applications()[0].revision, 'revision-a');
   assert.equal(qwen(coordinator).phase, 'waitingForActivity');
@@ -84,6 +84,46 @@ test('configuration existence, unknown discovery, missing runtime, foreign plugi
     assert.notEqual(qwen(coordinator).phase, 'connected');
     if (overrides.client?.state === 'not_found') assert.equal(qwen(coordinator).phase, 'notInstalled');
   }
+});
+
+test('a current owner-accepted event can confirm a manually configured client outside discovery paths', async () => {
+  for (const state of ['not_found', 'unconfirmed'] as const) {
+    const f = fixture();
+    f.statuses.set('pi', status('pi', { installed: true, client: { state, detail: 'custom installation' } }));
+    const coordinator = f.make(); await coordinator.refresh(false);
+    f.statuses.get('pi')!.activity = { event: 'session_start', receivedAt: Date.now() };
+    await coordinator.refresh(true);
+    assert.equal(coordinator.snapshot().rows.find(row => row.agent === 'pi')!.phase, 'connected');
+    assert.equal(f.applications().some(call => call.agent === 'pi'), false);
+  }
+});
+
+test('old or invalid receipts do not replace missing client evidence', async () => {
+  for (const receivedAt of [Date.now() - 60_000, Date.now() + 60_000, Number.NaN, 0]) {
+    const f = fixture();
+    f.statuses.set('pi', status('pi', { installed: true, client: { state: 'not_found', detail: 'absent' },
+      activity: { event: 'session_start', receivedAt } }));
+    const coordinator = f.make(); await coordinator.refresh(false);
+    assert.equal(coordinator.snapshot().rows.find(row => row.agent === 'pi')!.phase, 'notInstalled');
+  }
+});
+
+test('fresh activity still cannot bypass disabled, configuration, runtime or Codex trust gates', async () => {
+  for (const overrides of [{ runtimeReady: false }, { installed: false }, { foreignPlugin: true },
+    { platformSupported: false }, { configurationKnown: false }] satisfies Partial<IntegrationStatus>[]) {
+    const f = fixture(), coordinator = f.make();
+    f.statuses.set('pi', status('pi', { installed: true, client: { state: 'unconfirmed', detail: 'custom' }, ...overrides,
+      activity: { event: 'session_start', receivedAt: Date.now() } }));
+    await coordinator.refresh(false);
+    assert.notEqual(coordinator.snapshot().rows.find(row => row.agent === 'pi')!.phase, 'connected');
+  }
+  const f = fixture(), coordinator = f.make();
+  f.statuses.set('codex', status('codex', { installed: true, client: { state: 'unconfirmed', detail: 'custom' },
+    trust: { state: 'required', configuredCount: 1, trustedCount: 0 }, activity: { event: 'SessionStart', receivedAt: Date.now() } }));
+  await coordinator.refresh(false);
+  assert.equal(coordinator.snapshot().rows.find(row => row.agent === 'codex')!.phase, 'needsAuthorization');
+  await coordinator.setEnabled('codex', false);
+  assert.equal(coordinator.snapshot().rows.find(row => row.agent === 'codex')!.phase, 'disabled');
 });
 
 test('plan revision and selected configuration must match the read status before apply', async () => {

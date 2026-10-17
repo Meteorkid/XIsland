@@ -410,7 +410,7 @@ test('普通浏览器预览不会假装能够安装接入', async ({ page }) => 
   await page.getByRole('button',{name:'Agents',exact:true}).click();
   await expect(page.getByText('浏览器预览不安装或移除接入，请在 Windows 客户端操作。',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'启用接入…',exact:true})).toHaveCount(0);
-  await expect(page.getByText('实际客户端未验收',{exact:true})).toHaveCount(13);
+  await expect(page.getByText('实际客户端未验收',{exact:true})).toHaveCount(15);
   await expect(page.getByRole('button',{name:'导出 WorkBuddy 插件…',exact:true})).toHaveCount(0);
 });
 
@@ -449,7 +449,7 @@ test('识别后的TraeWork和Trae IDE在共享配置下分别显示来源', asyn
 test('运行时不可用时配置状态保持未知，不误报为未配置', async ({ page }) => {
   await mountHarness(page,{preferencesWindow:true,integrations:true,unknownRuntime:true});
   await page.getByRole('button',{name:'Agents',exact:true}).click();
-  await expect(page.getByText('运行时未就绪，配置状态未知',{exact:true})).toHaveCount(11);
+  await expect(page.getByText('运行时未就绪，配置状态未知',{exact:true})).toHaveCount(13);
   await expect(page.getByText('未配置',{exact:true})).toHaveCount(0);
   for(const agent of ['claude_code','codex','cursor','gemini_cli','windsurf','trae_cn'])await expect(page.locator(`[data-integration-agent="${agent}"]`).getByRole('button',{name:'启用接入…',exact:true})).toBeDisabled();
 });

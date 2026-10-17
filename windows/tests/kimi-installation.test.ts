@@ -38,6 +38,7 @@ test('Kimi Code status and review do not create files; apply installs all Node h
   const plan = await planKimiCodeIntegration('install', options);
   assert.equal(plan.changed, true); assert.equal(plan.addedHandlers, 20); assert.equal(plan.removedHandlers, 0);
   assert.equal(plan.backup.required, false); assert.match(plan.revision, /^[a-f0-9]{64}$/);
+  assert.equal(plan.revision, status.revision);
   assert.equal('nextText' in plan, false); assert.equal('nextConfig' in plan, false); assert.deepEqual(await readdir(home), ['resources']);
   const result = await applyKimiCodeIntegration('install', plan.revision, options);
   assert.equal(result.applied, true); assert.equal(result.backupId, undefined);
@@ -46,6 +47,7 @@ test('Kimi Code status and review do not create files; apply installs all Node h
   assert.equal((source.match(/^\[\[hooks\]\]$/gm) ?? []).length, 20);
   const installed = await getKimiCodeStatus(options);
   assert.equal(installed.installed, true); assert.equal(installed.managedHandlers, 20);
+  assert.equal(installed.revision, result.revision); assert.notEqual(result.revision, plan.revision);
   assert.deepEqual(await readdir(dirname(path)), ['config.toml']);
 });
 
@@ -76,6 +78,7 @@ test('Kimi Code repeated installation and removal are no-ops; uninstall keeps an
   const removal = await planKimiCodeIntegration('uninstall', options);
   const removed = await applyKimiCodeIntegration('uninstall', removal.revision, options);
   assert.equal(await readFile(path, 'utf8'), ''); assert.ok(removed.backupId);
+  assert.equal((await getKimiCodeStatus(options)).revision, removed.revision);
   const repeat = await planKimiCodeIntegration('uninstall', options);
   assert.equal(repeat.changed, false); assert.equal((await applyKimiCodeIntegration('uninstall', repeat.revision, options)).applied, false);
 });
@@ -120,6 +123,33 @@ test('Kimi Code stale review revision cannot overwrite external edits', async t 
   await writeFile(path, '# external update\n');
   await assert.rejects(applyKimiCodeIntegration('install', plan.revision, options), rejectsCode('revision_conflict'));
   assert.equal(await readFile(path, 'utf8'), '# external update\n'); assert.deepEqual(await readdir(dirname(path)), ['config.toml']);
+});
+
+test('Kimi Code reviewed revisions bind the configuration directory even when both files are absent', async t => {
+  const { options, home, path } = await fixture(t);
+  const plan = await planKimiCodeIntegration('install', options);
+  const customOptions = { ...options, environment: { KIMI_CODE_HOME: join(home, 'custom-node-home') } };
+  const customPlan = await planKimiCodeIntegration('install', customOptions);
+  await assert.rejects(applyKimiCodeIntegration('install', plan.revision, customOptions), rejectsCode('revision_conflict'));
+  assert.notEqual(customPlan.revision, plan.revision);
+  await assert.rejects(readFile(customPlan.configPath), error => (error as NodeJS.ErrnoException).code === 'ENOENT');
+  await assert.rejects(readFile(path), error => (error as NodeJS.ErrnoException).code === 'ENOENT');
+  assert.deepEqual(await readdir(home), ['resources']);
+});
+
+test('Kimi Code reviewed revisions bind both the Node executable and hook script before installation', async t => {
+  for (const runtime of ['node', 'hook'] as const) await t.test(runtime, async t => {
+    const { options, home, path, resources } = await fixture(t);
+    const plan = await planKimiCodeIntegration('install', options);
+    const nextNode = join(resources, 'replacement-node.exe'); await writeFile(nextNode, 'isolated replacement node');
+    const nextResources = join(home, 'replacement-resources'); await mkdir(nextResources);
+    for (const name of ['xisland-hook.cjs', 'xisland-bridge.exe']) await writeFile(join(nextResources, name), 'isolated replacement runtime');
+    const changed = runtime === 'node' ? { ...options, nodeExecutable: nextNode } : { ...options, resourceDirectory: nextResources };
+    await assert.rejects(applyKimiCodeIntegration('install', plan.revision, changed), rejectsCode('revision_conflict'));
+    assert.notEqual((await planKimiCodeIntegration('install', changed)).revision, plan.revision);
+    await assert.rejects(readFile(path), error => (error as NodeJS.ErrnoException).code === 'ENOENT');
+    assert.deepEqual(await readdir(home), ['replacement-resources', 'resources']);
+  });
 });
 
 test('Kimi Code checks bytes and file identity again at the atomic replacement boundary', async t => {

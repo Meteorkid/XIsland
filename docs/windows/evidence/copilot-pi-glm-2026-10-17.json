@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-17",
+  "windowsVersion": "0.1.8",
+  "previousWorkCommittedAs": "3bef203",
+  "adapterCount": 15,
+  "managedIntegrationCount": 13,
+  "observationOnlyAdded": [
+    "copilot_cli",
+    "pi"
+  ],
+  "tests": {
+    "typescript": 455,
+    "browser": 36,
+    "rustUnit": 34,
+    "rustProcessIPC": 1
+  },
+  "nativeClients": {
+    "pi": {
+      "version": "1.3.0",
+      "host": "macOS arm64",
+      "actualPackagedHook": true,
+      "rpcSessions": 2,
+      "events": 17,
+      "modelRequests": 4,
+      "report": "pi-packaged-hook-0.1.8.json"
+    },
+    "opencode": {
+      "version": "1.19.3",
+      "host": "macOS arm64",
+      "actualPackagedHook": true,
+      "scenarios": 3,
+      "report": "opencode-native-packaged-hook-0.1.8.json"
+    },
+    "copilot_cli": {
+      "nativeClientExecuted": false
+    }
+  },
+  "realProviderUsed": false,
+  "nativeClientTestsUseNodeMockTransport": true,
+  "windowsTargetCheckPassed": true,
+  "windowsRuntimeVerified": false,
+  "fullMacParityVerified": false,
+  "delivery": {
+    "version": "0.1.8",
+    "zip": ".build/XIsland-Windows-0.1.8-preview-test-kit.zip",
+    "size": 26452592,
+    "sha256": "7ef5d69302ac3229477e37c3ac023022b5282e99a9a2587e97d9e20d7be4bd40",
+    "installerSha256": "4c202976cfa1cbdd33970d5e7a64e862c96531e5298044f4fe3af1d8abf91f59",
+    "zipCRCVerified": true,
+    "manifestHashesVerified": true,
+    "entries": 7,
+    "buildInputDigest": "98bcb516d636bfbe1ebb30e62aacb5504fa6093d5eaed4185bfb74efaa5042fd",
+    "buildInputFileCount": 174,
+    "windowsRuntimeVerified": false,
+    "signed": false
+  },
+  "logs": {
+    "tests": {
+      "path": ".build/windows-next-parity-tests.log",
+      "sha256": "99e49db53d433ad4a74d6b3098cc04cf3947b57fb7f5355472bf53e41ec773f3"
+    },
+    "ui": {
+      "path": ".build/windows-next-parity-ui.log",
+      "sha256": "cde991656ce26557764ac6f714a1c23e704a8111629f808549d4b77cb47a4de8"
+    },
+    "rust": {
+      "path": ".build/windows-next-parity-rust.log",
+      "sha256": "0c99a5e9c25f47c74859f1bff868ff457dc738653363f23e8376f789da43355b"
+    },
+    "windows-check": {
+      "path": ".build/windows-next-parity-windows-check.log",
+      "sha256": "daa35b1b939c545d842b9d29249451791aa07266a407728b7fc2edbb0481694b"
+    },
+    "package-build": {
+      "path": ".build/windows-next-parity-package-build.log",
+      "sha256": "fc8f2d49a207ebdab992bf9780fdeb63bb166c9130f9e87762f39995fc662e89"
+    },
+    "pi-packaged": {
+      "path": ".build/windows-next-parity-pi-packaged.log",
+      "sha256": "8c6e083319126fa130929dc4312cfbfea5bcffaa8e35a52a87aec617b4bbd813"
+    },
+    "opencode-packaged": {
+      "path": ".build/windows-next-parity-opencode-packaged.log",
+      "sha256": "bd706b53c5149d4f4b74d3e31401fd8eded1f5433fa8be3946e790f8f1bdb2f7"
+    }
+  }
+}

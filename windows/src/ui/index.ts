@@ -1,6 +1,7 @@
 import { t, locale, setLanguage } from './i18n';
 import { isArchivedSession, type Decision, type PendingInteraction, type Session, type SessionStore, type StoreSnapshot, type ToolEvent } from '../core/index';
 import { aggregateHistoryUsage, compareHistorySessions, historyDate } from '../core/history-summary';
+import { GLM_MODEL_FILTER, isGLMModel, matchesSessionFilters, buildFilteredSessionTree, type SessionTreeNode } from '../core/session-filter';
 import { agentColor, agentName, badge, button, el, icon, markdown, mascot, statusColor, statusLabel } from './components';
 import { DEFAULT_SETTINGS, IslandSound, isQuiet, loadSettings, normalizeSettings, saveSettings } from './settings';
 import type { IslandPlatform, IslandSettings, IslandLinkPreferences } from './platform';
@@ -274,8 +275,8 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
     if (settingsPane) shell.replaceChildren(settingsHeader(), settingsToolbar(), settingsContent());
     else if (expanded) shell.replaceChildren(expandedHeader(), expandedBody());
     else shell.replaceChildren(collapsedBody());
-    // 单个待办必须把决策按钮留在首屏，长内容与多个待办仍使用滚动区。
-    if (expanded && !settingsPane && pendingCount()) {
+    // 待办按钮和筛选后的空结果应留在首屏；长列表仍使用滚动区。
+    if (expanded && !settingsPane && (pendingCount() || showFilter)) {
       const list = shell.querySelector<HTMLElement>('.session-scroll');
       if (list) {
         height = Math.min(620, Math.max(height, 48 + 24 + list.scrollHeight + 16 + (showFilter ? 70 : 0) + (showActivity ? 140 : 0)));
@@ -373,14 +374,14 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
     list.setAttribute('aria-label', t('会话列表'));
     if (!pendingCount() || overview) list.append(agentFlow());
     const sessions = visibleSessions();
-    const matches = (session: Session) => (agentFilter === 'all' || session.agentType === agentFilter) &&
-      (filter === 'all' || (filter === 'pending' ? session.pendingInteractions.length > 0 : filter === 'active' ? LIVE.has(session.status) : session.status === filter)) &&
-      (!query || `${title(session)} ${session.workingDirectory} ${agentName(session.agentType)} ${session.statusText}`.toLowerCase().includes(query.toLowerCase()));
+    const matches = (session: Session) => matchesSessionFilters(session, { agent: agentFilter, status: filter, query },
+      `${title(session)} ${session.workingDirectory} ${agentName(session.agentType)} ${session.statusText}`);
     const filtered = sessions.filter(matches);
-    for (const session of filtered.filter(item => item.pendingInteractions.length)) list.append(pendingCard(session));
-    for (const session of filtered.filter(item => !item.pendingInteractions.length && !item.parentSessionId)) list.append(sessionCard(session));
-    for (const session of filtered.filter(item => !item.pendingInteractions.length && item.parentSessionId && !sessions.some(parent => parent.id === item.parentSessionId))) list.append(sessionCard(session));
-    if (!filtered.length) list.append(emptyState(sessions.length ? t('没有匹配的会话') : t('Agent 开始工作时，会话会出现在这里。'), sessions.length ? t('试试其他关键词或筛选条件。') : t('从已配置 XIsland 的终端开始一段任务。')));
+    const tree = buildFilteredSessionTree(filtered);
+    for (const session of tree.pending) list.append(pendingCard(session));
+    for (const node of tree.roots) list.append(sessionCard(node));
+    const filtering = !!sessions.length || agentFilter !== 'all' || filter !== 'all' || !!query;
+    if (!filtered.length) list.append(emptyState(filtering ? t('没有匹配的会话') : t('Agent 开始工作时，会话会出现在这里。'), filtering ? t('试试其他关键词或筛选条件。') : t('从已配置 XIsland 的终端开始一段任务。')));
     body.append(list);
     if (showActivity) body.append(activityPanel());
     return body;
@@ -388,12 +389,14 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
 
   function filterBar(): HTMLElement {
     const container = el('div', 'filter-bar');
-    const search = el('input', 'search-input'); search.type = 'search'; search.placeholder = t('搜索会话、项目或 Agent'); search.value = query; search.dataset.focusKey = 'search'; search.setAttribute('aria-label', search.placeholder);
+    const search = el('input', 'search-input'); search.type = 'search'; search.placeholder = t('搜索会话、项目、Agent 或模型'); search.value = query; search.dataset.focusKey = 'search'; search.setAttribute('aria-label', search.placeholder);
     search.addEventListener('input', () => { query = search.value; render(); });
     const row = el('div', 'filter-selects');
     row.append(select(t('会话状态'), [['all',t('全部状态')], ['pending',t('待处理')], ['active',t('运行中')], ['idle',t('空闲')], ['error',t('错误')]], filter, value => { filter = value; render(); }));
     const agents = [...new Set(snapshot.sessions.map(session => session.agentType))];
-    row.append(select(t('Agent 类型'), [['all',t('全部 Agent')], ...agents.map(type => [type,agentName(type)] as [string,string])], agentFilter, value => { agentFilter = value; render(); }));
+    const agentOptions: Array<[string,string]> = [['all',t('全部 Agent')], ...agents.map(type => [type,agentName(type)] as [string,string])];
+    if (agentFilter === GLM_MODEL_FILTER || visibleSessions().some(session => isGLMModel(session.usage.model))) agentOptions.push([GLM_MODEL_FILTER,t('GLM 模型')]);
+    row.append(select(t('Agent 或模型'), agentOptions, agentFilter, value => { agentFilter = value; render(); }));
     container.append(search,row); return container;
   }
 
@@ -426,7 +429,8 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
     return flow;
   }
 
-  function sessionCard(session: Session, child=false): HTMLElement {
+  function sessionCard(node: SessionTreeNode, child=false): HTMLElement {
+    const { session, children } = node;
     const card=el('article',`session-card ${child ? 'child-card' : ''}`); card.dataset.sessionId=session.id;
     card.style.setProperty('--agent',agentColor(session.agentType));
     const target=button(t('打开 {title}',{title:title(session)}),'session-main',()=>run(()=>platform.jump(session)));
@@ -442,8 +446,7 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
     const footer=el('div','session-footer');footer.append(el('span','session-state',statusLabel(session.status)));
     footer.append(button(t('查看活动与对话'),'text-button',()=>{detailSession=session.id;store.select(session.id);render();}));
     card.append(footer);
-    const children=snapshot.sessions.filter(item=>item.parentSessionId===session.id&&!item.pendingInteractions.length);
-    if(children.length&&!child){card.append(button(t('{action} {count} 个子 Agent',{action:childGroups.has(session.id)?t('收起'):t('展开'),count:children.length}),'children-toggle',()=>{if(childGroups.has(session.id))childGroups.delete(session.id);else childGroups.add(session.id);render();}));if(childGroups.has(session.id))for(const item of children)card.append(sessionCard(item,true));}
+    if(children.length){card.append(button(t('{action} {count} 个子 Agent',{action:childGroups.has(session.id)?t('收起'):t('展开'),count:children.length}),'children-toggle',()=>{if(childGroups.has(session.id))childGroups.delete(session.id);else childGroups.add(session.id);render();}));if(childGroups.has(session.id))for(const item of children)card.append(sessionCard(item,true));}
     return card;
   }
 

@@ -9,6 +9,10 @@ import { discoverClient, type ClientDiscovery } from './discovery';
 import { inspectCodexTrust, type HookTrustSnapshot } from './codex-trust';
 import { windowsHookCommand } from './plan';
 import { configurationRevision as scopedConfigurationRevision } from './installer';
+import { copilotConfigurationRevision } from './copilot-installation';
+import { piConfigurationRevision } from './pi-installation';
+import { openCodeConfigurationRevision } from './opencode-installation';
+import { kimiCodeConfigurationRevision } from './kimi-installation';
 
 export interface ConnectionStatus {
   agent: string; installed: boolean; runtimeReady: boolean; revision?: string; configPath?: string; platformSupported?: boolean;
@@ -95,8 +99,13 @@ async function identityAt(status: ConnectionStatus, paths: Locations): Promise<C
     if (!within(paths.home, status.configPath)) return undefined;
     const configurationPath = await realpath(status.configPath);
     if (!within(paths.home, configurationPath)) return undefined;
-    const configurationRevision = scopedConfigurationRevision(status.agent, status.configPath,
-      await fileDigest(status.configPath, 1024 * 1024, 'present\0'));
+    const rawRevision = await fileDigest(status.configPath, 1024 * 1024, 'present\0');
+    const configurationRevision = status.agent === 'copilot_cli'
+      ? copilotConfigurationRevision(status.configPath, rawRevision, paths.node, paths.script)
+      : status.agent === 'pi' ? piConfigurationRevision(status.configPath, rawRevision, paths.node, paths.script)
+      : status.agent === 'opencode' ? openCodeConfigurationRevision(status.configPath, rawRevision, paths.node, paths.script)
+      : status.agent === 'kimi_code' ? kimiCodeConfigurationRevision(status.configPath, rawRevision, paths.node, paths.script)
+      : scopedConfigurationRevision(status.agent, status.configPath, rawRevision);
     if (configurationRevision !== status.revision) return undefined;
     // Node 本体约 90 MiB；每个工具事件重读它会拖慢原任务。此处只是活动有效性，非程序签名证明。
     const node = await lstat(paths.node, { bigint: true });

@@ -1,0 +1,100 @@
+{
+  "checkedAt": "2026-10-17T13:27:15.044Z",
+  "hostPlatform": "darwin",
+  "hostArchitecture": "arm64",
+  "package": "@earendil-works/pi-coding-agent",
+  "version": "1.3.0",
+  "license": "MIT",
+  "cliSha256": "e79626f2dd6f94aa45d30f3fa63cd84319a6eefcd150b353cfaf274366926774",
+  "pluginSha256": "cb95d38a8c1ff9b3c53b6c0707186e771b2bc5a36d3cc58094d05ec4bc1f8889",
+  "nativeClientLoadedPlugin": true,
+  "defaultExtensionDiscovery": true,
+  "realToolExecuted": "read",
+  "actualBundledHookVerified": true,
+  "bundledHookSha256": "b9169605c4e26feac1a91b43554f08dd9a0497b86e73c619cb0823a88e286dfb",
+  "transport": "isolated Node bridge returning ok; no Rust or Named Pipe",
+  "sessionReplacementVerified": true,
+  "sessionCount": 2,
+  "repeatedNativeSessionStarts": 1,
+  "model": "loopback OpenAI-compatible deterministic fixture",
+  "modelRequests": 4,
+  "eventCount": 17,
+  "states": [
+    {
+      "event": "session_start",
+      "status": "active"
+    },
+    {
+      "event": "before_agent_start",
+      "status": "active"
+    },
+    {
+      "event": "agent_start",
+      "status": "active"
+    },
+    {
+      "event": "tool_execution_start",
+      "status": "active"
+    },
+    {
+      "event": "tool_execution_end",
+      "status": "active"
+    },
+    {
+      "event": "agent_end",
+      "status": "active"
+    },
+    {
+      "event": "agent_settled",
+      "status": "idle"
+    },
+    {
+      "event": "session_shutdown",
+      "status": "completed"
+    },
+    {
+      "event": "session_start",
+      "status": "active"
+    },
+    {
+      "event": "session_start",
+      "status": "active"
+    },
+    {
+      "event": "before_agent_start",
+      "status": "active"
+    },
+    {
+      "event": "agent_start",
+      "status": "active"
+    },
+    {
+      "event": "tool_execution_start",
+      "status": "active"
+    },
+    {
+      "event": "tool_execution_end",
+      "status": "active"
+    },
+    {
+      "event": "agent_end",
+      "status": "active"
+    },
+    {
+      "event": "agent_settled",
+      "status": "idle"
+    },
+    {
+      "event": "session_shutdown",
+      "status": "completed"
+    }
+  ],
+  "modelIdPreserved": true,
+  "credentialsInherited": false,
+  "realUserConfigurationTouched": false,
+  "homeVariableOverridden": false,
+  "windowsRuntimeVerified": false,
+  "limitations": [
+    "Native CLI executed the supplied hook CJS with a local simulated model and Node mock transport; Rust, Named Pipe, installed Windows runtime and UI remain separate acceptance gates."
+  ]
+}

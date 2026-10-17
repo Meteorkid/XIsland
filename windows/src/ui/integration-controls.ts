@@ -5,7 +5,7 @@ import type { SetupRow, SetupSnapshot } from '../integrations/setup-coordinator'
 import type { WorkBuddySetupStatus } from '../integrations/workbuddy-plugin';
 import type { KiroSetupStatus } from '../integrations/kiro-plugin';
 
-const AGENTS: IntegrationAgent[] = ['claude_code', 'codex', 'cursor', 'gemini_cli', 'windsurf', 'trae_cn', 'qwen', 'code_buddy', 'droid', 'opencode', 'kimi_code'];
+const AGENTS: IntegrationAgent[] = ['claude_code', 'codex', 'cursor', 'gemini_cli', 'windsurf', 'trae_cn', 'qwen', 'code_buddy', 'droid', 'opencode', 'kimi_code', 'copilot_cli', 'pi'];
 interface AgentState { loading: boolean; status?: IntegrationStatus; error?: string; result?: IntegrationApplyResult }
 interface Review { agent: IntegrationAgent; operation: IntegrationOperation; plan?: IntegrationPlanSummary; loading: boolean; applying: boolean; error?: string }
 function errorMessage(error: unknown): string {

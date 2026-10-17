@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test, { type TestContext } from 'node:test';
-import { applyOpenCodeIntegration, getOpenCodeStatus, planOpenCodeIntegration, type OpenCodeInstallerOptions } from '../src/integrations/opencode-installation';
+import { applyOpenCodeIntegration, getOpenCodeStatus, openCodeConfigurationRevision, planOpenCodeIntegration, type OpenCodeInstallerOptions } from '../src/integrations/opencode-installation';
 import { IntegrationError, MAX_CONFIG_BYTES } from '../src/integrations/installer';
 import { openCodePluginPath, openCodePluginSource } from '../src/integrations/opencode-plugin';
 
@@ -35,6 +36,7 @@ test('OpenCode status and review are read-only; installation creates exactly one
   assert.equal(status.runtimeReady, true); assert.equal(status.installed, false); assert.equal(status.managedHandlers, 0);
   const plan = await planOpenCodeIntegration('install', options);
   assert.equal(plan.configPath, path); assert.equal(plan.addedHandlers, 1); assert.equal(plan.removedHandlers, 0);
+  assert.equal(plan.revision, status.revision);
   assert.equal(plan.backup.required, false); assert.match(plan.revision, /^[a-f0-9]{64}$/);
   assert.equal('nextConfig' in plan, false); assert.equal('source' in plan, false);
   assert.deepEqual(await readdir(home), ['resources']);
@@ -45,6 +47,9 @@ test('OpenCode status and review are read-only; installation creates exactly one
   assert.deepEqual(await readdir(dirname(path)), ['xisland.js']);
   const installed = await getOpenCodeStatus(options);
   assert.equal(installed.installed, true); assert.equal(installed.managedHandlers, 1);
+  const rawRevision = createHash('sha256').update('present\0').update(await readFile(path)).digest('hex');
+  assert.equal(result.revision, openCodeConfigurationRevision(path, rawRevision, options.nodeExecutable!, join(resources, 'xisland-hook.cjs')));
+  assert.equal(installed.revision, result.revision);
   assert.equal(JSON.stringify(result).includes('const NODE'), false);
 });
 
@@ -68,7 +73,8 @@ test('OpenCode uninstall preserves a byte-exact backup and works when runtime ha
   const result = await applyOpenCodeIntegration('uninstall', plan.revision, options);
   assert.equal(result.applied, true); assert.ok(result.backupId);
   assert.deepEqual(await readFile(join(dirname(path), result.backupId!)), original);
-  assert.equal((await getOpenCodeStatus(options)).installed, false);
+  const removed = await getOpenCodeStatus(options);
+  assert.equal(removed.installed, false); assert.equal(removed.revision, result.revision);
   await assert.rejects(readFile(path), error => (error as NodeJS.ErrnoException).code === 'ENOENT');
   const again = await planOpenCodeIntegration('uninstall', options);
   const unchanged = await applyOpenCodeIntegration('uninstall', again.revision, options);
@@ -87,8 +93,13 @@ test('OpenCode missing-plugin uninstall does not create configuration directorie
 test('OpenCode runtime-path updates back up the old owned source before atomic replacement', async t => {
   const { home, options, path } = await fixture(t);
   await install(options); const original = await readFile(path);
+  const oldPlan = await planOpenCodeIntegration('install', options);
   const moved = join(home, 'new resources'); await mkdir(moved);
   for (const name of ['node.exe', 'xisland-hook.cjs', 'xisland-bridge.exe']) await writeFile(join(moved, name), 'new runtime fixture');
+  for (const changed of [{ ...options, nodeExecutable: join(moved, 'node.exe') }, { ...options, resourceDirectory: moved }]) {
+    await assert.rejects(applyOpenCodeIntegration('install', oldPlan.revision, changed), rejectsCode('revision_conflict'));
+    assert.deepEqual(await readFile(path), original); assert.deepEqual(await readdir(dirname(path)), ['xisland.js']);
+  }
   const updatedOptions = { ...options, resourceDirectory: moved, nodeExecutable: join(moved, 'node.exe') };
   const status = await getOpenCodeStatus(updatedOptions);
   assert.equal(status.installed, false); assert.equal(status.updateAvailable, true); assert.equal(status.managedHandlers, 1);
@@ -189,8 +200,11 @@ test('OpenCode existing application locks remain untouched', async t => {
 
 test('OpenCode XDG_CONFIG_HOME is honored inside isolated home and never silently falls back', async t => {
   const { options, home, path } = await fixture(t);
+  const originalPlan = await planOpenCodeIntegration('install', options);
   const custom = join(home, 'custom configuration');
   const customOptions = { ...options, environment: { XDG_CONFIG_HOME: custom } };
+  await assert.rejects(applyOpenCodeIntegration('install', originalPlan.revision, customOptions), rejectsCode('revision_conflict'));
+  assert.deepEqual(await readdir(home), ['resources']);
   const result = await install(customOptions);
   assert.equal(result.configPath, join(custom, 'opencode', 'plugins', 'xisland.js'));
   assert.equal((await getOpenCodeStatus(customOptions)).installed, true);

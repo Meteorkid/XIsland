@@ -1,23 +1,27 @@
 {
   "date": "2026-10-17",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "inspection": "independent NSIS extraction with 7-Zip 26.04",
-  "installerSha256": "505fabfcb4f5b6d05d772982ea5f471c4a322ce598498af6d0110a159c65b5b9",
+  "installerSha256": "4c202976cfa1cbdd33970d5e7a64e862c96531e5298044f4fe3af1d8abf91f59",
   "packagedApplicationDifference": "Only verified Tauri bundle marker UNK -> NSS (3 bytes)",
   "bundledNodeMatchesOfficialChecksum": true,
   "allBundledResourcesMatchSourceBytes": true,
-  "newSetupAndKiroSymbolsPresent": true,
+  "newCopilotAndPiSymbolsPresent": true,
+  "actualPackagedHookNativeMacosChecks": [
+    "OpenCode 1.19.3: 3 scenarios",
+    "Pi 1.3.0: RPC 2 sessions, 17 events"
+  ],
   "windowsExecutionVerified": false,
   "files": [
     {
       "path": "xisland.exe",
-      "size": 10713600,
-      "sha256": "6558e2144b6f66aca816f7f1759ba40934a06dccf9ed2ce1a965f551d1e996a1"
+      "size": 10713088,
+      "sha256": "48bbc995ebf9d854b93cc9eceb287b7009d40cb56277aa39ae841615531e2ce2"
     },
     {
       "path": "xisland-bridge.exe",
-      "size": 870912,
-      "sha256": "c98f0288a72d3b25c2be7d74cf1e4fe591486549633e8f73e14447a7457c5303"
+      "size": 870400,
+      "sha256": "af898c5a1c2dbf27962938f093b73aa59ba7343cda029d86abe971550d9b8e15"
     },
     {
       "path": "resources/LICENSE-XIsland.txt",
@@ -47,12 +51,12 @@
     {
       "path": "resources/xisland-bridge.exe",
       "size": 745472,
-      "sha256": "b5a8eeaf37c230b4aa74c4c75e4453539b92ef71118b0b2eb50732fc6ee14f85"
+      "sha256": "1b52ce18aa821c9b0685058c58917db0a55e7329612d87c5524a6aa62fe57eff"
     },
     {
       "path": "resources/xisland-hook.cjs",
-      "size": 257059,
-      "sha256": "357b84b0337f8e7b266e38c1b041d92597f9a5cc3b32d1f181fcdbc8ca7c453a"
+      "size": 317189,
+      "sha256": "b9169605c4e26feac1a91b43554f08dd9a0497b86e73c619cb0823a88e286dfb"
     }
   ]
 }

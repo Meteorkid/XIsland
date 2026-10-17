@@ -161,7 +161,7 @@ impl Bridge {
 pub fn valid_activity_receipt(value: &Value) -> bool {
     let Some(fields) = value.as_object() else { return false };
     fields.len() == 4 && fields.keys().all(|key| ["agent", "configurationRevision", "runtimeFingerprint", "event"].contains(&key.as_str()))
-        && matches!(value["agent"].as_str(), Some("claude_code" | "codex" | "cursor" | "gemini_cli" | "windsurf" | "trae_cn" | "qwen" | "code_buddy" | "droid" | "opencode" | "kimi_code"))
+        && matches!(value["agent"].as_str(), Some("claude_code" | "codex" | "cursor" | "gemini_cli" | "windsurf" | "trae_cn" | "qwen" | "code_buddy" | "droid" | "opencode" | "kimi_code" | "copilot_cli" | "pi"))
         && ["configurationRevision", "runtimeFingerprint"].iter().all(|key| value[*key].as_str().is_some_and(|text|
             text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))))
         && value["event"].as_str().is_some_and(|text| !text.is_empty() && text.len() <= 128 && !text.chars().any(char::is_control))

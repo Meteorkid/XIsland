@@ -19,6 +19,11 @@ interface Snapshot { exists: boolean; bytes: Buffer; revision: string; text?: st
 
 const errorCode = (error: unknown): string | undefined => (error as NodeJS.ErrnoException)?.code;
 const digest = (bytes?: Buffer): string => createHash('sha256').update(bytes === undefined ? 'missing\0' : 'present\0').update(bytes ?? Buffer.alloc(0)).digest('hex');
+/** 审阅凭证同时绑定目标和运行时；不同目录的缺失文件不能复用同一份计划。 */
+export function kimiCodeConfigurationRevision(configPath: string, rawRevision: string, nodeExecutable: string, hookScript: string): string {
+  return createHash('sha256').update(JSON.stringify(['kimi_code', configPath, rawRevision, nodeExecutable, hookScript])).digest('hex');
+}
+const revision = (paths: Location, rawRevision: string): string => kimiCodeConfigurationRevision(paths.configPath, rawRevision, paths.node, paths.script);
 const within = (root: string, path: string): boolean => {
   const child = relative(root, path);
   return child !== '' && !isAbsolute(child) && child !== '..' && !child.startsWith('..' + sep);
@@ -151,7 +156,7 @@ function configurationPlan(paths: Location, snapshot: Snapshot, operation: Integ
 function summary(paths: Location, snapshot: Snapshot, operation: IntegrationOperation, ready: boolean,
   plan: KimiCodeConfigurationPlan): KimiCodeInstallationSummary {
   return { agent: 'kimi_code', operation, configPath: paths.configPath, changed: plan.changed,
-    addedHandlers: plan.addedHandlers, removedHandlers: plan.removedHandlers, revision: snapshot.revision, runtimeReady: ready,
+    addedHandlers: plan.addedHandlers, removedHandlers: plan.removedHandlers, revision: revision(paths, snapshot.revision), runtimeReady: ready,
     backup: { required: plan.changed && snapshot.exists, directory: dirname(paths.configPath), filenamePrefix: 'config.toml.xisland-backup-', exclusive: true },
     warnings: ['此计划未写入配置；配置状态不代表 Kimi Code 已加载，需要重启客户端并核对实际事件。',
       '此入口仅接入 Node Kimi Code 的观察事件，审批和回答仍在原客户端处理；保留 Python .kimi 配置、其他 hooks 和权限设置。'],
@@ -165,7 +170,7 @@ export async function getKimiCodeStatus(options: KimiCodeInstallerOptions = {}) 
   await safeDirectory(paths.home, dirname(paths.configPath));
   const snapshot = await readSnapshot(paths.configPath), ready = await runtimeReady(paths);
   const installation = configurationPlan(paths, snapshot, 'install'), removal = configurationPlan(paths, snapshot, 'uninstall');
-  return { agent: 'kimi_code' as const, platformSupported: true, configPath: paths.configPath, revision: snapshot.revision,
+  return { agent: 'kimi_code' as const, platformSupported: true, configPath: paths.configPath, revision: revision(paths, snapshot.revision),
     runtimeReady: ready, installed: !installation.changed, managedHandlers: removal.removedHandlers,
     updateAvailable: removal.removedHandlers > 0 && installation.changed,
     warnings: ['配置文件状态不代表 Kimi Code 已加载；需要重启客户端并核对实际事件。',
@@ -228,7 +233,7 @@ async function commit(paths: Location, snapshot: Snapshot, next: Buffer, options
     if (operation === 'install' && !await runtimeReady(paths)) throw new IntegrationError('runtime_missing', '运行时文件在应用计划前发生变化，原配置未修改。');
     // 不先删除旧配置；Windows 文件被占用导致 rename 失败时原文件仍在。
     await (options.replaceFile ?? rename)(temporary, paths.configPath);
-    return { backupId, revision: digest(next) };
+    return { backupId, revision: revision(paths, digest(next)) };
   } finally {
     if (temporaryIdentity) await removeOwnedTemporary(paths, temporary, temporaryIdentity);
   }
@@ -241,7 +246,7 @@ export async function applyKimiCodeIntegration(operation: IntegrationOperation, 
   await safeDirectory(paths.home, dirname(paths.configPath));
   const apply = async (write: boolean): Promise<KimiCodeInstallationResult | undefined> => {
     const snapshot = await readSnapshot(paths.configPath);
-    if (snapshot.revision !== expectedRevision) throw new IntegrationError('revision_conflict', '配置已改变，请重新查看并确认计划。');
+    if (revision(paths, snapshot.revision) !== expectedRevision) throw new IntegrationError('revision_conflict', '配置、目标目录或运行时已改变，请重新查看并确认计划。');
     const ready = await runtimeReady(paths);
     if (operation === 'install' && !ready) throw new IntegrationError('runtime_missing', 'Node、hook 或 bridge 文件缺失，原配置未修改。');
     const configuration = configurationPlan(paths, snapshot, operation);

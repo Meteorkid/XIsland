@@ -25,7 +25,7 @@ export interface SetupCallbacks { changed?(snapshot: SetupSnapshot): void; needs
 // 本表只含可管理来源；类型检查会要求新增 ManagedAgent 时同步补齐。
 const defaults: Record<ManagedAgent, boolean> = {
   claude_code: true, codex: true, cursor: true, gemini_cli: true, windsurf: true, trae_cn: true,
-  qwen: true, code_buddy: true, droid: true, opencode: true, kimi_code: true,
+  qwen: true, code_buddy: true, droid: true, opencode: true, kimi_code: true, copilot_cli: true, pi: true,
 };
 const agents = Object.keys(defaults) as ManagedAgent[];
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -70,6 +70,7 @@ const reminderToken = (row: SetupRow) => JSON.stringify([row.phase, row.fingerpr
 
 /** 只协调平台 API；状态、计划与写入均由调用者注入，不访问文件系统或用户目录。 */
 export class IntegrationSetupCoordinator {
+  private readonly startedAt = Date.now();
   private state = freshState();
   private rows: SetupRow[] = agents.map(agent => ({ agent, enabled: true, phase: 'checkFailed' }));
   private loading?: Promise<void>;
@@ -277,8 +278,13 @@ export class IntegrationSetupCoordinator {
     if (!row.enabled) return { ...row, phase: 'disabled' };
     if (failure) return { ...row, error: failure };
     if (!status) return { ...row, error: '尚未取得客户端状态。' };
-    if (status.client?.state === 'not_found') return { ...row, phase: 'notInstalled' };
-    if (status.client?.state !== 'detected') return { ...row, error: status.client?.detail ?? '尚未确认客户端安装。' };
+    const activity = status.activity;
+    const validActivity = activity && typeof activity.event === 'string' && activity.event.trim()
+      && Number.isSafeInteger(activity.receivedAt) && activity.receivedAt > 0 && activity.receivedAt <= Date.now();
+    // 自定义安装位置可能不在静态检测目录；本次状态机接纳的活动是独立的程序存在证据。
+    const observedThisRun = validActivity && activity.receivedAt >= this.startedAt;
+    if (status.client?.state === 'not_found' && !observedThisRun) return { ...row, phase: 'notInstalled' };
+    if (status.client?.state !== 'detected' && !observedThisRun) return { ...row, error: status.client?.detail ?? '尚未确认客户端安装。' };
     if (!status.platformSupported || status.configurationKnown === false || status.installed === null) {
       return { ...row, error: status.reason ?? '当前平台或配置状态尚未确认。' };
     }
@@ -289,8 +295,7 @@ export class IntegrationSetupCoordinator {
       if (status.trust?.state === 'required') return { ...row, phase: 'needsAuthorization' };
       if (status.trust?.state !== 'granted') return { ...row, error: status.trust?.reason ?? '尚未确认 Codex hook 信任状态。' };
     }
-    const activity = status.activity;
-    return { ...row, phase: activity && activity.event.trim() && Number.isFinite(activity.receivedAt) && activity.receivedAt >= 0 ? 'connected' : 'waitingForActivity' };
+    return { ...row, phase: validActivity ? 'connected' : 'waitingForActivity' };
   }
 
   private unseen(row: SetupRow): boolean {

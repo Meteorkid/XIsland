@@ -9,10 +9,33 @@ import { windowsHookCommand } from '../src/integrations/plan';
 import { configurationRevision } from '../src/integrations/installer';
 import { applyKimiCodeIntegration, getKimiCodeStatus, planKimiCodeIntegration } from '../src/integrations/kimi-installation';
 import { applyOpenCodeIntegration, getOpenCodeStatus, planOpenCodeIntegration } from '../src/integrations/opencode-installation';
+import { applyCopilotIntegration, getCopilotStatus, planCopilotIntegration } from '../src/integrations/copilot-installation';
+import { applyPiIntegration, getPiStatus, planPiIntegration } from '../src/integrations/pi-installation';
 import { connectionIdentity, decorateIntegrationStatus, recordAcceptedIntegrationActivity, recordIntegrationActivity, type ConnectionHealthOptions,
   type ConnectionIdentity, type ConnectionStatus } from '../src/integrations/connection-health';
 
 const now = Date.parse('2026-10-17T00:00:00Z');
+
+for (const agent of ['copilot_cli', 'pi'] as const) {
+  test(`${agent} installed configuration binds owner-accepted activity to the actual runtime`, async t => {
+    const { home, options, testRuntime } = await fixture(t, agent);
+    const api = agent === 'copilot_cli' ? { plan: planCopilotIntegration, apply: applyCopilotIntegration, status: getCopilotStatus, event: 'sessionStart' }
+      : { plan: planPiIntegration, apply: applyPiIntegration, status: getPiStatus, event: 'session_start' };
+    const installerOptions = { tempHome: home, nodeExecutable: testRuntime.nodeExecutable };
+    const plan = await api.plan('install', installerOptions);
+    await api.apply('install', plan.revision, installerOptions);
+    const status = await api.status(installerOptions);
+    assert.equal(status.installed, true);
+    const identity = await connectionIdentity(status, options); assert.ok(identity);
+    const receipt = { ...identity, event: api.event };
+    assert.equal((await decorateIntegrationStatus(status, options)).activity, undefined);
+    assert.equal(await recordAcceptedIntegrationActivity(status, receipt, options), true);
+    assert.equal((await decorateIntegrationStatus(status, options)).activity?.event, api.event);
+    await writeFile(testRuntime.hookScript, 'upgraded hook');
+    assert.equal(await recordAcceptedIntegrationActivity(status, receipt, options), false);
+    assert.equal((await decorateIntegrationStatus(status, options)).activity, undefined);
+  });
+}
 
 test('Droid activity identity binds the selected configuration path as well as its bytes', async t => {
   const {status,options}=await fixture(t,'droid');
@@ -98,7 +121,8 @@ for (const agent of ['kimi_code', 'opencode'] as const) {
     const original = await installer.status(originalOptions), alternate = await installer.status(alternateOptions);
     assert.ok(original.installed && alternate.installed);
     assert.notEqual(original.configPath, alternate.configPath);
-    assert.equal(original.revision, alternate.revision);
+    assert.equal(await readFile(original.configPath!, 'utf8'), await readFile(alternate.configPath!, 'utf8'));
+    assert.notEqual(original.revision, alternate.revision);
     const originalIdentity = await connectionIdentity(original, options), alternateIdentity = await connectionIdentity(alternate, options);
     assert.ok(originalIdentity && alternateIdentity);
     await recordIntegrationActivity(originalIdentity, installer.event, options);

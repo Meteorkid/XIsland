@@ -90,6 +90,35 @@ test('compiled Kiro observer keeps Stop without an answer and returns empty neut
   }
 });
 
+test('Copilot CLI uses the configured event flag and preserves its native notification exception', async () => {
+  const base = { sessionId: 'copilot-native', timestamp: Date.now(), cwd: 'C:\\中文项目' };
+  for (const [event, fields] of [
+    ['sessionStart', { source: 'startup', initialPrompt: '只读检查' }],
+    ['preToolUse', { toolName: 'read_file', toolArgs: { path: 'README.md' } }],
+    ['notification', { hook_event_name: 'Notification', notification_type: 'agent_idle', message: '后台空闲' }],
+  ] as const) {
+    const result = await run('copilot_cli', { ...base, ...fields, native_event: 'untrusted-input' }, 'ack', { args: ['--hook', event] });
+    assert.equal(result.code, 0); assert.equal(result.stdout, '');
+    assert.equal((result.delivered as { nativeEvent: string }).nativeEvent, event);
+    assert.equal((result.delivered as { agentType: string }).agentType, 'copilot_cli');
+  }
+  const missingFlag = await run('copilot_cli', { ...base, native_event: 'sessionStart' });
+  assert.equal(missingFlag.code, 0); assert.equal(missingFlag.stdout, ''); assert.equal(missingFlag.delivered, undefined);
+  const vscode = await run('copilot_cli', { ...base, hook_event_name: 'SessionStart' }, 'ack', { args: ['--hook', 'sessionStart'] });
+  assert.equal(vscode.delivered, undefined); assert.equal(vscode.stdout, '');
+});
+
+test('Pi observation traverses the compiled hook without returning decisions', async () => {
+  for (const event of ['session_start', 'agent_end', 'agent_settled', 'session_shutdown']) {
+    const result = await run('pi', { native_event: event, session_id: 'pi-native', cwd: 'C:\\项目', model: 'glm-5.3' }, 'ack', { args: ['--hook', event] });
+    assert.equal(result.code, 0); assert.equal(result.stdout, '');
+    const delivered = result.delivered as { agentType: string; observedState?: string; model: string };
+    assert.equal(delivered.agentType, 'pi'); assert.equal(delivered.model, 'glm-5.3');
+    if (event === 'agent_end') assert.equal(delivered.observedState, undefined);
+    if (event === 'agent_settled') assert.equal(delivered.observedState, 'idle');
+  }
+});
+
 test('WorkBuddy subprocess observes lifecycle, rejects invalid input and never emits a native decision', async () => {
   for (const mode of ['ack', 'fail', 'wrong-session']) {
     const result = await run('workbuddy', native('FinalStop', { final_stop_reason: 'completed' }), mode, { args: ['--hook', 'FinalStop'] });

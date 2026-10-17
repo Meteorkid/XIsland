@@ -11,11 +11,13 @@ import { DROID_HOOK_EVENTS, normalizeDroidHook, droidHookResponse } from './droi
 import { OPENCODE_HOOK_EVENTS, normalizeOpenCodeHook, openCodeHookResponse } from './opencode';
 import { KIMI_CODE_HOOK_EVENTS, normalizeKimiCodeHook, kimiCodeHookResponse } from './kimi-code';
 import { KIRO_HOOK_EVENTS, normalizeKiroHook, kiroHookResponse } from './kiro';
+import { COPILOT_CLI_HOOK_EVENTS, normalizeCopilotCliHook, copilotCliHookResponse } from './copilot-cli';
+import { PI_HOOK_EVENTS, normalizePiHook, piHookResponse } from './pi';
 import type { DIMessage, DIResponse } from '../core/protocol';
 
 export const CONFIGURABLE_AGENTS = ['claude_code', 'codex', 'cursor', 'gemini_cli', 'windsurf', 'trae_cn', 'qwen', 'code_buddy', 'droid'] as const;
 export type ConfigurableAgent = typeof CONFIGURABLE_AGENTS[number];
-export const MANAGED_AGENTS = [...CONFIGURABLE_AGENTS, 'opencode', 'kimi_code'] as const;
+export const MANAGED_AGENTS = [...CONFIGURABLE_AGENTS, 'opencode', 'kimi_code', 'copilot_cli', 'pi'] as const;
 export type ManagedAgent = typeof MANAGED_AGENTS[number];
 export const SUPPORTED_AGENTS = [...MANAGED_AGENTS, 'workbuddy', 'kiro'] as const;
 export type SupportedAgent = typeof SUPPORTED_AGENTS[number];
@@ -40,6 +42,8 @@ const adapters: Record<SupportedAgent, HookAdapter> = {
   opencode: { events: OPENCODE_HOOK_EVENTS, normalize: normalizeOpenCodeHook, respond: openCodeHookResponse },
   kimi_code: { events: KIMI_CODE_HOOK_EVENTS, normalize: normalizeKimiCodeHook, respond: kimiCodeHookResponse, timeoutMs: 2000 },
   kiro: { events: KIRO_HOOK_EVENTS, normalize: normalizeKiroHook, respond: kiroHookResponse, timeoutMs: 2000 },
+  copilot_cli: { events: COPILOT_CLI_HOOK_EVENTS, normalize: normalizeCopilotCliHook, respond: copilotCliHookResponse, timeoutMs: 2000 },
+  pi: { events: PI_HOOK_EVENTS, normalize: normalizePiHook, respond: piHookResponse, timeoutMs: 2000 },
 };
 export function adapterFor(agent: string): HookAdapter {
   if (!(SUPPORTED_AGENTS as readonly string[]).includes(agent)) throw new Error('unsupported_agent');

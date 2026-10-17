@@ -130,7 +130,8 @@ async function main(): Promise<void> {
       writeOutput({ stdout: JSON.stringify(result), exitCode: 0 });
       return;
     }
-    eventField = args.get('--agent') === 'windsurf' ? 'agent_action_name' : args.get('--agent') === 'opencode' ? 'native_event' : 'hook_event_name';
+    eventField = args.get('--agent') === 'windsurf' ? 'agent_action_name'
+      : ['opencode', 'pi', 'copilot_cli'].includes(args.get('--agent') ?? '') ? 'native_event' : 'hook_event_name';
     expectedEvent = args.get('--hook');
     planning = args.has('--plan');
     if (serviceMode) {
@@ -159,7 +160,11 @@ async function main(): Promise<void> {
       writeOutput({ stdout: JSON.stringify(integrationPlanSummary(plan)), exitCode: 0 });
       return;
     }
-    if (expectedEvent && (!isRecord(payload) || payload[eventField] !== expectedEvent)) throw new Error('hook_event_mismatch');
+    if (args.get('--agent') === 'copilot_cli') {
+      // Copilot CLI 大部分原生输入不含事件名；只有配置命令的固定 --hook 能指定事件。
+      if (!expectedEvent || !adapter.events.includes(expectedEvent) || !isRecord(payload)) throw new Error('hook_event_required');
+      payload = { ...payload, native_event: expectedEvent };
+    } else if (expectedEvent && (!isRecord(payload) || payload[eventField] !== expectedEvent)) throw new Error('hook_event_mismatch');
     const message = adapter.normalize(payload);
     let identity: Awaited<ReturnType<typeof connectionIdentity>>;
     if (process.platform === 'win32' && process.env.XISLAND_TEST_MODE !== '1' && (MANAGED_AGENTS as readonly string[]).includes(args.get('--agent') ?? 'claude_code')) {

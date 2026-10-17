@@ -1,8 +1,8 @@
 {
   "product": "XIsland for Windows",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "channel": "development-preview",
-  "createdAt": "2026-10-17T12:18:49.400Z",
+  "createdAt": "2026-10-17T13:29:22.241Z",
   "target": "x86_64-pc-windows-msvc",
   "crossCompiled": true,
   "signed": false,
@@ -10,9 +10,9 @@
   "fullMacParityVerified": false,
   "artifacts": [
     {
-      "name": "XIsland-Windows-0.1.7-preview-x64-setup.exe",
-      "size": 26418057,
-      "sha256": "505fabfcb4f5b6d05d772982ea5f471c4a322ce598498af6d0110a159c65b5b9"
+      "name": "XIsland-Windows-0.1.8-preview-x64-setup.exe",
+      "size": 26415183,
+      "sha256": "4c202976cfa1cbdd33970d5e7a64e862c96531e5298044f4fe3af1d8abf91f59"
     },
     {
       "name": "Test-XIsland.ps1",
@@ -21,13 +21,13 @@
     },
     {
       "name": "Windows验收说明.md",
-      "size": 8009,
-      "sha256": "b9e357e494138d6e130d75f40a2168b11ebfd295c32c999febd84508891d795e"
+      "size": 9575,
+      "sha256": "4aff646c04c118eccdee17c158982f01f67625f58bd2d46953e5d39b634fd309"
     },
     {
       "name": "README.md",
-      "size": 10494,
-      "sha256": "9b3824df0c4393ccf470f1c1ce39bde0a4abee4ee3352e20411fc12cb24720ab"
+      "size": 11537,
+      "sha256": "97c7d87a867b052d2bc02c8452aa139052e8bf7afb2a11a29d1c9d257ab86194"
     },
     {
       "name": "LICENSE-node.txt",
@@ -40,28 +40,32 @@
       "sha256": "d2cc6f0f8571ecf7d5407f2dc0b0a9b95c0221c95b2c547eb69b965f27a3d83b"
     }
   ],
-  "unbundledExecutableSha256": "0169029cebec3881536c55e3cb7bf9b241be7b905eb3dbcda7e01f6e40705269",
-  "installedExecutableSha256": "6558e2144b6f66aca816f7f1759ba40934a06dccf9ed2ce1a965f551d1e996a1",
+  "unbundledExecutableSha256": "c0ec56e1288ebaf4912e22d85c2795c59f9c10ef0128fe2e866e097f210d9143",
+  "installedExecutableSha256": "48bbc995ebf9d854b93cc9eceb287b7009d40cb56277aa39ae841615531e2ce2",
   "bundleInspection": {
     "date": "2026-10-17",
-    "version": "0.1.7",
+    "version": "0.1.8",
     "inspection": "independent NSIS extraction with 7-Zip 26.04",
-    "installerSha256": "505fabfcb4f5b6d05d772982ea5f471c4a322ce598498af6d0110a159c65b5b9",
+    "installerSha256": "4c202976cfa1cbdd33970d5e7a64e862c96531e5298044f4fe3af1d8abf91f59",
     "packagedApplicationDifference": "Only verified Tauri bundle marker UNK -> NSS (3 bytes)",
     "bundledNodeMatchesOfficialChecksum": true,
     "allBundledResourcesMatchSourceBytes": true,
-    "newSetupAndKiroSymbolsPresent": true,
+    "newCopilotAndPiSymbolsPresent": true,
+    "actualPackagedHookNativeMacosChecks": [
+      "OpenCode 1.19.3: 3 scenarios",
+      "Pi 1.3.0: RPC 2 sessions, 17 events"
+    ],
     "windowsExecutionVerified": false,
     "files": [
       {
         "path": "xisland.exe",
-        "size": 10713600,
-        "sha256": "6558e2144b6f66aca816f7f1759ba40934a06dccf9ed2ce1a965f551d1e996a1"
+        "size": 10713088,
+        "sha256": "48bbc995ebf9d854b93cc9eceb287b7009d40cb56277aa39ae841615531e2ce2"
       },
       {
         "path": "xisland-bridge.exe",
-        "size": 870912,
-        "sha256": "c98f0288a72d3b25c2be7d74cf1e4fe591486549633e8f73e14447a7457c5303"
+        "size": 870400,
+        "sha256": "af898c5a1c2dbf27962938f093b73aa59ba7343cda029d86abe971550d9b8e15"
       },
       {
         "path": "resources/LICENSE-XIsland.txt",
@@ -91,19 +95,19 @@
       {
         "path": "resources/xisland-bridge.exe",
         "size": 745472,
-        "sha256": "b5a8eeaf37c230b4aa74c4c75e4453539b92ef71118b0b2eb50732fc6ee14f85"
+        "sha256": "1b52ce18aa821c9b0685058c58917db0a55e7329612d87c5524a6aa62fe57eff"
       },
       {
         "path": "resources/xisland-hook.cjs",
-        "size": 257059,
-        "sha256": "357b84b0337f8e7b266e38c1b041d92597f9a5cc3b32d1f181fcdbc8ca7c453a"
+        "size": 317189,
+        "sha256": "b9169605c4e26feac1a91b43554f08dd9a0497b86e73c619cb0823a88e286dfb"
       }
     ]
   },
   "buildInputs": {
-    "version": "0.1.7",
-    "capturedAt": "2026-10-17T12:16:45.473Z",
-    "digest": "97d8c7604e3131b425e7abe92dde8e297b539578687c8b7f54c494639f400cd2",
+    "version": "0.1.8",
+    "capturedAt": "2026-10-17T13:19:36.329Z",
+    "digest": "98bcb516d636bfbe1ebb30e62aacb5504fa6093d5eaed4185bfb74efaa5042fd",
     "files": [
       {
         "path": "../LICENSE",
@@ -139,15 +143,15 @@
       },
       {
         "path": "package-lock.json",
-        "sha256": "8639484085e833f85189e213035b7a087e22d321300ce8a3f6a08eb93c012197"
+        "sha256": "6815f0add22747f51b1eb53c199b72a1fe1144564855f80df01da7e93a629fc5"
       },
       {
         "path": "package.json",
-        "sha256": "7a8bf7f73fb66b0bf6d0e60157a6805fcd46cc472f66894a0f8df964ba79d988"
+        "sha256": "a0c58b8c2d204859b3e669483c8544c92cd90fde3590a7fd1d214e3f76660209"
       },
       {
         "path": "playwright.config.ts",
-        "sha256": "5072d5ac797ab74c8086094960dfc85d787cc7c0e438e0767fa237d937c2c2d3"
+        "sha256": "5a1b8233f32a6cc230418094a0d4ab92b06ab55f67adee1bb0a5f972eb6ef444"
       },
       {
         "path": "scripts/build-hook.mjs",
@@ -178,6 +182,10 @@
         "sha256": "d717b6d3676107914f8193bffcd049b01dd2875d413a1afc993d4061f080df1b"
       },
       {
+        "path": "scripts/verify-pi-client.ts",
+        "sha256": "c429c0fa016ebd86ec9084eabdb18cf09b848c456af5bd7c465130d126e06342"
+      },
+      {
         "path": "scripts/verify-workbuddy-package.mjs",
         "sha256": "69dda630ce1753e625c813d3b5ff51e041f66de9cabaee866c2f61505af9fcdd"
       },
@@ -195,11 +203,11 @@
       },
       {
         "path": "src-tauri/Cargo.lock",
-        "sha256": "25e3fb833479acb5cbd6a2f66a07830c01621d75396e57e0f19fef06c00d983f"
+        "sha256": "79ab12ba88eedaafffa6b9a27a2ce52f7ee5243c70aac1ee8c4d1fd0f38d3ed0"
       },
       {
         "path": "src-tauri/Cargo.toml",
-        "sha256": "334d5378a9ae44f556e471e4a6e26409dfb65705a1112a20eb7420525204f816"
+        "sha256": "8a7de36e4dc2f6904a3ed15f570667d109d290641200cececdc4fe9a1f2a73b0"
       },
       {
         "path": "src-tauri/icons/128x128.png",
@@ -247,7 +255,7 @@
       },
       {
         "path": "src-tauri/resources/xisland-bridge.exe",
-        "sha256": "b5a8eeaf37c230b4aa74c4c75e4453539b92ef71118b0b2eb50732fc6ee14f85"
+        "sha256": "1b52ce18aa821c9b0685058c58917db0a55e7329612d87c5524a6aa62fe57eff"
       },
       {
         "path": "src-tauri/src/bin/bridge.rs",
@@ -271,7 +279,7 @@
       },
       {
         "path": "src-tauri/src/integrations.rs",
-        "sha256": "eed00c9afb8f86ca578dd94950ec519248351c1e55fccea11aa9fab6671b4f4b"
+        "sha256": "e5a4c3937f6d08bf7df86741a835f7ff1be3d2079709a8e920a036f5ef158ca3"
       },
       {
         "path": "src-tauri/src/lib.rs",
@@ -287,11 +295,11 @@
       },
       {
         "path": "src-tauri/src/setup_sync.rs",
-        "sha256": "adbcd1f517510181f3739174df6cdf9558a22aee20294e4235bdf2c06e7e1603"
+        "sha256": "37278e3f8957cbf16c4cf2a18a19f7f708af6e0c4a56f8f9290de24277abeaa9"
       },
       {
         "path": "src-tauri/src/transport.rs",
-        "sha256": "fdce70d0bb0bd71a8d0cbae787c927902581bf2562799bdff288c99bd806f2f5"
+        "sha256": "b1468ac9fc242b4aade8361ec089ee0ee5b69cf6630d0ff0d71dea6a197ef98c"
       },
       {
         "path": "src-tauri/src/windowing.rs",
@@ -299,7 +307,7 @@
       },
       {
         "path": "src-tauri/tauri.conf.json",
-        "sha256": "962b471040f50c4a85db8c39b9d4a3c57687edaf6c09e6a5896e3326a7c0d302"
+        "sha256": "62c60a6fbc15b540883336ab148c8630a146ec8be1cced5cd8cf6d2a8c3c9dde"
       },
       {
         "path": "src-tauri/tests/fixtures/traework-cn-0.2.2-product.json",
@@ -320,6 +328,10 @@
       {
         "path": "src/adapters/codex.ts",
         "sha256": "207927717b30f18dda0e8b874f0e38de702e0fffabef210e071e19b6b846af37"
+      },
+      {
+        "path": "src/adapters/copilot-cli.ts",
+        "sha256": "b9a41b2dfdb48e77bf3482efd374cee9fedc57cf33ed5b10ce223654144928a6"
       },
       {
         "path": "src/adapters/cursor.ts",
@@ -346,12 +358,16 @@
         "sha256": "c5dec6baa88dcd518d4fd5aa2acdae86631a061482b80e6bc9bcc93f783a5b38"
       },
       {
+        "path": "src/adapters/pi.ts",
+        "sha256": "b706c90d7770c8e47a2d3dc5cc604646ed384aa94fc2233f46a4d1a2ec4efa43"
+      },
+      {
         "path": "src/adapters/qwen.ts",
         "sha256": "f14294aa7d3855b710e74adf383540c988f61b0fbedcd8aff086bcc1c4136e85"
       },
       {
         "path": "src/adapters/registry.ts",
-        "sha256": "99d8e095f73c7190ddff49bed66b3e090169a4e49363d84c98aebe44aeeb1f39"
+        "sha256": "8abe14febce7e679a5c4973ffd7a31cfba9cbf595ea171c5e13dca44bdba6df8"
       },
       {
         "path": "src/adapters/trae.ts",
@@ -386,8 +402,12 @@
         "sha256": "ab34f2f0b399db8e96a0e16481d0270a939821d5aa530b5b2f5b07ede78293be"
       },
       {
+        "path": "src/core/session-filter.ts",
+        "sha256": "a64fa3c11b7baa440e666a8501c3787630e48de82f77d4649a1c41fd19306ea7"
+      },
+      {
         "path": "src/core/session-store.ts",
-        "sha256": "f537576d1e4f3a2036a0e8c69dae950c54bc0009bace0f30a80f7f53551d13a8"
+        "sha256": "3d3cc2abfc115de76d3b0532c69bc02072191f1aea5318a83edddb1f2237668e"
       },
       {
         "path": "src/core/types.ts",
@@ -439,7 +459,7 @@
       },
       {
         "path": "src/hook.ts",
-        "sha256": "5840175e32713b4cff0c0ddd0d00b6695ee5632435a57b03413f6c93ed0d096f"
+        "sha256": "afbded88fda3b4c7fc57ac9e245b855c03cfe7982dcc2b7ce5e0253d1ff40c13"
       },
       {
         "path": "src/integrations/codex-trust.ts",
@@ -447,11 +467,19 @@
       },
       {
         "path": "src/integrations/connection-health.ts",
-        "sha256": "4411836f4a75dfd9ab53c4c4a9af97f0d673a1d16834f38433de9e193b66defe"
+        "sha256": "0d5b7fdd4c3078663f90a5e1d225fb99ac5bf2990347367a0454bd56e8bc8b55"
+      },
+      {
+        "path": "src/integrations/copilot-config.ts",
+        "sha256": "db68295f94cffe452fdf2ba5d3438f67ec3b1b886b20e5b1984e55c9f1f286ea"
+      },
+      {
+        "path": "src/integrations/copilot-installation.ts",
+        "sha256": "a5c5cb4fd7576d5d2871b8c41a6da8a7daf99ee4f71798644264604d87d17d4b"
       },
       {
         "path": "src/integrations/discovery.ts",
-        "sha256": "c30335d1a8e841128a67f28f8e5458bd73b8bf67889da748c09e3db061cb98fc"
+        "sha256": "d39222c4d8d3d37b8479164f4c442b2f2f7c2c056818e8a4ce2459d50f5be767"
       },
       {
         "path": "src/integrations/installer.ts",
@@ -463,7 +491,7 @@
       },
       {
         "path": "src/integrations/kimi-installation.ts",
-        "sha256": "15232c582c914931eaf490dcdc5c41cd4ef682e6d9b859681e717fc8152b8850"
+        "sha256": "b4e760cefbecbb7304da1c9a8cfbd1683824809745ae00706882a14df24fc377"
       },
       {
         "path": "src/integrations/kiro-plugin.ts",
@@ -471,23 +499,31 @@
       },
       {
         "path": "src/integrations/opencode-installation.ts",
-        "sha256": "622e82e95dd71410922d6b9aa0c09bb21d78c8858a5cfc50ddfa68accd491377"
+        "sha256": "c8948f635395aaf0df31c65393ba023c1361f3856f41134d7a31573bff369f9f"
       },
       {
         "path": "src/integrations/opencode-plugin.ts",
         "sha256": "684a7697c96da025601bf61d0a70dab0cc7410bf07c3fb8739d54589a96bf25e"
       },
       {
+        "path": "src/integrations/pi-installation.ts",
+        "sha256": "a56c4681e0f11616035e41e89f22361581fc19215bf39cc7a0a420af9526c345"
+      },
+      {
+        "path": "src/integrations/pi-plugin.ts",
+        "sha256": "dc530109abea3a360c2f55b1ae9eb837fb0e146c0b8cb6e02f2a7b19656d2f28"
+      },
+      {
         "path": "src/integrations/plan.ts",
-        "sha256": "9403d029347e6f20cd15186abdcd1cae950cf83d8cd5a1be6cafe2625519c644"
+        "sha256": "24e3f3820b9a7ea4f4ca00357640e3ba0538347f05c7ed1d6720dc45b90f72eb"
       },
       {
         "path": "src/integrations/service.ts",
-        "sha256": "354ad359cebd617788d693881aed9c7903e84a9f7a4d6565bdd62dbd384dd92b"
+        "sha256": "8882e06296f8d039c63ae495df2f41acf79e059f09f0bf2ed3e3979e2ea7c487"
       },
       {
         "path": "src/integrations/setup-coordinator.ts",
-        "sha256": "46b813c20d31ccbb291ec05327ed60f0ec65be95bc32ce95cb7f4d3619daf5a7"
+        "sha256": "95e65ff3b4a19cdacac789c0a1ae0a6a889b174e7a98cd707dba0c71b4121777"
       },
       {
         "path": "src/integrations/workbuddy-plugin.ts",
@@ -515,19 +551,19 @@
       },
       {
         "path": "src/ui/components.ts",
-        "sha256": "83d049b7f63594108b3e4511aaf1e02d3ae059d70fb45e51bc2002141193d23f"
+        "sha256": "14137600341a9474ad2a8dcbc660243bc86f98576082902b8121d0ac86821978"
       },
       {
         "path": "src/ui/i18n.ts",
-        "sha256": "aa6022a1bdd4e6d8f5d53bebcee05f85fe00f81cfe22f8525705858c549b6005"
+        "sha256": "1d4ff9b7aeeb8b24d91048434dca789b745deb6c71d5cd1e0fbde6a4a0468004"
       },
       {
         "path": "src/ui/index.ts",
-        "sha256": "a99152601e8b2ff7f15e7cabb0b3331fe82af18508c5b60822526b4f2a0b3e6f"
+        "sha256": "80de80ce1f6732bc187a1878c1d48601217f9019818ba84a4fbada7b513d9075"
       },
       {
         "path": "src/ui/integration-controls.ts",
-        "sha256": "3b486531ba6ce354c847202a94dbc068ea7c6288586edaf7dd2458e4abf30c5b"
+        "sha256": "149cb2214eeef2f737bcbea57e41b3e40244c5f13631d52c4e5c425836620564"
       },
       {
         "path": "src/ui/island-switch.ts",
@@ -579,7 +615,19 @@
       },
       {
         "path": "tests/connection-health.test.ts",
-        "sha256": "53b949d9ee31b7009ef26ebad6b3daaaf11ef4569004992484c7cc9bcc770f3a"
+        "sha256": "a7ff29858e8b2ad2686e770b7b4c9839e88ef85797e90b7ea5a56092b9c90125"
+      },
+      {
+        "path": "tests/copilot-cli.test.ts",
+        "sha256": "cecc174aac7ce3f828dcd0ec4154c8133ba9564851c3b9272624a9736aa26656"
+      },
+      {
+        "path": "tests/copilot-config.test.ts",
+        "sha256": "53b256ca63eb32668213f2637abb2759ad1bafaa478b3af1b21c98b0a3196a52"
+      },
+      {
+        "path": "tests/copilot-installation.test.ts",
+        "sha256": "d4aae4d3a9364826bc3d16f2215e3bb80f391c03e1716faac4c5ff44a00880c1"
       },
       {
         "path": "tests/core.test.ts",
@@ -591,7 +639,7 @@
       },
       {
         "path": "tests/discovery.test.ts",
-        "sha256": "8c8a83745ec59c59391b7162b23c2b7a502bd6254655bd0a29acc974cd09b439"
+        "sha256": "1b76c3405f7f69f2210495f457ee03bb389257c0422aa3236ed214897e427cb7"
       },
       {
         "path": "tests/droid.test.ts",
@@ -619,7 +667,7 @@
       },
       {
         "path": "tests/hook.test.ts",
-        "sha256": "86762e3add8e371863da52eb05ffd87c922f21f06c69dc796b9c0d103ae658c9"
+        "sha256": "61dbc5986c9c813715b10020d0ca1fa274085d4712b13a969d795ed304b8f6f8"
       },
       {
         "path": "tests/integration-installer.test.ts",
@@ -647,7 +695,7 @@
       },
       {
         "path": "tests/kimi-installation.test.ts",
-        "sha256": "88ffb91e272a8a0e3416654a0221071a94fd82e27f9e6df493d04b7abe6f0847"
+        "sha256": "3f244b94d90083cb10b88827c84f4fc0328a5d2368322cf9ddbe0dc49b2b9f0b"
       },
       {
         "path": "tests/kimi-tasks.test.ts",
@@ -662,6 +710,10 @@
         "sha256": "f977b75662a9a528a5afa9348d66581b06a95e2ada840b66c116674053d53add"
       },
       {
+        "path": "tests/model-filter-ui.spec.ts",
+        "sha256": "e8e3f9d0e20f5959268824145261d8345caf5a94927c31764fe605da1dba794e"
+      },
+      {
         "path": "tests/multiwindow-regression.test.ts",
         "sha256": "f3a6595d1fbe627b1d277ad6f6fcf0e791b06d99e4a529ab218df904ba5f12ef"
       },
@@ -671,7 +723,7 @@
       },
       {
         "path": "tests/opencode-installation.test.ts",
-        "sha256": "b8b7cdbeca4e6363d986000fc300cfb83c10b5756e3b5d9e3e6b74432cad89b0"
+        "sha256": "2482ccc8c9661b7ca4818a3da8886ade389713ebcb57329d3ad4d20246db876a"
       },
       {
         "path": "tests/opencode-plugin.test.ts",
@@ -686,20 +738,36 @@
         "sha256": "3b054685baf86a973874c7be5ad6bb0acd52b67ef9aa584b1b069bdf7e152fa6"
       },
       {
+        "path": "tests/pi-installation.test.ts",
+        "sha256": "75eafe0cac2275eb27bb38dfcafbc4cdfae6098e4cfd2c97c385d2fc770bc159"
+      },
+      {
+        "path": "tests/pi-plugin.test.ts",
+        "sha256": "7fab88d2dc07d5cb6f820816fec4864871ee3953c6b836600071345a2d7ca14e"
+      },
+      {
+        "path": "tests/pi.test.ts",
+        "sha256": "987a6af8108958e13433037000dbe29017db35ca6f80124a3a3754674a931f93"
+      },
+      {
         "path": "tests/qwen.test.ts",
         "sha256": "e8469c5f7953e3e79ec258a31ca712ac7120c8f90932622b3a1b3546fcf0ee2a"
       },
       {
+        "path": "tests/session-filter.test.ts",
+        "sha256": "bcbfc49ff69a301702a4472a38eda591225fb330daa2914fd8e4c7d82ba08802"
+      },
+      {
         "path": "tests/setup-coordinator.test.ts",
-        "sha256": "656b1aeacd0246fc9aeebe49e7e462d0a280bdad2d804d6d00ee3a6250a1e421"
+        "sha256": "ec4b47ddb1fee686ad2dc1a80eaa7a296ee38168f652de433dc2ad175fd5e113"
       },
       {
         "path": "tests/setup-owner.test.ts",
-        "sha256": "8d3a15cc8d1bf71e4542680574ffd7b8fd770e5e0b76dc7f32cfa0605b790103"
+        "sha256": "1194533fda582172b09197783accb8ec529185259e108a9a373e03f0a79d4c7e"
       },
       {
         "path": "tests/setup-ui.spec.ts",
-        "sha256": "1091a733b1871bd267afe1ff4b77a23a7523dc0275fca809dae5341b244ac23b"
+        "sha256": "ac7aa67b2af441bebaa3eba3056af23a0deb035e8bbf3f0a1869bf019987eca7"
       },
       {
         "path": "tests/trae.test.ts",
@@ -711,7 +779,7 @@
       },
       {
         "path": "tests/ui.spec.ts",
-        "sha256": "229693d58853a7c27b1a069cd57fea8b60c1ef090ee48c8dd7d286b6e74cf38e"
+        "sha256": "5c027186eadf8d8da1590bbe503c5daa838c1b48a049c55e66594774948df7f2"
       },
       {
         "path": "tests/window-sync.test.ts",
@@ -740,7 +808,7 @@
     ]
   },
   "workingTreeSnapshot": {
-    "capturedAt": "2026-10-17T12:18:49.405Z",
+    "capturedAt": "2026-10-17T13:29:22.246Z",
     "artifactSourceMatchVerified": true,
     "files": [
       {
@@ -769,15 +837,15 @@
       },
       {
         "path": "package-lock.json",
-        "sha256": "8639484085e833f85189e213035b7a087e22d321300ce8a3f6a08eb93c012197"
+        "sha256": "6815f0add22747f51b1eb53c199b72a1fe1144564855f80df01da7e93a629fc5"
       },
       {
         "path": "package.json",
-        "sha256": "7a8bf7f73fb66b0bf6d0e60157a6805fcd46cc472f66894a0f8df964ba79d988"
+        "sha256": "a0c58b8c2d204859b3e669483c8544c92cd90fde3590a7fd1d214e3f76660209"
       },
       {
         "path": "playwright.config.ts",
-        "sha256": "5072d5ac797ab74c8086094960dfc85d787cc7c0e438e0767fa237d937c2c2d3"
+        "sha256": "5a1b8233f32a6cc230418094a0d4ab92b06ab55f67adee1bb0a5f972eb6ef444"
       },
       {
         "path": "scripts/build-hook.mjs",
@@ -808,6 +876,10 @@
         "sha256": "d717b6d3676107914f8193bffcd049b01dd2875d413a1afc993d4061f080df1b"
       },
       {
+        "path": "scripts/verify-pi-client.ts",
+        "sha256": "c429c0fa016ebd86ec9084eabdb18cf09b848c456af5bd7c465130d126e06342"
+      },
+      {
         "path": "scripts/verify-workbuddy-package.mjs",
         "sha256": "69dda630ce1753e625c813d3b5ff51e041f66de9cabaee866c2f61505af9fcdd"
       },
@@ -825,7 +897,7 @@
       },
       {
         "path": "src-tauri/Cargo.toml",
-        "sha256": "334d5378a9ae44f556e471e4a6e26409dfb65705a1112a20eb7420525204f816"
+        "sha256": "8a7de36e4dc2f6904a3ed15f570667d109d290641200cececdc4fe9a1f2a73b0"
       },
       {
         "path": "src-tauri/resources/node-runtime.json",
@@ -853,7 +925,7 @@
       },
       {
         "path": "src-tauri/src/integrations.rs",
-        "sha256": "eed00c9afb8f86ca578dd94950ec519248351c1e55fccea11aa9fab6671b4f4b"
+        "sha256": "e5a4c3937f6d08bf7df86741a835f7ff1be3d2079709a8e920a036f5ef158ca3"
       },
       {
         "path": "src-tauri/src/lib.rs",
@@ -869,11 +941,11 @@
       },
       {
         "path": "src-tauri/src/setup_sync.rs",
-        "sha256": "adbcd1f517510181f3739174df6cdf9558a22aee20294e4235bdf2c06e7e1603"
+        "sha256": "37278e3f8957cbf16c4cf2a18a19f7f708af6e0c4a56f8f9290de24277abeaa9"
       },
       {
         "path": "src-tauri/src/transport.rs",
-        "sha256": "fdce70d0bb0bd71a8d0cbae787c927902581bf2562799bdff288c99bd806f2f5"
+        "sha256": "b1468ac9fc242b4aade8361ec089ee0ee5b69cf6630d0ff0d71dea6a197ef98c"
       },
       {
         "path": "src-tauri/src/windowing.rs",
@@ -881,7 +953,7 @@
       },
       {
         "path": "src-tauri/tauri.conf.json",
-        "sha256": "962b471040f50c4a85db8c39b9d4a3c57687edaf6c09e6a5896e3326a7c0d302"
+        "sha256": "62c60a6fbc15b540883336ab148c8630a146ec8be1cced5cd8cf6d2a8c3c9dde"
       },
       {
         "path": "src-tauri/tests/fixtures/traework-cn-0.2.2-product.json",
@@ -902,6 +974,10 @@
       {
         "path": "src/adapters/codex.ts",
         "sha256": "207927717b30f18dda0e8b874f0e38de702e0fffabef210e071e19b6b846af37"
+      },
+      {
+        "path": "src/adapters/copilot-cli.ts",
+        "sha256": "b9a41b2dfdb48e77bf3482efd374cee9fedc57cf33ed5b10ce223654144928a6"
       },
       {
         "path": "src/adapters/cursor.ts",
@@ -928,12 +1004,16 @@
         "sha256": "c5dec6baa88dcd518d4fd5aa2acdae86631a061482b80e6bc9bcc93f783a5b38"
       },
       {
+        "path": "src/adapters/pi.ts",
+        "sha256": "b706c90d7770c8e47a2d3dc5cc604646ed384aa94fc2233f46a4d1a2ec4efa43"
+      },
+      {
         "path": "src/adapters/qwen.ts",
         "sha256": "f14294aa7d3855b710e74adf383540c988f61b0fbedcd8aff086bcc1c4136e85"
       },
       {
         "path": "src/adapters/registry.ts",
-        "sha256": "99d8e095f73c7190ddff49bed66b3e090169a4e49363d84c98aebe44aeeb1f39"
+        "sha256": "8abe14febce7e679a5c4973ffd7a31cfba9cbf595ea171c5e13dca44bdba6df8"
       },
       {
         "path": "src/adapters/trae.ts",
@@ -968,8 +1048,12 @@
         "sha256": "ab34f2f0b399db8e96a0e16481d0270a939821d5aa530b5b2f5b07ede78293be"
       },
       {
+        "path": "src/core/session-filter.ts",
+        "sha256": "a64fa3c11b7baa440e666a8501c3787630e48de82f77d4649a1c41fd19306ea7"
+      },
+      {
         "path": "src/core/session-store.ts",
-        "sha256": "f537576d1e4f3a2036a0e8c69dae950c54bc0009bace0f30a80f7f53551d13a8"
+        "sha256": "3d3cc2abfc115de76d3b0532c69bc02072191f1aea5318a83edddb1f2237668e"
       },
       {
         "path": "src/core/types.ts",
@@ -1021,7 +1105,7 @@
       },
       {
         "path": "src/hook.ts",
-        "sha256": "5840175e32713b4cff0c0ddd0d00b6695ee5632435a57b03413f6c93ed0d096f"
+        "sha256": "afbded88fda3b4c7fc57ac9e245b855c03cfe7982dcc2b7ce5e0253d1ff40c13"
       },
       {
         "path": "src/integrations/codex-trust.ts",
@@ -1029,11 +1113,19 @@
       },
       {
         "path": "src/integrations/connection-health.ts",
-        "sha256": "4411836f4a75dfd9ab53c4c4a9af97f0d673a1d16834f38433de9e193b66defe"
+        "sha256": "0d5b7fdd4c3078663f90a5e1d225fb99ac5bf2990347367a0454bd56e8bc8b55"
+      },
+      {
+        "path": "src/integrations/copilot-config.ts",
+        "sha256": "db68295f94cffe452fdf2ba5d3438f67ec3b1b886b20e5b1984e55c9f1f286ea"
+      },
+      {
+        "path": "src/integrations/copilot-installation.ts",
+        "sha256": "a5c5cb4fd7576d5d2871b8c41a6da8a7daf99ee4f71798644264604d87d17d4b"
       },
       {
         "path": "src/integrations/discovery.ts",
-        "sha256": "c30335d1a8e841128a67f28f8e5458bd73b8bf67889da748c09e3db061cb98fc"
+        "sha256": "d39222c4d8d3d37b8479164f4c442b2f2f7c2c056818e8a4ce2459d50f5be767"
       },
       {
         "path": "src/integrations/installer.ts",
@@ -1045,7 +1137,7 @@
       },
       {
         "path": "src/integrations/kimi-installation.ts",
-        "sha256": "15232c582c914931eaf490dcdc5c41cd4ef682e6d9b859681e717fc8152b8850"
+        "sha256": "b4e760cefbecbb7304da1c9a8cfbd1683824809745ae00706882a14df24fc377"
       },
       {
         "path": "src/integrations/kiro-plugin.ts",
@@ -1053,23 +1145,31 @@
       },
       {
         "path": "src/integrations/opencode-installation.ts",
-        "sha256": "622e82e95dd71410922d6b9aa0c09bb21d78c8858a5cfc50ddfa68accd491377"
+        "sha256": "c8948f635395aaf0df31c65393ba023c1361f3856f41134d7a31573bff369f9f"
       },
       {
         "path": "src/integrations/opencode-plugin.ts",
         "sha256": "684a7697c96da025601bf61d0a70dab0cc7410bf07c3fb8739d54589a96bf25e"
       },
       {
+        "path": "src/integrations/pi-installation.ts",
+        "sha256": "a56c4681e0f11616035e41e89f22361581fc19215bf39cc7a0a420af9526c345"
+      },
+      {
+        "path": "src/integrations/pi-plugin.ts",
+        "sha256": "dc530109abea3a360c2f55b1ae9eb837fb0e146c0b8cb6e02f2a7b19656d2f28"
+      },
+      {
         "path": "src/integrations/plan.ts",
-        "sha256": "9403d029347e6f20cd15186abdcd1cae950cf83d8cd5a1be6cafe2625519c644"
+        "sha256": "24e3f3820b9a7ea4f4ca00357640e3ba0538347f05c7ed1d6720dc45b90f72eb"
       },
       {
         "path": "src/integrations/service.ts",
-        "sha256": "354ad359cebd617788d693881aed9c7903e84a9f7a4d6565bdd62dbd384dd92b"
+        "sha256": "8882e06296f8d039c63ae495df2f41acf79e059f09f0bf2ed3e3979e2ea7c487"
       },
       {
         "path": "src/integrations/setup-coordinator.ts",
-        "sha256": "46b813c20d31ccbb291ec05327ed60f0ec65be95bc32ce95cb7f4d3619daf5a7"
+        "sha256": "95e65ff3b4a19cdacac789c0a1ae0a6a889b174e7a98cd707dba0c71b4121777"
       },
       {
         "path": "src/integrations/workbuddy-plugin.ts",
@@ -1097,19 +1197,19 @@
       },
       {
         "path": "src/ui/components.ts",
-        "sha256": "83d049b7f63594108b3e4511aaf1e02d3ae059d70fb45e51bc2002141193d23f"
+        "sha256": "14137600341a9474ad2a8dcbc660243bc86f98576082902b8121d0ac86821978"
       },
       {
         "path": "src/ui/i18n.ts",
-        "sha256": "aa6022a1bdd4e6d8f5d53bebcee05f85fe00f81cfe22f8525705858c549b6005"
+        "sha256": "1d4ff9b7aeeb8b24d91048434dca789b745deb6c71d5cd1e0fbde6a4a0468004"
       },
       {
         "path": "src/ui/index.ts",
-        "sha256": "a99152601e8b2ff7f15e7cabb0b3331fe82af18508c5b60822526b4f2a0b3e6f"
+        "sha256": "80de80ce1f6732bc187a1878c1d48601217f9019818ba84a4fbada7b513d9075"
       },
       {
         "path": "src/ui/integration-controls.ts",
-        "sha256": "3b486531ba6ce354c847202a94dbc068ea7c6288586edaf7dd2458e4abf30c5b"
+        "sha256": "149cb2214eeef2f737bcbea57e41b3e40244c5f13631d52c4e5c425836620564"
       },
       {
         "path": "src/ui/island-switch.ts",
@@ -1161,7 +1261,19 @@
       },
       {
         "path": "tests/connection-health.test.ts",
-        "sha256": "53b949d9ee31b7009ef26ebad6b3daaaf11ef4569004992484c7cc9bcc770f3a"
+        "sha256": "a7ff29858e8b2ad2686e770b7b4c9839e88ef85797e90b7ea5a56092b9c90125"
+      },
+      {
+        "path": "tests/copilot-cli.test.ts",
+        "sha256": "cecc174aac7ce3f828dcd0ec4154c8133ba9564851c3b9272624a9736aa26656"
+      },
+      {
+        "path": "tests/copilot-config.test.ts",
+        "sha256": "53b256ca63eb32668213f2637abb2759ad1bafaa478b3af1b21c98b0a3196a52"
+      },
+      {
+        "path": "tests/copilot-installation.test.ts",
+        "sha256": "d4aae4d3a9364826bc3d16f2215e3bb80f391c03e1716faac4c5ff44a00880c1"
       },
       {
         "path": "tests/core.test.ts",
@@ -1173,7 +1285,7 @@
       },
       {
         "path": "tests/discovery.test.ts",
-        "sha256": "8c8a83745ec59c59391b7162b23c2b7a502bd6254655bd0a29acc974cd09b439"
+        "sha256": "1b76c3405f7f69f2210495f457ee03bb389257c0422aa3236ed214897e427cb7"
       },
       {
         "path": "tests/droid.test.ts",
@@ -1201,7 +1313,7 @@
       },
       {
         "path": "tests/hook.test.ts",
-        "sha256": "86762e3add8e371863da52eb05ffd87c922f21f06c69dc796b9c0d103ae658c9"
+        "sha256": "61dbc5986c9c813715b10020d0ca1fa274085d4712b13a969d795ed304b8f6f8"
       },
       {
         "path": "tests/integration-installer.test.ts",
@@ -1229,7 +1341,7 @@
       },
       {
         "path": "tests/kimi-installation.test.ts",
-        "sha256": "88ffb91e272a8a0e3416654a0221071a94fd82e27f9e6df493d04b7abe6f0847"
+        "sha256": "3f244b94d90083cb10b88827c84f4fc0328a5d2368322cf9ddbe0dc49b2b9f0b"
       },
       {
         "path": "tests/kimi-tasks.test.ts",
@@ -1244,6 +1356,10 @@
         "sha256": "f977b75662a9a528a5afa9348d66581b06a95e2ada840b66c116674053d53add"
       },
       {
+        "path": "tests/model-filter-ui.spec.ts",
+        "sha256": "e8e3f9d0e20f5959268824145261d8345caf5a94927c31764fe605da1dba794e"
+      },
+      {
         "path": "tests/multiwindow-regression.test.ts",
         "sha256": "f3a6595d1fbe627b1d277ad6f6fcf0e791b06d99e4a529ab218df904ba5f12ef"
       },
@@ -1253,7 +1369,7 @@
       },
       {
         "path": "tests/opencode-installation.test.ts",
-        "sha256": "b8b7cdbeca4e6363d986000fc300cfb83c10b5756e3b5d9e3e6b74432cad89b0"
+        "sha256": "2482ccc8c9661b7ca4818a3da8886ade389713ebcb57329d3ad4d20246db876a"
       },
       {
         "path": "tests/opencode-plugin.test.ts",
@@ -1268,20 +1384,36 @@
         "sha256": "3b054685baf86a973874c7be5ad6bb0acd52b67ef9aa584b1b069bdf7e152fa6"
       },
       {
+        "path": "tests/pi-installation.test.ts",
+        "sha256": "75eafe0cac2275eb27bb38dfcafbc4cdfae6098e4cfd2c97c385d2fc770bc159"
+      },
+      {
+        "path": "tests/pi-plugin.test.ts",
+        "sha256": "7fab88d2dc07d5cb6f820816fec4864871ee3953c6b836600071345a2d7ca14e"
+      },
+      {
+        "path": "tests/pi.test.ts",
+        "sha256": "987a6af8108958e13433037000dbe29017db35ca6f80124a3a3754674a931f93"
+      },
+      {
         "path": "tests/qwen.test.ts",
         "sha256": "e8469c5f7953e3e79ec258a31ca712ac7120c8f90932622b3a1b3546fcf0ee2a"
       },
       {
+        "path": "tests/session-filter.test.ts",
+        "sha256": "bcbfc49ff69a301702a4472a38eda591225fb330daa2914fd8e4c7d82ba08802"
+      },
+      {
         "path": "tests/setup-coordinator.test.ts",
-        "sha256": "656b1aeacd0246fc9aeebe49e7e462d0a280bdad2d804d6d00ee3a6250a1e421"
+        "sha256": "ec4b47ddb1fee686ad2dc1a80eaa7a296ee38168f652de433dc2ad175fd5e113"
       },
       {
         "path": "tests/setup-owner.test.ts",
-        "sha256": "8d3a15cc8d1bf71e4542680574ffd7b8fd770e5e0b76dc7f32cfa0605b790103"
+        "sha256": "1194533fda582172b09197783accb8ec529185259e108a9a373e03f0a79d4c7e"
       },
       {
         "path": "tests/setup-ui.spec.ts",
-        "sha256": "1091a733b1871bd267afe1ff4b77a23a7523dc0275fca809dae5341b244ac23b"
+        "sha256": "ac7aa67b2af441bebaa3eba3056af23a0deb035e8bbf3f0a1869bf019987eca7"
       },
       {
         "path": "tests/trae.test.ts",
@@ -1293,7 +1425,7 @@
       },
       {
         "path": "tests/ui.spec.ts",
-        "sha256": "229693d58853a7c27b1a069cd57fea8b60c1ef090ee48c8dd7d286b6e74cf38e"
+        "sha256": "5c027186eadf8d8da1590bbe503c5daa838c1b48a049c55e66594774948df7f2"
       },
       {
         "path": "tests/window-sync.test.ts",
