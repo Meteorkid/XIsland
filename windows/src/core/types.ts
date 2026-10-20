@@ -14,6 +14,7 @@ export interface PendingInteraction {
   nativeRequestId?: string;
   nativeRequestKind?: string;
   tool?: string;
+  toolInput?: string;
   description?: string;
   diff?: string;
   filePath?: string;

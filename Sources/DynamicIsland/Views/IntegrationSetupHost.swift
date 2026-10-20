@@ -12,7 +12,8 @@ struct IntegrationSetupHost: View {
         IntegrationSetupView(rows: manager.rows, isRefreshing: manager.isRefreshing,
             onConfigure: { agent in Task { await manager.configure(agent) } },
             onOpenClient: onOpenClient, onOpenGuide: onOpenGuide,
-            onRefresh: { Task { await manager.refresh(prepareAutomatically: true) } },
-            onLater: onLater, onPrepareFiles: onPrepareFiles)
+            onRefresh: { Task { await manager.refresh() } },
+            onLater: onLater, onPrepareFiles: onPrepareFiles,
+            onPrepareAll: { Task { await manager.prepareAll() } })
     }
 }

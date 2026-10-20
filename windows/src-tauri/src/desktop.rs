@@ -88,7 +88,9 @@ fn focus_input(window: tauri::WebviewWindow) -> Result<(), String> {
 #[tauri::command]
 fn load_history() -> Result<Option<String>, String> {
     let path = runtime::directory().map_err(|e|e.to_string())?.join("history.json");
-    match std::fs::read_to_string(path) {
+    match runtime::read_bounded(&path, crate::transport::MAX_FRAME).and_then(|bytes| {
+        String::from_utf8(bytes).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "历史文件不是有效 UTF-8"))
+    }) {
         Ok(value) => Ok(Some(value)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(format!("历史读取失败：{error}")),

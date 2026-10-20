@@ -266,6 +266,34 @@ final class UpdateManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testConcurrentInstallIsIgnoredAndRejectedTerminationAllowsRetry() async {
+        let gate = InstallGate()
+        let started = expectation(description: "第一次安装已开始")
+        let calls = AppUpdaterTests.URLRecorder()
+        let updater = AppUpdater(installImpl: { _, url, _, _, _ in
+            calls.append(url)
+            if calls.all().count == 1 {
+                started.fulfill()
+                await gate.wait()
+            }
+            throw AppUpdaterError.terminationCancelled
+        })
+        let manager = UpdateManager(updater: updater)
+        manager.latestRelease = .init(tagName: "v2.0.2", htmlURL: URL(string: "https://example.invalid/release")!,
+            publishedAt: Date(), assets: [.init(name: "XIsland-2.0.2.dmg", browserDownloadURL: URL(string: "https://example.invalid/update.dmg")!)],
+            body: "XIsland-2.0.2.dmg SHA256: " + String(repeating: "a", count: 64))
+        let first = Task { await manager.installUpdate() }
+        await fulfillment(of: [started], timeout: 5)
+        await manager.installUpdate()
+        XCTAssertEqual(calls.all().count, 1)
+        await gate.resume()
+        await first.value
+        XCTAssertEqual(manager.state, .failed(message: AppUpdaterError.terminationCancelled.localizedDescription))
+        await manager.installUpdate()
+        XCTAssertEqual(calls.all().count, 2)
+    }
+
+    @MainActor
     func testInstallUpdateRequiresKnownRelease() async {
         let manager = UpdateManager()
 

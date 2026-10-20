@@ -71,8 +71,96 @@ final class SessionManager {
     @ObservationIgnored var onIntegrationActivity: ((AgentType) -> Void)?
     private(set) var unsavedSessionIDs: Set<String> = []
     @ObservationIgnored private var unsavedKimiBackgroundTasks: [String: [String: DINativeBackgroundTask]] = [:]
-    /// 诊断回执计数；包含被忽略的消息，只在同步处理和持久化路径返回后递增。
+    /// 诊断回执计数；包含被忽略的消息，只在处理和真实持久化完成后递增。
     @ObservationIgnored private(set) var handledMessageCount: UInt64 = 0
+    private struct PersistenceCommand {
+        let write: @MainActor () async -> Bool
+        let complete: @MainActor (Bool) -> Void
+    }
+    private struct PersistenceOperation {
+        let reduce: @MainActor () -> Void
+        let complete: (@MainActor () -> Void)?
+    }
+    @ObservationIgnored private var persistenceOperations: [PersistenceOperation?] = []
+    @ObservationIgnored private var persistenceOperationHead = 0
+    @ObservationIgnored private var persistenceOperationTask: Task<Void, Never>?
+    @ObservationIgnored private var collectedPersistenceCommands: [PersistenceCommand]?
+    @ObservationIgnored private var pendingCheckpointCounts: [String: Int] = [:]
+    @ObservationIgnored private var acceptsPersistenceOperations = true
+    @ObservationIgnored private var inFlightInteractionDeliveries = 0
+    @ObservationIgnored private var persistenceWaiters: [CheckedContinuation<Void, Never>] = []
+
+    /// reducer 不跨挂起点；只有提交完成后才执行依赖耐久结果的回调。
+    private func performPersistedOperation(
+        allowAfterStop: Bool = false,
+        onRejected: (() -> Void)? = nil,
+        completion: (@MainActor () -> Void)? = nil,
+        _ reduce: @escaping @MainActor () -> Void
+    ) {
+        if collectedPersistenceCommands != nil {
+            reduce()
+            completion?()
+            return
+        }
+        guard acceptsPersistenceOperations || allowAfterStop else { onRejected?(); return }
+        guard persistenceManager?.usesBackgroundWrites == true else {
+            reduce()
+            completion?()
+            return
+        }
+        persistenceOperations.append(PersistenceOperation(reduce: reduce, complete: completion))
+        guard persistenceOperationTask == nil else { return }
+        persistenceOperationTask = Task { [self] in
+            while persistenceOperationHead < persistenceOperations.count {
+                let operation = persistenceOperations[persistenceOperationHead]!
+                persistenceOperations[persistenceOperationHead] = nil
+                persistenceOperationHead += 1
+                // UI 删除和保留期清理也使用持久化队列；恢复读取不能越过它们。
+                _ = await persistenceManager?.flushPendingWrites()
+                collectedPersistenceCommands = []
+                operation.reduce()
+                let commands = collectedPersistenceCommands ?? []
+                collectedPersistenceCommands = nil
+                for command in commands {
+                    let saved = await command.write()
+                    command.complete(saved)
+                }
+                operation.complete?()
+                // 无写入的回放也分批让出执行器，避免突发消息独占界面线程。
+                if persistenceOperationHead.isMultiple(of: 32) { await Task.yield() }
+            }
+            persistenceOperations.removeAll()
+            persistenceOperationHead = 0
+            persistenceOperationTask = nil
+            notifyPersistenceWaiters()
+        }
+    }
+
+    func stopAcceptingPersistenceOperations() {
+        acceptsPersistenceOperations = false
+    }
+
+    func resumeAcceptingPersistenceOperations() {
+        acceptsPersistenceOperations = true
+    }
+
+    /// 停止接收后，已发出的 socket 审批回执仍须进入队列并落盘。
+    func drainPersistenceOperations() async -> Bool {
+        while persistenceOperationTask != nil || inFlightInteractionDeliveries > 0 {
+            if let task = persistenceOperationTask { await task.value }
+            else { await withCheckedContinuation { persistenceWaiters.append($0) } }
+        }
+        let flushed = await persistenceManager?.flushPendingWrites() ?? true
+        return flushed && unsavedSessionIDs.isEmpty && kimiCodeOrphanObservations.isEmpty
+            && unsavedKimiBackgroundTasks.isEmpty
+    }
+
+    private func notifyPersistenceWaiters() {
+        let waiters = persistenceWaiters
+        persistenceWaiters.removeAll()
+        for waiter in waiters { waiter.resume() }
+    }
+
     var currentIslandState: IslandState = .collapsed
     /// 会话分组模式，持久化到 UserDefaults
     var grouping: SessionGrouping {
@@ -128,16 +216,6 @@ final class SessionManager {
     /// (Notification hook) as well as `sessionEnd`, so streaming updates do not spam sounds.
     private var lastAssistantReplySoundAt: [String: TimeInterval] = [:]
     private let assistantReplySoundMinInterval: TimeInterval = 1.8
-
-    /// Caches answers only for legacy events without native request IDs; native
-    /// requests must each await a decision even when their question text matches.
-    private struct RecentAnswer {
-        let answer: String
-        let questionText: String
-        let options: Set<String>
-        let timestamp: Date
-    }
-    private var recentAnswers: [String: RecentAnswer] = [:]
 
     var completedLingerDuration: TimeInterval {
         let val = AppPreferences.defaults.double(forKey: "completedLingerDuration")
@@ -282,9 +360,10 @@ final class SessionManager {
 
     func startCleanupTimer() {
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            // Timer 已在主线程 RunLoop 创建，回调直接在主线程执行，无需 Task 包装
-            self?.cleanupStaleSessions()
-            self?.checkProcessesAlive()
+            Task { @MainActor [weak self] in
+                self?.cleanupStaleSessions()
+                self?.checkProcessesAlive()
+            }
         }
         observeAppTermination()
     }
@@ -349,6 +428,10 @@ final class SessionManager {
     }
 
     private func handleDeadAgents(_ deadAgents: [AgentType]) {
+        performPersistedOperation { [self] in handleDeadAgentsImmediately(deadAgents) }
+    }
+
+    private func handleDeadAgentsImmediately(_ deadAgents: [AgentType]) {
         guard !deadAgents.isEmpty else { return }
 
         for agentType in deadAgents {
@@ -398,6 +481,10 @@ final class SessionManager {
     }
 
     func cleanupStaleSessions() {
+        performPersistedOperation { [self] in cleanupStaleSessionsImmediately() }
+    }
+
+    private func cleanupStaleSessionsImmediately() {
         expireObservationSources()
         reSelectIfCurrentCompleted()
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
@@ -420,6 +507,24 @@ final class SessionManager {
     }
 
     var hasInteraction: Bool { sessions.contains(where: \.hasPendingInteraction) }
+
+    private struct ActivityRevision: Equatable {
+        let instance: ObjectIdentifier
+        let revision: UInt
+    }
+    @ObservationIgnored private var activityRevisions: [ActivityRevision] = []
+    @ObservationIgnored private var activityCache: [(session: AgentSession, event: ToolEvent)] = []
+    @ObservationIgnored private(set) var activitySelectionCount = 0
+
+    var recentActivityEvents: [(session: AgentSession, event: ToolEvent)] {
+        let current = sessions.map { ActivityRevision(instance: ObjectIdentifier($0), revision: $0.activityRevision) }
+        if current != activityRevisions {
+            activityCache = RecentActivitySelection.latest(in: sessions)
+            activityRevisions = current
+            activitySelectionCount += 1
+        }
+        return activityCache
+    }
 
     var protectsInteraction: Bool { hasInteraction }
 
@@ -510,10 +615,13 @@ final class SessionManager {
     }
 
     func handleMessage(_ message: DIMessage) {
-        defer {
+        performPersistedOperation(completion: { [self] in
             handledMessageCount += 1
             AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
-        }
+        }) { [self] in handleMessageImmediately(message) }
+    }
+
+    private func handleMessageImmediately(_ message: DIMessage) {
         if !message.hasObservationMetadata, sessionById(message.sessionId)?.sourceInstanceId != nil { return }
         if !message.hasObservationMetadata, message.type == .subagentStart || message.type == .subagentEnd,
            let parent = message.parentSessionId, sessionById(parent)?.sourceInstanceId != nil { return }
@@ -713,9 +821,11 @@ final class SessionManager {
                     sessions.append(existing)
                     updateIndexForAppend(existing, at: sessions.count - 1)
                 }
-                if !persistSession(existing), visible == nil {
-                    // 隐藏历史对象不在 sessions 中，必须另存事实供恢复写入后重试。
-                    unsavedKimiBackgroundTasks[existing.id] = existing.kimiCodeApprovalObservation?.backgroundTasks ?? [:]
+                persistSession(existing) { [self, existing] saved in
+                    if !saved, visible == nil {
+                        // 命令持有隐藏对象直到提交结束，失败事实随后保留供重试。
+                        unsavedKimiBackgroundTasks[existing.id] = existing.kimiCodeApprovalObservation?.backgroundTasks ?? [:]
+                    }
                 }
                 let handled = recorded.kind == "agent" || visible == nil || closed
                 if handled, !closed, sessionById(existing.id) != nil, previousTask != recorded {
@@ -761,9 +871,9 @@ final class SessionManager {
                 let previous = session.events[index]
                 if previous.input == event.input, previous.isComplete == event.isComplete,
                    previous.completionUnconfirmed == event.completionUnconfirmed, previous.result == event.result { continue }
-                session.events[index] = event
+                session.replaceEvent(at: index, with: event)
             }
-            else { session.events.append(event) }
+            else { session.appendEvent(event) }
         }
         if !tasks.isEmpty, session.currentTool == "Subagent", !session.hasRunningSubagents {
             session.currentTool = session.events.last(where: { $0.isRunning })?.tool
@@ -872,9 +982,19 @@ final class SessionManager {
 
     private func persistKimiCodeOrphan(_ observation: KimiCodeApprovalObservation, sessionID: String) {
         kimiCodeOrphanObservations[sessionID] = observation
-        if persistenceManager?.saveKimiCodeApprovalOrphan(sessionId: sessionID, observation: observation) == true {
-            // 仅失败事实留在内存；已持久记录删除或过期后不能被缓存重新写回。
-            kimiCodeOrphanObservations.removeValue(forKey: sessionID)
+        guard let persistenceManager else { return }
+        let complete: @MainActor (Bool) -> Void = { [self] saved in
+            // 较早命令不能清除本 reducer 随后记录的更新事实。
+            if saved, kimiCodeOrphanObservations[sessionID] == observation {
+                kimiCodeOrphanObservations.removeValue(forKey: sessionID)
+            }
+        }
+        if collectedPersistenceCommands != nil {
+            collectedPersistenceCommands?.append(PersistenceCommand(write: {
+                await persistenceManager.saveKimiCodeApprovalOrphanAsync(sessionId: sessionID, observation: observation)
+            }, complete: complete))
+        } else {
+            complete(persistenceManager.saveKimiCodeApprovalOrphan(sessionId: sessionID, observation: observation))
         }
     }
 
@@ -950,11 +1070,15 @@ final class SessionManager {
     private func startObservationTimerIfNeeded() {
         guard observationTimer == nil, observationLeases.hasLiveSources else { return }
         observationTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            self?.expireObservationSources()
+            Task { @MainActor [weak self] in self?.expireObservationSources() }
         }
     }
 
     func expireObservationSources() {
+        performPersistedOperation { [self] in expireObservationSourcesImmediately() }
+    }
+
+    private func expireObservationSourcesImmediately() {
         for source in observationLeases.expire(now: observationClock()) { endObservation(source) }
         if !observationLeases.hasLiveSources {
             observationTimer?.invalidate()
@@ -1077,6 +1201,12 @@ final class SessionManager {
     }
 
     func handlePermissionRequest(_ message: DIMessage, delivery: InteractionDelivery? = nil, cancel: (@Sendable () -> Void)? = nil, respond: @escaping @Sendable (Bool) -> Void) {
+        performPersistedOperation(onRejected: cancel) { [self] in
+            handlePermissionRequestImmediately(message, delivery: delivery, cancel: cancel, respond: respond)
+        }
+    }
+
+    private func handlePermissionRequestImmediately(_ message: DIMessage, delivery: InteractionDelivery? = nil, cancel: (@Sendable () -> Void)? = nil, respond: @escaping @Sendable (Bool) -> Void) {
         guard message.nativeMessageReplay != true, !message.hasObservationMetadata,
               sessionById(message.sessionId)?.sourceInstanceId == nil,
               restoreArchivedSessionIfNeeded(message, activate: !bypassMode) else { cancel?(); return }
@@ -1100,7 +1230,8 @@ final class SessionManager {
             respond: respond,
             delivery: delivery,
             cancel: cancel,
-            nativeRequestId: message.nativeRequestId
+            nativeRequestId: message.nativeRequestId,
+            toolInput: message.toolInput
         )
         if refreshCheckpoint { persistSession(session) }
         selectNextInteraction()
@@ -1117,6 +1248,12 @@ final class SessionManager {
     }
 
     func handleQuestionRequest(_ message: DIMessage, delivery: InteractionDelivery? = nil, respond: @escaping @Sendable (String) -> Void, cancel: (@Sendable () -> Void)? = nil) {
+        performPersistedOperation(onRejected: cancel) { [self] in
+            handleQuestionRequestImmediately(message, delivery: delivery, respond: respond, cancel: cancel)
+        }
+    }
+
+    private func handleQuestionRequestImmediately(_ message: DIMessage, delivery: InteractionDelivery? = nil, respond: @escaping @Sendable (String) -> Void, cancel: (@Sendable () -> Void)? = nil) {
         guard message.nativeMessageReplay != true, !message.hasObservationMetadata,
               sessionById(message.sessionId)?.sourceInstanceId == nil else { cancel?(); return }
         let text = message.questionText ?? ""
@@ -1138,22 +1275,7 @@ final class SessionManager {
         let realAgent = resolvedAgentType(for: message)
         let session = findOrCreateSessionForInteraction(message)
 
-        // Deduplicate: if this session was answered recently (within 2s) and the
-        // incoming question text matches (exact or contains — handles [N/M] prefix
-        // variations from sequential flows), auto-reply with the cached answer so the
-        // sequential flow can advance to the next question.
-        if message.nativeRequestId == nil,
-           let recent = recentAnswers[session.id],
-           !options.isEmpty,
-           recent.options == Set(options), options.contains(recent.answer),
-           Date().timeIntervalSince(recent.timestamp) < 2.0,
-           (trimmed == recent.questionText
-            || trimmed.contains(recent.questionText)
-            || recent.questionText.contains(trimmed)) {
-            respond(recent.answer)
-            return
-        }
-
+        // 相同文本不能证明是同一原生请求；缺少请求身份时也必须等待新的用户回答。
         // Close the previous question's fd when superseded by a newer event.
         session.pendingQuestion?.cancel?()
         let refreshCheckpoint = resumeSession(session, as: .waitingAnswer)
@@ -1179,6 +1301,12 @@ final class SessionManager {
     }
 
     func handlePlanReview(_ message: DIMessage, delivery: InteractionDelivery? = nil, cancel: (@Sendable () -> Void)? = nil, respond: @escaping @Sendable (Bool, String?) -> Void) {
+        performPersistedOperation(onRejected: cancel) { [self] in
+            handlePlanReviewImmediately(message, delivery: delivery, cancel: cancel, respond: respond)
+        }
+    }
+
+    private func handlePlanReviewImmediately(_ message: DIMessage, delivery: InteractionDelivery? = nil, cancel: (@Sendable () -> Void)? = nil, respond: @escaping @Sendable (Bool, String?) -> Void) {
         guard message.nativeMessageReplay != true, !message.hasObservationMetadata,
               sessionById(message.sessionId)?.sourceInstanceId == nil,
               restoreArchivedSessionIfNeeded(message, activate: !bypassMode) else { cancel?(); return }
@@ -1269,13 +1397,7 @@ final class SessionManager {
               request.acceptsAnswer(answer) else { return }
         submitInteraction(session: session, kind: .question, requestID: request.id,
                           state: request.state, delivery: request.delivery,
-                          decision: .question(answer), sound: .answered,
-                          onSuccess: { [weak self] in
-            guard request.nativeRequestId == nil else { return }
-            self?.recentAnswers[session.id] = RecentAnswer(
-                answer: answer, questionText: request.text.trimmingCharacters(in: .whitespacesAndNewlines),
-                options: Set(request.options), timestamp: Date())
-        }) {
+                          decision: .question(answer), sound: .answered) {
             request.respond(answer)
         }
     }
@@ -1304,11 +1426,30 @@ final class SessionManager {
         session: AgentSession, kind: InteractionKind, requestID: UUID,
         state: InteractionRequestState, delivery: InteractionDelivery?,
         decision: InteractionDecision, sound: SoundEvent,
-        onSuccess: @escaping () -> Void = {}, legacyResponse: () -> Void
+        onSuccess: @escaping () -> Void = {}, legacyResponse: @escaping () -> Void
     ) {
-        guard state.canSubmit else { return }
+        guard acceptsPersistenceOperations || collectedPersistenceCommands != nil,
+              state.canSubmit, sessions.contains(where: { $0 === session }),
+              self.requestID(in: session, kind: kind) == requestID else { return }
+        // 立即预占当前请求，让排队保存期间的点击有反馈且不能重复发送。
         focusInteraction(session: session, kind: kind)
         state.phase = .sending
+        performPersistedOperation { [self, session] in
+            guard sessions.contains(where: { $0 === session }),
+                  self.requestID(in: session, kind: kind) == requestID else { return }
+            submitInteractionImmediately(session: session, kind: kind, requestID: requestID,
+                state: state, delivery: delivery, decision: decision, sound: sound,
+                onSuccess: onSuccess, legacyResponse: legacyResponse)
+        }
+    }
+
+    private func submitInteractionImmediately(
+        session: AgentSession, kind: InteractionKind, requestID: UUID,
+        state: InteractionRequestState, delivery: InteractionDelivery?,
+        decision: InteractionDecision, sound: SoundEvent,
+        onSuccess: @escaping () -> Void, legacyResponse: () -> Void
+    ) {
+        guard state.phase == .sending else { return }
         let finish: @MainActor (Bool) -> Void = { [weak self, weak session] success in
             guard let self, let session,
                   self.sessions.contains(where: { $0 === session }),
@@ -1335,7 +1476,13 @@ final class SessionManager {
             if !self.hasInteraction { self.restoreToXnookIfNeeded() }
         }
         if let delivery {
-            Task { finish(await delivery(decision)) }
+            inFlightInteractionDeliveries += 1
+            Task { [self] in
+                let sent = await delivery(decision)
+                performPersistedOperation(allowAfterStop: true) { finish(sent) }
+                inFlightInteractionDeliveries -= 1
+                notifyPersistenceWaiters()
+            }
         } else {
             // 测试fixture/进程内回调同步完成；真实socket必须提供异步delivery。
             legacyResponse()
@@ -1344,16 +1491,17 @@ final class SessionManager {
     }
 
     func dismissSession(_ session: AgentSession) {
-        guard !session.hasPendingInteraction else { return }
-        guard persistSession(session) else { return }
-        sessions.removeAll { $0.id == session.id }
-        rebuildSessionIndex()
-        lastAssistantReplySoundAt.removeValue(forKey: session.id)
-        recentAnswers.removeValue(forKey: session.id)
-        if selectedSessionId == session.id {
-            selectedSessionId = activeSessions.first?.id
+        performPersistedOperation { [self, session] in
+            guard !session.hasPendingInteraction, sessions.contains(where: { $0 === session }) else { return }
+            persistSession(session) { [self, session] saved in
+                guard saved, !session.hasPendingInteraction, sessions.contains(where: { $0 === session }) else { return }
+                sessions.removeAll { $0.id == session.id }
+                rebuildSessionIndex()
+                lastAssistantReplySoundAt.removeValue(forKey: session.id)
+                if selectedSessionId == session.id { selectedSessionId = activeSessions.first?.id }
+                AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+            }
         }
-        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
     }
 
     // MARK: - Private
@@ -1370,7 +1518,6 @@ final class SessionManager {
         var refreshCheckpoint = false
         if acceptsActivity {
             if !isKimiCodeMessage(message) || !session.hasPendingInteraction { cancelPendingInteractions(session) }
-            recentAnswers.removeValue(forKey: session.id)
             session.lastActivityTime = Date()
             refreshCheckpoint = resumeSession(session)
             session.statusText = message.status ?? ""
@@ -1380,10 +1527,10 @@ final class SessionManager {
         if let p = message.prompt, !p.isEmpty {
             session.prompt = p
             if let id = nativeChatID(message, role: .user), let index = session.chatHistory.firstIndex(where: { $0.id == id }) {
-                session.chatHistory[index] = ChatMessage(id: id, timestamp: session.chatHistory[index].timestamp, role: .user, content: p)
+                session.replaceChatMessage(at: index, with: ChatMessage(id: id, timestamp: session.chatHistory[index].timestamp, role: .user, content: p))
             } else {
                 if acceptsActivity { session.agentResponse = "" }
-                session.chatHistory.append(ChatMessage(id: nativeChatID(message, role: .user) ?? UUID(), timestamp: Date(), role: .user, content: p))
+                session.appendChatMessage(ChatMessage(id: nativeChatID(message, role: .user) ?? UUID(), timestamp: Date(), role: .user, content: p))
                 if acceptsActivity { audioEngine?.play(.sessionStart, session: session) }
             }
         }
@@ -1417,11 +1564,11 @@ final class SessionManager {
 
         if message.statusIsAssistantReply != false, !session.agentResponse.isEmpty {
             if let lastIdx = session.chatHistory.indices.last, session.chatHistory[lastIdx].role == .assistant {
-                session.chatHistory[lastIdx] = ChatMessage(
+                session.replaceChatMessage(at: lastIdx, with: ChatMessage(
                     id: session.chatHistory[lastIdx].id, timestamp: Date(), role: .assistant, content: session.agentResponse
-                )
+                ))
             } else {
-                session.chatHistory.append(
+                session.appendChatMessage(
                     ChatMessage(timestamp: Date(), role: .assistant, content: session.agentResponse)
                 )
             }
@@ -1432,7 +1579,7 @@ final class SessionManager {
                 // 拒绝权限可能不产生后置工具事件；会话关闭后不能继续显示这些调用在运行。
                 // 权限请求没有调用 ID，不能把缺失的结果伪造成具体工具的成功或拒绝。
                 for index in session.events.indices where session.events[index].isRunning {
-                    session.events[index].completionUnconfirmed = true
+                    session.updateEvent(at: index) { $0.completionUnconfirmed = true }
                 }
             }
             markCompleted(session)
@@ -1488,10 +1635,9 @@ final class SessionManager {
         return refreshCheckpoint
     }
 
-    @discardableResult
-    private func persistSession(_ session: AgentSession) -> Bool {
+    private func persistSession(_ session: AgentSession, completion: (@MainActor (Bool) -> Void)? = nil) {
         // Kimi 普通事件先更新基础状态，再投影审批显示；只保存最终状态。
-        if kimiCodeProjectionTransactions[session.id] != nil { return true }
+        if kimiCodeProjectionTransactions[session.id] != nil { return }
         if unsavedKimiBackgroundTasks[session.id] != nil {
             var observation = session.kimiCodeApprovalObservation
                 ?? KimiCodeApprovalObservation(baseStatus: session.status, baseStatusText: session.statusText)
@@ -1499,18 +1645,36 @@ final class SessionManager {
             session.kimiCodeApprovalObservation = observation
             synchronizeKimiCodeBackgroundTasks(session)
         }
-        guard let persistenceManager else { return true }
-        if persistenceManager.save(session: session) {
-            kimiCodeOrphanObservations.removeValue(forKey: session.id)
-            unsavedKimiBackgroundTasks.removeValue(forKey: session.id)
-            unsavedSessionIDs.remove(session.id)
-            return true
+        guard let persistenceManager else { completion?(true); return }
+        let complete: @MainActor (Bool) -> Void = { [self, session] saved in
+            if saved {
+                kimiCodeOrphanObservations.removeValue(forKey: session.id)
+                unsavedKimiBackgroundTasks.removeValue(forKey: session.id)
+                unsavedSessionIDs.remove(session.id)
+            } else {
+                unsavedSessionIDs.insert(session.id)
+            }
+            completion?(saved)
         }
-        unsavedSessionIDs.insert(session.id)
-        return false
+        if collectedPersistenceCommands != nil {
+            let write = persistenceManager.makeSaveOperation(session: session)
+            pendingCheckpointCounts[session.id, default: 0] += 1
+            collectedPersistenceCommands?.append(PersistenceCommand(write: write, complete: { [self] saved in
+                if let count = pendingCheckpointCounts[session.id], count > 1 {
+                    pendingCheckpointCounts[session.id] = count - 1
+                } else { pendingCheckpointCounts.removeValue(forKey: session.id) }
+                complete(saved)
+            }))
+        } else {
+            complete(persistenceManager.save(session: session))
+        }
     }
 
     func retryPendingHistorySaves() {
+        performPersistedOperation { [self] in retryPendingHistorySavesImmediately() }
+    }
+
+    private func retryPendingHistorySavesImmediately() {
         for session in sessions where unsavedSessionIDs.contains(session.id) {
             persistSession(session)
         }
@@ -1552,6 +1716,10 @@ final class SessionManager {
     }
 
     func cleanupLingeredSessions() {
+        performPersistedOperation { [self] in cleanupLingeredSessionsImmediately() }
+    }
+
+    private func cleanupLingeredSessionsImmediately() {
         // 永久模式（.infinity）不清理任何已完成会话
         guard completedLingerDuration != .infinity else {
             rebuildSessionIndex()
@@ -1559,7 +1727,7 @@ final class SessionManager {
         }
         let now = Date()
         let completedSessions = sessions
-            .filter { ($0.status == .completed || $0.status == .observationUnavailable) && !unsavedSessionIDs.contains($0.id) }
+            .filter { ($0.status == .completed || $0.status == .observationUnavailable) && !unsavedSessionIDs.contains($0.id) && pendingCheckpointCounts[$0.id] == nil }
             .sorted { ($0.completedAt ?? $0.observationEndedAt ?? .distantPast) > ($1.completedAt ?? $1.observationEndedAt ?? .distantPast) }
         let expiredIds = completedSessions.compactMap { session -> String? in
             guard let completedAt = session.completedAt ?? session.observationEndedAt else { return nil }
@@ -1585,17 +1753,16 @@ final class SessionManager {
     private func purgeOrphanedCacheEntries() {
         let activeIds = Set(sessions.map(\.id))
         lastAssistantReplySoundAt = lastAssistantReplySoundAt.filter { activeIds.contains($0.key) }
-        recentAnswers = recentAnswers.filter { activeIds.contains($0.key) }
     }
 
     private func handleToolStart(_ message: DIMessage) {
         let session = findOrCreateSession(message)
         if let id = message.toolCallId, let index = session.events.firstIndex(where: { $0.toolCallId == id }) {
             if message.nativeEvent == "acp" || message.nativeEvent == "continue_snapshot" {
-                session.events[index].tool = message.tool ?? session.events[index].tool
-                session.events[index].input = message.toolInput
+                session.updateEvent(at: index) { $0.tool = message.tool ?? session.events[index].tool }
+                session.updateEvent(at: index) { $0.input = message.toolInput }
                 if message.nativeMessageReplay != true, session.status != .completed, session.status != .observationUnavailable {
-                    session.events[index].isComplete = false
+                    session.updateEvent(at: index) { $0.isComplete = false }
                     if index == session.events.lastIndex(where: { $0.isRunning }) { session.currentTool = session.events[index].tool }
                     reportIntegrationActivity(message, session: session)
                 }
@@ -1607,7 +1774,7 @@ final class SessionManager {
         clearStaleInteraction(session)
         if !session.hasPendingInteraction { session.status = .active }
         let event = ToolEvent(tool: message.tool ?? "unknown", input: message.toolInput, toolCallId: message.toolCallId)
-        session.events.append(event)
+        session.appendEvent(event)
         session.currentTool = message.tool
         if refreshCheckpoint { persistSession(session) }
         audioEngine?.play(.toolStart, session: session)
@@ -1624,21 +1791,21 @@ final class SessionManager {
         }
         if let idx = matchingIndex {
             if message.nativeEvent == "acp" || message.nativeEvent == "continue_snapshot" {
-                session.events[idx].tool = message.tool ?? session.events[idx].tool
-                session.events[idx].input = message.toolInput
+                session.updateEvent(at: idx) { $0.tool = message.tool ?? session.events[idx].tool }
+                session.updateEvent(at: idx) { $0.input = message.toolInput }
             }
-            session.events[idx].result = message.toolResult
-            session.events[idx].linesAdded = message.linesAdded
-            session.events[idx].linesRemoved = message.linesRemoved
-            session.events[idx].isComplete = true
+            session.updateEvent(at: idx) { $0.result = message.toolResult }
+            session.updateEvent(at: idx) { $0.linesAdded = message.linesAdded }
+            session.updateEvent(at: idx) { $0.linesRemoved = message.linesRemoved }
+            session.updateEvent(at: idx) { $0.isComplete = true }
             if resolvedAgentType(for: message) == .claudeCode, session.events[idx].tool != "Subagent" {
-                session.events[idx].completionUnconfirmed = false
+                session.updateEvent(at: idx) { $0.completionUnconfirmed = false }
             }
-            session.events[idx].linesRead = ToolEvent.estimateLinesRead(from: message.toolResult)
-            session.events[idx].testResults = ToolEvent.parseTestResults(from: message.toolResult)
+            session.updateEvent(at: idx) { $0.linesRead = ToolEvent.estimateLinesRead(from: message.toolResult) }
+            session.updateEvent(at: idx) { $0.testResults = ToolEvent.parseTestResults(from: message.toolResult) }
         } else {
             // Amp 等接口只提供结果；也可能在应用启动前已发出开始事件。
-            session.events.append(ToolEvent(tool: message.tool ?? "unknown", input: message.toolInput,
+            session.appendEvent(ToolEvent(tool: message.tool ?? "unknown", input: message.toolInput,
                 result: message.toolResult, linesAdded: message.linesAdded, linesRemoved: message.linesRemoved,
                 isComplete: true, linesRead: ToolEvent.estimateLinesRead(from: message.toolResult),
                 testResults: ToolEvent.parseTestResults(from: message.toolResult), toolCallId: message.toolCallId))
@@ -1667,9 +1834,9 @@ final class SessionManager {
             let wasCurrentPrompt = session.chatHistory.last(where: { $0.role == .user })?.id == id
             if let index = session.chatHistory.firstIndex(where: { $0.id == id }) {
                 if prompt.isEmpty { session.chatHistory.remove(at: index) }
-                else { session.chatHistory[index] = ChatMessage(id: id, timestamp: session.chatHistory[index].timestamp, role: .user, content: prompt) }
+                else { session.replaceChatMessage(at: index, with: ChatMessage(id: id, timestamp: session.chatHistory[index].timestamp, role: .user, content: prompt)) }
             } else if !prompt.isEmpty {
-                session.chatHistory.append(ChatMessage(id: id, timestamp: message.timestamp, role: .user, content: prompt))
+                session.appendChatMessage(ChatMessage(id: id, timestamp: message.timestamp, role: .user, content: prompt))
             }
             if session.chatHistory.last(where: { $0.role == .user })?.id == id { session.prompt = prompt }
             else if wasCurrentPrompt { session.prompt = session.chatHistory.last(where: { $0.role == .user })?.content ?? "" }
@@ -1693,17 +1860,17 @@ final class SessionManager {
         if !text.isEmpty, message.statusIsAssistantReply != false {
             if let id = nativeChatID(message, role: .assistant) {
                 if let index = session.chatHistory.firstIndex(where: { $0.id == id }) {
-                    session.chatHistory[index] = ChatMessage(id: id, timestamp: session.chatHistory[index].timestamp, role: .assistant, content: text)
+                    session.replaceChatMessage(at: index, with: ChatMessage(id: id, timestamp: session.chatHistory[index].timestamp, role: .assistant, content: text))
                     latestMessage = index == session.chatHistory.indices.last
                 } else {
-                    session.chatHistory.append(ChatMessage(id: id, timestamp: message.timestamp, role: .assistant, content: text))
+                    session.appendChatMessage(ChatMessage(id: id, timestamp: message.timestamp, role: .assistant, content: text))
                 }
             } else if let lastIdx = session.chatHistory.indices.last, session.chatHistory[lastIdx].role == .assistant {
-                session.chatHistory[lastIdx] = ChatMessage(
+                session.replaceChatMessage(at: lastIdx, with: ChatMessage(
                     id: session.chatHistory[lastIdx].id, timestamp: Date(), role: .assistant, content: text
-                )
+                ))
             } else {
-                session.chatHistory.append(
+                session.appendChatMessage(
                     ChatMessage(timestamp: Date(), role: .assistant, content: text)
                 )
             }
@@ -1815,7 +1982,7 @@ final class SessionManager {
             if [AgentType.claudeCode.rawValue, AgentType.qwen.rawValue].contains(message.agentType ?? ""),
                message.nativeEvent == "SubagentStart",
                parent.events[index].completionUnconfirmed, !parent.events[index].isComplete {
-                parent.events[index].completionUnconfirmed = false
+                parent.updateEvent(at: index) { $0.completionUnconfirmed = false }
                 parent.lastActivityTime = Date()
                 reportIntegrationActivity(message, session: parent)
             }
@@ -1827,7 +1994,7 @@ final class SessionManager {
         }
         parent.lastActivityTime = Date()
         let event = ToolEvent(tool: "Subagent", input: message.prompt, toolCallId: message.subagentId)
-        parent.events.append(event)
+        parent.appendEvent(event)
         reportIntegrationActivity(message, session: parent)
     }
 
@@ -1850,7 +2017,7 @@ final class SessionManager {
         }
         if provisional, let idx = matchingIndex {
             guard !parent.events[idx].completionUnconfirmed else { return }
-            parent.events[idx].completionUnconfirmed = true
+            parent.updateEvent(at: idx) { $0.completionUnconfirmed = true }
             parent.lastActivityTime = Date()
             if parent.currentTool == "Subagent" {
                 parent.currentTool = parent.events.last(where: { $0.isRunning })?.tool
@@ -1861,14 +2028,14 @@ final class SessionManager {
         parent.lastActivityTime = Date()
         updateTokenUsage(session: parent, message: message)
         if let idx = matchingIndex {
-            parent.events[idx].isComplete = true
-            parent.events[idx].completionUnconfirmed = false
+            parent.updateEvent(at: idx) { $0.isComplete = true }
+            parent.updateEvent(at: idx) { $0.completionUnconfirmed = false }
             let hasCodewhaleOutcome = resolvedAgentType(for: message) == .deepseek && message.nativeEvent == "subagent_complete"
             if hasCodewhaleOutcome {
-                parent.events[idx].result = message.toolResult
-                parent.events[idx].nativeCompletionStatus = message.status
+                parent.updateEvent(at: idx) { $0.result = message.toolResult }
+                parent.updateEvent(at: idx) { $0.nativeCompletionStatus = message.status }
             } else {
-                parent.events[idx].result = "Completed"
+                parent.updateEvent(at: idx) { $0.result = "Completed" }
             }
             if parent.currentTool == "Subagent" {
                 parent.currentTool = parent.events.last(where: { $0.isRunning })?.tool
@@ -1891,17 +2058,19 @@ final class SessionManager {
         if isKimiCodeMessage(message), message.nativeEvent == "kimi_code.PreCompact" { return }
         if isCodexTurnObservation(message), message.nativeEvent == "PreCompact" { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self, weak session] in
-            // 只在 session 仍存在且仍处于 compacting 时恢复
-            guard let session else { return }
-            if var observation = session.kimiCodeApprovalObservation {
-                guard observation.baseStatus == .compacting,
-                      session.status != .completed, session.status != .observationUnavailable else { return }
-                observation.baseStatus = .active
-                session.kimiCodeApprovalObservation = observation
-                self?.applyKimiCodeProjection(session)
-                self?.persistSession(session)
-            } else if session.status == .compacting {
-                session.status = .active
+            self?.performPersistedOperation { [weak self, weak session] in
+                // 只在 session 仍存在且仍处于 compacting 时恢复。
+                guard let self, let session, self.sessions.contains(where: { $0 === session }) else { return }
+                if var observation = session.kimiCodeApprovalObservation {
+                    guard observation.baseStatus == .compacting,
+                          session.status != .completed, session.status != .observationUnavailable else { return }
+                    observation.baseStatus = .active
+                    session.kimiCodeApprovalObservation = observation
+                    self.applyKimiCodeProjection(session)
+                    self.persistSession(session)
+                } else if session.status == .compacting {
+                    session.status = .active
+                }
             }
         }
     }

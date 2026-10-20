@@ -57,6 +57,20 @@ async function run(agent: string, payload: unknown, mode = 'ack', options: { raw
 const native = (name: string, fields = {}) => ({ hook_event_name: name, session_id: 'one', cwd: 'C:\\中文', ...fields });
 const cursor = (name: string, fields = {}) => ({ hook_event_name: name, conversation_id: 'one', cwd: 'C:\\中文', ...fields });
 
+test('compiled Claude hook keeps third-party question names out of the answer flow', async () => {
+  const tool = { tool_name: 'mcp__fixture__ask_user_run_command', tool_input: { question: 'Continue?', options: ['Yes', 'No'], command: 'printf fixture' } };
+  const before = await run('claude_code', native('PreToolUse', tool));
+  assert.equal(before.code, 0); assert.deepEqual(JSON.parse(before.stdout), {});
+  assert.equal((before.delivered as { type: string }).type, 'tool_start');
+  const permission = await run('claude_code', native('PermissionRequest', tool), 'deny');
+  assert.equal(permission.code, 0);
+  assert.equal((permission.delivered as { type: string }).type, 'permission_request');
+  assert.equal(JSON.parse(permission.stdout).hookSpecificOutput.decision.behavior, 'deny');
+  const unsupported = await run('claude_code', native('PreToolUse', { tool_name: 'AskUserQuestion', tool_input: { questions: [] } }));
+  assert.deepEqual(JSON.parse(unsupported.stdout), {});
+  assert.equal(unsupported.delivered, undefined);
+});
+
 test('five added adapter entries traverse the compiled hook process with their native event fields', async () => {
   const kimiFixture=JSON.parse(await readFile(resolve('src/fixtures/companion/kimi-code-hooks.json'),'utf8'));
   for(const [agent,payload,expected]of [

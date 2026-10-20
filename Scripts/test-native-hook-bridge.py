@@ -77,6 +77,38 @@ def invoke(binary: Path, agent: str, hook: str, payload: dict[str, Any] | None, 
 
 def verify(binary: Path) -> list[str]:
     passed: list[str] = []
+    native_question = {"session_id": "question-fixture", "tool_name": "AskUserQuestion",
+                       "tool_input": {"question": "Continue?", "options": ["Yes", "No"]}}
+    for event in ["PreToolUse", "PermissionRequest"]:
+        payload = {**native_question, "hook_event_name": event}
+        message, output, code = invoke(binary, "claude_code", event, payload, answer="No")
+        assert code == 0 and message and message["type"] == "question"
+        response = json.loads(output)["hookSpecificOutput"]
+        if event == "PermissionRequest":
+            assert "permissionDecision" not in response
+            assert response["decision"]["behavior"] == "allow"
+            updated = response["decision"]["updatedInput"]
+        else:
+            assert response["permissionDecision"] == "allow"
+            updated = response["updatedInput"]
+        assert updated["answers"] == {"Continue?": "No"}
+        passed.append("claude:validated-single-question:" + event)
+
+        malformed = {**payload, "tool_input": {"questions": []}}
+        message, output, code = invoke(binary, "claude_code", event, malformed)
+        assert code == 0 and json.loads(output) == {}
+        assert message and message["type"] == "status_update" and message["observedState"] == "waitingAnswer"
+        passed.append("claude:unsupported-question-native-fallback:" + event)
+
+    third_party = {**native_question, "hook_event_name": "PreToolUse", "tool_name": "mcp__fixture__ask_user_run_command"}
+    message, output, code = invoke(binary, "claude_code", "PreToolUse", third_party)
+    assert code == 0 and json.loads(output) == {} and message and message["type"] == "tool_start"
+    message, output, code = invoke(binary, "claude_code", "PermissionRequest",
+                                  {**third_party, "hook_event_name": "PermissionRequest"}, decision=False)
+    assert code == 0 and message and message["type"] == "permission_request"
+    assert json.loads(output)["hookSpecificOutput"]["decision"]["behavior"] == "deny"
+    passed.append("claude:third-party-question-name-keeps-native-permission")
+
     for event in ["agentSpawn", "userPromptSubmit", "preToolUse", "postToolUse", "stop"]:
         payload = {"hook_event_name": event, "session_id": "kiro-native", "cwd": "/tmp/project",
                    "prompt": "fixture", "tool_name": "read", "tool_input": {"path": "fixture"},

@@ -1,5 +1,7 @@
 import { hasObservationMetadata, isRecord, parseDIMessage, ProtocolError, utf8Length, type DIMessage, type DIResponse } from './protocol';
 import { ObservationLedger, type ObservationSource } from './observation';
+import { assertSessionBoundary, boundedTransportError, capacityError, freezeSnapshot, messageReservation,
+  SESSION_BUDGET, SessionCapacityError, type SessionBudgetUsage } from './session-budget';
 import { foldKimiCodeObservation, isKimiCodeMessage, isValidKimiTask, KimiCodeObservationLedger,
   KIMI_TASK_STATUSES, parseKimiObservationState, type KimiCodeFoldResult, type KimiObservationState } from './kimi-tasks';
 import { SESSION_STATUSES, isArchivedSession, type ApplyResult, type ChatEntry, type InteractionDecision, type InteractionKind,
@@ -65,6 +67,12 @@ export class SessionStore {
   private notifiedReplies = new Set<string>();
   private selectedSessionId?: string;
   private revision = 0;
+  private cachedSnapshot?: StoreSnapshot;
+  private cachedSnapshotBytes = 0;
+  private cachedHistory?: string;
+  private measuredRevision = -1;
+  private measuredUsage?: SessionBudgetUsage;
+  private reservedUsage: SessionBudgetUsage = { bytes: 8192, sessions: 0, records: 0 };
   private sequence = 0;
   private observation = new ObservationLedger();
   private resolvedRequests = new Set<string>();
@@ -88,8 +96,19 @@ export class SessionStore {
   }
 
   snapshot(): StoreSnapshot {
-    return clone({ sessions: [...this.sessions.values()], selectedSessionId: this.selectedSessionId, revision: this.revision,
-      ownerInstanceId: this.readOnly ? this.mirrorOwner : this.ownerInstanceId });
+    if (!this.cachedSnapshot) {
+      const serialized = JSON.stringify({ sessions: [...this.sessions.values()], selectedSessionId: this.selectedSessionId, revision: this.revision,
+        ownerInstanceId: this.readOnly ? this.mirrorOwner : this.ownerInstanceId });
+      this.cachedSnapshotBytes = utf8Length(serialized);
+      this.cachedSnapshot = freezeSnapshot(JSON.parse(serialized) as StoreSnapshot);
+    }
+    return this.cachedSnapshot;
+  }
+
+  snapshotForTransfer(): StoreSnapshot {
+    const snapshot = this.snapshot();
+    if (this.cachedSnapshotBytes > SESSION_BUDGET.boundaryBytes) assertSessionBoundary(JSON.stringify(snapshot), '跨窗口快照');
+    return snapshot;
   }
 
   /** 设置窗口只接收主岛的实时副本，不能持有或提交原生交互通道。 */
@@ -101,6 +120,7 @@ export class SessionStore {
     const owner = value.ownerInstanceId ?? 'legacy';
     if (typeof owner !== 'string' || !owner || owner.length > 128) throw new ProtocolError('snapshot.ownerInstanceId');
     if (this.retiredOwners.has(owner) || (owner === this.mirrorOwner && (value.revision as number) <= this.mirrorRevision)) return false;
+    assertSessionBoundary(JSON.stringify(value), '跨窗口快照');
     const sessions = value.sessions.map(validateSession);
     if (new Set(sessions.map(session => session.id)).size !== sessions.length) throw new ProtocolError('snapshot.duplicateSession');
     for (const session of sessions) for (const request of session.pendingInteractions) delete request.transportRequestId;
@@ -110,7 +130,8 @@ export class SessionStore {
     this.selectedSessionId = typeof value.selectedSessionId === 'string' && this.sessions.has(value.selectedSessionId) ? value.selectedSessionId : sessions[0]?.id;
     this.mirrorRevision = value.revision as number;
     this.revision = this.mirrorRevision;
-    for (const listener of this.listeners) listener(this.snapshot());
+    this.invalidateSnapshot();
+    this.notifyListeners();
     return true;
   }
 
@@ -131,6 +152,50 @@ export class SessionStore {
   }
 
   apply(value: unknown, transport?: TransportRequest): ApplyResult {
+    if (this.readOnly) return { accepted: false, reason: 'Read-only session mirror', cancelRequestIds: [] };
+    const cancelled = this.expire();
+    let message: DIMessage;
+    try { message = parseDIMessage(value); }
+    catch (error) { return { accepted: false, reason: error instanceof Error ? error.message : 'Invalid message',
+      cancelRequestIds: [...cancelled, ...(transport?.requestId ? [transport.requestId] : [])] }; }
+    const existing = this.findSession(message);
+    const orphan = !existing ? this.kimiCodeObservations.get(message.sessionId) : undefined;
+    const observationControl = ['observation_heartbeat', 'observation_ended'].includes(message.type);
+    const completing = observationControl || (!!existing && (['session_end', 'interaction_resolved', 'tool_complete', 'subagent_end'].includes(message.type)
+      || (['status_update', 'progress'].includes(message.type) && message.observedState === 'idle')));
+    const endingSessions = message.type === 'observation_ended' ? [...this.sessions.values()].filter(session => session.agentType === message.agentType
+      && session.sourceNamespace === message.sourceNamespace && session.sourceInstanceId === message.sourceInstanceId).length : 0;
+    const growth = { bytes: messageReservation(message, transport) + endingSessions * 1024 + (orphan ? 2 * utf8Length(JSON.stringify(orphan)) : 0),
+      sessions: existing || observationControl ? 0 : 1, records: this.recordGrowth(message, existing) + (orphan ? 2 * orphan.state.backgroundTasks.length : 0) };
+    let error = capacityError(this.reservedUsage, growth, completing);
+    if (error) {
+      // 预留只是上界，重复回放/覆盖输出不累计占用；临近阈值才核对全量实际大小。
+      try {
+        this.reservedUsage = { ...this.measureUsage() };
+        error = capacityError(this.reservedUsage, growth, completing);
+      } catch (failure) {
+        if (!(failure instanceof SessionCapacityError)) throw failure;
+        error = failure;
+      }
+    }
+    if (error) return { accepted: false, reason: error.message,
+      cancelRequestIds: [...cancelled, ...(transport?.requestId && !this.usedTransports.has(transport.requestId) ? [transport.requestId] : [])] };
+    this.reservedUsage.bytes += growth.bytes;
+    this.reservedUsage.sessions += growth.sessions;
+    this.reservedUsage.records += growth.records;
+    const result = this.applyWithinCapacity(message, transport);
+    if (!result.accepted) {
+      this.reservedUsage.bytes -= growth.bytes;
+      this.reservedUsage.sessions -= growth.sessions;
+      this.reservedUsage.records -= growth.records;
+    } else {
+      // 观察心跳也会推进持久化序号，但不应触发 UI 修订。
+      this.cachedHistory = undefined; this.measuredRevision = -1;
+    }
+    return { ...result, cancelRequestIds: [...cancelled, ...result.cancelRequestIds] };
+  }
+
+  private applyWithinCapacity(value: unknown, transport?: TransportRequest): ApplyResult {
     if (this.readOnly) return { accepted: false, reason: 'Read-only session mirror', cancelRequestIds: [] };
     const cancelled = this.expire();
     const reject = (reason: string, cancel = true): ApplyResult => ({ accepted: false, reason,
@@ -254,7 +319,7 @@ export class SessionStore {
       const request: PendingInteraction = { id: this.nextId(), kind, phase: 'pending', transportRequestId: transport!.requestId,
         wireSessionId: message.sessionId,
         expiresAt: transport!.expiresAt, nativeRequestId: message.nativeRequestId, nativeRequestKind: message.nativeRequestKind,
-        tool: message.tool, description: message.permDescription, diff: message.diff, filePath: message.filePath,
+        tool: message.tool, toolInput: message.toolInput, description: message.permDescription, diff: message.diff, filePath: message.filePath,
         text: message.questionText, options: message.options ?? [], allowsCustomAnswer: message.allowsCustomAnswer === true,
         allowsMultipleAnswers: message.allowsMultipleAnswers === true, markdown: message.planMarkdown };
       session.pendingInteractions.push(request); this.usedTransports.add(transport!.requestId);
@@ -367,7 +432,7 @@ export class SessionStore {
       if (request.nativeRequestId) this.resolvedRequests.add(this.pendingKey(session.id, request));
       session.pendingInteractions = session.pendingInteractions.filter(item => item.id !== interactionId);
       this.updateWaiting(session);
-    } else { request.phase = 'failed'; request.error = error ?? '响应未送达，请在原应用继续处理'; }
+    } else { request.phase = 'failed'; request.error = boundedTransportError(error ?? '响应未送达，请在原应用继续处理'); }
     this.emit(); return true;
   }
 
@@ -375,7 +440,7 @@ export class SessionStore {
     let changed = false;
     for (const session of this.sessions.values()) for (const request of session.pendingInteractions) {
       if (request.transportRequestId !== requestId || request.phase === 'failed') continue;
-      request.phase = 'failed'; request.error = error;
+      request.phase = 'failed'; request.error = boundedTransportError(error);
       this.submitted.delete(request.id); changed = true;
     }
     if (changed) this.emit(); return changed;
@@ -416,7 +481,9 @@ export class SessionStore {
   }
 
   serialize(): string {
-    return this.serializeHistory(new Set());
+    this.cachedHistory ??= this.serializeHistory(new Set());
+    assertSessionBoundary(this.cachedHistory, '历史数据');
+    return this.cachedHistory;
   }
 
   prepareHistoryRemoval(sessionId?: string): HistoryRemoval {
@@ -450,20 +517,24 @@ export class SessionStore {
   }
 
   private serializeHistory(excluded: Set<string>): string {
-    const sessions = this.snapshot().sessions.filter(session => !excluded.has(session.id));
+    const sessions = [...this.sessions.values()].filter(session => !excluded.has(session.id)).map(session => ({ ...session,
+      pendingInteractions: session.pendingInteractions.map(request => ({ ...request })) }));
     // 历史不保存可用于回传的连接凭据。
     for (const session of sessions) for (const request of session.pendingInteractions) {
       delete request.transportRequestId; delete request.expiresAt;
       request.phase = 'failed'; request.error = '应用已重启，请在原应用重新发起请求';
     }
     const selectedSessionId = this.selectedSessionId && !excluded.has(this.selectedSessionId) ? this.selectedSessionId : sessions[0]?.id;
-    return JSON.stringify({ version: 1, sessions, selectedSessionId, dismissed: [...new Set([...this.dismissed, ...excluded])],
+    const serialized = JSON.stringify({ version: 1, sessions, selectedSessionId, dismissed: [...new Set([...this.dismissed, ...excluded])],
       closedOpenCodeSessions: [...this.closedWrappers].filter(id => id.startsWith('opencode-')),
       observations: this.observation.serialize(),
       kimiCodeObservations: [...this.kimiCodeObservations.values()].filter(row => !excluded.has(row.sessionId) && !this.dismissed.has(row.sessionId)) });
+    assertSessionBoundary(serialized, '历史数据');
+    return serialized;
   }
 
   restore(serialized: string): void {
+    assertSessionBoundary(serialized, '历史数据');
     const data: unknown = JSON.parse(serialized);
     if (!isRecord(data) || data.version !== 1 || !Array.isArray(data.sessions)) throw new ProtocolError('history');
     const sessions = data.sessions.map(value => validateSession(value));
@@ -508,6 +579,8 @@ export class SessionStore {
           sourceInstanceId: session.sourceInstanceId, nativeTaskId: session.nativeTaskId, state });
       }
     }
+    // 状态转换可能增添重启文案；先检查转换后的完整数据，失败不能覆盖原 store。
+    assertSessionBoundary(JSON.stringify({ ...data, sessions, kimiCodeObservations: [...kimiCodeObservations.values()] }), '恢复后的历史数据');
     this.reset(); this.sessions = new Map(sessions.map(session => [session.id, session]));
     this.observation = observation;
     this.kimiCodeObservations = kimiCodeObservations;
@@ -517,6 +590,7 @@ export class SessionStore {
     for (const id of this.dismissed) this.kimiCodeObservations.delete(id);
     this.selectedSessionId = typeof data.selectedSessionId === 'string' && this.sessions.has(data.selectedSessionId) ? data.selectedSessionId : sessions[0]?.id;
     this.emit();
+    this.reservedUsage = { ...this.measureUsage() };
   }
 
   loadFixture(value: unknown): void {
@@ -545,9 +619,11 @@ export class SessionStore {
         if (!result.accepted) throw new ProtocolError(`fixture.${key}`);
       }
     }
+    fixture.serialize(); fixture.snapshotForTransfer();
     this.reset(); this.sessions = fixture.sessions; this.usedTransports = fixture.usedTransports;
     this.selectedSessionId = typeof value.selectedSessionId === 'string' && this.sessions.has(value.selectedSessionId) ? value.selectedSessionId : this.sessions.keys().next().value;
     this.emit();
+    this.reservedUsage = { ...this.measureUsage() };
   }
 
   private reset(): void {
@@ -556,9 +632,55 @@ export class SessionStore {
     this.codexTurns.clear();
     this.kimiCodeObservations.clear();
     this.lastCompletionAt.clear(); this.notifiedReplies.clear();
+    this.reservedUsage = { bytes: 8192, sessions: 0, records: 0 };
   }
 
-  private emit(): void { this.revision++; for (const listener of this.listeners) listener(this.snapshot()); }
+  private invalidateSnapshot(): void { this.cachedSnapshot = undefined; this.cachedHistory = undefined; }
+
+  private notifyListeners(): void {
+    if (!this.listeners.size) return;
+    const snapshot = this.snapshot();
+    for (const listener of this.listeners) listener(snapshot);
+  }
+
+  private emit(): void {
+    this.revision++; this.invalidateSnapshot();
+    this.reservedUsage.bytes += 4096;
+    this.notifyListeners();
+  }
+
+  private measureUsage(): SessionBudgetUsage {
+    if (this.measuredRevision === this.revision && this.measuredUsage) return this.measuredUsage;
+    this.snapshot();
+    const sessions = [...this.sessions.values()];
+    const control = [...this.resolvedRequests, ...this.usedTransports, ...this.dismissed, ...this.closedWrappers,
+      ...this.closedDeepSeek, ...this.notifiedReplies, ...this.codexTurns.values()].map(value => typeof value === 'string' ? value : [...value.observed]);
+    const records = sessions.reduce((sum, session) => sum + session.events.length + session.chatHistory.length
+      + session.pendingInteractions.length + session.backgroundTasks.length + session.subagentIds.length, 0)
+      + control.reduce((sum, value) => sum + (Array.isArray(value) ? value.length : 1), 0)
+      + [...this.kimiCodeObservations.values()].reduce((sum, row) => sum + row.state.backgroundTasks.length + row.state.pending.length + row.state.resolved.length, 0);
+    this.measuredRevision = this.revision;
+    this.measuredUsage = { sessions: sessions.length, records,
+      bytes: Math.max(utf8Length(this.serialize()), this.cachedSnapshotBytes) + utf8Length(JSON.stringify(control))
+        + sessions.reduce((sum, session) => sum + session.pendingInteractions.length * 1024, 0) };
+    return this.measuredUsage;
+  }
+
+  private recordGrowth(message: DIMessage, session?: Session): number {
+    if (['interaction_resolved', 'observation_ended', 'observation_heartbeat'].includes(message.type)) return 0;
+    let growth = message.nativeBackgroundTask ? 4 : 0;
+    if (interactionKind(message.type)) return growth + 3;
+    if (message.type === 'tool_complete' && session?.events.some(event => message.toolCallId !== undefined
+      ? event.toolCallId === message.toolCallId : event.toolCallId === undefined && event.tool === (message.tool ?? '') && !event.isComplete)) return growth;
+    if (message.type === 'tool_start' && (message.nativeMessageReplay || (message.toolCallId && session?.events.some(event => event.toolCallId === message.toolCallId)))) return growth;
+    if (message.type === 'subagent_end') return growth;
+    for (const [role, content] of [['user', message.prompt], ['assistant', message.status]] as const) {
+      if (content !== undefined && !session?.chatHistory.some(chat => chat.id === this.chatId(message, role))) growth++;
+    }
+    return growth + (['tool_start', 'tool_complete', 'subagent_start'].includes(message.type) ? 3 : 0)
+      + (message.nativeMessageId && message.status !== undefined ? 1 : 0)
+      + (message.nativeTurnId ? 1 : 0) + (isKimiCodeMessage(message) ? 4 : 0);
+  }
 
   private applyKimiProjection(session: Session, fold: KimiCodeFoldResult): void {
     session.status = fold.status; session.statusText = fold.statusText;
@@ -827,7 +949,7 @@ function validateSession(value: unknown): Session {
       || !['pending', 'sending', 'failed'].includes(request.phase as string) || !Array.isArray(request.options)
       || !request.options.every(option => typeof option === 'string') || typeof request.allowsCustomAnswer !== 'boolean'
       || typeof request.allowsMultipleAnswers !== 'boolean') throw new ProtocolError('history.interaction');
-    for (const key of ['transportRequestId', 'wireSessionId', 'nativeRequestId', 'nativeRequestKind', 'tool', 'description', 'diff', 'filePath', 'text', 'markdown', 'error']) {
+    for (const key of ['transportRequestId', 'wireSessionId', 'nativeRequestId', 'nativeRequestKind', 'tool', 'toolInput', 'description', 'diff', 'filePath', 'text', 'markdown', 'error']) {
       if (request[key] !== undefined && typeof request[key] !== 'string') throw new ProtocolError(`history.interaction.${key}`);
     }
   }

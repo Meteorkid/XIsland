@@ -83,6 +83,7 @@ final class UpdateManager {
     @ObservationIgnored private let fetchReleaseData: ReleaseFetcher
     @ObservationIgnored private let updater: AppUpdater
     @ObservationIgnored private var autoCheckTimer: Timer?
+    @ObservationIgnored private var isInstalling = false
 
     static let githubReleaseDecoder: JSONDecoder = {
         let decoder = JSONDecoder()
@@ -233,6 +234,9 @@ final class UpdateManager {
     }
 
     func installUpdate() async {
+        guard !isInstalling else { return }
+        isInstalling = true
+        defer { isInstalling = false }
         guard let release = latestRelease else {
             state = .failed(message: "No release is available to install.")
             return
@@ -271,6 +275,8 @@ final class UpdateManager {
                 onStage: stageHandler
             )
             state = .idle
+        } catch AppUpdaterError.terminationCancelled {
+            state = .failed(message: AppUpdaterError.terminationCancelled.localizedDescription)
         } catch {
             state = .failed(message: "Unable to install the update.")
         }

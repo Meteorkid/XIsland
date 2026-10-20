@@ -46,9 +46,9 @@ test('strict decoder rejects missing, mistyped, unsafe fields and ignores unknow
 
 test('snapshot and subscriptions cannot mutate stored state', () => {
   const { store, apply, session } = setup(); let notifications = 0;
-  const unsubscribe = store.subscribe(snapshot => { notifications++; snapshot.sessions.splice(0); });
+  const unsubscribe = store.subscribe(snapshot => { notifications++; assert.throws(() => snapshot.sessions.push({} as Session), TypeError); });
   apply('session_start', { prompt: 'first' });
-  const snapshot = store.snapshot(); snapshot.sessions[0]!.prompt = 'modified';
+  const snapshot = store.snapshot(); assert.throws(() => { snapshot.sessions[0]!.prompt = 'modified'; }, TypeError);
   assert.equal(session().prompt, 'first'); assert.equal(notifications, 2);
   unsubscribe(); apply('status_update', { status: 'next' }); assert.equal(notifications, 2);
 });

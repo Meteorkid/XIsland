@@ -8,27 +8,34 @@ import Observation
 final class IntegrationSetupManager {
     @MainActor
     struct Environment {
-        var scan: () -> [IntegrationSetupDiscoveryEntry]
+        var scan: () async -> [IntegrationSetupDiscoveryEntry]
         var isEnabled: (AgentType) -> Bool
-        var configure: (AgentType) -> Void
-        var prepareTools: () -> Void
+        var configure: (AgentType) async -> Void
+        var prepareTools: () async -> Void
         var inspectCodex: (URL) async -> CodexHookTrustSnapshot
-        var prepareArtifact: (AgentType) throws -> URL? = { _ in nil }
+        var prepareArtifact: (AgentType) async throws -> URL? = { _ in nil }
+        var waitForRecheck: () async throws -> Void = { try await Task.sleep(for: .seconds(8)) }
 
         static var live: Self {
-            Self(scan: { IntegrationSetupDiscovery.scan() },
+            Self(scan: { await IntegrationSetupDiscovery.scan() },
                  isEnabled: { ZeroConfigManager.isAutoConfigEnabled(for: $0) },
-                 configure: { ZeroConfigManager.setAutoConfigEnabled(true, for: $0) },
-                 prepareTools: { ZeroConfigManager.syncCommandLineTools() },
+                 configure: { agent in
+                    _ = try? await IntegrationSetupIO.run { ZeroConfigManager.configure(agent) }
+                 },
+                 prepareTools: {
+                    _ = try? await IntegrationSetupIO.run { ZeroConfigManager.syncCommandLineTools() }
+                 },
                  inspectCodex: { binary in
                     await CodexHookTrustProbe.inspect(binary: binary,
                         cwd: FileManager.default.homeDirectoryForCurrentUser,
                         expectedCommands: IntegrationSetupDiscovery.codexExpectedCommands())
                  }, prepareArtifact: { agent in
                     let home = FileManager.default.homeDirectoryForCurrentUser
-                    return try IntegrationSetupArtifacts.prepare(for: agent,
-                        directory: home.appendingPathComponent(".xisland/integrations"),
-                        bridgeURL: home.appendingPathComponent(".xisland/bin/di-bridge"))
+                    return try await IntegrationSetupIO.run {
+                        try IntegrationSetupArtifacts.prepare(for: agent,
+                            directory: home.appendingPathComponent(".xisland/integrations"),
+                            bridgeURL: home.appendingPathComponent(".xisland/bin/di-bridge"))
+                    }
                  })
         }
 
@@ -68,11 +75,21 @@ final class IntegrationSetupManager {
     private var preparedTools = false
     private var refreshPending = false
     private var preparationPending = false
+    private var retryPreparationPending = false
     private var presentationPending = false
     private var preparedArtifacts: [AgentType: URL] = [:]
     private var artifactFailures: Set<AgentType> = []
+    private var artifactFingerprints: [AgentType: String] = [:]
     private var codexProbeFingerprint: String?
     private var pendingCodexActivity: (fingerprint: String, date: Date)?
+    private var checkingCodexRow: IntegrationSetupRow?
+    private(set) var isPresented = false
+    private var isShuttingDown = false
+    @ObservationIgnored private var monitoringTask: Task<Void, Never>?
+    @ObservationIgnored private var monitoringGeneration = 0
+    @ObservationIgnored private var refreshGeneration = 0
+    @ObservationIgnored private var operationGeneration: Int?
+    @ObservationIgnored private var cancelOperation: (@Sendable () -> Void)?
 
     init(defaults: UserDefaults = AppPreferences.defaults, environment: Environment? = nil) {
         self.defaults = defaults
@@ -82,6 +99,11 @@ final class IntegrationSetupManager {
         self.introductions = defaults.dictionary(forKey: Key.introductions) as? [String: String] ?? [:]
         self.observations = defaults.data(forKey: Key.observations)
             .flatMap { try? JSONDecoder().decode([String: ObservationRecord].self, from: $0) } ?? [:]
+    }
+
+    deinit {
+        monitoringTask?.cancel()
+        cancelOperation?()
     }
 
     var attentionCount: Int {
@@ -100,9 +122,22 @@ final class IntegrationSetupManager {
     }
 
     func refresh(prepareAutomatically: Bool = false) async {
+        await refresh(prepareAutomatically: prepareAutomatically, retryFailed: false)
+    }
+
+    /// 用户主动批量准备时允许重试失败项，仍不启用已关闭来源或重写完整配置。
+    func prepareAll() async {
+        await refresh(prepareAutomatically: true, retryFailed: true)
+    }
+
+    private func refresh(prepareAutomatically: Bool, retryFailed: Bool) async {
+        guard !Task.isCancelled, !isShuttingDown else { return }
+        refreshGeneration += 1
         if isRefreshing {
+            cancelOperation?()
             refreshPending = true
             preparationPending = preparationPending || prepareAutomatically
+            retryPreparationPending = retryPreparationPending || retryFailed
             if !environment.isEnabled(.codex) {
                 codexProbeFingerprint = nil
                 pendingCodexActivity = nil
@@ -110,16 +145,28 @@ final class IntegrationSetupManager {
             return
         }
         isRefreshing = true
-        defer { isRefreshing = false }
+        defer {
+            isRefreshing = false
+            preparationPending = false
+            retryPreparationPending = false
+        }
         var prepare = prepareAutomatically
+        var retry = retryFailed
+        var completedGeneration = refreshGeneration
         repeat {
             refreshPending = false
-            preparationPending = false
-            await performRefresh(prepareAutomatically: prepare)
+            // 普通回查继承未完成的准备意图；显式取消仍由 cancelPendingWork 清空。
+            preparationPending = prepare
+            retryPreparationPending = retry
+            completedGeneration = refreshGeneration
+            await runOperation { [self] in
+                await performRefresh(prepareAutomatically: prepare, retryFailed: retry, generation: completedGeneration)
+            }
             prepare = preparationPending
-        } while refreshPending && !Task.isCancelled
+            retry = retryPreparationPending
+        } while refreshPending && !Task.isCancelled && !isShuttingDown
         isRefreshing = false
-        guard !Task.isCancelled else { return }
+        guard isCurrent(completedGeneration) else { return }
         if presentationPending {
             presentationPending = false
             markPresented()
@@ -127,35 +174,56 @@ final class IntegrationSetupManager {
         if hasUnpresentedReminder { onNeedsAttention?() }
     }
 
-    private func performRefresh(prepareAutomatically: Bool) async {
-        var discovered = environment.scan()
+    private func performRefresh(prepareAutomatically: Bool, retryFailed: Bool, generation: Int) async {
+        guard isCurrent(generation) else { return }
+        defer { checkingCodexRow = nil }
+        var discovered = await environment.scan()
+        guard isCurrent(generation) else { return }
+        for entry in discovered where [.workBuddy, .kiro].contains(entry.agent) {
+            if artifactFingerprints[entry.agent] != entry.fingerprint {
+                preparedArtifacts.removeValue(forKey: entry.agent)
+                artifactFailures.remove(entry.agent)
+            }
+            artifactFingerprints[entry.agent] = entry.fingerprint
+        }
         if prepareAutomatically {
             let eligible = discovered.filter { $0.installed && $0.canAutoConfigure && environment.isEnabled($0.agent) }
             if !eligible.isEmpty && !preparedTools {
-                environment.prepareTools()
+                await environment.prepareTools()
+                guard isCurrent(generation) else { return }
                 preparedTools = true
             }
             var changed = false
-            for entry in eligible where !entry.configured && attempts[entry.agent.rawValue] != entry.fingerprint {
-                // 失败也记住本次尝试，避免每次启动反复覆盖/写入。用户可在面板中明确重试。
+            for entry in eligible where !entry.configured && (retryFailed || attempts[entry.agent.rawValue] != entry.fingerprint) {
+                guard isCurrent(generation), environment.isEnabled(entry.agent) else { return }
+                await environment.configure(entry.agent)
+                guard isCurrent(generation) else { return }
+                // 只记录完成的尝试；取消不能留下一个阻止下次恢复的失败标记。
                 attempts[entry.agent.rawValue] = entry.fingerprint
                 defaults.set(attempts, forKey: Key.attempts)
-                environment.configure(entry.agent)
                 changed = true
             }
-            if changed { discovered = environment.scan() }
+            if changed { discovered = await environment.scan() }
+            guard isCurrent(generation) else { return }
             for entry in discovered where entry.installed && environment.isEnabled(entry.agent)
                 && [.workBuddy, .kiro].contains(entry.agent)
-                && preparedArtifacts[entry.agent] == nil && !artifactFailures.contains(entry.agent) {
-                _ = prepareArtifact(for: entry.agent)
+                && preparedArtifacts[entry.agent] == nil && (retryFailed || !artifactFailures.contains(entry.agent)) {
+                guard isCurrent(generation) else { return }
+                _ = await prepareArtifact(for: entry.agent, generation: generation)
             }
         }
+        guard isCurrent(generation) else { return }
 
         // 只保留失败尝试；成功后客户端若重写配置，仍应允许自动补回。
         let recovered = discovered.filter { $0.configured && attempts[$0.agent.rawValue] != nil }
         if !recovered.isEmpty {
             for entry in recovered { attempts.removeValue(forKey: entry.agent.rawValue) }
             defaults.set(attempts, forKey: Key.attempts)
+        }
+        if let codex = discovered.first(where: { $0.agent == .codex }), codex.installed, codex.configured,
+           environment.isEnabled(.codex), let previous = evidence[.codex]?.configurationFingerprint,
+           previous == codex.fingerprint || previous.hasPrefix(codex.fingerprint + ":") {
+            checkingCodexRow = rows.first { $0.agent == .codex }
         }
         entries = Dictionary(uniqueKeysWithValues: discovered.map { ($0.agent, $0) })
         for entry in discovered {
@@ -186,13 +254,15 @@ final class IntegrationSetupManager {
                 snapshot = CodexHookTrustSnapshot(state: .unavailable, fingerprint: nil,
                     configuredCount: 0, trustedCount: 0, reason: nil)
             }
-            guard !Task.isCancelled else { return }
+            guard isCurrent(generation) else { return }
             // 查询期间客户端设置可能改变；只读复核后才能把这次活动绑定到授权结果。
-            let current = environment.scan().first { $0.agent == .codex }
+            let current = await environment.scan().first { $0.agent == .codex }
+            guard isCurrent(generation) else { return }
             let enabled = environment.isEnabled(.codex)
             let pending = pendingCodexActivity
             codexProbeFingerprint = nil
             pendingCodexActivity = nil
+            checkingCodexRow = nil
             if snapshot.state == .required {
                 // 撤销授权后不能用撤销前的活动，在再次授权时直接恢复绿色。
                 observations.removeValue(forKey: AgentType.codex.rawValue)
@@ -226,15 +296,74 @@ final class IntegrationSetupManager {
     }
 
     func configure(_ agent: AgentType) async {
-        guard !isRefreshing, let entry = entries[agent], entry.installed, entry.canAutoConfigure else { return }
-        environment.prepareTools()
-        preparedTools = true
-        environment.configure(agent)
+        guard !Task.isCancelled, !isShuttingDown, !isRefreshing else { return }
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        isRefreshing = true
+        await runOperation { [self] in
+            let discovered = await environment.scan()
+            guard isCurrent(generation), let entry = discovered.first(where: { $0.agent == agent }),
+                  entry.installed, entry.canAutoConfigure, !entry.configured, environment.isEnabled(agent) else { return }
+            await environment.prepareTools()
+            guard isCurrent(generation), environment.isEnabled(agent) else { return }
+            preparedTools = true
+            await environment.configure(agent)
+        }
+        isRefreshing = false
+        guard isCurrent(generation) || refreshPending else { return }
+        if refreshPending {
+            await refresh(prepareAutomatically: preparationPending, retryFailed: retryPreparationPending)
+            return
+        }
         await refresh()
     }
 
+    func beginMonitoring() {
+        guard !isShuttingDown else { return }
+        isPresented = true
+        guard monitoringTask == nil else { return }
+        monitoringGeneration += 1
+        let generation = monitoringGeneration
+        monitoringTask = Task { [weak self] in
+            while !Task.isCancelled, self?.isPresented == true {
+                await self?.refresh()
+                guard self?.isPresented == true, !Task.isCancelled,
+                      let wait = self?.environment.waitForRecheck else { break }
+                do { try await wait() }
+                catch { break }
+            }
+            if self?.monitoringGeneration == generation { self?.monitoringTask = nil }
+        }
+    }
+
+    func endMonitoring() {
+        isPresented = false
+        cancelPendingWork()
+    }
+
+    func shutdown() {
+        isShuttingDown = true
+        isPresented = false
+        cancelPendingWork()
+    }
+
+    private func cancelPendingWork() {
+        refreshGeneration += 1
+        monitoringGeneration += 1
+        monitoringTask?.cancel()
+        monitoringTask = nil
+        cancelOperation?()
+        refreshPending = false
+        preparationPending = false
+        retryPreparationPending = false
+        presentationPending = false
+        codexProbeFingerprint = nil
+        pendingCodexActivity = nil
+        checkingCodexRow = nil
+    }
+
     func recordActivity(from agent: AgentType, at date: Date = Date()) {
-        guard agent.isSupported, agent != .glm, var state = evidence[agent], state.enabled, environment.isEnabled(agent) else { return }
+        guard !isShuttingDown, agent.isSupported, agent != .glm, var state = evidence[agent], state.enabled, environment.isEnabled(agent) else { return }
         if agent == .codex, let fingerprint = codexProbeFingerprint {
             guard state.configured, state.configurationFingerprint == fingerprint else { return }
             pendingCodexActivity = (fingerprint, date)
@@ -263,7 +392,7 @@ final class IntegrationSetupManager {
 
     func markPresented() {
         // 窗口可在检查期间关闭；应记住本轮最终结果，不能持久化临时的未检查指纹。
-        if isRefreshing { presentationPending = true; return }
+        if isRefreshing && operationGeneration == refreshGeneration { presentationPending = true; return }
         for row in rows where row.phase != .notInstalled && row.phase != .disabled {
             let fingerprint = evidence[row.agent]?.configurationFingerprint
             if row.phase == .connected || row.phase == .waitingForActivity {
@@ -279,29 +408,67 @@ final class IntegrationSetupManager {
 
     func appURL(for agent: AgentType) -> URL? { entries[agent]?.appURL }
 
-    func prepareFiles(for agent: AgentType) -> URL? {
-        guard let entry = entries[agent], entry.installed, environment.isEnabled(agent),
+    func prepareFiles(for agent: AgentType) async -> URL? {
+        guard !Task.isCancelled, !isShuttingDown, !isRefreshing, let entry = entries[agent], entry.installed, environment.isEnabled(agent),
               [.workBuddy, .kiro].contains(agent) else { return nil }
-        let result = prepareArtifact(for: agent)
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        isRefreshing = true
+        let result = await runOperation { [self] in
+            await prepareArtifact(for: agent, generation: generation)
+        }
+        isRefreshing = false
+        guard isCurrent(generation) else {
+            if refreshPending {
+                await refresh(prepareAutomatically: preparationPending, retryFailed: retryPreparationPending)
+            }
+            return nil
+        }
         rebuildRows()
         return result
     }
 
-    private func prepareArtifact(for agent: AgentType) -> URL? {
-        if !preparedTools { environment.prepareTools(); preparedTools = true }
+    private func prepareArtifact(for agent: AgentType, generation: Int) async -> URL? {
+        guard isCurrent(generation) else { return nil }
+        if !preparedTools {
+            await environment.prepareTools()
+            guard isCurrent(generation) else { return nil }
+            preparedTools = true
+        }
+        guard environment.isEnabled(agent) else { return nil }
         do {
-            let url = try environment.prepareArtifact(agent)
+            let url = try await environment.prepareArtifact(agent)
+            guard isCurrent(generation), environment.isEnabled(agent) else { return nil }
             preparedArtifacts[agent] = url
             artifactFailures.remove(agent)
             return url
         } catch {
+            guard isCurrent(generation), !(error is CancellationError) else { return nil }
             artifactFailures.insert(agent)
             return nil
         }
     }
 
+    private func isCurrent(_ generation: Int) -> Bool {
+        !Task.isCancelled && !isShuttingDown && generation == refreshGeneration
+    }
+
+    private func runOperation<Result: Sendable>(_ operation: @escaping @MainActor () async -> Result) async -> Result {
+        let work = Task { @MainActor in await operation() }
+        cancelOperation = { work.cancel() }
+        operationGeneration = refreshGeneration
+        defer { cancelOperation = nil; operationGeneration = nil }
+        return await withTaskCancellationHandler {
+            await work.value
+        } onCancel: {
+            work.cancel()
+        }
+    }
+
     private func rebuildRows() {
         rows = IntegrationSetupDescriptor.all.map { baseDescriptor in
+            // 回查期间保留同一配置的最近结果，避免每八秒把一行挪到“检查失败”分组。
+            if baseDescriptor.agent == .codex, let checkingCodexRow { return checkingCodexRow }
             var descriptor = baseDescriptor
             let entry = entries[descriptor.agent]
             if let entry {

@@ -439,7 +439,8 @@ final class IntegrationSetupManagerTests: XCTestCase {
         let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
         await manager.refresh()
 
-        XCTAssertNil(manager.prepareFiles(for: .workBuddy))
+        let failedPreparation = await manager.prepareFiles(for: .workBuddy)
+        XCTAssertNil(failedPreparation)
 
         let failureDetail = try XCTUnwrap(row(.workBuddy, in: manager)?.detail)
         XCTAssertTrue(failureDetail.contains("接入文件未能准备") || failureDetail.contains("Setup files could not be prepared"))
@@ -448,7 +449,7 @@ final class IntegrationSetupManagerTests: XCTestCase {
         XCTAssertEqual(fixture.artifactCalls, [.workBuddy], "失败后不能在自动刷新中不断重复写入")
         fixture.failedArtifacts.remove(.workBuddy)
 
-        let prepared = manager.prepareFiles(for: .workBuddy)
+        let prepared = await manager.prepareFiles(for: .workBuddy)
 
         XCTAssertEqual(prepared, URL(fileURLWithPath: "/fixture/integrations/workbuddy"))
         XCTAssertEqual(fixture.artifactCalls, [.workBuddy, .workBuddy])
@@ -466,10 +467,184 @@ final class IntegrationSetupManagerTests: XCTestCase {
 
         await manager.refresh(prepareAutomatically: true)
         for agent in [AgentType.workBuddy, .kiro, .zed] {
-            XCTAssertNil(manager.prepareFiles(for: agent))
+            let prepared = await manager.prepareFiles(for: agent)
+            XCTAssertNil(prepared)
         }
 
         XCTAssertTrue(fixture.artifactCalls.isEmpty)
+        XCTAssertTrue(fixture.configurationCalls.isEmpty)
+        XCTAssertEqual(fixture.prepareCalls, 0)
+    }
+
+    func testPrepareAllRetriesOnlyEnabledMissingConfigurationsAndArtifacts() async throws {
+        let fixture = Fixture(entries: [entry(.claudeCode, configured: false), entry(.cursor),
+            entry(.geminiCli, installed: false, configured: false), entry(.qwen, configured: false),
+            entry(.workBuddy, configured: false), entry(.kiro, configured: false)])
+        fixture.disabledAgents = [.qwen, .kiro]
+        fixture.failedArtifacts = [.workBuddy]
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+        await manager.refresh(prepareAutomatically: true)
+        fixture.successfulConfigurations = [.claudeCode]
+        fixture.failedArtifacts = []
+
+        await manager.prepareAll()
+        await manager.prepareAll()
+
+        XCTAssertEqual(fixture.configurationCalls, [.claudeCode, .claudeCode])
+        XCTAssertEqual(fixture.artifactCalls, [.workBuddy, .workBuddy])
+        XCTAssertEqual(phase(.claudeCode, in: manager), .waitingForActivity)
+        XCTAssertEqual(phase(.qwen, in: manager), .disabled)
+        XCTAssertEqual(phase(.workBuddy, in: manager), .needsSetup)
+    }
+
+    func testSingleConfigurationDoesNotEnableDisabledOrRewriteConfiguredClient() async throws {
+        let fixture = Fixture(entries: [entry(.claudeCode, configured: false), entry(.cursor)])
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+        await manager.refresh()
+        fixture.disabledAgents.insert(.claudeCode)
+        await manager.configure(.claudeCode)
+        await manager.configure(.cursor)
+        XCTAssertTrue(fixture.configurationCalls.isEmpty)
+        XCTAssertEqual(fixture.prepareCalls, 0)
+    }
+
+    func testPrepareAllIntentSurvivesConcurrentCodexCheck() async throws {
+        let fixture = Fixture(entries: [entry(.codex), entry(.claudeCode, configured: false)])
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+        await manager.refresh(prepareAutomatically: true)
+        XCTAssertEqual(fixture.configurationCalls, [.claudeCode])
+        let started = expectation(description: "Codex check suspended")
+        var continuation: CheckedContinuation<CodexHookTrustSnapshot, Never>?
+        let granted = trust(.granted)
+        fixture.inspectCodex = { _ in
+            fixture.inspectCodex = nil
+            return await withCheckedContinuation { continuation = $0; started.fulfill() }
+        }
+        let checking = Task { await manager.refresh() }
+        await fulfillment(of: [started], timeout: 2)
+        fixture.successfulConfigurations.insert(.claudeCode)
+        await manager.prepareAll()
+        try XCTUnwrap(continuation).resume(returning: granted)
+        await checking.value
+        XCTAssertEqual(fixture.configurationCalls, [.claudeCode, .claudeCode])
+        XCTAssertEqual(phase(.claudeCode, in: manager), .waitingForActivity)
+    }
+
+    func testArtifactDefinitionChangeInvalidatesSuccessAndFailureCaches() async throws {
+        for fails in [false, true] {
+            let fixture = Fixture(entries: [entry(.workBuddy, configured: false, fingerprint: "v1")])
+            fixture.failedArtifacts = fails ? [.workBuddy] : []
+            let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+            await manager.refresh(prepareAutomatically: true)
+            fixture.entries = [entry(.workBuddy, configured: false, fingerprint: "v2")]
+            fixture.failedArtifacts = []
+            await manager.refresh(prepareAutomatically: true)
+            XCTAssertEqual(fixture.artifactCalls, [.workBuddy, .workBuddy])
+            XCTAssertEqual(phase(.workBuddy, in: manager), .needsSetup)
+        }
+    }
+
+    func testVisiblePanelMonitorsTrustWithoutWritingConfigurationAndStopsWhenClosed() async throws {
+        let fixture = Fixture(entries: [entry(.codex)])
+        fixture.codexSnapshot = trust(.required)
+        let waiting = expectation(description: "Waiting between checks")
+        var wake: CheckedContinuation<Void, Error>?
+        var environment = fixture.environment
+        var waits = 0
+        environment.waitForRecheck = {
+            waits += 1
+            if waits == 1 {
+                try await withCheckedThrowingContinuation { wake = $0; waiting.fulfill() }
+            } else { throw CancellationError() }
+        }
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: environment)
+        manager.beginMonitoring()
+        manager.beginMonitoring()
+        await fulfillment(of: [waiting], timeout: 2)
+        XCTAssertEqual(fixture.inspectedBinaries.count, 1, "重复显示不能启动并行轮询")
+        XCTAssertEqual(phase(.codex, in: manager), .needsAuthorization)
+        fixture.codexSnapshot = trust(.granted)
+        let updated = expectation(description: "Automatic authorization refresh")
+        fixture.inspectCodex = { _ in updated.fulfill(); return fixture.codexSnapshot }
+        try XCTUnwrap(wake).resume()
+        await fulfillment(of: [updated], timeout: 2)
+        await Task.yield()
+        XCTAssertEqual(phase(.codex, in: manager), .waitingForActivity)
+        XCTAssertTrue(fixture.configurationCalls.isEmpty)
+        XCTAssertEqual(fixture.prepareCalls, 0)
+        manager.endMonitoring()
+        manager.shutdown()
+        XCTAssertFalse(manager.isPresented)
+    }
+
+    func testClosingPanelDoesNotStartAnotherCheckAfterDelay() async throws {
+        let fixture = Fixture(entries: [entry(.claudeCode)])
+        var wake: CheckedContinuation<Void, Error>?
+        let waiting = expectation(description: "Monitoring delay")
+        var environment = fixture.environment
+        environment.waitForRecheck = {
+            try await withCheckedThrowingContinuation { wake = $0; waiting.fulfill() }
+        }
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: environment)
+        manager.beginMonitoring()
+        await fulfillment(of: [waiting], timeout: 2)
+        let scans = fixture.scanCalls
+        manager.endMonitoring()
+        manager.markPresented()
+        try XCTUnwrap(wake).resume()
+        await Task.yield()
+        await Task.yield()
+        XCTAssertEqual(fixture.scanCalls, scans)
+        XCTAssertFalse(manager.hasUnpresentedReminder)
+        manager.shutdown()
+    }
+
+    func testCancelledPreparationDoesNotReadOrWriteClientConfiguration() async throws {
+        let fixture = Fixture(entries: [entry(.claudeCode, configured: false), entry(.workBuddy, configured: false)])
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+        let prepare = Task { await manager.prepareAll() }
+        prepare.cancel()
+        await prepare.value
+        XCTAssertEqual(fixture.scanCalls, 0)
+        XCTAssertEqual(fixture.prepareCalls, 0)
+        XCTAssertTrue(fixture.configurationCalls.isEmpty)
+        XCTAssertTrue(fixture.artifactCalls.isEmpty)
+
+        let configure = Task { await manager.configure(.claudeCode) }
+        configure.cancel()
+        await configure.value
+        XCTAssertEqual(fixture.scanCalls, 0)
+        XCTAssertTrue(fixture.configurationCalls.isEmpty)
+    }
+
+    func testRecheckKeepsTheLastKnownRowUntilTheSameDefinitionReturns() async throws {
+        let fixture = Fixture(entries: [entry(.codex)])
+        fixture.codexSnapshot = trust(.required)
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+        await manager.refresh()
+        let started = expectation(description: "Recheck started")
+        var pending: CheckedContinuation<CodexHookTrustSnapshot, Never>?
+        fixture.inspectCodex = { _ in
+            await withCheckedContinuation { pending = $0; started.fulfill() }
+        }
+        let recheck = Task { await manager.refresh() }
+        await fulfillment(of: [started], timeout: 2)
+        XCTAssertTrue(manager.isRefreshing)
+        XCTAssertEqual(phase(.codex, in: manager), .needsAuthorization)
+        try XCTUnwrap(pending).resume(returning: trust(.granted))
+        await recheck.value
+        XCTAssertEqual(phase(.codex, in: manager), .waitingForActivity)
+    }
+
+    func testShutdownPreventsAlreadyQueuedUserPreparationFromWriting() async throws {
+        let fixture = Fixture(entries: [entry(.claudeCode, configured: false)])
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+        let pending = Task { await manager.prepareAll() }
+        manager.shutdown()
+        await pending.value
+        manager.beginMonitoring()
+        XCTAssertFalse(manager.isPresented)
+        XCTAssertEqual(fixture.scanCalls, 0)
         XCTAssertTrue(fixture.configurationCalls.isEmpty)
         XCTAssertEqual(fixture.prepareCalls, 0)
     }

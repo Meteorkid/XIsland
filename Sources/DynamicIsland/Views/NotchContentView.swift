@@ -23,12 +23,15 @@ struct NotchContentView: View {
     @State private var expandedAt: Date = .distantPast
     @State private var showContent = false
     @State private var jumpMouseLocation: CGPoint?
-    @State private var hoverTimer: Timer?
+    @State private var hoverPolling = HoverPollingController()
+    @State private var isHoverPollingActive = false
     @State private var lastCollapseAt: Date = .distantPast
     @State private var expandPending = false
     @State private var collapseAnimating = false
     @State private var collapseGeneration = 0
     @State private var previousMouseY: CGFloat = 0
+    @State private var previousMouseLocation: CGPoint?
+    @State private var lastMouseMovementAt: Date = .distantPast
     @State private var jellyGeneration: UInt = 0
     @State private var magneticOffset: CGSize = .zero
     @State private var lastScrollExpandAt: Date = .distantPast
@@ -67,7 +70,6 @@ struct NotchContentView: View {
 
     private static let magneticMaxOffset: CGFloat = 8
     private static let magneticRange: CGFloat = 80
-    private static let hoverPollingInterval: TimeInterval = 1.0 / 60.0
 
     private var collapsedShapeHeight: CGFloat { IslandSizeCalculator.collapsedShapeHeight }
     private let tickerLineHeight: CGFloat = 18
@@ -458,6 +460,7 @@ struct NotchContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .clipped()
         .contentShape(Rectangle())
+        .onHover { _ in pollMousePosition() }
         .contextMenu {
             Button {
                 audio.isMuted.toggle()
@@ -485,8 +488,9 @@ struct NotchContentView: View {
         .accessibilityIdentifier(TestAccessibility.islandRoot)
         .preferredColorScheme(themeManager.resolvedScheme)
         .onChange(of: expandedHeight) { _, _ in
-            if case .expanded = state {
+            if isExpanded {
                 cachedExpandedShapeHeight = max(collapsedShapeHeight + 1, expandedHeight)
+                reportSize()
             }
         }
         .onChange(of: state) { _, newState in
@@ -534,9 +538,7 @@ struct NotchContentView: View {
             Self.handleIslandStateChange(initialState, manager: manager)
             if initialState != .collapsed {
                 showContent = true
-                if case .expanded = initialState {
-                    cachedExpandedShapeHeight = max(collapsedShapeHeight + 1, expandedHeight)
-                }
+                cachedExpandedShapeHeight = max(collapsedShapeHeight + 1, expandedHeight)
             }
             reportSize()
             startHoverPolling()
@@ -569,8 +571,19 @@ struct NotchContentView: View {
             }
             notificationTokens = []
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { notification in
+            guard notification.object is NotchWindow else { return }
+            pollMousePosition()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didHideNotification)) { _ in
+            pollMousePosition()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didUnhideNotification)) { _ in
+            pollMousePosition()
+        }
         .onChange(of: reduceMotion) { _, reduced in
             if reduced { clearHoverJellyState(animated: false) }
+            pollMousePosition()
         }
         .onChange(of: manager.focusedInteraction) { _, focus in
             guard focus != nil else { return }
@@ -642,11 +655,8 @@ struct NotchContentView: View {
 
         let timing = transitionTiming
         let target = targetSize(for: newState)
-        if case .expanded = newState {
-            cachedExpandedShapeHeight = IslandSizeCalculator.expandedPanelShapeHeight(
-                visibleSessionCount: manager.visibleSessions.count,
-                panelMaxHeight: panelMaxHeight
-            )
+        if newState != .collapsed {
+            cachedExpandedShapeHeight = max(collapsedShapeHeight + 1, target.height)
         }
         onSizeChange?(target.width, target.height, true)
         let runExpansion = {
@@ -726,7 +736,8 @@ struct NotchContentView: View {
             for: state,
             visibleSessionCount: manager.visibleSessions.count,
             panelWidth: panelWidth,
-            panelMaxHeight: panelMaxHeight
+            panelMaxHeight: panelMaxHeight,
+            activityLogExpanded: activityLogExpanded
         )
     }
 
@@ -817,36 +828,39 @@ struct NotchContentView: View {
 
     /// Returns (providerLabel, valueText, accentColor) for a quota entry.
     private func quotaDisplayInfo(for quota: QuotaInfo) -> (String, String, Color)? {
+        let label: String
+        let color: Color
         switch quota.provider {
         case "Anthropic":
-            if let remaining = quota.tokensRemaining {
-                return ("Claude", formatTokens(remaining), Color(red: 0.85, green: 0.45, blue: 0.25))
-            }
+            label = "Claude"
+            color = Color(red: 0.85, green: 0.45, blue: 0.25)
         case "OpenAI":
-            if let used = quota.tokensRemaining {
-                return ("Codex", formatTokens(used), Color(red: 0.2, green: 0.8, blue: 0.4))
-            }
+            label = "Codex"
+            color = Color(red: 0.2, green: 0.8, blue: 0.4)
         case "Kimi":
-            // balance from Moonshot API is in approximate token count
-            if let tokens = quota.tokensRemaining, tokens > 0 {
-                return ("Kimi", "¥\(tokens / 100)", Color(red: 0.95, green: 0.35, blue: 0.45))
-            }
+            label = "Kimi"
+            color = Color(red: 0.95, green: 0.35, blue: 0.45)
         case "DeepSeek":
-            if let tokens = quota.tokensRemaining {
-                return tokens > 0
-                    ? ("DeepSeek", formatTokens(tokens), Color(red: 0.25, green: 0.75, blue: 0.55))
-                    : ("DeepSeek", "Exhausted", Color.red.opacity(0.7))
-            }
+            label = "DeepSeek"
+            color = Color(red: 0.25, green: 0.75, blue: 0.55)
         case "GLM":
-            if let remaining = quota.requestsRemaining {
-                return remaining > 0
-                    ? ("GLM", "Active", Color(red: 0.25, green: 0.45, blue: 0.95))
-                    : ("GLM", "N/A", Color.red.opacity(0.7))
-            }
+            label = "GLM"
+            color = Color(red: 0.25, green: 0.45, blue: 0.95)
         default:
-            break
+            return nil
         }
-        return nil
+        if let remaining = quota.tokensRemaining {
+            return (label, L10n.quotaTokensRemaining(formatTokens(remaining)), color)
+        }
+        if let used = quota.tokensUsed {
+            return (label, L10n.quotaTokensUsed(formatTokens(used)), color)
+        }
+        if let balance = quota.balanceText { return (label, balance, color) }
+        if let available = quota.apiAvailable {
+            let status = available ? L10n.quotaAPIAvailable : L10n.quotaAPIUnavailable
+            return (label, "\(status) · \(L10n.quotaUnknown)", color)
+        }
+        return (label, L10n.quotaUnknown, color.opacity(0.7))
     }
 
     private func formatTokens(_ count: Int) -> String {
@@ -942,7 +956,7 @@ struct NotchContentView: View {
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(L10n.dismissAll)
+            .accessibilityLabel(L10n.collapsePanel)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -1026,25 +1040,37 @@ struct NotchContentView: View {
     }
 
     private func startHoverPolling() {
-        stopHoverPolling()
-        hoverTimer = Timer.scheduledTimer(withTimeInterval: Self.hoverPollingInterval, repeats: true) { _ in
-            pollMousePosition()
-        }
+        isHoverPollingActive = true
+        previousMouseY = NSEvent.mouseLocation.y
+        pollMousePosition()
     }
 
     private func stopHoverPolling() {
-        hoverTimer?.invalidate()
-        hoverTimer = nil
+        isHoverPollingActive = false
+        hoverPolling.stop()
+        clearHoverJellyState(animated: false)
+        isHovering = false
     }
 
     private func pollMousePosition() {
-        guard let window = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow else { return }
-        guard !window.isDragging else { return }
-
-        if !window.isHiddenByIslandSwitch,
-           !window.isVisible,
-           (manager.hasInteraction || !manager.visibleSessions.isEmpty) {
-            window.orderFrontRegardless()
+        guard isHoverPollingActive else { return }
+        guard let window = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow,
+              HoverPollingPolicy.canSample(
+                windowVisible: window.isVisible,
+                windowOccluded: !window.occlusionState.contains(.visible),
+                applicationHidden: NSApp.isHidden,
+                hiddenByIslandSwitch: window.isHiddenByIslandSwitch
+              ) else {
+            hoverPolling.stop()
+            clearHoverJellyState(animated: false)
+            isHovering = false
+            previousMouseLocation = nil
+            lastMouseMovementAt = .distantPast
+            return
+        }
+        guard !window.isDragging else {
+            hoverPolling.update(cadence: .idle) { pollMousePosition() }
+            return
         }
 
         let obscured = window.isObscuredByPhysicalNotch()
@@ -1054,6 +1080,12 @@ struct NotchContentView: View {
         }
 
         let mouse = NSEvent.mouseLocation
+        if let previousMouseLocation {
+            if mouse != previousMouseLocation { lastMouseMovementAt = Date() }
+        } else {
+            previousMouseY = mouse.y
+        }
+        previousMouseLocation = mouse
         var hitFrame = window.frame
         // 展开时用更大的命中区域覆盖整个面板+药丸区域，防止鼠标在面板与药丸之间移动时误触发收起
         if isExpanded {
@@ -1077,6 +1109,15 @@ struct NotchContentView: View {
                 hitFrame.size.height += max(0, screenTop - hitFrame.maxY) + 1
             }
         }
+        let cadence = HoverPollingPolicy.cadence(
+            isVisible: true,
+            isDragging: false,
+            pointerLocation: mouse,
+            hoverFrame: hitFrame,
+            allowsContinuousMotion: !reduceMotion,
+            recentPointerMovement: Date().timeIntervalSince(lastMouseMovementAt) < 0.25
+        )
+        hoverPolling.update(cadence: cadence) { pollMousePosition() }
         var inside = hitFrame.contains(mouse)
 
         // collapse 动画期间（state 已是 collapsed 但 window.frame 尚未缩回），
@@ -1111,22 +1152,24 @@ struct NotchContentView: View {
 
         previousMouseY = mouse.y
 
-        let targetMagneticOffset = Self.magneticOffset(
-            mouseLocation: mouse,
-            windowFrame: window.frame,
-            collapsedShapeHeight: collapsedShapeHeight,
-            isExpanded: isExpanded,
-            collapseAnimating: collapseAnimating
-        )
         if reduceMotion {
-            magneticOffset = .zero
-        } else if abs(targetMagneticOffset.width - magneticOffset.width) > 0.5 {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                magneticOffset = targetMagneticOffset
-            }
-        } else if targetMagneticOffset == .zero && magneticOffset != .zero {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) {
-                magneticOffset = .zero
+            if magneticOffset != .zero { magneticOffset = .zero }
+        } else {
+            let targetMagneticOffset = Self.magneticOffset(
+                mouseLocation: mouse,
+                windowFrame: window.frame,
+                collapsedShapeHeight: collapsedShapeHeight,
+                isExpanded: isExpanded,
+                collapseAnimating: collapseAnimating
+            )
+            if abs(targetMagneticOffset.width - magneticOffset.width) > 0.5 {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    magneticOffset = targetMagneticOffset
+                }
+            } else if targetMagneticOffset == .zero && magneticOffset != .zero {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) {
+                    magneticOffset = .zero
+                }
             }
         }
 
@@ -1201,11 +1244,7 @@ struct NotchContentView: View {
     }
 
     private var sortedActivityEvents: [(session: AgentSession, event: ToolEvent)] {
-        manager.sessions
-            .flatMap { session in
-                session.events.map { (session: session, event: $0) }
-            }
-            .sorted { $0.event.timestamp > $1.event.timestamp }
+        manager.recentActivityEvents
     }
 
     private var activityLogContent: some View {

@@ -19,20 +19,20 @@ fail() {
 
 test_selects_dmg_asset_from_release_json() {
     local json
-    json='{"tagName":"v1.2.3","assets":[{"name":"notes.txt","url":"https://example.com/notes.txt"},{"name":"XIsland-v1.2.3.dmg","url":"https://example.com/XIsland-v1.2.3.dmg"}]}'
+    json='{"tagName":"v1.2.3","body":"XIsland-1.2.3.dmg SHA256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","assets":[{"name":"notes.txt","url":"https://example.com/notes.txt"},{"name":"XIsland-1.2.3.dmg","url":"https://example.com/XIsland-1.2.3.dmg"}]}'
 
-    local asset_url
-    asset_url="$(xisland_release_asset_url "$json")"
+    local metadata
+    metadata="$(xisland_release_metadata "$json" v1.2.3)"
 
-    [[ "$asset_url" == "https://example.com/XIsland-v1.2.3.dmg" ]] \
-        || fail "expected dmg asset url, got: $asset_url"
+    [[ "$metadata" == $'XIsland-1.2.3.dmg\taaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\thttps://example.com/XIsland-1.2.3.dmg' ]] \
+        || fail "expected exact dmg metadata, got: $metadata"
 }
 
 test_rejects_release_without_dmg_asset() {
     local json
     json='{"tagName":"v1.2.3","assets":[{"name":"notes.txt","url":"https://example.com/notes.txt"}]}'
 
-    if xisland_release_asset_url "$json" >/dev/null 2>&1; then
+    if xisland_release_metadata "$json" v1.2.3 >/dev/null 2>&1; then
         fail "expected missing dmg asset to fail"
     fi
 }
@@ -103,13 +103,13 @@ test_shell_profile_path_hint_for_bash() {
         || fail "expected bash profile hint, got: $hint"
 }
 
-test_ensure_cli_on_path_appends_zsh_profile_once() {
-    local tmp_home profile
-    tmp_home="$(mktemp -d)"
-    profile="$tmp_home/.zshrc"
+test_ensure_cli_on_path_appends_zsh_profile_once() (
+    profile_root="$(mktemp -d)"
+    trap 'rm -rf "$profile_root"' EXIT
+    profile="$profile_root/.zshrc"
+    xisland_shell_profile_path() { printf '%s\n' "$profile"; }
 
-    HOME="$tmp_home" \
-    X_ISLAND_BIN_DIR="$tmp_home/.xisland/bin" \
+    X_ISLAND_BIN_DIR="$profile_root/.xisland/bin" \
     SHELL=/bin/zsh \
     PATH="/usr/bin:/bin" \
     xisland_ensure_cli_on_path >/dev/null
@@ -119,30 +119,29 @@ test_ensure_cli_on_path_appends_zsh_profile_once() {
     grep -F 'export PATH="$HOME/.xisland/bin:$PATH"' "$profile" >/dev/null \
         || fail "expected PATH export to be appended"
 
-    HOME="$tmp_home" \
-    X_ISLAND_BIN_DIR="$tmp_home/.xisland/bin" \
+    X_ISLAND_BIN_DIR="$profile_root/.xisland/bin" \
     SHELL=/bin/zsh \
     PATH="/usr/bin:/bin" \
     xisland_ensure_cli_on_path >/dev/null
 
     [[ "$(grep -c 'xisland/bin' "$profile")" -eq 1 ]] \
         || fail "expected PATH export to be appended only once"
-}
+)
 
-test_ensure_cli_on_path_uses_fish_syntax() {
-    local tmp_home profile
-    tmp_home="$(mktemp -d)"
-    profile="$tmp_home/.config/fish/config.fish"
+test_ensure_cli_on_path_uses_fish_syntax() (
+    profile_root="$(mktemp -d)"
+    trap 'rm -rf "$profile_root"' EXIT
+    profile="$profile_root/.config/fish/config.fish"
+    xisland_shell_profile_path() { printf '%s\n' "$profile"; }
 
-    HOME="$tmp_home" \
-    X_ISLAND_BIN_DIR="$tmp_home/.xisland/bin" \
+    X_ISLAND_BIN_DIR="$profile_root/.xisland/bin" \
     SHELL=/bin/fish \
     PATH="/usr/bin:/bin" \
     xisland_ensure_cli_on_path >/dev/null
 
     grep -F 'set -gx PATH "$HOME/.xisland/bin" $PATH' "$profile" >/dev/null \
         || fail "expected fish PATH config to be appended"
-}
+)
 
 test_selects_dmg_asset_from_release_json
 test_rejects_release_without_dmg_asset

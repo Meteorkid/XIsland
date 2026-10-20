@@ -65,6 +65,65 @@ enum L10n {
                   fr: "Réessayer l’enregistrement", en: "Retry saving")
     }
 
+    static var collapsePanel: String {
+        localized("collapsePanel", zh: "收起面板", ko: "패널 접기", ja: "パネルを折りたたむ",
+                  fr: "Réduire le panneau", en: "Collapse panel")
+    }
+
+    static var searchHistory: String {
+        localized("searchHistory", zh: "搜索", ko: "검색", ja: "検索", fr: "Rechercher", en: "Search")
+    }
+    static var clearHistorySearch: String {
+        localized("clearHistorySearch", zh: "清除搜索", ko: "검색 지우기", ja: "検索を解除", fr: "Effacer la recherche", en: "Clear search")
+    }
+    static var historyReadFailed: String {
+        localized("historyReadFailed", zh: "历史读取失败", ko: "기록을 읽지 못했습니다", ja: "履歴を読み込めませんでした", fr: "Lecture de l’historique impossible", en: "History could not be loaded")
+    }
+    static var retryHistoryRead: String {
+        localized("retryHistoryRead", zh: "重新读取", ko: "다시 읽기", ja: "再読み込み", fr: "Réessayer", en: "Retry loading")
+    }
+    static var noHistoryMatches: String {
+        localized("noHistoryMatches", zh: "没有匹配的历史记录", ko: "일치하는 기록 없음", ja: "一致する履歴はありません", fr: "Aucun historique correspondant", en: "No matching history")
+    }
+    static var historyPreviousPage: String {
+        localized("historyPreviousPage", zh: "上一页", ko: "이전", ja: "前へ", fr: "Précédent", en: "Previous")
+    }
+    static var historyNextPage: String {
+        localized("historyNextPage", zh: "下一页", ko: "다음", ja: "次へ", fr: "Suivant", en: "Next")
+    }
+    static func historyPageSummary(_ page: Int, _ pages: Int, _ count: Int) -> String {
+        localized("historyPageSummary", zh: "第 \(page)/\(pages) 页 · 共 \(count) 条",
+                  ko: "\(page)/\(pages) 페이지 · \(count)개", ja: "\(page)/\(pages) ページ · \(count) 件",
+                  fr: "Page \(page)/\(pages) · \(count) entrées", en: "Page \(page)/\(pages) · \(count) records")
+    }
+    static var exportAllHistory: String {
+        localized("exportAllHistory", zh: "导出全部历史", ko: "전체 기록 내보내기", ja: "すべての履歴を書き出す", fr: "Exporter tout l’historique", en: "Export all history")
+    }
+    static var historyExportScope: String {
+        localized("historyExportScope", zh: "导出全部会话、聊天和工具输入输出，不受当前搜索或页码限制。",
+                  ko: "현재 검색이나 페이지에 관계없이 모든 세션, 대화, 도구 입력과 출력을 내보냅니다.",
+                  ja: "検索やページに関係なく、全セッション、会話、ツールの入出力を書き出します。",
+                  fr: "Exporte toutes les sessions, conversations et entrées/sorties d’outils, sans limite de recherche ou de page.",
+                  en: "Exports all sessions, chats and tool inputs/outputs, regardless of the current search or page.")
+    }
+    static var historyExportFailed: String {
+        localized("historyExportFailed", zh: "历史导出失败", ko: "기록 내보내기 실패", ja: "履歴の書き出しに失敗しました", fr: "Échec de l’export", en: "History export failed")
+    }
+    static func historyExportSucceeded(_ count: Int) -> String {
+        localized("historyExportSucceeded", zh: "已导出 \(count) 条历史记录", ko: "기록 \(count)개 내보냄", ja: "履歴 \(count) 件を書き出しました",
+                  fr: "\(count) entrées exportées", en: "Exported \(count) history records")
+    }
+    static var showHistoryExport: String {
+        localized("showHistoryExport", zh: "在 Finder 中显示", ko: "Finder에서 보기", ja: "Finderに表示", fr: "Afficher dans le Finder", en: "Show in Finder")
+    }
+    static var historyClearScope: String {
+        localized("historyClearScope", zh: "删除全部已结束会话及其聊天和工具记录，包括当前搜索以外的记录。未结束会话会保留。此操作无法撤销。",
+                  ko: "현재 검색 범위 밖의 기록을 포함해 종료된 모든 세션, 대화 및 도구 기록을 삭제합니다. 진행 중인 세션은 유지됩니다. 되돌릴 수 없습니다.",
+                  ja: "検索範囲外も含め、終了した全セッションと会話・ツール履歴を削除します。未終了のセッションは保持します。取り消せません。",
+                  fr: "Supprime toutes les sessions terminées et leurs conversations et outils, même hors de la recherche. Les sessions en cours sont conservées. Cette action est irréversible.",
+                  en: "Deletes all ended sessions and their chats and tool records, including records outside this search. Unfinished sessions are kept. This cannot be undone.")
+    }
+
     static var activeSessions: String {
         localized("activeSessions",
             zh: "个活跃会话", ko: "개 활성 세션", ja: "件のアクティブセッション", fr: " sessions actives",
@@ -155,6 +214,32 @@ enum L10n {
         localized("permissionDiffAvailable",
             zh: "包含文件改动，展开查看完整 diff", ko: "파일 변경 사항이 있습니다. 펼쳐서 전체 diff를 확인하세요.", ja: "ファイル変更があります。展開して差分全体を確認してください。", fr: "Modifications incluses. Développez pour voir le diff complet.",
             en: "Includes file changes. Expand to read the full diff.")
+    }
+
+    static var permissionRawInput: String {
+        localized("permissionRawInput",
+            zh: "完整工具参数", ko: "전체 도구 매개변수", ja: "完全なツールパラメーター", fr: "Paramètres complets de l’outil",
+            en: "Full tool parameters")
+    }
+
+    static var quotaUnknown: String {
+        localized("quotaUnknown", zh: "额度未知", ko: "한도 알 수 없음", ja: "上限不明", fr: "Quota inconnu", en: "Quota unknown")
+    }
+
+    static func quotaTokensUsed(_ tokens: String) -> String {
+        localized("quotaTokensUsed", zh: "本地已用 \(tokens) tokens", ko: "로컬에서 \(tokens) 토큰 사용", ja: "ローカル使用済み \(tokens) トークン", fr: "\(tokens) tokens utilisés localement", en: "\(tokens) tokens used locally")
+    }
+
+    static func quotaTokensRemaining(_ tokens: String) -> String {
+        localized("quotaTokensRemaining", zh: "剩余 \(tokens) tokens", ko: "\(tokens) 토큰 남음", ja: "残り \(tokens) トークン", fr: "\(tokens) tokens restants", en: "\(tokens) tokens left")
+    }
+
+    static var quotaAPIAvailable: String {
+        localized("quotaAPIAvailable", zh: "API 可访问", ko: "API 연결 가능", ja: "API 接続可能", fr: "API accessible", en: "API reachable")
+    }
+
+    static var quotaAPIUnavailable: String {
+        localized("quotaAPIUnavailable", zh: "API 不可访问", ko: "API 연결 불가", ja: "API 接続不可", fr: "API inaccessible", en: "API unreachable")
     }
 
     static var jumpTitle: String {

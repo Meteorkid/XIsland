@@ -31,10 +31,12 @@ enum AiderWrapperConfiguration {
     }
 
     static func remove(at url: URL) throws {
+        try Task.checkCancellation()
         try rejectLink(at: url)
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         let text = try String(contentsOf: url, encoding: .utf8)
         guard isOwned(text) else { return }
+        try Task.checkCancellation()
         try FileManager.default.removeItem(at: url)
     }
 

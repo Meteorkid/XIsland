@@ -74,6 +74,7 @@ enum ClineHookConfiguration {
     }
 
     static func install(in directory: URL, bridgePath: String) throws {
+        try Task.checkCancellation()
         try validateDirectory(directory)
         let original = try existingFiles(in: directory)
         let plan = try installationPlan(existingFiles: original, bridgePath: bridgePath)
@@ -85,6 +86,7 @@ enum ClineHookConfiguration {
         // 全量预检后再读一次，避免冲突导致留下半套事件文件。
         guard try existingFiles(in: directory) == original else { throw ConfigurationError.fileChanged(directory.path) }
         for file in plan where file.action != .unchanged {
+            try Task.checkCancellation()
             let target = directory.appendingPathComponent(file.event)
             guard try existingFile(at: target) == original[file.event] else { throw ConfigurationError.fileChanged(file.event) }
             try writeAtomically(file, to: target, expected: original[file.event])
@@ -92,12 +94,14 @@ enum ClineHookConfiguration {
     }
 
     static func remove(from directory: URL) throws {
+        try Task.checkCancellation()
         try validateDirectory(directory)
         for event in events {
             let target = directory.appendingPathComponent(event)
             let original = try existingFile(at: target)
             guard case let .regularFile(contents, _) = original, isOwned(contents: contents, event: event) else { continue }
             guard try existingFile(at: target) == original else { throw ConfigurationError.fileChanged(event) }
+            try Task.checkCancellation()
             guard unlink(target.path) == 0 else { throw posixError() }
         }
     }
@@ -150,6 +154,7 @@ enum ClineHookConfiguration {
         try validateDirectory(target.deletingLastPathComponent())
         guard try existingFile(at: target) == expected else { throw ConfigurationError.fileChanged(file.event) }
         // 新文件使用原子 link，竞争出现的第三方目标不能被 rename 覆盖。
+        try Task.checkCancellation()
         let result = file.action == .create ? link(temporary.path, target.path) : rename(temporary.path, target.path)
         guard result == 0 else { throw posixError() }
     }

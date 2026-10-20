@@ -45,6 +45,15 @@ final class IntegrationSetupRenderTests: XCTestCase {
             let kiro = IntegrationSetupRow(agent: .kiro, phase: .needsSetup,
                 detail: chinese ? "接入文件已准备。按步骤放置 Kiro V3 hooks 文件，在客户端核对后开始任务。" : "Setup files are ready. Place the Kiro V3 hooks file as described, check it in the client, then start a task.",
                 canConfigure: false, lastSeen: nil)
+            let configuration = IntegrationSetupRow(agent: .cursor, phase: .needsConfiguration,
+                detail: chinese ? "可自动完成配置，随后在 Cursor 中开始任务。" : "Setup can be completed automatically. Then start a task in Cursor.",
+                canConfigure: true, lastSeen: nil)
+            let waiting = IntegrationSetupRow(agent: .geminiCli, phase: .waitingForActivity,
+                detail: chinese ? "配置已准备，开始一条任务即可验证。" : "Setup is ready. Start a task to verify the connection.",
+                canConfigure: true, lastSeen: nil)
+            let disabled = IntegrationSetupRow(agent: .cursor, phase: .disabled,
+                detail: chinese ? "此来源已关闭。" : "This connection is disabled.",
+                canConfigure: true, lastSeen: nil)
 
             try render([authorization, connected, missing], language: language, scheme: .light,
                        to: output.appendingPathComponent("\(language)-authorization.png"))
@@ -56,6 +65,18 @@ final class IntegrationSetupRenderTests: XCTestCase {
                        to: output.appendingPathComponent("\(language)-not-installed.png"))
             try render([workBuddy, kiro], language: language, scheme: .light,
                        to: output.appendingPathComponent("\(language)-manual-files.png"))
+            try render([connected, waiting, authorization, configuration], language: language, scheme: .light,
+                       to: output.appendingPathComponent("\(language)-mixed.png"))
+            try render([authorization, workBuddy], language: language, scheme: .light,
+                       to: output.appendingPathComponent("\(language)-pending.png"))
+            try render([], language: language, scheme: .light,
+                       to: output.appendingPathComponent("\(language)-none.png"))
+            try render([waiting], language: language, scheme: .light,
+                       to: output.appendingPathComponent("\(language)-waiting.png"))
+            try render([connected], language: language, scheme: .light,
+                       to: output.appendingPathComponent("\(language)-connected.png"))
+            try render([disabled], language: language, scheme: .light,
+                       to: output.appendingPathComponent("\(language)-disabled.png"))
         }
     }
 
@@ -66,7 +87,8 @@ final class IntegrationSetupRenderTests: XCTestCase {
             onOpenGuide: { _ in XCTFail("渲染不应打开外部链接") },
             onRefresh: { XCTFail("渲染不应读取真实接入状态") },
             onLater: { XCTFail("渲染不应写入提醒状态") },
-            onPrepareFiles: { _ in XCTFail("渲染不应生成真实接入文件或打开 Finder") })
+            onPrepareFiles: { _ in XCTFail("渲染不应生成真实接入文件或打开 Finder") },
+            onPrepareAll: { XCTFail("渲染不应批量配置真实软件") })
             .environment(\.locale, Locale(identifier: language))
             .preferredColorScheme(scheme)
             .defaultAppStorage(AppPreferences.defaults)

@@ -77,8 +77,16 @@ struct PendingTaskCardView: View {
             if permission.state.isExpanded {
                 ScrollView([.horizontal, .vertical]) {
                     VStack(alignment: .leading, spacing: 10) {
-                        if !permission.description.isEmpty {
+                        if !permission.operationText.isEmpty {
+                            Text(permission.operationText)
+                        }
+                        if !permission.description.isEmpty, permission.description != permission.operationText {
                             Text(permission.description)
+                        }
+                        if let input = permission.toolInput, !input.isEmpty, input != permission.operationText {
+                            Text(L10n.permissionRawInput)
+                                .fontWeight(.semibold)
+                            Text(input)
                         }
                         if let path = permission.filePath, !path.isEmpty {
                             Text(path)
@@ -97,8 +105,8 @@ struct PendingTaskCardView: View {
                 .background(IslandStyle.codeWell(for: scheme))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
             } else {
-                if !permission.description.isEmpty {
-                    Text(permission.description)
+                if !permission.operationText.isEmpty {
+                    Text(permission.operationText)
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(IslandStyle.secondaryText)
                         .lineLimit(3)

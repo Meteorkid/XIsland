@@ -4,6 +4,8 @@ import SwiftUI
 enum IslandSizeCalculator {
     static let expandedPanelHeaderHeight: CGFloat = 48
     static let expandedPanelBottomInset: CGFloat = 16
+    /// 交互卡片包含请求说明与操作按钮，不能按一行普通会话估算高度。
+    static let interactionContentMinimumHeight: CGFloat = 320
     static let defaultCollapsedShapeHeight: CGFloat = 38.77
     static let collapsedPillWidthNotched: CGFloat = 276
     /// 收起状态默认宽度（未被刘海遮挡时）
@@ -41,12 +43,13 @@ enum IslandSizeCalculator {
         for state: IslandState,
         visibleSessionCount: Int,
         panelMaxHeight: CGFloat,
-        activityLogExpanded: Bool
+        activityLogExpanded: Bool = false
     ) -> CGFloat {
         switch state {
         case .collapsed: return 0
         case .expanded, .permission, .question, .planReview:
-            let listH = min(CGFloat(visibleSessionCount) * 80 + 30, panelMaxHeight)
+            let minimumContentHeight: CGFloat = state == .expanded ? 0 : interactionContentMinimumHeight
+            let listH = min(max(CGFloat(visibleSessionCount) * 80 + 30, minimumContentHeight), panelMaxHeight)
             let logH: CGFloat = activityLogExpanded ? 140 : 0
             return expandedPanelHeaderHeight + listH + logH + expandedPanelBottomInset
         }
@@ -58,21 +61,24 @@ enum IslandSizeCalculator {
         for state: IslandState,
         visibleSessionCount: Int,
         panelWidth: CGFloat,
-        panelMaxHeight: CGFloat
+        panelMaxHeight: CGFloat,
+        activityLogExpanded: Bool = false
     ) -> (width: CGFloat, height: CGFloat) {
         switch state {
         case .collapsed:
             return (pillWidth, collapsedShapeHeight)
         case .expanded, .permission, .question, .planReview:
-            let listH = min(CGFloat(visibleSessionCount) * 80 + 30, panelMaxHeight)
-            return (panelWidth,
-                    expandedPanelHeaderHeight + listH + expandedPanelBottomInset)
+            return (panelWidth, expandedHeight(
+                for: state,
+                visibleSessionCount: visibleSessionCount,
+                panelMaxHeight: panelMaxHeight,
+                activityLogExpanded: activityLogExpanded
+            ))
         }
     }
 
     /// Expanded panel shape height for `.expanded` state, used for caching before state change.
     static func expandedPanelShapeHeight(visibleSessionCount: Int, panelMaxHeight: CGFloat) -> CGFloat {
-        let listH = min(CGFloat(visibleSessionCount) * 80 + 30, panelMaxHeight)
-        return expandedPanelHeaderHeight + listH + expandedPanelBottomInset
+        expandedHeight(for: .expanded, visibleSessionCount: visibleSessionCount, panelMaxHeight: panelMaxHeight)
     }
 }

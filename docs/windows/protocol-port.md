@@ -169,9 +169,9 @@
 - 多选须 `allowsMultipleAnswers=true`；1...128 项、无重复、每项有效、合计 UTF-8 ≤8192 字节，至多一项为自定义值。选择输出按照原 options 顺序，最后附自定义文本；不使用无序集合的遍历顺序。
 - 单选与多选 response 分别使用 answer/selectedAnswers，不能二者同时存在。草稿、展开状态、所选值归属本地请求 UUID，替换请求不能继承草稿。
 - 空问题拒绝；遗留正文恰为 `Question` 且无选项/无原生 ID/无自定义能力的占位请求取消。有 nativeRequestId 或自由文本能力的真实 `Question` 不应误判。
-- 遗留答案缓存仅对无 nativeRequestId、2 秒内相同或相互包含正文、相同选项集合且缓存答案仍是选项的请求生效。任何有 nativeRequestId 的请求均不得复用该缓存；两个正文相同的原生请求仍分别作答。
+- 不按问题文本或时间窗口复用答案。即使正文相同或缺少 nativeRequestId，每个新的问答请求都必须等待独立决定。
 - **多选不等于多题。** DIMessage 一次只承载一题。OpenCode 插件对原生 questions[] 按顺序逐题调用 bridge，以 `[N/M]` 标注，最后一次向原端提交 `answers: string[][]`。多个题可共用同一 nativeRequestId，仍应有不同本地请求 UUID/通道。插件按 `(kind, session, native ID)` 去重完整原生请求、按会话串行排队。
-- 当前 Claude 通用桥接只展示 `questions[0]`，回写 first question 的 answer/answers 以及 updatedInput 的 answer/answers；不能把它描述成完整的多题支持。Windows 若补齐此能力，需要单独定义兼容测试。
+- Claude 仅精确识别内置 `AskUserQuestion`；单题 `questions` 和遗留单题对象通过输入校验后才接管。第三方命名空间与相似工具名不能成为问答许可，多题、多选或不支持的字段留在原客户端。`PreToolUse` 回传 `permissionDecision` 与 `updatedInput`；`PermissionRequest` 使用 `decision.behavior` 与 `decision.updatedInput`。协议依据：[Claude 官方 hooks](https://code.claude.com/docs/en/hooks)。
 
 证据：`AgentSession.swift:248-282`；`SessionManager.swift:1032-1079,1169-1194`；`OpenCodePluginConfiguration.swift:144-205`；`DIBridge.swift:770-803,949-992`；`CustomQuestionAnswerTests.swift:8-83`；`MultipleQuestionAnswerTests.swift:7-76`。
 

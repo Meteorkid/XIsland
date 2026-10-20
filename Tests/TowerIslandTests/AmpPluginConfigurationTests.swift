@@ -3,6 +3,48 @@ import Darwin
 @testable import XIsland
 
 final class AmpPluginConfigurationTests: XCTestCase {
+    func testOwnershipPreservesExactLegacyTemplateButRejectsUserEdits() {
+        XCTAssertTrue(AmpPluginConfiguration.isOwnedSource(Self.legacyPlugin))
+        XCTAssertTrue(AmpPluginConfiguration.isOwnedSource(" \n" + Self.legacyPlugin.replacingOccurrences(of: "\n", with: "\r\n") + "\n\t"))
+        XCTAssertFalse(AmpPluginConfiguration.isOwnedSource(Self.legacyPlugin + "\nconsole.log(\"user extension\");"))
+        XCTAssertFalse(AmpPluginConfiguration.isOwnedSource(Self.legacyPlugin.replacingOccurrences(of: "di-bridge", with: "user-bridge")))
+    }
+
+    // 固定于 1845472 之前的完整生成器模板，避免迁移认领依赖当前实现。
+    private static let legacyPlugin = #"""
+    import { execSync } from "child_process";
+    import { homedir } from "os";
+    const BRIDGE = homedir() + "/.xisland/bin/di-bridge";
+    function send(hookType: string, sessionId: string, data: Record<string, any>) {
+      try {
+        const stdin = JSON.stringify({ ...data, session_id: sessionId });
+        execSync(`${BRIDGE} --agent amp --hook ${hookType} --session ${sessionId}`, {
+          input: stdin, timeout: 5000, stdio: ["pipe", "pipe", "pipe"],
+        });
+      } catch {}
+    }
+    export default {
+      onSessionStart: (ctx: { sessionId: string }) => {
+        send("session_start", ctx.sessionId, { terminal: process.env.TERM_PROGRAM || "Terminal" });
+      },
+      onSessionEnd: (ctx: { sessionId: string }) => {
+        send("session_end", ctx.sessionId, {});
+      },
+      onAgentStart: (ctx: { sessionId: string; task: string }) => {
+        send("session_start", ctx.sessionId, { prompt: ctx.task });
+      },
+      onAgentEnd: (ctx: { sessionId: string }) => {
+        send("session_end", ctx.sessionId, {});
+      },
+      onToolCall: (ctx: { sessionId: string; tool: string; input: any }) => {
+        send("PreToolUse", ctx.sessionId, { tool_name: ctx.tool, tool_input: ctx.input });
+      },
+      onToolResult: (ctx: { sessionId: string; tool: string; result: any }) => {
+        send("PostToolUse", ctx.sessionId, { tool_name: ctx.tool, result: ctx.result });
+      },
+    };
+    """#
+
     func testPluginPathHonorsOnlyAbsoluteXDGConfigHome() {
         XCTAssertEqual(AmpPluginConfiguration.pluginURL(homeDirectory: "/home/test", environment: [:]).path,
                        "/home/test/.config/amp/plugins/xisland.ts")

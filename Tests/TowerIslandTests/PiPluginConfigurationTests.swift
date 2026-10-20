@@ -2,6 +2,53 @@ import XCTest
 @testable import XIsland
 
 final class PiPluginConfigurationTests: XCTestCase {
+    func testOwnershipPreservesExactLegacyTemplateButRejectsUserEdits() {
+        XCTAssertTrue(PiPluginConfiguration.isOwnedSource(Self.legacyPlugin))
+        XCTAssertTrue(PiPluginConfiguration.isOwnedSource(" \n" + Self.legacyPlugin.replacingOccurrences(of: "\n", with: "\r\n") + "\n\t"))
+        XCTAssertFalse(PiPluginConfiguration.isOwnedSource(Self.legacyPlugin + "\nconsole.log(\"user extension\");"))
+        XCTAssertFalse(PiPluginConfiguration.isOwnedSource(Self.legacyPlugin.replacingOccurrences(of: "di-bridge", with: "user-bridge")))
+    }
+
+    // 固定于 1845472 之前的完整生成器模板，避免迁移认领依赖当前实现。
+    private static let legacyPlugin = #"""
+    import { spawn } from "child_process";
+    import { homedir } from "os";
+    const BRIDGE = homedir() + "/.xisland/bin/di-bridge";
+    function send(hookType: string, sessionId: string, data: Record<string, any>) {
+      return new Promise<void>((resolve) => {
+        try {
+          const child = spawn(BRIDGE, ["--agent","pi","--hook",hookType,"--session",sessionId], {
+            stdio: ["pipe","pipe","pipe"]
+          });
+          child.stdin.write(JSON.stringify(data)); child.stdin.end();
+          child.on("close", () => resolve());
+          child.on("error", () => resolve());
+          setTimeout(() => { child.kill(); resolve(); }, 5000);
+        } catch { resolve(); }
+      });
+    }
+    export default {
+      session_start: async (ctx: { sessionId: string; cwd?: string }) => {
+        await send("session_start", ctx.sessionId, { cwd: ctx.cwd || "", terminal: process.env.TERM_PROGRAM || "Terminal" });
+      },
+      session_end: async (ctx: { sessionId: string }) => {
+        await send("session_end", ctx.sessionId, {});
+      },
+      agent_start: async (ctx: { sessionId: string; task?: string }) => {
+        await send("session_start", ctx.sessionId, { prompt: ctx.task || "" });
+      },
+      agent_end: async (ctx: { sessionId: string }) => {
+        await send("session_end", ctx.sessionId, {});
+      },
+      tool_call: async (ctx: { sessionId: string; tool: string; input?: any }) => {
+        await send("PreToolUse", ctx.sessionId, { tool_name: ctx.tool, tool_input: ctx.input });
+      },
+      tool_result: async (ctx: { sessionId: string; tool: string; result?: any }) => {
+        await send("PostToolUse", ctx.sessionId, { tool_name: ctx.tool, result: ctx.result });
+      },
+    };
+    """#
+
     func testGlobalPathAndExplicitOwnershipMarker() throws {
         XCTAssertEqual(PiPluginConfiguration.pluginURL(homeDirectory: "/Users/test").path,
                        "/Users/test/.pi/agent/extensions/xisland.ts")

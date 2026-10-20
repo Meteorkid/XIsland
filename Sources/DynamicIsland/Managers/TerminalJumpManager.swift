@@ -53,8 +53,8 @@ enum TerminalApp: String, CaseIterable {
         }
     }
 
-    var bundleId: String {
-        bundleIds[0]
+    var bundleId: String? {
+        bundleIds.first
     }
 
     var aliases: [String] {
@@ -189,6 +189,16 @@ enum TerminalJumpManager {
         let targetApp = resolveTargetApp(snap: snap)
         log("performJump: id=\(snap.id) agent=\(snap.agentType.rawValue) terminal=\(snap.terminal) cwd=\(snap.workingDirectory) tsid=\(snap.termSessionId ?? "nil") wid=\(snap.windowNumber.map(String.init) ?? "nil") target=\(targetApp?.rawValue ?? "nil")")
 
+        // 终端内运行的工具没有独立应用，改为寻找已运行的宿主终端。
+        if let targetApp, targetApp.bundleId == nil {
+            if let hostApp = findTerminalHostingAgent(snap.agentType) {
+                activateApp(hostApp)
+            } else {
+                activateMostRecentTerminal()
+            }
+            return
+        }
+
         // Windsurf 从 Cursor 拆出后仍走同一套 Cursor 系跳转（先匹配窗口，再抬起同族全部窗口）
         if snap.agentType == .cursor || snap.agentType == .windsurf {
             let preferredApp: TerminalApp = {
@@ -199,7 +209,7 @@ enum TerminalJumpManager {
                 log("cursor matched existing window app=\(preferredApp.rawValue)")
                 return
             }
-            if raiseAllCursorWindows(preferredBundleId: preferredApp.bundleId) {
+            if raiseAllCursorWindows(preferredApp: preferredApp) {
                 log("cursor raised all cursor-family windows")
                 return
             }
@@ -247,7 +257,7 @@ enum TerminalJumpManager {
                     log("matched VSCode-family window app=\(app.rawValue)")
                     return
                 }
-                if app == .cursor, raiseAllWindows(bundleId: app.bundleId) {
+                if app == .cursor, let bundleId = app.bundleId, raiseAllWindows(bundleId: bundleId) {
                     log("raised all windows for app=\(app.rawValue)")
                     return
                 }
@@ -487,13 +497,12 @@ enum TerminalJumpManager {
         return true
     }
 
-    private static func raiseAllCursorWindows(preferredBundleId: String) -> Bool {
-        var bundleIds = [preferredBundleId]
-        if !bundleIds.contains(TerminalApp.cursor.bundleId) {
-            bundleIds.append(TerminalApp.cursor.bundleId)
-        }
-        if !bundleIds.contains(TerminalApp.windsurf.bundleId) {
-            bundleIds.append(TerminalApp.windsurf.bundleId)
+    private static func raiseAllCursorWindows(preferredApp: TerminalApp) -> Bool {
+        var bundleIds = preferredApp.bundleIds
+        for bundleId in TerminalApp.cursor.bundleIds + TerminalApp.windsurf.bundleIds {
+            if !bundleIds.contains(bundleId) {
+                bundleIds.append(bundleId)
+            }
         }
 
         var raised = false
@@ -697,6 +706,10 @@ enum TerminalJumpManager {
 
     private static func activateApp(_ app: TerminalApp) {
         log("activateApp: \(app.rawValue) bundleIds=\(app.bundleIds)")
+        guard let bundleId = app.bundleId else {
+            activateMostRecentTerminal()
+            return
+        }
         let runningApps = app.bundleIds
             .flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
         log("activateApp: found \(runningApps.count) running apps")
@@ -712,8 +725,8 @@ enum TerminalJumpManager {
         }
 
         log("activateApp: no running app found, trying to open")
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleId) else {
-            log("activateApp: cannot find app URL for \(app.bundleId)")
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else {
+            log("activateApp: cannot find app URL for \(bundleId)")
             return
         }
         log("activateApp: opening \(url.path)")
@@ -774,19 +787,17 @@ enum TerminalJumpManager {
         // 2. CLI 工具没有 macOS 应用——尝试找到包含该进程的终端
         if let terminalApp = findTerminalHostingAgent(agentType) {
             log("activateByAgentName: found terminal '\(terminalApp.rawValue)' hosting agent")
-            if let app = NSRunningApplication.runningApplications(
-                withBundleIdentifier: terminalApp.bundleId
-            ).first {
+            if let app = terminalApp.bundleIds
+                .flatMap({ NSRunningApplication.runningApplications(withBundleIdentifier: $0) }).first {
                 app.activate(options: [.activateAllWindows])
                 return
             }
         }
 
         // 3. 回退：激活最近使用的终端（排除 IDE 类）
-        for terminalApp in TerminalApp.allCases where !terminalApp.bundleId.isEmpty && !terminalApp.isVSCodeFamily {
-            if let app = NSRunningApplication.runningApplications(
-                withBundleIdentifier: terminalApp.bundleId
-            ).first {
+        for terminalApp in TerminalApp.allCases where !terminalApp.isVSCodeFamily {
+            if let app = terminalApp.bundleIds
+                .flatMap({ NSRunningApplication.runningApplications(withBundleIdentifier: $0) }).first {
                 log("activateByAgentName: activating terminal '\(terminalApp.rawValue)'")
                 app.activate(options: [.activateAllWindows])
                 return
@@ -839,8 +850,9 @@ enum TerminalJumpManager {
         log("findTerminalHostingAgent: agent TTYs=\(agentTTYs)")
 
         // 查找哪个终端应用拥有这些 TTY 的窗口
-        for terminalApp in TerminalApp.allCases where !terminalApp.bundleId.isEmpty {
-            let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: terminalApp.bundleId)
+        for terminalApp in TerminalApp.allCases {
+            let runningApps = terminalApp.bundleIds
+                .flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
             guard let app = runningApps.first else { continue }
 
             let appElement = AXUIElementCreateApplication(app.processIdentifier)
@@ -905,19 +917,17 @@ enum TerminalJumpManager {
             // 排除 VSCode 系列，优先激活纯终端
             let terminalApps: [TerminalApp] = [.iterm2, .terminal, .warp, .alacritty, .kitty, .wezTerm]
             for termApp in terminalApps {
-                if let app = NSRunningApplication.runningApplications(
-                    withBundleIdentifier: termApp.bundleId
-                ).first {
+                if let app = termApp.bundleIds
+                    .flatMap({ NSRunningApplication.runningApplications(withBundleIdentifier: $0) }).first {
                     log("activateMostRecentTerminal: activating '\(termApp.rawValue)'")
                     app.activate(options: [.activateAllWindows])
                     return
                 }
             }
             // 回退：激活任何正在运行的非 IDE 终端
-            for termApp in TerminalApp.allCases where !termApp.bundleId.isEmpty && !termApp.isVSCodeFamily {
-                if let app = NSRunningApplication.runningApplications(
-                    withBundleIdentifier: termApp.bundleId
-                ).first {
+            for termApp in TerminalApp.allCases where !termApp.isVSCodeFamily {
+                if let app = termApp.bundleIds
+                    .flatMap({ NSRunningApplication.runningApplications(withBundleIdentifier: $0) }).first {
                     log("activateMostRecentTerminal: fallback activating '\(termApp.rawValue)'")
                     app.activate(options: [.activateAllWindows])
                     return

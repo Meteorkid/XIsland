@@ -546,7 +546,7 @@ test('Mac 行为对齐：累计统计合并观察片段，历史按结束日期�
     const { store, ui } = (window as unknown as { __parityTest: ParityHarness }).__parityTest;
     store.loadFixture({ sessions: [{ id: 'earlier', agentType: 'roo_code', status: 'completed', prompt: '较早完成' },
       { id: 'later', agentType: 'roo_code', status: 'observationUnavailable', prompt: '较晚中断' }] });
-    const sessions = store.snapshot().sessions, epoch = Date.parse('2026-10-17T10:00:00Z');
+    const sessions = structuredClone(store.snapshot().sessions), epoch = Date.parse('2026-10-17T10:00:00Z');
     for (const [index, session] of sessions.entries()) {
       session.startedAt = epoch + index * 30_000; session.lastActivityAt = epoch + (1 - index) * 50_000;
       session.sourceNamespace = 'a'.repeat(24); session.sourceInstanceId = `instance-${index}`; session.nativeTaskId = 'same-task';

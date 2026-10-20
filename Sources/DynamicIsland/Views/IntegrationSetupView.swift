@@ -19,32 +19,39 @@ struct IntegrationSetupView: View {
     let onRefresh: () -> Void
     let onLater: () -> Void
     var onPrepareFiles: ((AgentType) -> Void)? = nil
+    var onPrepareAll: (() -> Void)? = nil
 
+    @State private var showsReadySources = false
     @State private var showsAllSources = false
-    @State private var showsCodexGuide = true
+    @State private var expandedDetails: Set<String> = []
 
-    private var detectedRows: [IntegrationSetupRow] { rows.filter { $0.phase != .notInstalled } }
-    private var missingRows: [IntegrationSetupRow] { rows.filter { $0.phase == .notInstalled } }
-    private var needsAuthorization: Bool { rows.contains { $0.phase == .needsAuthorization } }
-    private var allConnected: Bool { !detectedRows.isEmpty && detectedRows.allSatisfy { $0.phase == .connected } }
+    private var pendingRows: [IntegrationSetupRow] { IntegrationSetupPresentation.pendingRows(rows) }
+    private var readyRows: [IntegrationSetupRow] { IntegrationSetupPresentation.readyRows(rows) }
+    private var otherRows: [IntegrationSetupRow] { IntegrationSetupPresentation.otherRows(rows) }
+    private var hasDisabledSources: Bool { otherRows.contains { $0.phase == .disabled } }
+    private var allConnected: Bool {
+        pendingRows.isEmpty && !readyRows.isEmpty && readyRows.allSatisfy { $0.phase == .connected }
+    }
+    private var primaryAction: IntegrationSetupAction? {
+        IntegrationSetupPresentation.primaryAction(rows, canPrepareAll: onPrepareAll != nil,
+                                                   canPrepareFiles: onPrepareFiles != nil)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
-                .padding(24)
+            header.padding(24)
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if needsAuthorization { authorizationNotice }
-                    detectedSources
-                    if !missingRows.isEmpty { otherSources }
+                    if pendingRows.isEmpty { settledStatus }
+                    else { pendingSources }
+                    if !readyRows.isEmpty { readySources }
+                    if !otherRows.isEmpty { otherSources }
                 }
                 .padding(24)
             }
             Divider()
-            footer
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
+            footer.padding(.horizontal, 24).padding(.vertical, 12)
         }
         .frame(width: 680, height: 640)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -59,61 +66,93 @@ struct IntegrationSetupView: View {
             Text(copy("完成软件接入", "Connect your apps"))
                 .font(.system(size: 26, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
-            Text(copy("X Island 会自动准备支持的配置；其他项目请按步骤在客户端启用。需要信任时，由你在原客户端确认。",
-                      "Supported connections are prepared automatically. Enable other integrations in their apps, and confirm any trust requests there."))
+            Text(copy("支持的配置自动完成；需要授权的软件，首次确认一次。",
+                      "Supported setup is automatic. Confirm once in each app that needs authorization."))
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if let primaryAction {
+                HStack(spacing: 16) {
+                    Text(copy("还有 \(pendingRows.count) 个软件待完成", pendingRows.count == 1
+                              ? "1 app needs a next step" : "\(pendingRows.count) apps need a next step"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button { perform(primaryAction) } label: {
+                        HStack(spacing: 8) {
+                            if isRefreshing { ProgressView().controlSize(.small) }
+                            Text(isRefreshing ? copy("正在检查…", "Checking…") : primaryTitle(primaryAction))
+                                .frame(minHeight: 32)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(isRefreshing)
+                    .accessibilityIdentifier("integration-setup.primary")
+                }
+                .padding(.top, 8)
+            }
         }
     }
 
-    private var authorizationNotice: some View {
-        Label {
-            Text(copy("有软件需要你在原应用中确认授权。未完成时，只影响该软件的接入。",
-                      "Some apps need your confirmation in their own settings. Until then, only those connections are limited."))
-                .fixedSize(horizontal: false, vertical: true)
-        } icon: {
-            Image(systemName: "hand.raised")
-        }
-        .font(.system(size: 12))
-        .foregroundStyle(.secondary)
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-        .accessibilityIdentifier("integration-setup.authorization-notice")
-    }
-
-    private var detectedSources: some View {
+    private var pendingSources: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(copy("已检测到的软件", "Detected apps"))
-                    .font(.system(size: 13, weight: .semibold))
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                Text("\(detectedRows.count)")
-                    .font(.system(size: 12, weight: .medium))
+            Text(copy("待完成", "Next steps"))
+                .font(.system(size: 13, weight: .semibold))
+                .accessibilityAddTraits(.isHeader)
+            if pendingRows.contains(where: { $0.phase == .needsAuthorization }) {
+                Text(copy("授权在原软件中确认，只影响对应软件。", "Confirm authorization in the original app. Other connections are unaffected."))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("integration-setup.authorization-notice")
             }
-            if detectedRows.isEmpty {
-                Text(copy("尚未检测到可接入的软件。安装或打开软件后，点击「重新检查」。",
-                          "No supported app detected yet. Install or open an app, then choose Check again."))
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 24)
-                    .accessibilityIdentifier("integration-setup.empty")
-            } else {
-                sourceList(detectedRows)
-            }
+            sourceList(pendingRows)
         }
+    }
+
+    private var settledStatus: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(allConnected ? copy("已完成接入", "Your apps are connected")
+                  : readyRows.isEmpty ? (hasDisabledSources ? copy("软件接入已关闭", "App connections are disabled")
+                                                            : copy("暂未检测到软件", "No apps detected yet"))
+                  : copy("配置已准备", "Setup is ready"),
+                  systemImage: allConnected ? "checkmark.circle.fill" : "rectangle.connected.to.line.below")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(allConnected ? Color.green : Color.primary)
+            Text(allConnected ? copy("这些软件已收到活动，之后会自动记住。", "Activity has been received. These connections are remembered.")
+                 : readyRows.isEmpty ? (hasDisabledSources ? copy("已在设置中关闭，可在 X Island 设置中重新开启。", "Connections were disabled in settings. Re-enable them in X Island settings.")
+                                                          : copy("安装或打开软件后，点击「重新检查」。", "Install or open an app, then choose Check again."))
+                 : copy("在软件中开始一条任务，收到活动后就会显示已接入。", "Start a task in an app. It will show as connected after activity arrives."))
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 8)
+        .accessibilityIdentifier(readyRows.isEmpty ? "integration-setup.empty" : "integration-setup.ready-summary")
+    }
+
+    private var readySources: some View {
+        DisclosureGroup(isExpanded: $showsReadySources) {
+            sourceList(readyRows).padding(.top, 8)
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(copy("已准备与已连接（\(readyRows.count)）", "Ready and connected (\(readyRows.count))"))
+                    .font(.system(size: 12, weight: .medium))
+                Text(readyRows.map(\.agent.displayName).joined(separator: " · "))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(minHeight: 44, alignment: .leading)
+        }
+        .accessibilityIdentifier("integration-setup.ready-sources")
     }
 
     private var otherSources: some View {
         DisclosureGroup(isExpanded: $showsAllSources) {
-            sourceList(missingRows)
-                .padding(.top, 8)
+            sourceList(otherRows).padding(.top, 8)
         } label: {
-            Text(copy("查看其他来源（\(missingRows.count)）", "Other sources (\(missingRows.count))"))
+            Text(copy("其他来源（\(otherRows.count)）", "Other sources (\(otherRows.count))"))
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .frame(minHeight: 44)
@@ -125,158 +164,155 @@ struct IntegrationSetupView: View {
         VStack(spacing: 0) {
             ForEach(Array(sources.enumerated()), id: \.element.id) { index, row in
                 sourceRow(row)
-                if index < sources.count - 1 { Divider().padding(.leading, 60) }
+                if index < sources.count - 1 { Divider().padding(.leading, 56) }
             }
         }
         .background(.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(.primary.opacity(0.08), lineWidth: 1)
-        }
+        .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(.primary.opacity(0.08), lineWidth: 1) }
     }
 
     private func sourceRow(_ row: IntegrationSetupRow) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: row.agent.iconSymbol)
                     .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(.secondary)
-                    .frame(width: 32, height: 40)
+                    .frame(width: 28, height: 32)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        Text(row.agent.displayName)
-                            .font(.system(size: 13, weight: .semibold))
-                        if row.agent == .glm {
-                            Text(copy("模型来源", "Model source")).font(.system(size: 11)).foregroundStyle(.secondary)
-                        } else if row.agent == .codex && isRefreshing {
-                            Text(copy("检查中…", "Checking…")).font(.system(size: 11)).foregroundStyle(.secondary)
-                        } else {
-                            statusLabel(row.phase)
-                        }
+                        Text(row.agent.displayName).font(.system(size: 13, weight: .semibold))
+                        Text(row.agent == .glm ? copy("模型来源", "Model source")
+                             : row.agent == .codex && isRefreshing ? copy("检查中…", "Checking…") : statusTitle(row.phase))
+                            .font(.system(size: 11))
+                            .foregroundStyle(row.phase == .connected ? Color.green : Color.secondary)
                     }
-                    Text(row.detail)
+                    Text(row.phase == .disabled
+                         ? copy("已在设置中关闭，可在 X Island 设置中重新开启。", "Disabled in settings. Re-enable this connection in X Island settings.")
+                         : row.agent == .codex && row.phase == .needsAuthorization
+                         ? copy("只选择 12 条 X Island 钩子，一批确认。", "Select only the 12 X Island hooks and allow them together.") : row.detail)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if row.phase == .connected, let lastSeen = row.lastSeen {
-                        Text(copy("最近活动：", "Last activity: ") + lastSeen.formatted(
-                            .dateTime.year().month().day().hour().minute().locale(Locale(identifier: L10n.effectiveLanguage))))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
+                        .lineLimit(2)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if row.phase != .connected { actionButton(row) }
-            }
-            if row.agent == .codex, row.phase == .needsAuthorization {
-                DisclosureGroup(isExpanded: $showsCodexGuide) {
-                    Text(copy("打开 Codex 的「设置 → 编码 → 钩子」，只审阅并信任 X Island 的钩子。完成后返回这里，点击「重新检查」。",
-                              "In Codex, open Settings → Coding → Hooks. Review and trust only the X Island hooks, then return here and choose Check again."))
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 4)
-                } label: {
-                    Text(copy("在 Codex 中完成一次确认", "Confirm once in Codex"))
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(minHeight: 44)
+                if let action = IntegrationSetupPresentation.rowAction(row, canPrepareFiles: onPrepareFiles != nil) {
+                    Button(actionTitle(action)) { perform(action) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .disabled(isRefreshing)
+                        .accessibilityIdentifier(isFileAction(action) ? "integration-setup.files.\(row.id)" : "integration-setup.action.\(row.id)")
                 }
-                .padding(.leading, 44)
-                .accessibilityIdentifier("integration-setup.codex-guide")
             }
-            if row.phase == .needsSetup, [.workBuddy, .kiro].contains(row.agent), let onPrepareFiles {
-                Button(copy("查看接入文件", "Show setup files")) { onPrepareFiles(row.agent) }
-                    .buttonStyle(.bordered)
-                    .disabled(isRefreshing)
-                    .padding(.leading, 44)
-                    .accessibilityIdentifier("integration-setup.files.\(row.id)")
-            }
+            rowDetails(row).padding(.leading, 40)
         }
         .padding(16)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("integration-setup.row.\(row.id)")
     }
 
-    private func statusLabel(_ phase: IntegrationSetupPhase) -> some View {
-        Label(statusTitle(phase), systemImage: phase == .connected ? "checkmark.circle.fill" : "circle")
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(phase == .connected ? Color.green : Color.secondary)
-            .fixedSize()
-    }
-
-    private func actionButton(_ row: IntegrationSetupRow) -> some View {
-        Button {
-            switch row.phase {
-            case .needsAuthorization: onOpenClient(row.agent)
-            case .needsConfiguration, .disabled:
-                if row.canConfigure { onConfigure(row.agent) }
-                else { onOpenGuide(row.agent) }
-            case .waitingForActivity, .checkFailed: onRefresh()
-            case .notInstalled, .needsSetup, .connected: onOpenGuide(row.agent)
+    private func rowDetails(_ row: IntegrationSetupRow) -> some View {
+        DisclosureGroup(isExpanded: Binding(get: { expandedDetails.contains(row.id) }, set: {
+            if $0 { expandedDetails.insert(row.id) } else { expandedDetails.remove(row.id) }
+        })) {
+            VStack(alignment: .leading, spacing: 8) {
+                if row.agent == .codex && row.phase == .needsAuthorization {
+                    Text(copy("在 Codex 输入区点击「审查钩子 / Review hooks」，只勾选 12 条 X Island 钩子，再点击「允许所选项 / Allow selected」。",
+                              "In the Codex composer, choose Review hooks, select only the 12 X Island hooks, then choose Allow selected."))
+                    Text(copy("同一组定义会记住，变更后需再次确认。不要使用用户配置来源的「全部信任 / Trust all」，其中可能包含其他插件。",
+                              "Your choice is remembered for the same definitions. Changes need a new confirmation. Do not use Trust all for the user configuration source; it may include other plugins."))
+                } else {
+                    Text(row.detail)
+                    if row.phase == .connected, let date = row.lastSeen {
+                        Text(copy("最近活动：", "Last activity: ") + date.formatted(
+                            .dateTime.year().month().day().hour().minute().locale(Locale(identifier: L10n.effectiveLanguage))))
+                    }
+                }
+                Button(copy("打开完整指南", "Open full guide")) { onOpenGuide(row.agent) }
+                    .buttonStyle(.link)
+                    .accessibilityIdentifier(row.phase == .needsSetup && onPrepareFiles != nil && [AgentType.workBuddy, .kiro].contains(row.agent)
+                        ? "integration-setup.action.\(row.id)" : "integration-setup.guide.\(row.id)")
             }
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 8)
         } label: {
-            Text(actionTitle(row))
-                .font(.system(size: 12, weight: .medium))
-                .frame(minWidth: 88, minHeight: 32)
+            Text(row.agent == .codex && row.phase == .needsAuthorization ? copy("如何确认", "How to confirm") : copy("详情", "Details"))
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .frame(minHeight: 24)
         }
-        .buttonStyle(.bordered)
-        .controlSize(.large)
-        .disabled(isRefreshing)
-        .accessibilityIdentifier("integration-setup.action.\(row.id)")
+        .accessibilityIdentifier(row.agent == .codex ? "integration-setup.codex-guide" : "integration-setup.details.\(row.id)")
     }
 
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(copy("已完成的接入会保留。之后可在 X Island 设置中继续。",
-                      "Completed connections are saved. You can continue later in X Island settings."))
+        HStack(spacing: 12) {
+            Button(action: onRefresh) {
+                HStack(spacing: 8) {
+                    if isRefreshing { ProgressView().controlSize(.small) }
+                    Text(copy("重新检查", "Check again")).frame(minHeight: 32)
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(isRefreshing)
+            .accessibilityIdentifier("integration-setup.refresh")
+            Spacer()
+            Text(copy("已完成的接入会自动记住", "Completed connections are remembered"))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-            HStack(spacing: 12) {
-                Button(action: onRefresh) {
-                    HStack(spacing: 8) {
-                        if isRefreshing { ProgressView().controlSize(.small) }
-                        Text(isRefreshing ? copy("正在检查…", "Checking…") : copy("重新检查", "Check again"))
-                    }
-                    .frame(minHeight: 32)
-                }
+            Button(allConnected ? copy("完成", "Done") : copy("稍后再说", "Not now"), action: onLater)
                 .buttonStyle(.bordered)
                 .controlSize(.large)
-                .disabled(isRefreshing)
-                .accessibilityIdentifier("integration-setup.refresh")
-                Spacer()
-                Button(action: onLater) {
-                    Text(allConnected ? copy("完成", "Done") : copy("稍后再说", "Not now"))
-                        .frame(minHeight: 32)
-                }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityIdentifier("integration-setup.later")
-            }
+                .keyboardShortcut(.cancelAction)
+                .accessibilityIdentifier("integration-setup.later")
         }
+    }
+
+    private func perform(_ action: IntegrationSetupAction) {
+        switch action {
+        case .prepareAll: onPrepareAll?()
+        case .configure(let agent): onConfigure(agent)
+        case .openClient(let agent): onOpenClient(agent)
+        case .prepareFiles(let agent): onPrepareFiles?(agent)
+        case .openGuide(let agent): onOpenGuide(agent)
+        case .refresh: onRefresh()
+        }
+    }
+
+    private func primaryTitle(_ action: IntegrationSetupAction) -> String {
+        switch action {
+        case .prepareAll, .configure: copy("自动完成配置", "Set up automatically")
+        case .refresh: copy("重新检查", "Check again")
+        default: copy("继续接入", "Continue setup")
+        }
+    }
+
+    private func actionTitle(_ action: IntegrationSetupAction) -> String {
+        switch action {
+        case .prepareAll, .configure: copy("准备接入", "Set up")
+        case .openClient: copy("前往确认", "Open app")
+        case .prepareFiles: copy("接入文件", "Setup files")
+        case .openGuide: copy("查看步骤", "View steps")
+        case .refresh: copy("重新检查", "Check again")
+        }
+    }
+
+    private func isFileAction(_ action: IntegrationSetupAction) -> Bool {
+        if case .prepareFiles = action { return true }
+        return false
     }
 
     private func statusTitle(_ phase: IntegrationSetupPhase) -> String {
         switch phase {
         case .notInstalled: copy("未检测到", "Not detected")
         case .disabled: copy("已关闭", "Disabled")
-        case .needsConfiguration: copy("待配置", "Needs configuration")
-        case .needsAuthorization: copy("待授权", "Needs authorization")
-        case .needsSetup: copy("待完成设置", "Needs setup")
+        case .needsConfiguration: copy("待配置", "Needs setup")
+        case .needsAuthorization: copy("待确认", "Needs confirmation")
+        case .needsSetup: copy("待完成", "Next step needed")
         case .waitingForActivity: copy("等待活动", "Waiting for activity")
         case .connected: copy("已接入", "Connected")
         case .checkFailed: copy("检查失败", "Check failed")
-        }
-    }
-
-    private func actionTitle(_ row: IntegrationSetupRow) -> String {
-        switch row.phase {
-        case .needsAuthorization: copy("前往授权", "Authorize in app")
-        case .needsConfiguration, .disabled:
-            row.canConfigure ? copy("准备接入", "Set up") : copy("查看步骤", "View steps")
-        case .waitingForActivity, .checkFailed: copy("重新检查", "Check again")
-        case .notInstalled, .needsSetup, .connected: copy("查看步骤", "View steps")
         }
     }
 

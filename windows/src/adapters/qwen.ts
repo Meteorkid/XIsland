@@ -74,7 +74,7 @@ export function normalizeQwenHook(value: unknown, context: QwenHookContext = {})
           message.status = '请在 Qwen Code 中回答问题'; message.observedState = 'waitingAnswer';
         } else {
           message.type = 'permission_request';
-          message.permDescription = optionalText(input, 'description') ?? optionalText(input, 'command')
+          message.permDescription = optionalText(input, 'command') ?? optionalText(input, 'description')
             ?? message.filePath ?? message.toolInput;
           message.nativeRequestId = message.toolCallId; message.nativeRequestKind = 'permission';
         }

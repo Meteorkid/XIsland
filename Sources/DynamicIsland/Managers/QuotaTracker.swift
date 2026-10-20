@@ -24,88 +24,157 @@ final class QuotaTracker {
         timer?.invalidate()
     }
 
+    // Read dependencies are explicit so fixtures never access a user's secrets or databases.
+    struct Readers: Sendable {
+        let apiKey: @Sendable (String) -> String?
+        let openAITokens: @Sendable () -> Int?
+        let data: @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    }
+
+    nonisolated private static var liveReaders: Readers {
+        Readers(apiKey: { loadAPIKey(for: $0) }, openAITokens: { fetchOpenAITokenCount() },
+                data: { try await URLSession.shared.data(for: $0) })
+    }
+
+    nonisolated private static let providerSettings: [(key: String, identifier: String, name: String)] = [
+        ("quotaTrackingAnthropicEnabled", "anthropic", "Anthropic"),
+        ("quotaTrackingOpenAIEnabled", "openai", "OpenAI"),
+        ("quotaTrackingKimiEnabled", "kimi", "Kimi"),
+        ("quotaTrackingDeepseekEnabled", "deepseek", "DeepSeek"),
+        ("quotaTrackingGLMEnabled", "glm", "GLM"),
+    ]
+
+    nonisolated static func enabledProviders(in defaults: UserDefaults) -> [String] {
+        providerSettings.filter { defaults.bool(forKey: $0.key) }.map(\.identifier)
+    }
+
     func fetchAll() {
         guard allowsLiveAccess else { return }
-        let defaults = AppPreferences.defaults
-        let providers: [(String, String)] = [
-            (Self.anthropicEnabledKey, "anthropic"),
-            (Self.openAIEnabledKey, "openai"),
-            (Self.kimiEnabledKey, "kimi"),
-            (Self.deepseekEnabledKey, "deepseek"),
-            (Self.glmEnabledKey, "glm"),
-        ].filter { defaults.bool(forKey: $0.0) }
-
+        let providers = Self.enabledProviders(in: AppPreferences.defaults)
+        quotas.removeAll { info in
+            !Self.providerSettings.contains { $0.name == info.provider && providers.contains($0.identifier) }
+        }
         guard !providers.isEmpty else { return }
 
-        // Keychain reads are synchronous I/O; batch them once off the main actor.
-        let keys = providers.map { $0.1 }
-        Task.detached(priority: .utility) {
-            let apiKeyMap = keys.reduce(into: [String: String]()) { dict, provider in
-                dict[provider] = Self.loadAPIKey(for: provider)
-            }
-            await MainActor.run { [weak self] in
-                self?.fetchAllWithKeys(apiKeyMap)
-            }
-        }
-    }
-
-    private func fetchAllWithKeys(_ apiKeyMap: [String: String]) {
-        if let key = apiKeyMap["anthropic"] { fetchAnthropic(apiKey: key) }
-        fetchOpenAI()
-        if let key = apiKeyMap["kimi"] { fetchKimi(apiKey: key) }
-        if let key = apiKeyMap["deepseek"] { fetchDeepSeek(apiKey: key) }
-        if let key = apiKeyMap["glm"] { fetchGLM(apiKey: key) }
-    }
-
-    // MARK: - Anthropic
-
-    func fetchAnthropic(apiKey: String? = nil) {
-        guard allowsLiveAccess else { return }
-        guard let apiKey, !apiKey.isEmpty else {
-            updateQuota(QuotaInfo(provider: "Anthropic", requestsRemaining: nil, requestsLimit: nil,
-                                  tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date()))
-            return
-        }
-
-        let url = URL(string: "https://api.anthropic.com/v1/messages")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = [
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": 1,
-            "messages": [["role": "user", "content": "hi"]]
-        ]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-
-        let task = URLSession.shared.dataTask(with: request) { [weak self] _, response, _ in
-            guard let httpResponse = response as? HTTPURLResponse else { return }
-            let headers = httpResponse.allHeaderFields
-            let reqRemaining = Self.parseIntHeader(headers, key: "anthropic-ratelimit-requests-remaining")
-            let reqLimit = Self.parseIntHeader(headers, key: "anthropic-ratelimit-requests-limit")
-            let tokRemaining = Self.parseIntHeader(headers, key: "anthropic-ratelimit-tokens-remaining")
-            let tokLimit = Self.parseIntHeader(headers, key: "anthropic-ratelimit-tokens-limit")
-            let resetTime = Self.parseDateHeader(headers, key: "anthropic-ratelimit-reset")
-
-            let info = QuotaInfo(provider: "Anthropic", requestsRemaining: reqRemaining, requestsLimit: reqLimit,
-                                 tokensRemaining: tokRemaining, tokensLimit: tokLimit, resetTime: resetTime, lastChecked: Date())
-            Task { @MainActor [weak self] in self?.updateQuota(info) }
-        }
-        task.resume()
-    }
-
-    // MARK: - OpenAI (Codex local SQLite)
-
-    func fetchOpenAI() {
-        guard allowsLiveAccess else { return }
         Task.detached(priority: .utility) { [weak self] in
-            let totalTokens = Self.fetchOpenAITokenCount()
-            let info = QuotaInfo(provider: "OpenAI", requestsRemaining: nil, requestsLimit: nil,
-                                 tokensRemaining: totalTokens, tokensLimit: nil, resetTime: nil, lastChecked: Date())
-            await MainActor.run { [weak self] in self?.updateQuota(info) }
+            let infos = await Self.collectQuotas(enabledProviders: providers, readers: Self.liveReaders)
+            await MainActor.run { [weak self] in
+                for info in infos { self?.updateQuota(info) }
+            }
+        }
+    }
+
+    // Only providers explicitly enabled by the caller may read a key, database, or network.
+    nonisolated static func collectQuotas(enabledProviders: [String], readers: Readers) async -> [QuotaInfo] {
+        var infos: [QuotaInfo] = []
+        for provider in providerSettings where enabledProviders.contains(provider.identifier) {
+            if provider.identifier == "anthropic" {
+                // Rate-limit headers from inference are not a read-only quota API.
+                infos.append(QuotaInfo(provider: provider.name))
+                continue
+            }
+            if provider.identifier == "openai" {
+                infos.append(QuotaInfo(provider: provider.name, tokensUsed: readers.openAITokens()))
+                continue
+            }
+            guard let key = readers.apiKey(provider.identifier), !key.isEmpty,
+                  let request = balanceRequest(for: provider.identifier, apiKey: key) else {
+                infos.append(QuotaInfo(provider: provider.name))
+                continue
+            }
+            do {
+                let (data, response) = try await readers.data(request)
+                infos.append(parseResponse(provider: provider.identifier, data: data,
+                                           statusCode: (response as? HTTPURLResponse)?.statusCode))
+            } catch {
+                // A failed read gives no evidence that an account is exhausted.
+                infos.append(QuotaInfo(provider: provider.name))
+            }
+        }
+        return infos
+    }
+
+    nonisolated static func balanceRequest(for provider: String, apiKey: String) -> URLRequest? {
+        let endpoint: String
+        switch provider {
+        case "kimi": endpoint = "https://api.moonshot.cn/v1/users/me/balance"
+        case "deepseek": endpoint = "https://api.deepseek.com/user/balance"
+        case "glm": endpoint = "https://open.bigmodel.cn/api/paas/v4/models"
+        default: return nil
+        }
+        var request = URLRequest(url: URL(string: endpoint)!)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    nonisolated static func parseResponse(provider: String, data: Data, statusCode: Int?) -> QuotaInfo {
+        let name = providerSettings.first { $0.identifier == provider }?.name ?? provider
+        let unknown = QuotaInfo(provider: name)
+        guard let statusCode else { return unknown }
+        if provider == "glm" {
+            // /models only establishes whether this API request succeeded, not available quota.
+            return QuotaInfo(provider: name, apiAvailable: statusCode == 200)
+        }
+        guard statusCode == 200 else { return unknown }
+        let decoder = JSONDecoder()
+        switch provider {
+        case "kimi":
+            // https://platform.kimi.com/docs/api/balance — available_balance is CNY, not tokens.
+            guard let response = try? decoder.decode(KimiBalanceResponse.self, from: data),
+                  response.code == 0, response.status,
+                  !response.data.available_balance.isNaN else { return unknown }
+            return QuotaInfo(provider: name, balances: [
+                QuotaBalance(amount: response.data.available_balance, currency: "CNY")
+            ])
+        case "deepseek":
+            // https://api-docs.deepseek.com/api/get-user-balance/ — keep each currency separate.
+            guard let response = try? decoder.decode(DeepSeekBalanceResponse.self, from: data) else { return unknown }
+            var balances: [QuotaBalance] = []
+            for entry in response.balance_infos {
+                guard ["CNY", "USD"].contains(entry.currency),
+                      entry.total_balance.range(of: #"^-?[0-9]+(?:\.[0-9]+)?$"#, options: .regularExpression) != nil,
+                      let amount = Decimal(string: entry.total_balance, locale: Locale(identifier: "en_US_POSIX")),
+                      !amount.isNaN else { return unknown }
+                balances.append(QuotaBalance(amount: amount, currency: entry.currency))
+            }
+            return QuotaInfo(provider: name, balances: balances)
+        default:
+            return unknown
+        }
+    }
+
+    private struct KimiBalanceResponse: Decodable {
+        let code: Int
+        let status: Bool
+        let data: BalanceData
+        struct BalanceData: Decodable { let available_balance: Decimal }
+    }
+
+    private struct DeepSeekBalanceResponse: Decodable {
+        let balance_infos: [BalanceData]
+        struct BalanceData: Decodable {
+            let currency: String
+            let total_balance: String
+        }
+    }
+
+    func fetchAnthropic(apiKey: String? = nil) { fetchProvider("anthropic", apiKey: apiKey) }
+    func fetchOpenAI() { fetchProvider("openai") }
+    func fetchKimi(apiKey: String? = nil) { fetchProvider("kimi", apiKey: apiKey) }
+    func fetchDeepSeek(apiKey: String? = nil) { fetchProvider("deepseek", apiKey: apiKey) }
+    func fetchGLM(apiKey: String? = nil) { fetchProvider("glm", apiKey: apiKey) }
+
+    private func fetchProvider(_ provider: String, apiKey: String? = nil) {
+        guard allowsLiveAccess, Self.enabledProviders(in: AppPreferences.defaults).contains(provider) else { return }
+        let readers = Readers(apiKey: { _ in apiKey }, openAITokens: Self.liveReaders.openAITokens,
+                              data: Self.liveReaders.data)
+        Task.detached(priority: .utility) { [weak self] in
+            let infos = await Self.collectQuotas(enabledProviders: [provider], readers: readers)
+            await MainActor.run { [weak self] in
+                for info in infos { self?.updateQuota(info) }
+            }
         }
     }
 
@@ -126,110 +195,10 @@ final class QuotaTracker {
         }
         defer { sqlite3_finalize(stmt) }
 
-        if sqlite3_step(stmt) == SQLITE_ROW { return Int(sqlite3_column_int64(stmt, 0)) }
-        return nil
-    }
-
-    // MARK: - Kimi (Moonshot)
-
-    func fetchKimi(apiKey: String? = nil) {
-        guard allowsLiveAccess else { return }
-        guard let apiKey, !apiKey.isEmpty else {
-            updateQuota(QuotaInfo(provider: "Kimi", requestsRemaining: nil, requestsLimit: nil,
-                                  tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date()))
-            return
-        }
-
-        let url = URL(string: "https://api.moonshot.cn/v1/users/me/balance")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-
-        let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
-            guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let balanceData = json["data"] as? [String: Any] else {
-                Task { @MainActor [weak self] in
-                    self?.updateQuota(QuotaInfo(provider: "Kimi", requestsRemaining: nil, requestsLimit: nil,
-                                                tokensRemaining: nil, tokensLimit: nil,
-                                                resetTime: nil, lastChecked: Date()))
-                }
-                return
-            }
-            // balance is in CNY yuan
-            let balance = balanceData["balance"] as? Double
-            let info = QuotaInfo(provider: "Kimi", requestsRemaining: nil, requestsLimit: nil,
-                                 tokensRemaining: balance.map { Int($0 * 100) }, // approximate: 1 yuan ≈ 100 tokens
-                                 tokensLimit: nil, resetTime: nil, lastChecked: Date())
-            Task { @MainActor [weak self] in self?.updateQuota(info) }
-        }
-        task.resume()
-    }
-
-    // MARK: - DeepSeek
-
-    func fetchDeepSeek(apiKey: String? = nil) {
-        guard allowsLiveAccess else { return }
-        guard let apiKey, !apiKey.isEmpty else {
-            updateQuota(QuotaInfo(provider: "DeepSeek", requestsRemaining: nil, requestsLimit: nil,
-                                  tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date()))
-            return
-        }
-
-        let url = URL(string: "https://api.deepseek.com/user/balance")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-
-        let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
-            guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                Task { @MainActor [weak self] in
-                    self?.updateQuota(QuotaInfo(provider: "DeepSeek", requestsRemaining: nil, requestsLimit: nil,
-                                                tokensRemaining: nil, tokensLimit: nil,
-                                                resetTime: nil, lastChecked: Date()))
-                }
-                return
-            }
-            let isAvailable = json["is_available"] as? Bool ?? false
-            let balanceInfos = json["balance_infos"] as? [[String: Any]] ?? []
-            var totalBalance: Double = 0
-            for info in balanceInfos {
-                totalBalance += (info["total_balance"] as? String).flatMap(Double.init) ?? 0
-            }
-            let info = QuotaInfo(provider: "DeepSeek", requestsRemaining: nil, requestsLimit: nil,
-                                 tokensRemaining: isAvailable ? Int(totalBalance * 1000) : 0,
-                                 tokensLimit: nil, resetTime: nil, lastChecked: Date())
-            Task { @MainActor [weak self] in self?.updateQuota(info) }
-        }
-        task.resume()
-    }
-
-    // MARK: - GLM (Zhipu)
-
-    func fetchGLM(apiKey: String? = nil) {
-        guard allowsLiveAccess else { return }
-        guard let apiKey, !apiKey.isEmpty else {
-            updateQuota(QuotaInfo(provider: "GLM", requestsRemaining: nil, requestsLimit: nil,
-                                  tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date()))
-            return
-        }
-
-        let url = URL(string: "https://open.bigmodel.cn/api/paas/v4/models")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-
-        let task = URLSession.shared.dataTask(with: request) { [weak self] _, response, _ in
-            guard let httpResponse = response as? HTTPURLResponse else { return }
-            // GLM doesn't expose a public balance endpoint; a 200 means the key is valid/has quota.
-            // 401/403/429 would indicate quota exhausted or invalid key.
-            let isOk = httpResponse.statusCode == 200
-            let info = QuotaInfo(provider: "GLM", requestsRemaining: isOk ? 1 : 0, requestsLimit: nil,
-                                 tokensRemaining: nil, tokensLimit: nil, resetTime: nil, lastChecked: Date())
-            Task { @MainActor [weak self] in self?.updateQuota(info) }
-        }
-        task.resume()
+        guard sqlite3_step(stmt) == SQLITE_ROW,
+              sqlite3_column_type(stmt, 0) == SQLITE_INTEGER else { return nil }
+        let total = sqlite3_column_int64(stmt, 0)
+        return total >= 0 ? Int(exactly: total) : nil
     }
 
     // MARK: - Keychain
@@ -286,13 +255,27 @@ final class QuotaTracker {
 
     static func migrateKeychainAccessibility() {
         guard !AppPreferences.isIsolated else { return }
-        let providers = ["anthropic", "openai", "kimi", "deepseek", "glm"]
-        for provider in providers {
-            if let key = loadAPIKey(for: provider) {
-                _ = deleteAPIKey(for: provider)
-                _ = saveAPIKey(key, for: provider)
-            }
+        _ = migrateKeychainAccessibility { query, attributes in
+            SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         }
+    }
+
+    @discardableResult
+    nonisolated static func migrateKeychainAccessibility(
+        update: ([String: Any], [String: Any]) -> OSStatus
+    ) -> [String: OSStatus] {
+        var statuses: [String: OSStatus] = [:]
+        for provider in providerSettings {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: "com.xisland.apikeys",
+                kSecAttrAccount as String: provider.identifier
+            ]
+            // An unsuccessful in-place update preserves the original keychain item.
+            let attributes = [kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+            statuses[provider.identifier] = update(query, attributes)
+        }
+        return statuses
     }
 
     static func deleteAPIKey(for provider: String) -> Bool {
@@ -317,6 +300,13 @@ final class QuotaTracker {
     }
 
     private func updateQuota(_ info: QuotaInfo) {
+        // Ignore an in-flight response if tracking was disabled while the read was running.
+        guard Self.providerSettings.contains(where: {
+            $0.name == info.provider && AppPreferences.defaults.bool(forKey: $0.key)
+        }) else {
+            quotas.removeAll { $0.provider == info.provider }
+            return
+        }
         if let index = quotas.firstIndex(where: { $0.provider == info.provider }) {
             quotas[index] = info
         } else {
@@ -324,15 +314,4 @@ final class QuotaTracker {
         }
     }
 
-    private nonisolated static func parseIntHeader(_ headers: [AnyHashable: Any], key: String) -> Int? {
-        guard let value = headers[key] as? String ?? headers[key.lowercased()] as? String else { return nil }
-        return Int(value)
-    }
-
-    private nonisolated static func parseDateHeader(_ headers: [AnyHashable: Any], key: String) -> Date? {
-        guard let value = headers[key] as? String ?? headers[key.lowercased()] as? String else { return nil }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: value)
-    }
 }

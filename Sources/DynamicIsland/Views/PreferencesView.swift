@@ -48,8 +48,17 @@ struct PreferencesView: View {
     @Environment(SessionPersistenceManager.self) private var persistenceManager
     @State private var sshManager = SSHRemoteManager()
     @State private var selection: PreferencesPane = .general
-    @State private var historySessions: [StoredSession] = []
-    @State private var showBatchExporter = false
+    @State private var historyBrowser = HistoryBrowserState()
+    @State private var historyQuery = ""
+    @State private var historyExportError: String?
+    @State private var exportedHistoryURL: URL?
+    @State private var exportedHistoryCount = 0
+    @State private var isConfirmingHistoryClear = false
+    @State private var historyTask: Task<Void, Never>?
+    @State private var exportTask: Task<Void, Never>?
+    @State private var isExportingHistory = false
+    @State private var historyOperationError: String?
+    @State private var configurationTasks: [AgentType: Task<Void, Never>] = [:]
     @AppStorage("historyRetentionDays") private var historyRetentionDays = 30
     @State private var isShowingInstallConfirmation = false
     @State private var showAddServerSheet = false
@@ -105,6 +114,12 @@ struct PreferencesView: View {
     @State private var deepseekAPIKey = ""
     @State private var glmAPIKey = ""
 
+    init(initialPane: String = "general", historyBrowser: HistoryBrowserState? = nil) {
+        _selection = State(initialValue: PreferencesPane(rawValue: initialPane) ?? .general)
+        _historyBrowser = State(initialValue: historyBrowser ?? HistoryBrowserState())
+        _historyQuery = State(initialValue: historyBrowser?.query ?? "")
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             toolbar
@@ -119,6 +134,10 @@ struct PreferencesView: View {
         .frame(width: 760, height: 520)
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier(TestAccessibility.preferencesRoot)
+        .onDisappear {
+            for task in configurationTasks.values { task.cancel() }
+            configurationTasks.removeAll()
+        }
         .confirmationDialog(
             "Install update now?",
             isPresented: $isShowingInstallConfirmation,
@@ -867,6 +886,8 @@ struct PreferencesView: View {
 
     // MARK: - History
 
+    private var historySessions: [HistorySessionRow] { historyBrowser.sessions }
+
     private var historyPane: some View {
         VStack(alignment: .leading, spacing: 20) {
             if persistenceManager.lastSaveError != nil || !sessionManager.unsavedSessionIDs.isEmpty {
@@ -895,9 +916,37 @@ struct PreferencesView: View {
             }
 
             section(L10n.sectionHistory) {
+                HStack {
+                    TextField(L10n.searchSessions, text: $historyQuery)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { startHistoryTask { await historyBrowser.searchAsync(historyQuery, in: persistenceManager) } }
+                        .accessibilityIdentifier("preferences.history.search")
+                    Button(L10n.searchHistory) { startHistoryTask { await historyBrowser.searchAsync(historyQuery, in: persistenceManager) } }
+                    if !historyQuery.isEmpty {
+                        Button(L10n.clearHistorySearch) {
+                            historyQuery = ""
+                            startHistoryTask { await historyBrowser.searchAsync("", in: persistenceManager) }
+                        }
+                    }
+                }
+                if historyBrowser.error == nil, historyBrowser.hasLoaded {
+                    historyPageNavigation
+                }
                 card {
-                    if historySessions.isEmpty {
-                        Text(L10n.noHistory)
+                    historyExportControls
+                    dividerLine
+                    if let error = historyBrowser.error {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label(L10n.historyReadFailed, systemImage: "exclamationmark.triangle")
+                            Text(error).font(.system(size: 11)).textSelection(.enabled)
+                            Button(L10n.retryHistoryRead) { startHistoryTask { await historyBrowser.reloadAsync(from: persistenceManager) } }
+                        }
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("preferences.history.read-error")
+                    } else if !historyBrowser.hasLoaded || historyBrowser.isLoading {
+                        ProgressView().frame(maxWidth: .infinity)
+                    } else if historySessions.isEmpty {
+                        Text(historyBrowser.query.isEmpty ? L10n.noHistory : L10n.noHistoryMatches)
                             .font(.system(size: 12))
                             .foregroundStyle(.tertiary)
                             .padding(.vertical, 8)
@@ -930,8 +979,13 @@ struct PreferencesView: View {
                                 }
                                 Spacer()
                                 Button {
-                                    persistenceManager.deleteSession(session)
-                                    historySessions = persistenceManager.fetchHistory()
+                                    startHistoryTask {
+                                        do {
+                                            try await persistenceManager.deleteHistoryAsync(sessionID: session.sessionId)
+                                            historyOperationError = nil
+                                            await historyBrowser.reloadAsync(from: persistenceManager)
+                                        } catch { if !Task.isCancelled { historyOperationError = error.localizedDescription } }
+                                    }
                                 } label: {
                                     Image(systemName: "trash")
                                         .font(.system(size: 10))
@@ -943,34 +997,95 @@ struct PreferencesView: View {
                         }
                     }
 
-                    if !historySessions.isEmpty {
-                        dividerLine
-                        HStack(spacing: 16) {
-                            Button(L10n.batchExport) {
-                                batchExportHistory()
-                            }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.blue)
-
-                            Button(L10n.clearHistory) {
-                                persistenceManager.cleanup(olderThanDays: 0)
-                                historySessions = persistenceManager.fetchHistory()
-                            }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.red)
-                        }
-                    }
                 }
             }
         }
         .task {
-            persistenceManager.cleanup(olderThanDays: historyRetentionDays)
-            historySessions = persistenceManager.fetchHistory()
+            await applyHistoryRetention()
+        }
+        .onChange(of: historyRetentionDays) { _, _ in
+            startHistoryTask { await applyHistoryRetention() }
         }
         .onChange(of: persistenceManager.revision) { _, _ in
-            historySessions = persistenceManager.fetchHistory()
+            startHistoryTask { await historyBrowser.reloadAsync(from: persistenceManager) }
+        }
+        .confirmationDialog(L10n.clearHistory, isPresented: $isConfirmingHistoryClear, titleVisibility: .visible) {
+            Button(L10n.clearHistory, role: .destructive) {
+                startHistoryTask {
+                    do {
+                        try await persistenceManager.cleanupAsync(olderThanDays: 0)
+                        historyOperationError = nil
+                        await historyBrowser.reloadAsync(from: persistenceManager)
+                    } catch { if !Task.isCancelled { historyOperationError = error.localizedDescription } }
+                }
+            }
+            Button(L10n.isChinese ? "取消" : "Cancel", role: .cancel) { }
+        } message: {
+            Text(L10n.historyClearScope)
+        }
+        .onDisappear {
+            historyTask?.cancel(); exportTask?.cancel(); historyBrowser.cancel()
+        }
+    }
+
+    private func startHistoryTask(_ operation: @escaping @MainActor () async -> Void) {
+        historyTask?.cancel()
+        historyTask = Task { await operation() }
+    }
+
+    private func applyHistoryRetention() async {
+        await HistoryRetentionMaintenance(manager: persistenceManager, defaults: AppPreferences.defaults).runInBackground()
+        guard !Task.isCancelled else { return }
+        await historyBrowser.reloadAsync(from: persistenceManager)
+    }
+
+    private var historyExportControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 16) {
+                Button(L10n.exportAllHistory) { batchExportHistory() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.blue)
+                    .accessibilityIdentifier("preferences.history.export-all")
+                    .disabled(isExportingHistory)
+                if isExportingHistory {
+                    ProgressView().controlSize(.small)
+                    Button(L10n.isChinese ? "取消导出" : "Cancel export") { exportTask?.cancel() }
+                }
+                Button(L10n.clearHistory) {
+                    isConfirmingHistoryClear = true
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundStyle(.red)
+                .disabled(historyBrowser.error != nil || historyBrowser.totalCount == 0)
+            }
+            Text(L10n.historyExportScope).font(.system(size: 11)).foregroundStyle(.secondary)
+            if let error = historyOperationError { Text(error).foregroundStyle(.orange).font(.system(size: 11)) }
+            if let error = historyExportError {
+                Label(L10n.historyExportFailed, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                Text(error).font(.system(size: 11)).textSelection(.enabled)
+            } else if let url = exportedHistoryURL {
+                HStack {
+                    Text(L10n.historyExportSucceeded(exportedHistoryCount)).font(.system(size: 11))
+                    Button(L10n.showHistoryExport) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                }
+            }
+        }
+    }
+
+    private var historyPageNavigation: some View {
+        HStack {
+            Button(L10n.historyPreviousPage) { startHistoryTask { await historyBrowser.previousPageAsync(in: persistenceManager) } }
+                .disabled(!historyBrowser.canGoBack || historyBrowser.isLoading)
+                .accessibilityIdentifier("preferences.history.previous")
+            Spacer()
+            Text(L10n.historyPageSummary(historyBrowser.pageIndex + 1, historyBrowser.pageCount, historyBrowser.totalCount))
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            Spacer()
+            Button(L10n.historyNextPage) { startHistoryTask { await historyBrowser.nextPageAsync(in: persistenceManager) } }
+                .disabled(!historyBrowser.canGoForward || historyBrowser.isLoading)
+                .accessibilityIdentifier("preferences.history.next")
         }
     }
 
@@ -1073,12 +1188,12 @@ struct PreferencesView: View {
             section(L10n.sectionMaintenance) {
                 card {
                     row("Reconfigure Hooks") {
-                        Button("Run Now") { ZeroConfigManager.configureAllAgents() }
+                        Button("Run Now") { Task { await ZeroConfigManager.configureAllAgents() } }
                             .controlSize(.small)
                     }
                     dividerLine
                     row("Repair Hooks") {
-                        Button("Check & Fix") { ZeroConfigManager.repairHooksIfNeeded() }
+                        Button("Check & Fix") { Task { await ZeroConfigManager.repairHooksIfNeeded() } }
                             .controlSize(.small)
                     }
                 }
@@ -1131,7 +1246,7 @@ struct PreferencesView: View {
     }
 
     private func hookRow(_ agent: AgentType) -> some View {
-        let status = ZeroConfigManager.hookStatus(for: agent)
+        let status = ZeroConfigManager.externalHookStatus(for: agent) ?? .inactive
         let setup = AppDelegate.shared?.integrationSetupManager.rows.first { $0.agent == agent }
         let routeLabel: String? = switch status {
         case .active, .inactive: nil
@@ -1145,16 +1260,14 @@ struct PreferencesView: View {
         case .modelSource: L10n.hookViaModelClient
         case .externalKiro: L10n.hookViaKiro
         }
-        let label = (agent == .glm ? routeLabel : setup.map { integrationStatusLabel($0.phase) })
-            ?? routeLabel
-            ?? integrationCopy(status == .active ? "配置待验证" : "未配置",
-                               status == .active ? "Configuration unverified" : "Not configured")
+        let cachedLabel = Self.integrationStatusLabel(setup?.phase, language: L10n.effectiveLanguage)
+        let label = agent == .glm ? routeLabel ?? cachedLabel : cachedLabel
         let color: Color = switch setup?.phase {
         case .connected: .green
         case .needsAuthorization, .checkFailed: .orange
         default: .secondary.opacity(0.4)
         }
-        return row(agent.displayName, subtitle: setup == nil ? nil : routeLabel) {
+        return row(agent.displayName, subtitle: routeLabel) {
             HStack(spacing: 10) {
                 HStack(spacing: 4) {
                     Circle()
@@ -1175,29 +1288,36 @@ struct PreferencesView: View {
                         "",
                         isOn: Binding(
                             get: { ZeroConfigManager.isAutoConfigEnabled(for: agent) },
-                            set: {
-                                ZeroConfigManager.setAutoConfigEnabled($0, for: agent)
-                                Task { await AppDelegate.shared?.integrationSetupManager.refresh() }
+                            set: { enabled in
+                                configurationTasks[agent]?.cancel()
+                                configurationTasks[agent] = Task {
+                                    await ZeroConfigManager.setAutoConfigEnabled(enabled, for: agent)
+                                    guard !Task.isCancelled else { return }
+                                    await AppDelegate.shared?.integrationSetupManager.refresh()
+                                }
                             }
                         )
                     )
                     .labelsHidden()
+                    .disabled(AppPreferences.isIsolated)
                     .accessibilityIdentifier("preferences.integration-enabled.\(agent.rawValue)")
                 }
             }
         }
     }
 
-    private func integrationStatusLabel(_ phase: IntegrationSetupPhase) -> String {
+    static func integrationStatusLabel(_ phase: IntegrationSetupPhase?, language: String) -> String {
+        func text(_ chinese: String, _ english: String) -> String { language.hasPrefix("zh") ? chinese : english }
+        guard let phase else { return text("尚未检查", "Not checked") }
         switch phase {
-        case .notInstalled: integrationCopy("未检测到", "Not detected")
-        case .disabled: integrationCopy("已关闭", "Disabled")
-        case .needsConfiguration: integrationCopy("待配置", "Needs configuration")
-        case .needsAuthorization: integrationCopy("待授权", "Needs authorization")
-        case .needsSetup: integrationCopy("待完成设置", "Needs setup")
-        case .waitingForActivity: integrationCopy("配置待验证", "Configuration unverified")
-        case .connected: integrationCopy("已接通", "Connected")
-        case .checkFailed: integrationCopy("检查失败", "Check failed")
+        case .notInstalled: return text("未检测到", "Not detected")
+        case .disabled: return text("已关闭", "Disabled")
+        case .needsConfiguration: return text("待配置", "Needs configuration")
+        case .needsAuthorization: return text("待授权", "Needs authorization")
+        case .needsSetup: return text("待完成设置", "Needs setup")
+        case .waitingForActivity: return text("配置待验证", "Configuration unverified")
+        case .connected: return text("已接通", "Connected")
+        case .checkFailed: return text("检查失败", "Check failed")
         }
     }
 
@@ -1420,46 +1540,27 @@ struct PreferencesView: View {
     // MARK: - Batch Export
 
     private func batchExportHistory() {
-        let sessions = persistenceManager.fetchHistory(limit: 1000)
-        guard !sessions.isEmpty else { return }
-
-        // 将 StoredSession 转换为导出用的字典数组
-        let exportData: [[String: Any]] = sessions.map { session in
-            [
-                "sessionId": session.sessionId,
-                "agentType": session.agentTypeRaw,
-                "startTime": ISO8601DateFormatter().string(from: session.startTime),
-                "completedAt": session.completedAt.map { ISO8601DateFormatter().string(from: $0) } as Any,
-                "observationEndedAt": session.observationEndedAt.map { ISO8601DateFormatter().string(from: $0) } as Any,
-                "sourceNamespace": session.sourceNamespace as Any,
-                "sourceInstanceId": session.sourceInstanceId as Any,
-                "nativeTaskId": session.nativeTaskId as Any,
-                "prompt": session.prompt,
-                "workspaceName": session.workspaceName,
-                "terminal": session.terminal,
-                "status": session.statusRaw,
-                "inputTokens": session.inputTokens,
-                "outputTokens": session.outputTokens,
-                "totalTokens": session.totalTokens,
-                "estimatedCostUSD": session.estimatedCostUSD,
-                "model": session.model,
-                "recapText": session.recapText as Any,
-                "toolEventsCount": session.toolEvents.count,
-                "chatMessagesCount": session.chatMessages.count,
-            ]
-        }
-
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: exportData, options: [.prettyPrinted, .sortedKeys]) else {
-            return
-        }
-
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
         panel.nameFieldStringValue = "xisland_history_\(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .none)).json"
-        panel.title = L10n.batchExport
-
+        panel.title = L10n.exportAllHistory
+        panel.message = L10n.historyExportScope
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        try? jsonData.write(to: url)
+        exportTask?.cancel()
+        isExportingHistory = true
+        historyExportError = nil
+        exportTask = Task {
+            defer { isExportingHistory = false }
+            do {
+                let count = try await persistenceManager.exportHistoryAsync(to: url)
+                guard !Task.isCancelled else { return }
+                exportedHistoryCount = count; exportedHistoryURL = url
+            } catch is CancellationError { }
+            catch {
+                guard !Task.isCancelled else { return }
+                exportedHistoryURL = nil; historyExportError = error.localizedDescription
+            }
+        }
     }
 
     // MARK: - Helpers

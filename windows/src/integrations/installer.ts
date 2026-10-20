@@ -15,6 +15,8 @@ export class IntegrationError extends Error {
 export interface InstallerOptions {
   /** 测试只能显式指定已存在的独立临时目录；不会将此选项暴露给生产 CLI。 */
   tempHome?: string;
+  /** 仅供隔离测试模拟环境变量；生产路径从 CODEX_HOME 读取。 */
+  codexHome?: string;
   resourceDirectory?: string;
   nodeExecutable?: string;
   beforeReplace?: () => Promise<void>;
@@ -67,12 +69,19 @@ async function canonicalReference(path: string): Promise<string> {
 async function location(agent: ConfigurableAgent, options: InstallerOptions): Promise<Location> {
   adapterFor(agent);
   if (!options.tempHome && process.platform !== 'win32') throw new IntegrationError('unsupported_platform', '此安装服务只操作 Windows 配置。');
-  if (!options.tempHome && (options.resourceDirectory || options.nodeExecutable || options.beforeReplace || options.replaceFile)) {
+  if (!options.tempHome && (options.resourceDirectory || options.nodeExecutable || options.beforeReplace || options.replaceFile || options.codexHome !== undefined)) {
     throw new IntegrationError('test_override_forbidden', '生产安装不接受测试路径或文件操作覆盖。');
   }
   const home = await realpath(options.tempHome ?? homedir());
   if (options.tempHome && (!isAbsolute(options.tempHome) || !contained(await realpath(tmpdir()), home))) {
     throw new IntegrationError('test_home_not_isolated', '测试 home 必须是临时目录中的独立现有目录。');
+  }
+  if (agent === 'codex') {
+    const codexHome = options.tempHome ? options.codexHome : process.env.CODEX_HOME;
+    if (codexHome !== undefined && codexHome !== ''
+      && (!isAbsolute(codexHome) || relative(join(home, '.codex'), resolve(codexHome)) !== '')) {
+      throw new IntegrationError('custom_codex_home', '检测到自定义 CODEX_HOME，当前自动接入无法安全管理该目录；未修改默认或自定义配置。');
+    }
   }
   const script = options.tempHome ? join(options.resourceDirectory ?? join(home, 'resources'), 'xisland-hook.cjs') : resolve(process.argv[1]!);
   const node = options.nodeExecutable ?? process.execPath;

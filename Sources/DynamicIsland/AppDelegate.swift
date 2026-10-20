@@ -48,17 +48,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let audioEngine = AudioEngine()
     let updateManager = UpdateManager()
     let quotaTracker: QuotaTracker
-    let persistenceManager = SessionPersistenceManager()
+    let persistenceManager = SessionPersistenceManager(usesBackgroundWrites: true)
     let themeManager = ThemeManager()
     let integrationSetupManager: IntegrationSetupManager
     private var socketServer: SocketServer?
     private var hookRepairTimer: Timer?
+    private var historyRetentionMaintenance: HistoryRetentionMaintenance?
     private var integrationRefreshTask: Task<Void, Never>?
     private var integrationReminderTask: Task<Void, Never>?
     private var integrationWindow: NSWindow?
     private var integrationWindowObserver: NSObjectProtocol?
     private var integrationActivationObserver: NSObjectProtocol?
     private var recheckIntegrationOnActivation = false
+    private var isTerminating = false
+    private var terminationTask: Task<Void, Never>?
+    private enum UpdateTerminationState { case idle, preparing, prepared, committed }
+    private var updateTerminationState: UpdateTerminationState = .idle
     var notchWindow: NotchWindow?
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
@@ -181,11 +186,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        requestTermination { sender.reply(toApplicationShouldTerminate: $0) }
+    }
+
+    func requestTermination(reply: @escaping @MainActor (Bool) -> Void) -> NSApplication.TerminateReply {
+        if Self.exitingAsDuplicateInstance { return .terminateNow }
+        switch updateTerminationState {
+        case .preparing, .prepared: return .terminateCancel
+        case .committed: return .terminateNow
+        case .idle: break
+        }
+        guard terminationTask == nil else { return .terminateLater }
+        stopForTermination()
+        terminationTask = Task { [weak self] in
+            guard let self else { reply(false); return }
+            let saved = await sessionManager.drainPersistenceOperations()
+            if !saved {
+                resumeAfterCancelledTermination()
+                let alert = NSAlert()
+                alert.messageText = L10n.isChinese ? "历史尚未保存，已取消退出" : "History was not saved. Quit cancelled."
+                alert.informativeText = persistenceManager.lastSaveError
+                    ?? (L10n.isChinese ? "请恢复可写存储后重试，未保存会话仍保留在窗口中。" : "Restore writable storage and retry. Unsaved sessions remain available.")
+                alert.addButton(withTitle: L10n.isChinese ? "好" : "OK")
+                if let window = settingsWindow ?? notchWindow { alert.beginSheetModal(for: window, completionHandler: { _ in }) }
+            }
+            terminationTask = nil
+            reply(saved)
+        }
+        return .terminateLater
+    }
+
+    /// helper 启动前先排空已接受的保存；普通退出不能抢在 helper 前结束进程。
+    func prepareForUpdateTermination() async -> Bool {
+        guard !isTerminating, terminationTask == nil, updateTerminationState == .idle else { return false }
+        updateTerminationState = .preparing
+        stopForTermination()
+        let saved = await sessionManager.drainPersistenceOperations()
+        guard saved, !Task.isCancelled else {
+            updateTerminationState = .idle
+            resumeAfterCancelledTermination()
+            return false
+        }
+        updateTerminationState = .prepared
+        return true
+    }
+
+    func cancelUpdateTermination() {
+        guard updateTerminationState == .prepared else { return }
+        updateTerminationState = .idle
+        resumeAfterCancelledTermination()
+    }
+
+    /// 仅 helper 已启动后调用；与 NSApp.terminate 同一主线程回合同步执行。
+    func commitUpdateTermination() -> Bool {
+        guard updateTerminationState == .prepared else { return false }
+        updateTerminationState = .committed
+        return true
+    }
+
+    private func stopForTermination() {
+        socketServer?.stop()
+        historyRetentionMaintenance?.stop()
+        sessionManager.stopAcceptingPersistenceOperations()
+    }
+
+    private func resumeAfterCancelledTermination() {
+        sessionManager.resumeAcceptingPersistenceOperations()
+        if !testConfiguration.isEnabled { startSocketServer(); historyRetentionMaintenance?.startInBackground() }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        isTerminating = true
         socketServer?.stop()
         hookRepairTimer?.invalidate()
+        historyRetentionMaintenance?.stop()
         integrationRefreshTask?.cancel()
         integrationReminderTask?.cancel()
+        integrationSetupManager.shutdown()
         if let observer = integrationWindowObserver { NotificationCenter.default.removeObserver(observer) }
         if let observer = integrationActivationObserver { NotificationCenter.default.removeObserver(observer) }
         if let observer = islandHideObserver {
@@ -407,7 +485,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installUpdateItem.isHidden = true
         menu.addItem(checkForUpdatesItem)
         menu.addItem(installUpdateItem)
-        menu.addItem(NSMenuItem(title: "Preferences...", action: #selector(openPreferences), keyEquivalent: ","))
+        let preferencesItem = NSMenuItem(title: L10n.settings + "…", action: #selector(openPreferences), keyEquivalent: ",")
+        preferencesItem.target = self
+        menu.addItem(preferencesItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
         statusItem?.menu = menu
@@ -445,6 +525,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeUpdateState()
         if !testConfiguration.isEnabled {
             sessionManager.startCleanupTimer()
+            // 生产启动和后续周期都执行保留期策略；隔离测试不访问用户历史。
+            if !AppPreferences.isIsolated {
+                let maintenance = HistoryRetentionMaintenance(manager: persistenceManager, defaults: AppPreferences.defaults)
+                historyRetentionMaintenance = maintenance
+                maintenance.startInBackground()
+            }
             updateManager.startAutoCheck()
         }
     }
@@ -462,14 +548,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         hookRepairTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                await self?.integrationSetupManager.refresh(prepareAutomatically: true)
+                guard let self, !self.isTerminating else { return }
+                self.integrationRefreshTask = Task { [weak self] in
+                    await self?.integrationSetupManager.refresh(prepareAutomatically: true)
+                }
             }
         }
         integrationActivationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: NSApp, queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, self.recheckIntegrationOnActivation else { return }
+                guard let self, !self.isTerminating,
+                      self.recheckIntegrationOnActivation || self.integrationWindow?.isVisible == true else { return }
                 self.recheckIntegrationOnActivation = false
                 await self.integrationSetupManager.refresh()
             }
@@ -498,13 +588,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        let settingsIndex = routeSettingsMenuItem(in: appSubmenu) ?? min(1, appSubmenu.items.count)
         if appSubmenu.items.contains(where: { $0.action == #selector(checkForUpdatesFromMenu) }) {
             return
         }
 
-        let settingsIndex = appSubmenu.items.firstIndex(where: { item in
-            item.title.localizedCaseInsensitiveContains("settings")
-        }) ?? 1
         let checkForUpdatesItem = NSMenuItem(
             title: "Check for Updates...",
             action: #selector(checkForUpdatesFromMenu),
@@ -527,6 +615,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.keyEquivalentModifierMask = shortcut.modifiers
             appSubmenu.insertItem(item, at: appSubmenu.items.count)
         }
+    }
+
+    @discardableResult
+    func routeSettingsMenuItem(in menu: NSMenu) -> Int? {
+        guard let index = menu.items.firstIndex(where: {
+            $0.action == #selector(openPreferences)
+                || ($0.keyEquivalent == "," && $0.keyEquivalentModifierMask == .command)
+        }) else { return nil }
+        menu.items[index].target = self
+        menu.items[index].action = #selector(openPreferences)
+        return index
     }
 
     @objc private func toggleNotch() {
@@ -597,7 +696,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func scheduleIntegrationReminder() {
-        guard !testConfiguration.isEnabled, integrationWindow?.isVisible != true,
+        guard !isTerminating, !testConfiguration.isEnabled, integrationWindow?.isVisible != true,
               integrationReminderTask == nil else { return }
         integrationReminderTask = Task { [weak self] in
             defer { self?.integrationReminderTask = nil }
@@ -634,28 +733,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onLater: { [weak self] in self?.integrationWindow?.close() },
             onPrepareFiles: { [weak self] agent in
-                guard let self, !self.testConfiguration.isEnabled,
-                      let url = self.integrationSetupManager.prepareFiles(for: agent) else { return }
-                NSWorkspace.shared.activateFileViewerSelecting([url])
+                Task { @MainActor [weak self] in
+                    guard let self, !self.testConfiguration.isEnabled,
+                          let url = await self.integrationSetupManager.prepareFiles(for: agent),
+                          !Task.isCancelled else { return }
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
             }))
         panel.center()
         integrationWindow = panel
         integrationSetupManager.markPresented()
+        if !testConfiguration.isEnabled { integrationSetupManager.beginMonitoring() }
         if let observer = integrationWindowObserver { NotificationCenter.default.removeObserver(observer) }
         integrationWindowObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: panel, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.integrationSetupManager.markPresented()
-                self?.integrationWindow = nil
+        ) { [weak self, weak panel] _ in
+            Task { @MainActor [weak self, weak panel] in
+                guard let self, let panel, self.integrationWindow === panel else { return }
+                self.integrationSetupManager.endMonitoring()
+                self.integrationSetupManager.markPresented()
+                self.integrationWindow = nil
             }
         }
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        // 测试进程只呈现注入的界面，不访问生产客户端或配置。
-        if !testConfiguration.isEnabled, integrationSetupManager.rows.isEmpty {
-            Task { [weak self] in await self?.integrationSetupManager.refresh() }
-        }
     }
 
     private func openIntegrationClient(_ agent: AgentType) {
@@ -688,6 +789,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// 恢复旧系统窗口不应盖住首次接入引导；明确菜单操作直接走 openPreferences。
+    func routeSettingsScene() {
+        guard !integrationSetupManager.rows.isEmpty, !integrationSetupManager.isRefreshing,
+              !integrationSetupManager.hasUnpresentedReminder, integrationWindow?.isVisible != true else { return }
+        openPreferences()
+    }
+
     @objc func openPreferences() {
         installApplicationMenuItems()
 
@@ -709,6 +817,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         w.isFloatingPanel = true
         w.hidesOnDeactivate = false
         w.title = "X Island Settings"
+        w.identifier = NSUserInterfaceItemIdentifier("xisland.preferences")
         if let screen = notchWindow?.screen ?? NSScreen.main {
             let sf = screen.visibleFrame
             let x = sf.origin.x + (sf.width - 760) / 2

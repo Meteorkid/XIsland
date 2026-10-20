@@ -622,7 +622,7 @@ struct DIBridge {
 
         if hook.contains("pretooluse") || hook.contains("tool_use") || hook == "tooluse" {
             let toolName = explicitTool ?? stdinData?["tool_name"] as? String ?? stdinData?["tool"] as? String ?? ""
-            if ["claude_code", "trae", "cursor"].contains(agentType), isQuestionTool(toolName) {
+            if agentType == "claude_code", isQuestionTool(toolName) {
                 return buildQuestionFromPermission(sessionId: sessionId, toolName: toolName, data: stdinData)
             }
             return buildToolStart(sessionId: sessionId, data: stdinData, explicitTool: explicitTool)
@@ -632,7 +632,7 @@ struct DIBridge {
         }
         if hook.contains("permission") {
             return buildPermissionRequest(sessionId: sessionId, data: stdinData,
-                                          allowsQuestionRedirect: ["claude_code", "trae", "cursor"].contains(agentType))
+                                          allowsQuestionRedirect: agentType == "claude_code")
         }
         if hook.contains("question") || hook.contains("ask") {
             return buildQuestion(sessionId: sessionId, data: stdinData)
@@ -766,13 +766,18 @@ struct DIBridge {
         var msg = DIMessage(type: .permissionRequest, sessionId: sessionId)
         msg.tool = toolName
 
-        let inputDict = extractToolInput(data)
+        let rawInput = permissionInputText(data)
+        let inputDict = rawInput.flatMap { $0.data(using: .utf8) }
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
         let sources: [[String: Any]?] = [inputDict, data]
-        var desc = findString(in: sources, keys: ["description", "command", "path", "file_path", "pattern", "query", "content", "text"]) ?? ""
+        var desc = findString(in: sources, keys: ["command"])
+            ?? (inputDict == nil ? rawInput : nil)
+            ?? findString(in: sources, keys: ["description", "path", "file_path", "pattern", "query", "content", "text"]) ?? ""
         if desc.isEmpty {
             desc = descriptionFromToolInput(inputDict) ?? descriptionFromToolInput(data) ?? ""
         }
         msg.permDescription = desc
+        msg.toolInput = rawInput
         msg.diff = data?["diff"] as? String
         msg.filePath = findString(in: sources, keys: ["file_path", "path", "filePath"])
         return msg
@@ -799,17 +804,49 @@ struct DIBridge {
     }
 
     static func isQuestionTool(_ name: String) -> Bool {
-        let lower = name.lowercased()
-        return lower.contains("askuser") || lower.contains("ask_user")
-            || lower.contains("askquestion") || lower.contains("ask_question")
-            || lower == "question" || lower == "userinput" || lower == "user_input"
+        // MCP/第三方工具的显示名不能决定它是否获得问答回传的许可语义。
+        name == "AskUserQuestion"
+    }
+
+    private static func claudeQuestionInput(_ data: [String: Any]?) -> [String: Any]? {
+        let name = data?["tool_name"] as? String ?? data?["tool"] as? String ?? ""
+        guard isQuestionTool(name), data?["mcp_server"] == nil, let input = extractToolInput(data) else { return nil }
+        let question: [String: Any]
+        let questionKeys: Set<String> = ["question", "header", "options", "multiSelect", "multiple", "answer", "answers"]
+        if let rawQuestions = input["questions"] {
+            guard Set(input.keys).isSubset(of: ["questions", "answer", "answers"]),
+                  let questions = rawQuestions as? [[String: Any]], questions.count == 1 else { return nil }
+            question = questions[0]
+        } else {
+            question = input
+        }
+        guard Set(question.keys).isSubset(of: questionKeys),
+              let text = question["question"] as? String,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !text.contains("\0"),
+              let options = question["options"] as? [Any] else { return nil }
+        for key in ["multiSelect", "multiple"] {
+            if let value = question[key] {
+                guard let flag = value as? Bool, !flag else { return nil }
+            }
+        }
+        guard options.allSatisfy({ option in
+            let label = option as? String ?? (option as? [String: Any])?["label"] as? String
+            return label.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !$0.contains("\0") && $0.utf8.count <= 8192 } ?? false
+        }) else { return nil }
+        return input
     }
 
     static func buildQuestionFromPermission(sessionId: String, toolName: String, data: [String: Any]?) -> DIMessage {
+        guard isQuestionTool(toolName), let inputDict = claudeQuestionInput(data) else {
+            var message = DIMessage(type: .statusUpdate, sessionId: sessionId)
+            message.status = "Please answer this question in Claude Code."
+            message.observedState = "waitingAnswer"
+            return message
+        }
         var msg = DIMessage(type: .question, sessionId: sessionId)
-
-        let inputDict = extractToolInput(data)
-        let questionObject = (inputDict?["questions"] as? [[String: Any]])?.first
+        msg.allowsCustomAnswer = true
+        let questionObject = (inputDict["questions"] as? [[String: Any]])?.first
         let sources: [[String: Any]?] = [questionObject, inputDict, data]
 
         var header = ""
@@ -872,6 +909,25 @@ struct DIBridge {
             return input
         }
         return nil
+    }
+
+    /// 原始参数按别名优先级保留，不能被后续字段中的用途说明覆盖。
+    static func permissionInputText(_ data: [String: Any]?) -> String? {
+        var selected: String?
+        for key in ["tool_input", "input", "parameters", "params", "args"] {
+            if let value = outputText(data?[key]) { selected = value; break }
+        }
+        if selected == nil, let tool = data?["tool"] as? [String: Any] { selected = outputText(tool["input"]) }
+        if let selected {
+            // 少数客户端把命令放在顶层；保留完整包，避免只显示嵌套的说明。
+            if let command = data?["command"] as? String, !command.isEmpty {
+                let input = selected.data(using: .utf8)
+                    .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                if (input?["command"] as? String)?.isEmpty != false { return outputText(data) }
+            }
+            return selected
+        }
+        return outputText(data)
     }
 
     static func buildQuestion(sessionId: String, data: [String: Any]?) -> DIMessage {
@@ -937,8 +993,7 @@ struct DIBridge {
         let hook = hookType.lowercased()
         guard hook.contains("pretooluse") || hook.contains("tool_use")
                 || hook == "tooluse" || hook.contains("permission") else { return false }
-        let toolName = stdinData?["tool_name"] as? String ?? stdinData?["tool"] as? String ?? ""
-        return isQuestionTool(toolName)
+        return claudeQuestionInput(stdinData) != nil
     }
 
     /// 是否为需要走 Claude Code 风格 stdout 的 `PermissionRequest` hook（退出码本身不够）。
@@ -989,7 +1044,10 @@ struct DIBridge {
         stdinData: [String: Any]?,
         hookType: String = "PreToolUse"
     ) -> String {
-        let toolInput = extractToolInput(stdinData) ?? [:]
+        guard isClaudeCodeQuestion(hookType: hookType, stdinData: stdinData),
+              let toolInput = claudeQuestionInput(stdinData),
+              !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !answer.contains("\0"), answer.utf8.count <= 8192 else { return "{}" }
         var updatedInput = toolInput
 
         let questions = toolInput["questions"] as? [[String: Any]] ?? []
@@ -1023,13 +1081,14 @@ struct DIBridge {
         let lowerHook = hookType.lowercased()
         let hookEventName = lowerHook.contains("permission") ? "PermissionRequest" : "PreToolUse"
 
-        let payload: [String: Any] = [
-            "hookSpecificOutput": [
-                "hookEventName": hookEventName,
-                "permissionDecision": "allow",
-                "updatedInput": updatedInput
-            ] as [String: Any]
-        ]
+        let output: [String: Any]
+        if hookEventName == "PermissionRequest" {
+            output = ["hookEventName": hookEventName,
+                      "decision": ["behavior": "allow", "updatedInput": updatedInput] as [String: Any]]
+        } else {
+            output = ["hookEventName": hookEventName, "permissionDecision": "allow", "updatedInput": updatedInput]
+        }
+        let payload: [String: Any] = ["hookSpecificOutput": output]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else {
             return "{}"

@@ -12,7 +12,14 @@ enum OpenCodePluginConfiguration {
 
     static func isOwnedSource(_ source: String) -> Bool {
         let normalized = source.replacingOccurrences(of: "\r\n", with: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        if normalized.hasPrefix("// XIsland OpenCode native bridge v2.\n") { return true }
+        // 标记不能证明用户未修改文件；使用原桥接路径重建完整模板，允许安装位置迁移。
+        let prefix = "const BRIDGE = "
+        if let line = normalized.components(separatedBy: "\n").first(where: { $0.hasPrefix(prefix) }),
+           line.hasSuffix(";"),
+           let bridgePath = try? JSONDecoder().decode(String.self, from: Data(line.dropFirst(prefix.count).dropLast().utf8)),
+           let expected = try? Self.source(bridgePath: bridgePath), normalized == expected {
+            return true
+        }
         let digest = SHA256.hash(data: Data(normalized.utf8)).map { String(format: "%02x", $0) }.joined()
         return digest == "9612becd28c18847142c29f14a03e4ae16beafdde482fc33502984479f9ec9a4"
     }

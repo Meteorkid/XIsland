@@ -4,8 +4,8 @@ import DIShared
 import CryptoKit
 
 /// 记录 CLI 原生状态事实；不保存回调，也不代表 XIsland 可以批准请求。
-struct KimiCodeApprovalObservation: Codable, Equatable {
-    struct Request: Codable, Equatable {
+struct KimiCodeApprovalObservation: Codable, Equatable, Sendable {
+    struct Request: Codable, Equatable, Sendable {
         let id: String
         let agentID: String
         let turnID: String

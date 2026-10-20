@@ -20,19 +20,25 @@ enum ZeroConfigManager {
     private static let autoConfigKeyPrefix = "autoConfigure."
 
     @MainActor
-    static func configureAllAgents(agents: Set<AgentType>? = nil) {
-        let detected = IntegrationSetupDiscovery.automaticAgents(in: IntegrationSetupDiscovery.scan(), requested: agents)
+    static func configureAllAgents(agents: Set<AgentType>? = nil) async {
+        let discovered = await IntegrationSetupDiscovery.scan()
+        let detected = IntegrationSetupDiscovery.automaticAgents(in: discovered, requested: agents)
         guard !detected.isEmpty else { return }
-        syncCommandLineTools()
-        for agent in AgentType.allCases where detected.contains(agent) && isAutoConfigEnabled(for: agent) {
-            configure(agent)
+        _ = try? await IntegrationSetupIO.run {
+            syncCommandLineTools()
+            for agent in AgentType.allCases where detected.contains(agent) && isAutoConfigEnabled(for: agent) {
+                guard !Task.isCancelled else { return }
+                configure(agent)
+            }
         }
+        guard !Task.isCancelled else { return }
         print("[ZeroConfig] Supported agent configurations checked")
     }
 
     /// 穷尽 switch，不留 default：新增 AgentType 时编译器会强制在这里做出选择。
     /// v1.13.0 新增的 4 个工具正是因为 default 分支而被静默漏配。
     static func configure(_ agent: AgentType) {
+        guard !Task.isCancelled else { return }
         if usesCompanionExtension(agent) || usesACPBridge(agent) || usesStateObserver(agent) || usesCodyBridge(agent) || usesAmazonQWrapper(agent) || usesWorkBuddyPlugin(agent) || hasUnverifiedIntegration(agent) { return }
         if let profile = effectiveNativeProfile(for: agent) {
             let url = URL(fileURLWithPath: home).appendingPathComponent(profile.relativeConfigPath)
@@ -345,16 +351,27 @@ enum ZeroConfigManager {
         return defaults.bool(forKey: key)
     }
 
-    static func setAutoConfigEnabled(_ enabled: Bool, for agent: AgentType) {
+    @MainActor
+    static func setAutoConfigEnabled(_ enabled: Bool, for agent: AgentType) async {
+        guard !Task.isCancelled else { return }
         AppPreferences.defaults.set(enabled, forKey: autoConfigKey(for: agent))
-        if enabled {
-            configure(agent)
-        } else {
-            removeConfiguration(for: agent)
+        _ = try? await IntegrationSetupIO.run {
+            guard isAutoConfigEnabled(for: agent) == enabled else { return }
+            if enabled {
+                configure(agent)
+            } else {
+                removeConfiguration(for: agent)
+            }
         }
     }
 
     static func hookStatus(for agent: AgentType) -> HookInstallStatus {
+        if let external = externalHookStatus(for: agent) { return external }
+        return hasConfiguration(for: agent) ? .active : .inactive
+    }
+
+    /// 界面渲染只需要接入类型，不能同步读取可能等待系统授权的客户端文件。
+    static func externalHookStatus(for agent: AgentType) -> HookInstallStatus? {
         if agent == .glm { return .modelSource }
         if agent == .kiro { return .externalKiro }
         if usesWorkBuddyPlugin(agent) { return .externalWorkBuddy }
@@ -364,7 +381,7 @@ enum ZeroConfigManager {
         if usesACPBridge(agent) { return .externalAgent }
         if hasUnverifiedIntegration(agent) { return .unverified }
         if usesCompanionExtension(agent) { return .externalExtension }
-        return hasConfiguration(for: agent) ? .active : .inactive
+        return nil
     }
 
     static func usesCompanionExtension(_ agent: AgentType) -> Bool {
@@ -435,12 +452,18 @@ enum ZeroConfigManager {
     }
 
     @MainActor
-    static func repairHooksIfNeeded(agents: Set<AgentType>? = nil) {
+    static func repairHooksIfNeeded(agents: Set<AgentType>? = nil) async {
+        let discovered = await IntegrationSetupDiscovery.scan()
+        let detected = IntegrationSetupDiscovery.automaticAgents(in: discovered, requested: agents)
+        _ = try? await IntegrationSetupIO.run { repairDetectedAgents(detected) }
+    }
+
+    private static func repairDetectedAgents(_ detected: Set<AgentType>) {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let detected = IntegrationSetupDiscovery.automaticAgents(in: IntegrationSetupDiscovery.scan(), requested: agents)
 
         // 按完整事件集合检测；只剩一条旧命令不能视为配置正常。
         for agent in AgentType.allCases where detected.contains(agent) && isAutoConfigEnabled(for: agent) {
+            guard !Task.isCancelled else { return }
             if shouldRepairNativeHooks(for: agent, homeDirectory: home) {
                 configure(agent)
             }
@@ -454,6 +477,7 @@ enum ZeroConfigManager {
         ]
 
         for (agent, path) in fileAgents {
+            guard !Task.isCancelled else { return }
             guard detected.contains(agent), isAutoConfigEnabled(for: agent) else { continue }
             if let text = try? String(contentsOfFile: path, encoding: .utf8),
                ([AgentType.amp, .pi, .openCode].contains(agent) ? !hasConfiguration(for: agent) : !text.contains("di-bridge")) {
@@ -483,6 +507,7 @@ enum ZeroConfigManager {
     }
 
     static func syncCommandLineTools() {
+        guard !Task.isCancelled else { return }
         let binDir = "\(home)/.xisland/bin"
         ensureDir(binDir)
         ensureDir("\(binDir)/lib")
@@ -501,7 +526,8 @@ enum ZeroConfigManager {
         )
     }
 
-    private static func syncBundledFileIfNeeded(bundled: String, stable: String) {
+    static func syncBundledFileIfNeeded(bundled: String, stable: String) {
+        guard !Task.isCancelled else { return }
         let fm = FileManager.default
         guard fm.fileExists(atPath: bundled) else { return }
 
@@ -518,10 +544,16 @@ enum ZeroConfigManager {
             shouldCopy = true
         }
 
-        guard shouldCopy else { return }
-        try? fm.removeItem(atPath: stable)
-        try? fm.copyItem(atPath: bundled, toPath: stable)
-        try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stable)
+        guard shouldCopy, !Task.isCancelled else { return }
+        let staging = stable + ".preparing-" + UUID().uuidString
+        defer { try? fm.removeItem(atPath: staging) }
+        do {
+            try fm.copyItem(atPath: bundled, toPath: staging)
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: staging)
+            try Task.checkCancellation()
+            // 取消或复制失败不能先删掉仍可用的桥接程序。
+            guard rename(staging, stable) == 0 else { return }
+        } catch { return }
     }
 
     // MARK: - Claude Code
@@ -886,8 +918,10 @@ enum ZeroConfigManager {
                 }
                 guard existing != source else { return }
             }
+            try Task.checkCancellation()
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
                                                     attributes: [.posixPermissions: 0o700])
+            try Task.checkCancellation()
             try source.write(to: url, atomically: true, encoding: .utf8)
         } catch {
             print("[ZeroConfig] Amp plugin configuration failed: \(error.localizedDescription)")
@@ -912,8 +946,10 @@ enum ZeroConfigManager {
                 }
                 guard existing != source else { return }
             }
+            try Task.checkCancellation()
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
                                                     attributes: [.posixPermissions: 0o700])
+            try Task.checkCancellation()
             try source.write(to: url, atomically: true, encoding: .utf8)
         } catch {
             print("[ZeroConfig] Pi extension configuration failed: \(error.localizedDescription)")
@@ -940,6 +976,7 @@ enum ZeroConfigManager {
         echo '{}' | /Users/$USER/.xisland/bin/di-bridge --agent hermes --hook "$HOOK" --session "$SESSION"
         """#
 
+        guard !Task.isCancelled else { return }
         try? wrapper.write(toFile: wrapperPath, atomically: true, encoding: String.Encoding.utf8)
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapperPath)
 
@@ -989,6 +1026,7 @@ enum ZeroConfigManager {
     // MARK: - Helpers
 
     private static func ensureDir(_ path: String) {
+        guard !Task.isCancelled else { return }
         try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
     }
 
@@ -1002,6 +1040,7 @@ enum ZeroConfigManager {
     private static func writeJSON(_ path: String, _ dict: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
         else { return }
+        guard !Task.isCancelled else { return }
         try? data.write(to: URL(fileURLWithPath: path))
     }
 
@@ -1158,6 +1197,7 @@ enum ZeroConfigManager {
     }
 
     private static func removeConfiguration(for agent: AgentType) {
+        guard !Task.isCancelled else { return }
         if usesCompanionExtension(agent) || usesACPBridge(agent) || usesStateObserver(agent) || usesCodyBridge(agent) || usesAmazonQWrapper(agent) || usesWorkBuddyPlugin(agent) || hasUnverifiedIntegration(agent) { return }
         if agent == .codeBuddy {
             let url = URL(fileURLWithPath: home).appendingPathComponent(CodeBuddyHookConfiguration.relativeConfigPath)
@@ -1240,6 +1280,7 @@ enum ZeroConfigManager {
                 let text = try String(contentsOf: openCodePluginURL, encoding: .utf8)
                 if OpenCodePluginConfiguration.isOwnedSource(text) {
                     try removeOpenCodeLegacyRegistration(at: openCodePluginURL)
+                    try Task.checkCancellation()
                     try FileManager.default.removeItem(at: openCodePluginURL)
                 }
             } catch {
@@ -1260,18 +1301,25 @@ enum ZeroConfigManager {
         case .amp:
             do {
                 let text = try String(contentsOf: ampPluginURL, encoding: .utf8)
-                if AmpPluginConfiguration.isOwnedSource(text) { try FileManager.default.removeItem(at: ampPluginURL) }
+                if AmpPluginConfiguration.isOwnedSource(text) {
+                    try Task.checkCancellation()
+                    try FileManager.default.removeItem(at: ampPluginURL)
+                }
             } catch {
                 print("[ZeroConfig] Amp plugin removal failed: \(error.localizedDescription)")
             }
         case .pi:
             do {
                 let text = try String(contentsOf: piPluginURL, encoding: .utf8)
-                if PiPluginConfiguration.isOwnedSource(text) { try FileManager.default.removeItem(at: piPluginURL) }
+                if PiPluginConfiguration.isOwnedSource(text) {
+                    try Task.checkCancellation()
+                    try FileManager.default.removeItem(at: piPluginURL)
+                }
             } catch {
                 print("[ZeroConfig] Pi extension removal failed: \(error.localizedDescription)")
             }
         case .hermes:
+            guard !Task.isCancelled else { return }
             try? FileManager.default.removeItem(atPath: "\(home)/.xisland/bin/hermes-bridge")
         case .glm:
             break // 未经核实的旧路径不读取或删除用户配置。
@@ -1349,6 +1397,7 @@ enum ZeroConfigManager {
         } else {
             cleaned.removeSubrange(range.lowerBound...)
         }
+        guard !Task.isCancelled else { return }
         try? cleaned.write(toFile: path, atomically: true, encoding: .utf8)
     }
 }

@@ -152,7 +152,7 @@ pub fn close_preferences(window: tauri::WebviewWindow) -> Result<(), String> {
 
 pub fn read_preferences_file() -> Result<Option<Value>, String> {
     let path = runtime::directory().map_err(|e| e.to_string())?.join("settings.json");
-    match std::fs::read(path) {
+    match runtime::read_bounded(&path, 65536) {
         Ok(bytes) => serde_json::from_slice(&bytes).map(Some).map_err(|_| "设置文件损坏，原文件已保留".into()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(format!("无法读取设置：{error}")),

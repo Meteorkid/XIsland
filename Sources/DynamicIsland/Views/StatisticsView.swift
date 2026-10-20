@@ -1,118 +1,35 @@
 import SwiftUI
 import Charts
-import SwiftData
 
 /// 统计分析面板 —— 展示会话历史的汇总卡片和四张图表
 struct StatisticsView: View {
     @Environment(SessionPersistenceManager.self) private var persistenceManager
     @Environment(ThemeManager.self) private var themeManager
     @State private var timeRange: TimeRange = .week
-    @State private var sessions: [StoredSession] = []
+    @State private var loadState = HistoryStatistics.LoadState()
+    @State private var retryGeneration = 0
 
-    // MARK: - Time Range
+    typealias TimeRange = HistoryStatistics.TimeRange
 
-    enum TimeRange: String, CaseIterable {
-        case week, month, all
-
-        var displayName: String {
-            switch self {
-            case .week: return L10n.timeRangeWeek
-            case .month: return L10n.timeRangeMonth
-            case .all: return L10n.timeRangeAll
-            }
-        }
+    init(initialState: HistoryStatistics.LoadState = .init(), timeRange: TimeRange = .week) {
+        _loadState = State(initialValue: initialState)
+        _timeRange = State(initialValue: timeRange)
     }
 
-    // MARK: - Aggregation Models
-
-    struct DailyUsage: Identifiable {
-        let id = UUID()
-        let date: Date
-        var sessionCount: Int
-        var totalDuration: TimeInterval
-        var totalTokens: Int
-        var totalCost: Double
+    private var loadRequest: HistoryStatistics.LoadRequest {
+        HistoryStatistics.LoadRequest(timeRange: timeRange, revision: persistenceManager.revision, retry: retryGeneration)
     }
 
-    struct AgentUsage: Identifiable {
-        let id = UUID()
-        let agentType: AgentType
-        var sessionCount: Int
-    }
-
-    struct ToolFrequency: Identifiable {
-        let id = UUID()
-        let toolName: String
-        var callCount: Int
-    }
-
-    // MARK: - Computed Aggregated Data
-
-    private var filteredSessions: [StoredSession] {
-        let calendar = Calendar.current
-        let now = Date()
-        switch timeRange {
-        case .week:
-            let cutoff = calendar.date(byAdding: .day, value: -7, to: now) ?? now
-            return sessions.filter { $0.startTime >= cutoff }
-        case .month:
-            let cutoff = calendar.date(byAdding: .day, value: -30, to: now) ?? now
-            return sessions.filter { $0.startTime >= cutoff }
-        case .all:
-            return sessions
-        }
-    }
-
-    private var dailyUsages: [DailyUsage] {
-        let calendar = Calendar.current
-        var map: [Date: DailyUsage] = [:]
-        for session in usageSummaries {
-            let day = calendar.startOfDay(for: session.startTime)
-            if map[day] == nil {
-                map[day] = DailyUsage(date: day, sessionCount: 0, totalDuration: 0, totalTokens: 0, totalCost: 0)
-            }
-            map[day]?.sessionCount += 1
-            map[day]?.totalDuration += session.duration
-            map[day]?.totalTokens += session.totalTokens
-            map[day]?.totalCost += session.costUSD
-        }
-        return map.values.sorted { $0.date < $1.date }
-    }
-
-    private var agentUsages: [AgentUsage] {
-        var map: [AgentType: Int] = [:]
-        for session in usageSummaries {
-            map[session.agentType, default: 0] += 1
-        }
-        return map.map { AgentUsage(agentType: $0.key, sessionCount: $0.value) }
-            .sorted { $0.sessionCount > $1.sessionCount }
-    }
-
-    private var toolFrequencies: [ToolFrequency] {
-        var map: [String: Int] = [:]
-        for session in filteredSessions {
-            for event in session.toolEvents where event.isComplete {
-                map[event.tool, default: 0] += 1
-            }
-        }
-        return map.map { ToolFrequency(toolName: $0.key, callCount: $0.value) }
-            .sorted { $0.callCount > $1.callCount }
-            .prefix(10)
-            .map { $0 }
-    }
-
-    private var tokenTrend: [DailyUsage] {
-        dailyUsages
-    }
+    private var dailyUsages: [HistoryStatistics.DailyUsage] { loadState.statistics?.dailyUsages ?? [] }
+    private var agentUsages: [HistoryStatistics.AgentUsage] { loadState.statistics?.agentUsages ?? [] }
+    private var toolFrequencies: [HistoryStatistics.ToolFrequency] { loadState.statistics?.toolFrequencies ?? [] }
+    private var tokenTrend: [HistoryStatistics.DailyUsage] { dailyUsages }
+    private var totalCount: Int { loadState.statistics?.totalCount ?? 0 }
 
     // MARK: - Summary
 
-    private var usageSummaries: [HistoryUsageSummary] { HistoryUsageSummary.aggregate(filteredSessions) }
-
-    private var totalCount: Int { usageSummaries.count }
-
     private var totalDurationText: String {
-        let total = usageSummaries.reduce(0) { $0 + $1.duration }
+        let total = loadState.statistics?.totalDuration ?? 0
         let hours = Int(total) / 3600
         let mins = (Int(total) % 3600) / 60
         if hours > 0 { return "\(hours)h \(mins)m" }
@@ -120,12 +37,12 @@ struct StatisticsView: View {
     }
 
     private var totalCostText: String {
-        let total = usageSummaries.reduce(0) { $0 + $1.costUSD }
+        let total = loadState.statistics?.totalCost ?? 0
         return String(format: "$%.2f", total)
     }
 
     private var totalTokensText: String {
-        let total = usageSummaries.reduce(0) { $0 + $1.totalTokens }
+        let total = loadState.statistics?.totalTokens ?? 0
         if total >= 1_000_000 {
             return String(format: "%.1fM", Double(total) / 1_000_000)
         } else if total >= 1_000 {
@@ -142,7 +59,12 @@ struct StatisticsView: View {
                 // 时间范围选择器
                 timeRangePicker
 
-                if filteredSessions.isEmpty {
+                if loadState.errorMessage != nil {
+                    loadFailureState
+                } else if loadState.statistics == nil {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, minHeight: 200)
+                } else if totalCount == 0 {
                     emptyState
                 } else {
                     summaryCards
@@ -154,8 +76,8 @@ struct StatisticsView: View {
             }
             .padding(.vertical, 16)
         }
-        .task {
-            sessions = persistenceManager.fetchHistory(limit: 5000)
+        .task(id: loadRequest) {
+            await reloadStatistics()
         }
     }
 
@@ -189,6 +111,33 @@ struct StatisticsView: View {
                 .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, minHeight: 200)
+    }
+
+    private var loadFailureState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 28))
+                .foregroundStyle(.secondary)
+            Text(L10n.isChinese ? "统计加载失败，请重试。" : "Statistics could not be loaded. Please retry.")
+                .font(.system(size: 14))
+                .foregroundStyle(.secondary)
+            Button(L10n.isChinese ? "重试" : "Retry") { retryGeneration += 1 }
+        }
+        .frame(maxWidth: .infinity, minHeight: 200)
+    }
+
+    @MainActor
+    private func reloadStatistics() async {
+        loadState.begin()
+        do {
+            let result = try await persistenceManager.statisticsAsync(timeRange: timeRange)
+            guard !Task.isCancelled else { return }
+            loadState.accept(result)
+        } catch is CancellationError { }
+        catch {
+            guard !Task.isCancelled else { return }
+            loadState.fail(error)
+        }
     }
 
     // MARK: - Summary Cards
@@ -396,5 +345,15 @@ struct StatisticsView: View {
             .font(.system(size: 12))
             .foregroundStyle(.tertiary)
             .frame(maxWidth: .infinity, minHeight: 120)
+    }
+}
+
+extension HistoryStatistics.TimeRange {
+    var displayName: String {
+        switch self {
+        case .week: return L10n.timeRangeWeek
+        case .month: return L10n.timeRangeMonth
+        case .all: return L10n.timeRangeAll
+        }
     }
 }

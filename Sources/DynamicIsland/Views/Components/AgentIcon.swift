@@ -25,6 +25,10 @@ struct AgentIcon: View {
         status == .active || status == .thinking || status == .compacting
     }
 
+    var accessibilityDescription: String {
+        "\(agentType.displayName) · \(status.displayName)"
+    }
+
     var body: some View {
         ZStack {
             // 脉冲光环
@@ -55,5 +59,8 @@ struct AgentIcon: View {
                     .foregroundStyle(agentType.color)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityDescription)
+        .accessibilityAddTraits(.isImage)
     }
 }

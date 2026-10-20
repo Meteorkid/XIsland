@@ -70,7 +70,7 @@ final class StoredSession {
 
     // MARK: - Init
 
-    init(from session: AgentSession) {
+    init(from session: AgentSession, includeChildren: Bool = true) {
         self.sessionId = session.id
         self.agentTypeRaw = session.agentType.rawValue
         self.startTime = session.startTime
@@ -90,8 +90,8 @@ final class StoredSession {
         self.totalTokens = session.tokenUsage.totalTokens
         self.estimatedCostUSD = session.tokenUsage.estimatedCostUSD
         self.model = session.tokenUsage.model
-        self.toolEvents = session.events.map { StoredToolEvent(from: $0) }
-        self.chatMessages = session.chatHistory.map { StoredChatMessage(from: $0) }
+        self.toolEvents = includeChildren ? session.events.map { StoredToolEvent(from: $0) } : []
+        self.chatMessages = includeChildren ? session.chatHistory.map { StoredChatMessage(from: $0) } : []
     }
 
     /// Internal initializer for SwiftData (all stored properties).

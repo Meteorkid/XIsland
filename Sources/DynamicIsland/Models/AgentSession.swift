@@ -74,7 +74,7 @@ enum SessionStatus: String, Codable, Sendable {
     }
 }
 
-struct ChatMessage: Identifiable, Sendable {
+struct ChatMessage: Identifiable, Sendable, Equatable {
     let id: UUID
     let timestamp: Date
     let role: ChatRole
@@ -134,14 +134,86 @@ final class AgentSession: Identifiable {
     var prompt: String
 
     var status: SessionStatus = .active
-    var events: [ToolEvent] = []
+    var events: [ToolEvent] = [] { didSet { eventMutationVersion &+= 1 } }
     var currentTool: String?
     var statusText: String = ""
     var lastActivityTime: Date = Date()
     var agentResponse: String = ""
 
     var tokenUsage = TokenUsage()
-    var chatHistory: [ChatMessage] = []
+    var chatHistory: [ChatMessage] = [] { didSet { chatMutationVersion &+= 1 } }
+    @ObservationIgnored private var eventMutationVersion: UInt = 0
+    @ObservationIgnored private var chatMutationVersion: UInt = 0
+    @ObservationIgnored private var trackedEventVersion: UInt = 0
+    @ObservationIgnored private var trackedChatVersion: UInt = 0
+    @ObservationIgnored private var requiresFullChildScan = true
+    @ObservationIgnored private var changedEvents: [UUID: ToolEvent] = [:]
+    @ObservationIgnored private var changedMessages: [UUID: ChatMessage] = [:]
+
+    var activityRevision: UInt {
+        _ = events.count // 保留SwiftUI对事件数组的观察，不在每帧遍历完整历史。
+        return eventMutationVersion
+    }
+
+    var pendingChildChanges: (events: [ToolEvent], messages: [ChatMessage])? {
+        guard !requiresFullChildScan, trackedEventVersion == eventMutationVersion,
+              trackedChatVersion == chatMutationVersion else { return nil }
+        return (Array(changedEvents.values), Array(changedMessages.values))
+    }
+
+    var childRevision: SessionChildRevision {
+        SessionChildRevision(eventVersion: eventMutationVersion, chatVersion: chatMutationVersion)
+    }
+
+    private func beginTrackedChildMutation() {
+        if trackedEventVersion != eventMutationVersion || trackedChatVersion != chatMutationVersion {
+            requiresFullChildScan = true
+        }
+    }
+
+    func appendEvent(_ event: ToolEvent) {
+        beginTrackedChildMutation()
+        events.append(event); changedEvents[event.id] = event
+        trackedEventVersion = eventMutationVersion
+    }
+
+    func replaceEvent(at index: Int, with event: ToolEvent) {
+        beginTrackedChildMutation()
+        events[index] = event; changedEvents[event.id] = event
+        trackedEventVersion = eventMutationVersion
+    }
+
+    func updateEvent(at index: Int, _ update: (inout ToolEvent) -> Void) {
+        var event = events[index]
+        update(&event)
+        replaceEvent(at: index, with: event)
+    }
+
+    func appendChatMessage(_ message: ChatMessage) {
+        beginTrackedChildMutation()
+        chatHistory.append(message); changedMessages[message.id] = message
+        trackedChatVersion = chatMutationVersion
+    }
+
+    func replaceChatMessage(at index: Int, with message: ChatMessage) {
+        beginTrackedChildMutation()
+        chatHistory[index] = message; changedMessages[message.id] = message
+        trackedChatVersion = chatMutationVersion
+    }
+
+    func markChildrenPersisted() {
+        changedEvents.removeAll(keepingCapacity: true); changedMessages.removeAll(keepingCapacity: true)
+        trackedEventVersion = eventMutationVersion; trackedChatVersion = chatMutationVersion
+        requiresFullChildScan = false
+    }
+
+    /// 后台保存期间新增的变更仍需重试，不能被旧快照的成功回执清除。
+    @discardableResult
+    func markChildrenPersisted(ifUnchangedSince revision: SessionChildRevision) -> Bool {
+        guard childRevision == revision else { return false }
+        markChildrenPersisted()
+        return true
+    }
     var subagentIds: [String] = []
     var parentSessionId: String?
     var checkpoints: [GitCheckpoint] = []
@@ -243,6 +315,15 @@ struct PendingPermission {
     var delivery: InteractionDelivery? = nil
     var cancel: (@Sendable () -> Void)? = nil
     var nativeRequestId: String? = nil
+    var toolInput: String? = nil
+
+    var operationText: String {
+        guard let input = toolInput, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return description }
+        if let bytes = input.data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+           let command = object["command"] as? String, !command.isEmpty { return command }
+        return input
+    }
 }
 
 struct PendingQuestion {

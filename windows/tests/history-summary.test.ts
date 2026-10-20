@@ -50,7 +50,7 @@ test('history orders actual endings ahead of last activity and has a stable ID t
   };
   send('session_start', 'a'); now = 2000; send('session_start', 'b');
   now = 3000; send('session_end', 'b'); now = 4000; send('session_end', 'a');
-  assert.deepEqual(store.snapshot().sessions.sort(compareHistorySessions).map(row => row.id), ['a', 'b']);
+  assert.deepEqual([...store.snapshot().sessions].sort(compareHistorySessions).map(row => row.id), ['a', 'b']);
   const interrupted = session('interrupted', { observationEndedAt: 5000, lastActivityAt: 1 });
   assert.equal(historyDate(interrupted), 5000);
   assert.equal(historyDate(session('start', { startedAt: 100, observationEndedAt: undefined })), 100);

@@ -22,6 +22,7 @@ enum AppUpdaterError: LocalizedError, Equatable {
     case relaunchFailed
     case integrityCheckFailed
     case codeSigningFailed
+    case terminationCancelled
 
     var errorDescription: String? {
         switch self {
@@ -39,6 +40,8 @@ enum AppUpdaterError: LocalizedError, Equatable {
             return "The downloaded update failed integrity verification."
         case .codeSigningFailed:
             return "The installed app failed code signing verification."
+        case .terminationCancelled:
+            return "History was not saved. The update was cancelled."
         }
     }
 }
@@ -53,6 +56,8 @@ struct AppUpdater {
     typealias RelaunchHook = @Sendable (_ appPath: String) throws -> Void
     typealias HelperLauncher = @Sendable (_ scriptPath: String) throws -> Void
     typealias TerminationHook = @Sendable () -> Void
+    typealias TerminationPreparation = @Sendable () async -> Bool
+    typealias TerminationCancellation = @Sendable () async -> Void
     typealias TemporaryDirectoryProvider = @Sendable () throws -> URL
     typealias FileExistenceChecker = @Sendable (_ path: String) -> Bool
     typealias InstallHandler = @Sendable (
@@ -78,6 +83,8 @@ struct AppUpdater {
     let relaunchApp: RelaunchHook
     let launchInstallerHelper: HelperLauncher
     let terminateApp: TerminationHook
+    let prepareTermination: TerminationPreparation
+    let cancelTermination: TerminationCancellation
     let temporaryDirectoryProvider: TemporaryDirectoryProvider
     let fileExists: FileExistenceChecker
     let installImpl: InstallHandler?
@@ -88,6 +95,8 @@ struct AppUpdater {
         relaunchApp: @escaping RelaunchHook = Self.defaultRelaunchApp,
         launchInstallerHelper: @escaping HelperLauncher = Self.defaultLaunchInstallerHelper,
         terminateApp: @escaping TerminationHook = Self.defaultTerminateApp,
+        prepareTermination: @escaping TerminationPreparation = Self.defaultPrepareTermination,
+        cancelTermination: @escaping TerminationCancellation = Self.defaultCancelTermination,
         temporaryDirectoryProvider: @escaping TemporaryDirectoryProvider = Self.defaultTemporaryDirectoryProvider,
         fileExists: @escaping FileExistenceChecker = Self.defaultFileExists,
         installImpl: InstallHandler? = nil
@@ -97,6 +106,8 @@ struct AppUpdater {
         self.relaunchApp = relaunchApp
         self.launchInstallerHelper = launchInstallerHelper
         self.terminateApp = terminateApp
+        self.prepareTermination = prepareTermination
+        self.cancelTermination = cancelTermination
         self.temporaryDirectoryProvider = temporaryDirectoryProvider
         self.fileExists = fileExists
         self.installImpl = installImpl
@@ -221,8 +232,17 @@ struct AppUpdater {
 
     private static let defaultTerminateApp: TerminationHook = {
         DispatchQueue.main.async {
+            guard AppDelegate.shared?.commitUpdateTermination() == true else { return }
             NSApp.terminate(nil)
         }
+    }
+
+    private static let defaultPrepareTermination: TerminationPreparation = {
+        await AppDelegate.shared?.prepareForUpdateTermination() ?? false
+    }
+
+    private static let defaultCancelTermination: TerminationCancellation = {
+        await AppDelegate.shared?.cancelUpdateTermination()
     }
 
     private static let defaultTemporaryDirectoryProvider: TemporaryDirectoryProvider = {
@@ -292,6 +312,25 @@ extension AppUpdater {
 
         let tempDirectory = try temporaryDirectoryProvider()
         let dmgURL = tempDirectory.appendingPathComponent(Self.dmgFilename(for: version))
+        var mountedDirectory: String?
+        var helperOwnsCleanup = false
+        defer {
+            // helper 成功启动后才接管挂载与下载目录，之前的任何失败由当前进程清理。
+            if !helperOwnsCleanup {
+                var canRemoveDownload = true
+                if let mountedDirectory {
+                    do { _ = try runCommand("/usr/bin/hdiutil", ["detach", mountedDirectory, "-quiet"]) }
+                    catch {
+                        canRemoveDownload = false
+                        NSLog("XIsland update: detach failed; temporary update files retained.")
+                    }
+                }
+                if canRemoveDownload {
+                    do { try FileManager.default.removeItem(at: tempDirectory) }
+                    catch { NSLog("XIsland update: unable to clean temporary update files.") }
+                }
+            }
+        }
 
         await MainActor.run { onStage(.downloading) }
         do {
@@ -319,6 +358,7 @@ extension AppUpdater {
         guard let mountDirectory = Self.mountDirectory(from: attachOutput) else {
             throw AppUpdaterError.mountFailed
         }
+        mountedDirectory = mountDirectory
 
         let mountedAppPath = URL(fileURLWithPath: mountDirectory)
             .appendingPathComponent("X Island.app")
@@ -349,12 +389,20 @@ extension AppUpdater {
             throw AppUpdaterError.installFailed
         }
 
-        await MainActor.run { onStage(.relaunching) }
+        try Task.checkCancellation()
+        guard await prepareTermination() else { throw AppUpdaterError.terminationCancelled }
         do {
-            try launchInstallerHelper(installerScript.path)
+            try Task.checkCancellation()
+            await MainActor.run { onStage(.relaunching) }
+            try Task.checkCancellation()
+            do { try launchInstallerHelper(installerScript.path) }
+            catch { throw AppUpdaterError.relaunchFailed }
         } catch {
-            throw AppUpdaterError.relaunchFailed
+            // 只有取得退出准备权的本次安装失败，才能恢复事件接收。
+            await cancelTermination()
+            throw error
         }
+        helperOwnsCleanup = true
 
         terminateApp()
     }
@@ -362,8 +410,8 @@ extension AppUpdater {
 
 // MARK: - 安装脚本生成
 
-private extension AppUpdater {
-    static func writeInstallerScript(
+extension AppUpdater {
+    private static func writeInstallerScript(
         to scriptURL: URL,
         currentPID: Int32,
         mountedAppPath: String,
@@ -383,38 +431,87 @@ private extension AppUpdater {
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
     }
 
-    private static func makeInstallerScript(
+    static func makeInstallerScript(
         currentPID: Int32,
         mountedAppPath: String,
         appPath: String,
         mountDirectory: String,
         tempDirectory: String
     ) -> String {
-        let lines = [
-            "#!/bin/sh",
-            "set -eu",
-            "",
-            "TEMP_DIR=\(shellQuoted(tempDirectory))",
-            "trap 'rm -rf \"$TEMP_DIR\"' EXIT",
-            "",
-            "while kill -0 \(currentPID) 2>/dev/null; do",
-            "  sleep 0.2",
-            "done",
-            "",
-            "rm -rf \(shellQuoted(appPath))",
-            "cp -R \(shellQuoted(mountedAppPath)) \(shellQuoted(appPath))",
-            "xattr -cr \(shellQuoted(appPath)) || true",
-            "",
-            "codesign --verify --deep --strict \(shellQuoted(appPath))",
-            "",
-            "hdiutil detach \(shellQuoted(mountDirectory)) -quiet >/dev/null 2>&1 || true",
-            "open \(shellQuoted(appPath))",
-        ]
-        return lines.joined(separator: "\n")
+        """
+        #!/bin/sh
+        set -eu
+
+        TEMP_DIR=\(shellQuoted(tempDirectory))
+        APP_PATH=\(shellQuoted(appPath))
+        MOUNT_DIR=\(shellQuoted(mountDirectory))
+        TRANSACTION_DIR=""
+        REPLACEMENT_STARTED=0
+        SUCCEEDED=0
+
+        finish_install() {
+          status=$?
+          trap - EXIT
+          trap '' HUP INT TERM
+          rollback_ok=1
+          if [ "$SUCCEEDED" != 1 ] && [ -n "$TRANSACTION_DIR" ]; then
+            if [ -e "$TRANSACTION_DIR/previous.app" ] || [ -L "$TRANSACTION_DIR/previous.app" ]; then
+              if [ -e "$APP_PATH" ] || [ -L "$APP_PATH" ]; then
+                mv "$APP_PATH" "$TRANSACTION_DIR/failed.app" || rollback_ok=0
+              fi
+              if [ "$rollback_ok" = 1 ]; then
+                mv "$TRANSACTION_DIR/previous.app" "$APP_PATH" || rollback_ok=0
+              fi
+              if [ "$rollback_ok" != 1 ]; then
+                echo "Automatic rollback failed; previous app retained at $TRANSACTION_DIR/previous.app" >&2
+              fi
+            elif [ "$REPLACEMENT_STARTED" = 1 ] && { [ -e "$APP_PATH" ] || [ -L "$APP_PATH" ]; }; then
+              mv "$APP_PATH" "$TRANSACTION_DIR/failed.app" || rollback_ok=0
+            fi
+          fi
+          if [ "$SUCCEEDED" != 1 ] && [ "$rollback_ok" = 1 ] && [ -d "$APP_PATH" ]; then
+            open "$APP_PATH" >/dev/null 2>&1 || true
+          fi
+          # 回滚失败时保留整个事务目录，避免删除唯一可恢复的旧包。
+          if [ "$rollback_ok" = 1 ] && [ -n "$TRANSACTION_DIR" ]; then
+            rm -rf -- "$TRANSACTION_DIR" || true
+          fi
+          if hdiutil detach "$MOUNT_DIR" -quiet >/dev/null 2>&1; then
+            rm -rf -- "$TEMP_DIR" || true
+          else
+            echo "Unable to detach update volume; temporary files retained at $TEMP_DIR" >&2
+          fi
+          exit "$status"
+        }
+        trap finish_install EXIT
+        trap 'exit 129' HUP
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+
+        while kill -0 \(currentPID) 2>/dev/null; do
+          sleep 0.2
+        done
+
+        # 同父目录保证切换使用同文件系统的 rename；旧包直到验证通过才移动。
+        APP_PARENT=\(shellQuoted(URL(fileURLWithPath: appPath).deletingLastPathComponent().path))
+        TRANSACTION_DIR=$(mktemp -d "$APP_PARENT/.xisland-upgrade.XXXXXX")
+        STAGED_APP="$TRANSACTION_DIR/X Island.app"
+        cp -R \(shellQuoted(mountedAppPath)) "$STAGED_APP"
+        xattr -cr "$STAGED_APP" || true
+        codesign --verify --deep --strict "$STAGED_APP"
+
+        if [ -e "$APP_PATH" ] || [ -L "$APP_PATH" ]; then
+          mv "$APP_PATH" "$TRANSACTION_DIR/previous.app"
+        fi
+        REPLACEMENT_STARTED=1
+        mv "$STAGED_APP" "$APP_PATH"
+        open "$APP_PATH"
+        SUCCEEDED=1
+        """
     }
 
     /// 用单引号包裹并转义，防止路径中的特殊字符破坏 shell 命令。
-    static func shellQuoted(_ value: String) -> String {
+    private static func shellQuoted(_ value: String) -> String {
         // POSIX 单引号转义：把每个 ' 替换为 '\''
         let escaped = value.replacingOccurrences(of: "'", with: #"'\''"#)
         return "'\(escaped)'"

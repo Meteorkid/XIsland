@@ -27,6 +27,38 @@ async function configuration(home: string, value: unknown, agent: ConfigurableAg
 
 const rejectsCode = (code: string) => (error: unknown) => error instanceof IntegrationError && error.code === code;
 
+test('custom CODEX_HOME cannot silently install into the default configuration', async t => {
+  const { home, options } = await fixture(t);
+  const original = await configuration(home, '{"keep":"default"}', 'codex');
+  const plan = await planIntegration('codex', 'install', options);
+  const customDirectory = join(home, 'custom-codex');
+  await mkdir(customDirectory);
+  const customFile = join(customDirectory, 'hooks.json');
+  await writeFile(customFile, '{"keep":"custom"}');
+  for (const codexHome of [customDirectory, 'relative-codex', ' ', join(home, '..', 'outside-codex')]) {
+    const selected = { ...options, codexHome };
+    await assert.rejects(getIntegrationStatus('codex', selected), rejectsCode('custom_codex_home'));
+    await assert.rejects(planIntegration('codex', 'install', selected), rejectsCode('custom_codex_home'));
+    await assert.rejects(applyIntegration('codex', 'install', plan.revision, selected), rejectsCode('custom_codex_home'));
+    await assert.rejects(applyIntegration('codex', 'uninstall', plan.revision, selected), rejectsCode('custom_codex_home'));
+  }
+  assert.equal(await readFile(original.path, 'utf8'), '{"keep":"default"}');
+  assert.equal(await readFile(customFile, 'utf8'), '{"keep":"custom"}');
+  assert.deepEqual(await readdir(original.directory), ['hooks.json']);
+  assert.deepEqual(await readdir(customDirectory), ['hooks.json']);
+});
+
+test('unset, empty and explicit default CODEX_HOME keep the normal installer path', async t => {
+  const { home, options } = await fixture(t);
+  for (const codexHome of [undefined, '', join(home, '.codex')]) {
+    const selected = { ...options, codexHome };
+    const plan = await planIntegration('codex', 'install', selected);
+    assert.equal(plan.configPath, join(home, '.codex', 'hooks.json'));
+    await applyIntegration('codex', 'install', plan.revision, selected);
+    assert.equal((await getIntegrationStatus('codex', selected)).installed, true);
+  }
+});
+
 test('Droid preserves standalone hooks and never shadows the legacy file when selecting its target', async t => {
   const {home,options}=await fixture(t);
   const legacy=await configuration(home,{theme:'preserve',hooks:{}},'droid');

@@ -124,6 +124,8 @@ export const messages: Record<string, readonly [string, string, string, string]>
   '等待回答': ['Waiting for an answer','回答待ち','답변 대기','En attente de réponse'],
   '计划审核': ['Plan review','計画の確認','계획 검토','Révision du plan'],
   '操作授权': ['Authorize action','操作を許可','작업 승인','Autoriser l’action'],
+  '工具说明': ['Tool description','ツールの説明','도구 설명','Description de l’outil'],
+  '原始工具参数': ['Original tool input','元のツール入力','원본 도구 입력','Paramètres d’origine de l’outil'],
   '包含文件变更': ['Includes file changes','ファイルの変更を含みます','파일 변경 포함','Contient des modifications de fichiers'],
   '收起详情': ['Hide details','詳細を隠す','세부 정보 숨기기','Masquer les détails'],
   '查看权限详情': ['View permission details','権限の詳細を表示','권한 세부 정보 보기','Détails de l’autorisation'],

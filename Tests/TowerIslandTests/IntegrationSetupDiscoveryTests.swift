@@ -1,18 +1,19 @@
 import XCTest
+import os
 @testable import XIsland
 
 @MainActor
 final class IntegrationSetupDiscoveryTests: XCTestCase {
     func testScansEverySupportedAgentButDoesNotInventInstallations() {
-        var configurationReads = 0
+        let configurationReads = OSAllocatedUnfairLock(initialState: 0)
         let entries = IntegrationSetupDiscovery.scan(environment: environment(configured: { _ in
-            configurationReads += 1
+            configurationReads.withLock { $0 += 1 }
             return true
         }))
         XCTAssertEqual(Set(entries.map(\.agent)), Set(AgentType.allCases.filter(\.isSupported)))
         XCTAssertFalse(entries.contains { $0.agent == .hermes })
         XCTAssertFalse(entries.contains { $0.installed || $0.configured || $0.canAutoConfigure })
-        XCTAssertEqual(configurationReads, 0)
+        XCTAssertEqual(configurationReads.withLock { $0 }, 0)
     }
 
     func testOldConfigurationDirectoriesDoNotProveInstallation() throws {
@@ -185,7 +186,7 @@ final class IntegrationSetupDiscoveryTests: XCTestCase {
 
     private func environment(home: URL = URL(fileURLWithPath: "/fixture/home"), path: String = "/fixture/bin",
                              applications: [String: URL] = [:], executablePaths: Set<String> = [],
-                             extensions: Set<String> = [], configured: @escaping (AgentType) -> Bool = { _ in false }) -> IntegrationSetupDiscovery.Environment {
+                             extensions: Set<String> = [], configured: @escaping @Sendable (AgentType) -> Bool = { _ in false }) -> IntegrationSetupDiscovery.Environment {
         .init(homeDirectory: home, path: path, applicationURL: { applications[$0] },
               isExecutable: { executablePaths.contains($0.path) }, extensionIDs: extensions, hasConfiguration: configured)
     }

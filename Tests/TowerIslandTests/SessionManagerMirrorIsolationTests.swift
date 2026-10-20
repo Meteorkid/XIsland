@@ -103,7 +103,7 @@ final class SessionManagerMirrorIsolationTests: XCTestCase {
         XCTAssertNotNil(manager.sessions.first(where: { $0.id == question.sessionId })?.pendingQuestion)
     }
 
-    func testFamilyClaudePairsKeepLifecycleToolsInteractionsAndRecentAnswers() throws {
+    func testFamilyClaudePairsKeepLifecycleToolsButRequireANewAnswer() throws {
         for family in [AgentType.cursor, .trae, .windsurf] {
             let manager = SessionManager()
             var start = message(.sessionStart, agent: family)
@@ -135,8 +135,8 @@ final class SessionManagerMirrorIsolationTests: XCTestCase {
             var duplicate = message(.question, agent: family)
             duplicate.questionText = "Continue?"
             duplicate.options = ["Yes", "No"]
-            manager.handleQuestionRequest(duplicate, respond: { XCTAssertEqual($0, "Yes") })
-            XCTAssertNil(session.pendingQuestion)
+            manager.handleQuestionRequest(duplicate, respond: { _ in XCTFail("A mirrored new request still needs an explicit answer") })
+            XCTAssertNotNil(session.pendingQuestion)
             manager.handleMessage(message(.sessionEnd, agent: .claudeCode))
             XCTAssertNotEqual(session.status, .completed)
             XCTAssertEqual(manager.sessions.count, 1)

@@ -138,6 +138,7 @@ final class AppUpdaterTests: XCTestCase {
                 helperPath.append(URL(fileURLWithPath: scriptPath))
             },
             terminateApp: { },
+            prepareTermination: { true },
             temporaryDirectoryProvider: {
                 tempRoot
             },
@@ -182,7 +183,8 @@ final class AppUpdaterTests: XCTestCase {
             (.installFailed, "Unable to replace the installed app."),
             (.relaunchFailed, "The update installed, but the app could not relaunch."),
             (.integrityCheckFailed, "The downloaded update failed integrity verification."),
-            (.codeSigningFailed, "The installed app failed code signing verification.")
+            (.codeSigningFailed, "The installed app failed code signing verification."),
+            (.terminationCancelled, "History was not saved. The update was cancelled.")
         ]
 
         for (error, description) in cases {

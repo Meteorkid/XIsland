@@ -33,15 +33,21 @@ function outputText(value: unknown): string | undefined {
       ? Object.fromEntries(Object.keys(child).sort().map(key => [key, child[key]])) : child);
   } catch { throw new CodexHookError('invalid_payload', 'Codex tool data must be JSON serializable'); }
 }
-function toolInput(payload: Record<string, unknown>): Record<string, unknown> | undefined {
-  for (const key of ['tool_input', 'input', 'parameters', 'params', 'args']) {
-    if (isRecord(payload[key])) return payload[key];
-    if (typeof payload[key] === 'string') {
-      try { const parsed: unknown = JSON.parse(payload[key]); if (isRecord(parsed)) return parsed; }
-      catch { /* 非 JSON 输入继续按原生文本处理。 */ }
+function permissionInput(payload: Record<string, unknown>): { input?: Record<string, unknown>; raw: string; plain?: string } {
+  const values = ['tool_input', 'input', 'parameters', 'params', 'args'].map(key => payload[key]);
+  values.push(isRecord(payload.tool) ? payload.tool.input : undefined);
+  for (const value of values) {
+    if (isRecord(value)) return { input: value, raw: outputText(value)! };
+    if (typeof value === 'string') {
+      try {
+        const input: unknown = JSON.parse(value);
+        if (isRecord(input)) return { input, raw: value };
+      } catch { /* 非 JSON 对象的原始文本保留供审批查看。 */ }
+      return { raw: value, plain: value };
     }
+    if (Array.isArray(value)) return { raw: outputText(value)!, plain: outputText(value) };
   }
-  return isRecord(payload.tool) && isRecord(payload.tool.input) ? payload.tool.input : undefined;
+  return { raw: outputText(payload)! };
 }
 function permissionText(sources: (Record<string, unknown> | undefined)[], keys: string[]): string | undefined {
   for (const source of sources) if (source) for (const key of keys) {
@@ -133,8 +139,12 @@ export function normalizeCodexHook(value: unknown, context: CodexHookContext = {
         copyUsage(value, message); break;
       case 'PermissionRequest': {
         message.type = 'permission_request'; message.tool = tool;
-        const input = toolInput(value), sources = [input, value];
-        message.permDescription = permissionText(sources, ['description', 'command', 'path', 'file_path', 'pattern', 'query', 'content', 'text'])
+        const { input, raw, plain } = permissionInput(value), sources = [input, value];
+        // 命令位于参数外层时保留整包，避免 UI 将参数中的友好文本误当命令。
+        message.toolInput = permissionText([value], ['command']) && !permissionText([input], ['command'])
+          ? outputText(value)! : raw;
+        message.permDescription = permissionText(sources, ['command']) ?? plain
+          ?? permissionText(sources, ['description', 'path', 'file_path', 'pattern', 'query', 'content', 'text'])
           ?? descriptionFromInput(input) ?? descriptionFromInput(value) ?? '';
         message.diff = text(value.diff); message.filePath = permissionText(sources, ['file_path', 'path', 'filePath']);
         break;

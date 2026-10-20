@@ -68,6 +68,23 @@ function toolInput(payload: NativeObject): NativeObject {
   return object(object(payload.tool)?.input) ?? {};
 }
 
+function permissionInput(payload: NativeObject): { input?: NativeObject; raw: string; plain?: string } {
+  const values = ['tool_input', 'input', 'parameters', 'params', 'args'].map(key => payload[key]);
+  values.push(object(payload.tool)?.input);
+  for (const value of values) {
+    if (object(value)) return { input: object(value), raw: outputText(value)! };
+    if (typeof value === 'string') {
+      try {
+        const input = object(JSON.parse(value));
+        if (input) return { input, raw: value };
+      } catch { /* 非 JSON 对象的原始文本保留供审批查看。 */ }
+      return { raw: value, plain: value };
+    }
+    if (Array.isArray(value)) return { raw: outputText(value)!, plain: outputText(value) };
+  }
+  return { raw: outputText(payload)! };
+}
+
 function outputText(value: unknown): string | undefined {
   if (typeof value === 'string') return value;
   if (!object(value) && !Array.isArray(value)) return undefined;
@@ -104,12 +121,13 @@ function userPrompt(payload: NativeObject): string {
 }
 
 function isQuestionTool(name: string): boolean {
-  const lower = name.toLowerCase();
-  return ['askuser', 'ask_user', 'askquestion', 'ask_question'].some(part => lower.includes(part))
-    || ['question', 'userinput', 'user_input'].includes(lower);
+  return name === 'AskUserQuestion';
 }
 
 function questionDetails(payload: NativeObject): { input: NativeObject; first?: NativeObject; sources: NativeObject[] } {
+  if (!isQuestionTool(text(payload.tool_name) ?? text(payload.tool) ?? '') || payload.mcp_server !== undefined) {
+    throw new ClaudeHookError('unsupported_question', 'Only the built-in Claude question tool can return an answer');
+  }
   const input = toolInput(payload);
   let first: NativeObject | undefined;
   if (input.questions !== undefined) {
@@ -117,15 +135,29 @@ function questionDetails(payload: NativeObject): { input: NativeObject; first?: 
       throw new ClaudeHookError('invalid_payload', 'Invalid Claude questions');
     }
     // Swift 当前只改写首题；Windows 首批不把部分回答伪装成整组完成。
-    if (input.questions.length > 1) {
+    if (input.questions.length !== 1) {
       throw new ClaudeHookError('unsupported_question', 'Multiple Claude questions require the native client');
     }
     first = object(input.questions[0]);
+    if (Object.keys(input).some(key => !['questions', 'answer', 'answers'].includes(key))) {
+      throw new ClaudeHookError('unsupported_question', 'Unknown Claude question input requires the native client');
+    }
   }
-  const sources = [first, input, payload].filter((item): item is NativeObject => item !== undefined);
-  if (sources.some(item => item.multiSelect === true || item.multiple === true)) {
+  const question = first ?? input;
+  if (Object.keys(question).some(key => !['question', 'header', 'options', 'multiSelect', 'multiple', 'answer', 'answers'].includes(key))
+    || typeof question.question !== 'string' || !question.question.trim() || question.question.includes('\0')
+    || !Array.isArray(question.options)
+    || !question.options.every(option => {
+      const label = typeof option === 'string' ? option : object(option)?.label;
+      return typeof label === 'string' && !!label.trim() && !label.includes('\0')
+        && new TextEncoder().encode(label).length <= 8192;
+    })) {
+    throw new ClaudeHookError('unsupported_question', 'Unsupported Claude question input requires the native client');
+  }
+  if (['multiSelect', 'multiple'].some(key => question[key] !== undefined && question[key] !== false)) {
     throw new ClaudeHookError('unsupported_question', 'Claude multi-select requires the native client');
   }
+  const sources = [question];
   return { input, first, sources };
 }
 
@@ -226,9 +258,13 @@ export function normalizeClaudeHook(value: unknown, context: ClaudeHookContext =
       if (isQuestionTool(tool)) return questionMessage(payload, message, tool);
       message.type = 'permission_request';
       message.tool = tool;
-      const input = toolInput(payload);
+      const { input, raw, plain } = permissionInput(payload);
+      // 命令位于参数外层时保留整包，避免 UI 将参数中的友好文本误当命令。
+      message.toolInput = firstText([payload], ['command']) && !firstText([input], ['command'])
+        ? outputText(payload)! : raw;
       const sources = [input, payload];
-      message.permDescription = firstText(sources, ['description', 'command', 'path', 'file_path', 'pattern', 'query', 'content', 'text'])
+      message.permDescription = firstText(sources, ['command']) ?? plain
+        ?? firstText(sources, ['description', 'path', 'file_path', 'pattern', 'query', 'content', 'text'])
         ?? firstText(sources, ['command', 'query', 'content', 'code', 'url', 'pattern', 'text']) ?? '';
       message.filePath = firstText(sources, ['file_path', 'path', 'filePath']);
       message.diff = text(payload.diff);
@@ -263,7 +299,8 @@ export function claudeHookResponse(payload: unknown, response: DIResponse | null
     } }), exitCode: 0 };
   }
   if (message.type !== 'question' || response.type !== 'question_response'
-    || typeof response.answer !== 'string' || !response.answer.trim() || response.selectedAnswers !== undefined) {
+    || typeof response.answer !== 'string' || !response.answer.trim() || response.answer.includes('\0')
+    || new TextEncoder().encode(response.answer).length > 8192 || response.selectedAnswers !== undefined) {
     throw new ClaudeHookError('invalid_response', 'Claude response does not match the pending interaction');
   }
   const { input, first } = questionDetails(object(payload)!);
@@ -276,7 +313,12 @@ export function claudeHookResponse(payload: unknown, response: DIResponse | null
     const question = text(input.question) ?? text(object(payload)!.question) ?? '';
     if (question) updatedInput.answers = { [question]: response.answer };
   }
-  // 与 DIBridge.buildClaudeCodeQuestionResponse 保持相同形状；仍须原生版本验收。
+  // PermissionRequest 和 PreToolUse 的授权字段不同，不可只替换事件名。
+  if (message.nativeEvent === 'PermissionRequest') {
+    return { stdout: JSON.stringify({ hookSpecificOutput: {
+      hookEventName: 'PermissionRequest', decision: { behavior: 'allow', updatedInput },
+    } }), exitCode: 0 };
+  }
   return { stdout: JSON.stringify({ hookSpecificOutput: {
     hookEventName: message.nativeEvent, permissionDecision: 'allow', updatedInput,
   } }), exitCode: 0 };

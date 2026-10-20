@@ -2,6 +2,41 @@ import XCTest
 @testable import XIsland
 
 final class TerminalAppDetectionTests: XCTestCase {
+    func testTerminalToolsWithoutMacOSAppHaveNoPrimaryBundleId() {
+        XCTAssertNil(TerminalApp.cmux.bundleId)
+        XCTAssertNil(TerminalApp.conductor.bundleId)
+    }
+
+    func testEveryTerminalAppHasASafePrimaryBundleId() {
+        for app in TerminalApp.allCases {
+            XCTAssertEqual(app.bundleId, app.bundleIds.first, app.rawValue)
+            XCTAssertFalse(app.bundleIds.contains(""), app.rawValue)
+        }
+    }
+
+    func testDetectsAllBundleAliases() {
+        for app in TerminalApp.allCases {
+            for bundleId in app.bundleIds {
+                XCTAssertEqual(TerminalApp.detect(from: bundleId), app, bundleId)
+            }
+        }
+    }
+
+    func testMultiplexerHintRemainsAvailableForHostTerminalFallback() {
+        for app in [TerminalApp.cmux, .conductor] {
+            let snap = TerminalJumpManager.SessionSnapshot(
+                id: "multiplexer-1",
+                agentType: .claudeCode,
+                terminal: app.rawValue,
+                workingDirectory: "/tmp/project",
+                termSessionId: nil,
+                windowNumber: nil
+            )
+            XCTAssertEqual(TerminalJumpManager.resolveTargetApp(snap: snap), app)
+            XCTAssertNil(TerminalJumpManager.resolveTargetApp(snap: snap)?.bundleId)
+        }
+    }
+
     func testDetectsTraeCnFromNameAndBundleId() {
         XCTAssertEqual(TerminalApp.detect(from: "Trae CN"), .traeCn)
         XCTAssertEqual(TerminalApp.detect(from: "cn.trae.app"), .traeCn)

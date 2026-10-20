@@ -50,8 +50,8 @@ struct IntegrationSetupDescriptor: Sendable {
                 "Start a task in the original client after configuration. If it asks you to enable or trust X Island hooks, review the commands and confirm there.")
         case .codex:
             guidance = text(
-                "请在 Codex 中审阅并信任本次 X Island hooks，再开始一条任务。配置更新后需要重新核对；X Island 不会替你授予信任。",
-                "Review and trust the current X Island hooks in Codex, then start a task. Check them again after changes; X Island does not grant trust for you.")
+                "在 Codex 输入区（Composer）打开 Review hooks，核对命令并仅勾选 X Island 项，点击 Allow selected 一次确认。X Island 自动回查授权，收到真实活动后才显示已接入；配置未变且授权有效时无需重复确认。配置改变或授权撤销后按提示重新审阅。",
+                "In the Codex Composer, open Review hooks, review the commands and select only the X Island entries, then click Allow selected once. X Island checks authorization automatically and shows Connected after real activity. Unchanged, authorized hooks need no repeat confirmation; review them again after configuration changes or revoked authorization.")
         case .trae:
             guidance = text(
                 "当前自动配置面向 Trae CN。请在对应客户端开始一条任务；国际版和 Solo 需分别核对接入，不能沿用 CN 的连接结果。",
@@ -96,15 +96,15 @@ struct IntegrationSetupDescriptor: Sendable {
             automatic = false
             guide = "docs/compatibility/workbuddy-setup.md"
             guidance = text(
-                "按说明导出观察插件，在 WorkBuddy 的“添加市场”中选择导出目录，核对命令后完成启用与信任，再开始任务。导出成功只表示文件已准备。",
-                "Export the observer plugin, select its directory in WorkBuddy's Add Marketplace flow, review its commands, enable and trust it, then start a task. Exporting only prepares the files.")
+                "点击“查看接入文件”，在 WorkBuddy 的“添加市场”中选择准备好的插件目录，核对命令后完成启用与信任，再开始任务。文件已准备不代表客户端已经加载或授权。",
+                "Choose Show setup files, select the prepared plugin directory in WorkBuddy's Add Marketplace flow, review its commands, enable and trust it, then start a task. Prepared files do not mean the client has loaded or authorized them.")
         case .kiro:
             manual = true
             automatic = false
             guide = "docs/compatibility/kiro-setup.md"
             guidance = text(
-                "按说明为 Kiro CLI 2.31.0 V3 导出并放置独立 hooks 文件。用 kiro-cli chat --v3 启动，在 /config 核对来源后提交任务。",
-                "Export and place the standalone hooks file for Kiro CLI 2.31.0 V3. Start kiro-cli chat --v3, check the hook source in /config, then submit a task.")
+                "点击“查看接入文件”取得 Kiro CLI 2.31.0 V3 模板；该版本是模板基线，请自行核对实际版本。按说明放置独立 hooks 文件，用 kiro-cli chat --v3 启动，在 /config 核对来源后提交任务。",
+                "Choose Show setup files to get the Kiro CLI 2.31.0 V3 template. This is the template baseline; verify your installed version. Place the standalone hooks file as instructed, start kiro-cli chat --v3, check its source in /config, then submit a task.")
         case .rooCode, .pearai:
             manual = true
             automatic = false

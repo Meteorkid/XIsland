@@ -48,8 +48,10 @@ final class StartupIsolationTests: XCTestCase {
             XCTAssertFalse(manager.hasUnpresentedReminder)
             XCTAssertEqual(manager.attentionCount, 0)
             XCTAssertFalse(manager.isRefreshing)
-            XCTAssertNil(manager.prepareFiles(for: .workBuddy))
-            XCTAssertNil(manager.prepareFiles(for: .kiro))
+            let workBuddyFiles = await manager.prepareFiles(for: .workBuddy)
+            let kiroFiles = await manager.prepareFiles(for: .kiro)
+            XCTAssertNil(workBuddyFiles)
+            XCTAssertNil(kiroFiles)
         }
     }
 

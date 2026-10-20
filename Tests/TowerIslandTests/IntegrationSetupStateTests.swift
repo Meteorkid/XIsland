@@ -41,6 +41,18 @@ final class IntegrationSetupStateTests: XCTestCase {
         }
     }
 
+    func testCodexGuidanceUsesTheNativeBatchReviewFlowForOnlyXIslandHooks() {
+        for language in ["zh", "en"] {
+            let guidance = IntegrationSetupDescriptor.descriptor(for: .codex, language: language).authorizationGuidance
+            XCTAssertTrue(guidance.contains("Composer"))
+            XCTAssertTrue(guidance.contains("Review hooks"))
+            XCTAssertTrue(guidance.contains("Allow selected"))
+            XCTAssertTrue(guidance.contains(language == "zh" ? "仅勾选 X Island 项" : "select only the X Island entries"))
+            XCTAssertFalse(guidance.contains("设置 →"))
+            XCTAssertFalse(guidance.contains("Settings →"))
+        }
+    }
+
     func testNotInstalledAndDisabledCannotBeOverriddenByAnOldEvent() {
         var evidence = IntegrationSetupEvidence(installed: false, configured: true,
                                                configurationFingerprint: current, observedFingerprint: current)

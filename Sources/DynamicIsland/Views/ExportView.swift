@@ -107,6 +107,8 @@ struct ExportView: View {
     let session: AgentSession
     @State private var selectedFormat: ExportFormat = .json
     @State private var showExporter = false
+    @State private var preparedData = Data()
+    @State private var exportError: String?
     @Environment(\.dismiss) private var dismiss
     @Environment(ThemeManager.self) private var themeManager
 
@@ -159,7 +161,13 @@ struct ExportView: View {
                 .foregroundStyle(.secondary)
 
                 Button(L10n.exportSession) {
-                    showExporter = true
+                    do {
+                        preparedData = try exportData()
+                        exportError = nil
+                        showExporter = true
+                    } catch {
+                        exportError = error.localizedDescription
+                    }
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 12, weight: .semibold))
@@ -172,19 +180,29 @@ struct ExportView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .fileExporter(
             isPresented: $showExporter,
-            document: SessionExportDocument(data: exportData),
+            document: SessionExportDocument(data: preparedData),
             contentType: selectedFormat.contentType,
             defaultFilename: "\(session.displayTitle)_\(session.id.prefix(8))"
         ) { result in
-            if case .success = result {
+            switch result {
+            case .success:
                 dismiss()
+            case let .failure(error):
+                exportError = error.localizedDescription
             }
+        }
+        .alert(L10n.historyExportFailed, isPresented: Binding(
+            get: { exportError != nil }, set: { if !$0 { exportError = nil } }
+        )) {
+            Button("OK", role: .cancel) { exportError = nil }
+        } message: {
+            Text(exportError ?? "")
         }
     }
 
-    private var exportData: Data {
+    private func exportData() throws -> Data {
         switch selectedFormat {
-        case .json: return Self.exportJSON(session: session)
+        case .json: return try Self.exportJSON(session: session)
         case .markdown: return Self.exportMarkdown(session: session)
         case .csv: return Self.exportCSV(session: session)
         }
@@ -192,7 +210,7 @@ struct ExportView: View {
 
     // MARK: - Export Logic
 
-    static func exportJSON(session: AgentSession) -> Data {
+    static func exportJSON(session: AgentSession) throws -> Data {
         let exportData = SessionExportData(
             sessionId: session.id,
             agentType: session.agentType.rawValue,
@@ -240,7 +258,7 @@ struct ExportView: View {
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return (try? encoder.encode(exportData)) ?? Data()
+        return try encoder.encode(exportData)
     }
 
     static func exportMarkdown(session: AgentSession) -> Data {

@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 1,
+  "releaseVersion": "2.0.2",
+  "generatedAt": "2026-10-20T09:53:10.388091+00:00",
+  "status": "local_release_artifacts_verified",
+  "source": {
+    "baseCommit": "84ef0274d559f1282fefdbf7803edd4c1c33d612",
+    "releaseTag": "v2.0.2",
+    "sourceInputsSHA256": "d50636b26b55a9349c506cb5337ccc6c2c98f200e5b984daa2313d26b2ce4474",
+    "sourceInputFiles": 662,
+    "buildInputsUnchangedAfterValidation": true
+  },
+  "scope": "macOS maintenance release; Windows source-only synchronization; known native acceptance gaps retained",
+  "releaseArtifacts": {
+    "macOS": {
+      "architecture": "arm64",
+      "minimumOS": "14.0",
+      "dmgName": "XIsland-2.0.2.dmg",
+      "dmgSHA256": "07731bc8bc75676ace8daaf73ce7f3456e2d638aa32e323809e0a792b06b17b6",
+      "dmgBytes": 5916880,
+      "binarySHA256": {
+        "XIsland": "54a5c9d13b7cf659bfb4da7576e8eef624ecede7f72f8dc02b8570b62f686ab6",
+        "di-bridge": "852107a04d91abca2715d679ae75a2f72dcc99c9611aefebccfc0dc9c71b5775"
+      },
+      "signature": "ad-hoc verified on read-only mounted DMG",
+      "notarized": false
+    },
+    "vscodeCompanion": {
+      "version": "1.0.0",
+      "assetName": "xisland-vscode-1.0.0.vsix",
+      "sha256": "676bfe748ad6d681c5c84ec17f61de8a2079f70c04d66554243bec8700a78d46",
+      "unchangedFrom": "2.0.1"
+    },
+    "windows": {
+      "sourceVersion": "0.1.8",
+      "publishedInThisRelease": false
+    }
+  },
+  "releaseValidation": {
+    "swift": {
+      "status": "passed",
+      "testsTotal": 1392,
+      "passed": 1387,
+      "failures": 0,
+      "skipped": 5,
+      "skippedReasons": [
+        "Test skipped - 显式启用后台检查点性能基准",
+        "Test skipped - 显式启动连续长稳负载",
+        "Test skipped - 按需运行历史性能基准",
+        "Test skipped - 按需测量后台历史与主线程心跳",
+        "Test skipped - 显式启用真实 Timer 回调计数；不是 CPU 或 FPS 测量"
+      ],
+      "logSHA256": "5a56c24e167c95a97dc6b7bb350d00d193e582315df3ba7a96ee026e06eee1b8",
+      "renderSuitesEnabled": true
+    },
+    "updateTerminationRegression": {
+      "status": "passed",
+      "focusedTests": 73,
+      "failures": 0,
+      "redTestFailures": 5,
+      "logSHA256": "a6323b6cd64e6ccf31d7fbd8c0cf1fd8932a303a685af35466f80467c740bc04",
+      "scope": "synthetic installer commands and isolated storage; no installed application replaced"
+    },
+    "cli": {
+      "basicTestsPassed": true,
+      "isolatedUpgradeTests": 22,
+      "failures": 0,
+      "upgradeLogSHA256": "af4770edd4fdcf143741b51b0ef43e68daf20c62f470efae90608148bebecee8"
+    },
+    "compiledBridge": {
+      "status": "passed",
+      "scenarios": 127,
+      "reportSHA256": "e494052d8680d8b669a42df2b413ca55684f035262910ddab3d69c40586215cc",
+      "realClientVerified": false
+    },
+    "workbuddyExport": {
+      "status": "passed",
+      "hookEvents": 11,
+      "reportSHA256": "3d857d3363e05b56968cc4f172322787fbe9ebfd02439cd31b1f53d54dec406f",
+      "realClientVerified": false
+    },
+    "codexLifecycleApp": {
+      "status": "passed",
+      "reportSHA256": "896d9c47b9e1d44591c12d8c6482966274199e3ea897a37ee4c238ca35d32839",
+      "scope": "Synthetic vendor payloads -> bundled di-bridge -> isolated XIsland -> diagnostics and read-only SQLite",
+      "realClientVerified": false,
+      "nativeTrustChanged": false
+    },
+    "windowsLocal": {
+      "typescript_check": true,
+      "typescript_tests_passed": 603,
+      "typescript_tests_failed": 0,
+      "typescript_tests_skipped": 0,
+      "frontend_build": true,
+      "hook_build": true,
+      "browser_tests_passed": 52,
+      "rust_core_tests_passed": 25,
+      "rust_ipc_tests_passed": 1,
+      "rust_worker_marked_ignored_but_spawned_by_ipc_test": 1,
+      "island_link_tests_passed": 17,
+      "windows_x64_desktop_cross_check": true,
+      "git_diff_check": true,
+      "visual_spot_check": [
+        "codex raw approval details",
+        "claude top-level actual command",
+        "qwen actual command summary"
+      ],
+      "scope": "macOS-host tests, browser fixtures and Windows x64 cross-check; not Windows runtime acceptance"
+    },
+    "package": {
+      "status": "passed",
+      "version": "2.0.2",
+      "readOnlyMounted": true,
+      "architecture": "arm64",
+      "minimumOS": "14.0",
+      "signatureVerified": true,
+      "signature": "ad-hoc",
+      "notarized": false,
+      "binariesMatchTestedBundle": true,
+      "dmgSHA256": "07731bc8bc75676ace8daaf73ce7f3456e2d638aa32e323809e0a792b06b17b6",
+      "dmgBytes": 5916880,
+      "binarySHA256": {
+        "XIsland": "54a5c9d13b7cf659bfb4da7576e8eef624ecede7f72f8dc02b8570b62f686ab6",
+        "di-bridge": "852107a04d91abca2715d679ae75a2f72dcc99c9611aefebccfc0dc9c71b5775"
+      },
+      "cliMatchesSource": true,
+      "appIconPresent": true,
+      "vsixSHA256": "676bfe748ad6d681c5c84ec17f61de8a2079f70c04d66554243bec8700a78d46",
+      "vsixCRCVerified": true
+    },
+    "fixedStorageSoak": {
+      "status": "passed",
+      "requestedSeconds": 28800,
+      "elapsedSeconds": 28806.605208833353,
+      "events": 25140,
+      "exitCode": 0,
+      "archiveMatchesDatabase": true,
+      "fixedBinarySHA256": "5f3df6fb7332d13a238df31e5d28d6f4e9a4f0baa9cd2e2db5f9c6956ebd2705",
+      "productionStorageSourcesUnchanged": true,
+      "wholeCurrentRevisionVerified": false,
+      "summarySHA256": "785a00cd9b60b359852ad8ba1957f7250e29d49d98c613db6ee6e5a2ff886369"
+    },
+    "githubCI": {
+      "requiredBeforePublication": true,
+      "resultLocation": "GitHub checks on release tag commit and public release notes"
+    },
+    "publishedAssetDownload": {
+      "requiredAfterPublication": true,
+      "resultLocation": "Public release notes; downloaded assets must match SHA256SUMS.txt"
+    }
+  },
+  "knownAcceptanceGaps": [
+    "VoiceOver speech and full focus order remain unverified.",
+    "Actual continuous application frame timing and external multi-display behavior remain unverified.",
+    "Native AI-client approval/event loops and native trust are not established by fixture tests.",
+    "Windows installer, upgrade, WebView2, input methods and DPI/device behavior remain target-machine gates.",
+    "Ad-hoc signature only; no Developer ID signature or Apple notarization.",
+    "Eight-hour soak binds fixed storage build; final GUI/update-coordination revision was not rerun for eight hours."
+  ],
+  "publicationPolicy": {
+    "userAuthorizedCommitPushRelease": true,
+    "rawRuntimeEvidence": "local only",
+    "installedApplicationReplaced": false,
+    "realClientConfigurationChanged": false,
+    "nativeTrustChanged": false
+  },
+  "reproduce": {
+    "build": "X_ISLAND_SKIP_BRIDGE_INSTALL=1 X_ISLAND_SKIP_PATH_CONFIGURE=1 X_ISLAND_BUILD_DMG=1 bash Scripts/build.sh",
+    "compiledBridge": "python3 Scripts/test-native-hook-bridge.py --binary \".build/X Island.app/Contents/MacOS/di-bridge\"",
+    "workbuddy": "python3 Scripts/test-workbuddy-plugin.py --binary \".build/X Island.app/Contents/MacOS/di-bridge\""
+  }
+}

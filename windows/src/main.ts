@@ -106,7 +106,7 @@ async function syncSettings(): Promise<void> {
   const info = await invoke<{ capabilities: NonNullable<IslandPlatform['capabilities']>; nativeAutoplayAudio?: boolean }>('platform_info');
   platform.capabilities = info.capabilities;
   platform.nativeAutoplayAudio = info.nativeAutoplayAudio === true;
-  ui.applySettings(loadSettings());
+  try { ui.applySettings(loadSettings()); } catch (error) { report(error); }
   let changed = false;
   await listen<IslandSettings>('preferences-changed', event => { changed = true; ui.applySettings(event.payload); });
   try {
@@ -137,7 +137,10 @@ async function connectOwner(): Promise<void> {
   let ownerToken: string | undefined;
   let protectedInteraction: boolean | undefined;
   const publish = (snapshot: StoreSnapshot) => {
-    if (ownerToken) void invoke('publish_snapshot', { snapshot, ownerToken }).catch(report);
+    if (ownerToken) {
+      try { void invoke('publish_snapshot', { snapshot: store.snapshotForTransfer(), ownerToken }).catch(report); }
+      catch (error) { report(error); }
+    }
     const protectedValue = snapshot.sessions.some(session => session.pendingInteractions.some(request => request.phase !== 'failed'));
     if (protectedValue !== protectedInteraction) {
       protectedInteraction = protectedValue;

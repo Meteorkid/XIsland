@@ -24,11 +24,12 @@ final class OpenCodePluginConfigurationTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(String.self, from: Data(json.utf8)), path)
     }
 
-    func testOwnershipRecognizesOnlyMarkedSourceAndExactLegacyTemplate() throws {
+    func testOwnershipRecognizesOnlyCompleteSourceAndExactLegacyTemplate() throws {
         let source = try OpenCodePluginConfiguration.source(bridgePath: "/bin/di-bridge")
         XCTAssertTrue(OpenCodePluginConfiguration.isOwnedSource(source))
         XCTAssertTrue(OpenCodePluginConfiguration.isOwnedSource(Self.legacyPlugin))
         XCTAssertTrue(OpenCodePluginConfiguration.isOwnedSource(" \n" + Self.legacyPlugin.replacingOccurrences(of: "\n", with: "\r\n") + "\n\t"))
+        XCTAssertFalse(OpenCodePluginConfiguration.isOwnedSource(Self.legacyPlugin + "\nconsole.log(\"user extension\");"))
         XCTAssertFalse(OpenCodePluginConfiguration.isOwnedSource(Self.legacyPlugin.replacingOccurrences(of: "di-bridge", with: "my-bridge")))
         XCTAssertFalse(OpenCodePluginConfiguration.isOwnedSource("// User plugin\n" + Self.legacyPlugin))
         XCTAssertFalse(OpenCodePluginConfiguration.isOwnedSource("// User plugin\n" + source))

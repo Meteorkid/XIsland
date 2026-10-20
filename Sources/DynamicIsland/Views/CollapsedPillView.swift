@@ -95,18 +95,22 @@ struct CollapsedPillView: View {
 
     private var unobscuredCenteredIcons: some View {
         HStack(spacing: 8) {
-            if showCollapsedAgentIcon && !visible.isEmpty {
-                let maxIcons = 5
-                let shown = Array(visible.prefix(maxIcons))
-                let overflow = visible.count - maxIcons
-                HStack(spacing: 6) {
-                    ForEach(shown) { session in
-                        AgentIcon(agentType: session.agentType, size: 22, status: session.status)
-                    }
-                    if overflow > 0 {
-                        Text("+\(overflow)")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(IslandStyle.secondaryText)
+            if showCollapsedAgentIcon {
+                if visible.isEmpty {
+                    appIconFallback
+                } else {
+                    let maxIcons = 5
+                    let shown = Array(visible.prefix(maxIcons))
+                    let overflow = visible.count - maxIcons
+                    HStack(spacing: 6) {
+                        ForEach(shown) { session in
+                            AgentIcon(agentType: session.agentType, size: 22, status: session.status)
+                        }
+                        if overflow > 0 {
+                            Text("+\(overflow)")
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(IslandStyle.secondaryText)
+                        }
                     }
                 }
             }
@@ -296,31 +300,27 @@ struct CollapsedPillView: View {
             switch quota.provider {
             case "Anthropic":
                 if let remaining = quota.tokensRemaining {
-                    return ("Claude", formatTokens(remaining), Color(red: 0.85, green: 0.45, blue: 0.25))
+                    return ("Claude", L10n.quotaTokensRemaining(formatTokens(remaining)), Color(red: 0.85, green: 0.45, blue: 0.25))
                 }
             case "OpenAI":
-                if let used = quota.tokensRemaining {
-                    return ("Codex", formatTokens(used), Color(red: 0.2, green: 0.8, blue: 0.4))
+                if let used = quota.tokensUsed {
+                    return ("Codex", L10n.quotaTokensUsed(formatTokens(used)), Color(red: 0.2, green: 0.8, blue: 0.4))
                 }
             case "Kimi":
-                if let tokens = quota.tokensRemaining, tokens > 0 {
-                    return ("Kimi", "¥\(tokens / 100)", Color(red: 0.95, green: 0.35, blue: 0.45))
+                if let balance = quota.balanceText {
+                    return ("Kimi", balance, Color(red: 0.95, green: 0.35, blue: 0.45))
                 }
             case "DeepSeek":
-                if let tokens = quota.tokensRemaining {
-                    return tokens > 0
-                        ? ("DeepSeek", formatTokens(tokens), Color(red: 0.25, green: 0.75, blue: 0.55))
-                        : ("DeepSeek", "0", Color.red.opacity(0.7))
-                }
-            case "GLM":
-                if let remaining = quota.requestsRemaining, remaining > 0 {
-                    return ("GLM", "ON", Color(red: 0.25, green: 0.45, blue: 0.95))
+                if let balance = quota.balanceText {
+                    return ("DeepSeek", balance, Color(red: 0.25, green: 0.75, blue: 0.55))
                 }
             default:
                 continue
             }
         }
-        return nil
+        guard let quota = quotaTracker.quotas.first else { return nil }
+        let label = quota.provider == "Anthropic" ? "Claude" : quota.provider == "OpenAI" ? "Codex" : quota.provider
+        return (label, L10n.quotaUnknown, IslandStyle.secondaryText)
     }
 
     private func formatTokens(_ count: Int) -> String {

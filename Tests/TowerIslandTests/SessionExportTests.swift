@@ -48,9 +48,9 @@ final class SessionExportTests: XCTestCase {
 
     // MARK: - JSON Export
 
-    func testJSONExportIsValidJSON() {
+    func testJSONExportIsValidJSON() throws {
         let session = makeSession(toolEventCount: 2)
-        let data = ExportView.exportJSON(session: session)
+        let data = try ExportView.exportJSON(session: session)
 
         let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         XCTAssertNotNil(parsed, "JSON export should produce valid JSON")
@@ -61,11 +61,11 @@ final class SessionExportTests: XCTestCase {
         XCTAssertNotNil(parsed?["toolEvents"])
     }
 
-    func testJSONExportContainsChatHistory() {
+    func testJSONExportContainsChatHistory() throws {
         let msg1 = ChatMessage(timestamp: Date(), role: .user, content: "Fix the bug")
         let msg2 = ChatMessage(timestamp: Date(), role: .assistant, content: "I found the issue")
         let session = makeSession(chatHistory: [msg1, msg2])
-        let data = ExportView.exportJSON(session: session)
+        let data = try ExportView.exportJSON(session: session)
 
         let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         let history = parsed?["chatHistory"] as? [[String: Any]]
@@ -108,10 +108,10 @@ final class SessionExportTests: XCTestCase {
 
     // MARK: - Empty session
 
-    func testExportEmptySession() {
+    func testExportEmptySession() throws {
         let session = makeSession()
 
-        let jsonData = ExportView.exportJSON(session: session)
+        let jsonData = try ExportView.exportJSON(session: session)
         XCTAssertFalse(jsonData.isEmpty, "JSON export of empty session should not be empty")
 
         let mdData = ExportView.exportMarkdown(session: session)
@@ -120,5 +120,11 @@ final class SessionExportTests: XCTestCase {
         let csvData = ExportView.exportCSV(session: session)
         let csvText = String(data: csvData, encoding: .utf8) ?? ""
         XCTAssertTrue(csvText.contains("timestamp"), "CSV of empty session should at least have header")
+    }
+
+    func testJSONEncodingFailureIsReportedInsteadOfWritingAnEmptySuccessfulFile() {
+        let session = makeSession()
+        session.tokenUsage.estimatedCostUSD = .nan
+        XCTAssertThrowsError(try ExportView.exportJSON(session: session))
     }
 }

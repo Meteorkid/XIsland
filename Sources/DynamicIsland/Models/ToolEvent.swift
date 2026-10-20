@@ -1,6 +1,6 @@
 import Foundation
 
-struct ToolEvent: Identifiable, Sendable {
+struct ToolEvent: Identifiable, Sendable, Equatable {
     let id: UUID
     let timestamp: Date
     var tool: String
@@ -26,7 +26,7 @@ struct ToolEvent: Identifiable, Sendable {
     /// Test results summary if this was a test runner.
     var testResults: TestResults?
 
-    struct TestResults: Sendable {
+    struct TestResults: Sendable, Equatable {
         let passed: Int
         let failed: Int
         let skipped: Int

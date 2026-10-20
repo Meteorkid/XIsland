@@ -465,7 +465,19 @@ export function mountIsland(element: HTMLElement, store: SessionStore, platform:
     if(request.kind==='permission'){
       view.append(el('strong','request-tool',request.tool||t('操作授权')));
       const well=el('div',`request-details ${details.has(request.id)?'open':''}`);
-      if(request.description)well.append(el('pre','',request.description));
+      let input:Record<string,unknown>|undefined, plain:string|undefined;
+      if(request.toolInput!==undefined){
+        try{const parsed:unknown=JSON.parse(request.toolInput);if(parsed!==null&&typeof parsed==='object'&&!Array.isArray(parsed))input=parsed as Record<string,unknown>;}
+        catch{plain=request.toolInput;}
+      }
+      const command=typeof input?.command==='string'?input.command:undefined;
+      const summary=command||plain||request.description||request.toolInput;
+      if(summary)well.append(el('pre','request-summary',summary));
+      if(details.has(request.id)){
+        const description=typeof input?.description==='string'?input.description:request.description;
+        if(description&&description!==summary)well.append(el('span','muted',t('工具说明')),el('pre','request-description',description));
+        if(request.toolInput!==undefined)well.append(el('span','muted',t('原始工具参数')),el('pre','request-input',request.toolInput));
+      }
       if(request.filePath)well.append(el('code','request-path',request.filePath));
       if(request.diff){if(details.has(request.id))well.append(diffView(request.diff));else well.append(el('span','muted',t('包含文件变更')));}
       view.append(well,button(details.has(request.id)?t('收起详情'):t('查看权限详情'),'text-button details-button',()=>toggleDetails(request.id)));

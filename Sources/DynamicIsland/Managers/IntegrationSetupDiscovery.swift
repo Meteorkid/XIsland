@@ -3,8 +3,7 @@ import CryptoKit
 import DIShared
 import Foundation
 
-@MainActor
-struct IntegrationSetupDiscoveryEntry {
+struct IntegrationSetupDiscoveryEntry: Sendable {
     let agent: AgentType
     let installed: Bool
     let configured: Bool
@@ -15,37 +14,51 @@ struct IntegrationSetupDiscoveryEntry {
     let canAutoConfigure: Bool
 }
 
-@MainActor
 enum IntegrationSetupDiscovery {
-    @MainActor
-    struct Environment {
+    struct Environment: Sendable {
         let homeDirectory: URL
         let path: String
-        let applicationURL: (String) -> URL?
-        let isExecutable: (URL) -> Bool
-        let extensionIDs: Set<String>
-        let hasConfiguration: (AgentType) -> Bool
+        let applicationURL: @Sendable (String) -> URL?
+        let isExecutable: @Sendable (URL) -> Bool
+        let extensionIDs: Set<String>?
+        let hasConfiguration: @Sendable (AgentType) -> Bool
 
+        @MainActor
         static var live: Self {
             let home = FileManager.default.homeDirectoryForCurrentUser
+            // AppKit 留在主线程，只把不可变的 URL 快照交给文件扫描。
+            let identifiers = Set(AgentType.allCases.flatMap { applicationIDs(for: $0) }
+                + ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders"])
+            let applications = Dictionary(uniqueKeysWithValues: identifiers.compactMap { identifier in
+                NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier).map { (identifier, $0) }
+            })
             return Self(homeDirectory: home, path: ProcessInfo.processInfo.environment["PATH"] ?? "",
-                        applicationURL: { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) },
+                        applicationURL: { applications[$0] },
                         isExecutable: { url in
                             var directory: ObjCBool = false
                             return FileManager.default.fileExists(atPath: url.path, isDirectory: &directory)
                                 && !directory.boolValue && FileManager.default.isExecutableFile(atPath: url.path)
-                        }, extensionIDs: installedExtensionIDs(home: home),
+                        }, extensionIDs: nil,
                         hasConfiguration: { ZeroConfigManager.hasConfiguration(for: $0) })
         }
     }
 
-    static func scan() -> [IntegrationSetupDiscoveryEntry] { scan(environment: .live) }
+    @MainActor
+    static func scan() async -> [IntegrationSetupDiscoveryEntry] {
+        await scanInBackground(environment: .live)
+    }
+
+    static func scanInBackground(environment: Environment) async -> [IntegrationSetupDiscoveryEntry] {
+        (try? await IntegrationSetupIO.run { scan(environment: environment) }) ?? []
+    }
 
     static func scan(environment: Environment) -> [IntegrationSetupDiscoveryEntry] {
         let bridge = environment.homeDirectory.appendingPathComponent(".xisland/bin/di-bridge").path
-        let extensions = Set(environment.extensionIDs.map { $0.lowercased() })
-        return AgentType.allCases.filter(\.isSupported).map { agent in
-            let descriptor = IntegrationSetupDescriptor.descriptor(for: agent)
+        let extensions = Set((environment.extensionIDs ?? installedExtensionIDs(home: environment.homeDirectory)).map { $0.lowercased() })
+        var result: [IntegrationSetupDiscoveryEntry] = []
+        for agent in AgentType.allCases where agent.isSupported {
+            guard !Task.isCancelled else { return [] }
+            let descriptor = IntegrationSetupDescriptor.descriptor(for: agent, language: "en")
             let appIDs = applicationIDs(for: agent)
             let applications = appIDs.compactMap { id in environment.applicationURL(id).map { (id, $0) } }
             let binary = executable(names: executableNames(for: agent), environment: environment)
@@ -83,10 +96,11 @@ enum IntegrationSetupDiscovery {
             if definition == nil { automatic = false; detail = "无法生成当前接入定义。" }
             let data = Data("xisland-integration-v1\n\(agent.rawValue)\n\(automatic)\n\(configured)\n\(definition ?? "unavailable")".utf8)
             let fingerprint = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-            return IntegrationSetupDiscoveryEntry(agent: agent, installed: installed, configured: configured,
+            result.append(IntegrationSetupDiscoveryEntry(agent: agent, installed: installed, configured: configured,
                 fingerprint: fingerprint, appURL: app, codexBinary: codexBinary,
-                detail: detail, canAutoConfigure: installed && automatic)
+                detail: detail, canAutoConfigure: installed && automatic))
         }
+        return result
     }
 
     static func automaticAgents(in entries: [IntegrationSetupDiscoveryEntry], requested: Set<AgentType>? = nil) -> Set<AgentType> {
@@ -153,6 +167,7 @@ enum IntegrationSetupDiscovery {
                "\(home)/.opencode/bin", "\(home)/.claude/local"]
         for name in names {
             for directory in directories where directory.hasPrefix("/") {
+                guard !Task.isCancelled else { return nil }
                 let url = URL(fileURLWithPath: directory).appendingPathComponent(name)
                 if environment.isExecutable(url) { return url }
             }
@@ -215,9 +230,11 @@ enum IntegrationSetupDiscovery {
         let files = FileManager.default
         var result = Set<String>()
         for relative in [".vscode/extensions", ".vscode-insiders/extensions"] {
+            guard !Task.isCancelled else { return [] }
             let root = home.appendingPathComponent(relative)
             guard let directories = try? files.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { continue }
             for directory in directories {
+                guard !Task.isCancelled else { return [] }
                 let manifest = directory.appendingPathComponent("package.json")
                 guard let size = try? manifest.resourceValues(forKeys: [.fileSizeKey]).fileSize,
                       size <= 1_048_576, let data = try? Data(contentsOf: manifest),

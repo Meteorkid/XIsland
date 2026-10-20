@@ -3,7 +3,6 @@ import Darwin
 import DIShared
 import Foundation
 
-@MainActor
 enum IntegrationSetupArtifacts {
     enum PreparationError: LocalizedError, Equatable {
         case unsupportedAgent
@@ -25,6 +24,7 @@ enum IntegrationSetupArtifacts {
 
     /// Kiro 版本是文档模板基线；生成文件不代表检测到该版本或客户端已经加载。
     static func prepare(for agent: AgentType, directory: URL, bridgeURL: URL) throws -> URL {
+        try Task.checkCancellation()
         guard directory.isFileURL, bridgeURL.isFileURL,
               [directory.path, bridgeURL.path].allSatisfy({ $0.hasPrefix("/")
                   && !$0.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) }) else {
@@ -60,21 +60,26 @@ enum IntegrationSetupArtifacts {
                 try verify(files, in: destination)
             } else {
                 let staging = root.appendingPathComponent(".preparing-\(UUID().uuidString)", isDirectory: true)
+                try Task.checkCancellation()
                 guard mkdir(staging.path, 0o700) == 0 else { throw PreparationError.ioFailure }
                 defer { try? FileManager.default.removeItem(at: staging) }
                 for path in files.keys.sorted() {
+                    try Task.checkCancellation()
                     let file = staging.appendingPathComponent(path)
                     try ensureDirectory(file.deletingLastPathComponent())
                     try files[path]!.write(to: file, options: .withoutOverwriting)
                 }
                 try verify(files, in: staging)
                 // 目标由内容决定；永不替换已有目录，包括用户修改过的同名目录。
+                try Task.checkCancellation()
                 guard renamex_np(staging.path, destination.path, UInt32(RENAME_EXCL)) == 0 else {
                     if errno == EEXIST { try verify(files, in: destination) }
                     else { throw PreparationError.ioFailure }
                     return resultURL(for: agent, directory: destination)
                 }
             }
+        } catch let error as CancellationError {
+            throw error
         } catch let error as PreparationError {
             throw error
         } catch {
@@ -103,6 +108,7 @@ enum IntegrationSetupArtifacts {
         // 部分 Foundation URL 在根目录继续删除末段会生成 /..，不能靠递归比较父路径终止。
         var current = URL(fileURLWithPath: "/", isDirectory: true)
         for component in directory.pathComponents {
+            try Task.checkCancellation()
             guard component != ".", component != ".." else { throw PreparationError.invalidPath }
             if component != "/" { current.appendPathComponent(component, isDirectory: true) }
             if let kind = try kind(at: current) {
@@ -123,6 +129,7 @@ enum IntegrationSetupArtifacts {
         var actual: Set<String> = []
         func inspect(_ folder: URL, prefix: String) throws {
             for item in try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) {
+                try Task.checkCancellation()
                 let relative = prefix + item.lastPathComponent
                 let type = try kind(at: item)
                 guard expected.contains(relative) else { throw PreparationError.modifiedArtifact }
