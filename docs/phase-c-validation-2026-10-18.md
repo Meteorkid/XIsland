@@ -125,6 +125,8 @@ VoiceOver 最后核对为关闭，字幕面板原值为开启且未改动；刷�
 
 定点 73 项通过，最终全量 1392 项中 1387 项通过、0 失败，5 项按需性能/长稳入口未重复执行。新增的更新协调改动不涉及生产存储算法；固定存储长稳仍按原快照解释，不能宣称最终 GUI 整版长稳已覆盖。发布内容与包校验见 [2.0.2 更新说明](releases/2.0.2.md)及[发行验证摘要](compatibility/release-verification-2.0.2.json)。
 
+发布前远端 CI 首轮暴露了旧 Swift 工具链的统计表达式类型推导超时，以及 Windows 测试对 POSIX 路径、目录句柄锁定和主动取消连接的假设。已拆分统计表达式并按平台真实语义修正测试，保留拒绝越界写入和请求身份隔离断言；具体最终 CI 状态以发行页对应提交检查为准。
+
 ## 复跑与证据
 
 前轮原始记录在 `.build/phase-c-2026-10-18/evidence/`，新版记录在 `.build/phase-c-2026-10-19/evidence/`，包含 `soak-summary.json`、`native-ui-validation.json`、`soak-resources.png/pdf`，以及源码 SHA-256、功能日志、性能 JSON、修复前后记录和渲染图。新版长稳在 `.build/phase-c-2026-10-19/soak-8h/`，`run.json` 固定测试二进制和 Swift 源码 hash，`progress.json` 每 60 个事件记录一次，`exit.json` 只在真实进程退出后生成。没有读取生产数据库、真实 hooks、Keychain 或原生信任。

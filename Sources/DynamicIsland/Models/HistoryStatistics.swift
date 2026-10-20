@@ -189,16 +189,17 @@ struct HistoryStatistics: Sendable {
         func finish() -> HistoryStatistics {
             var aggregate = self
             for usage in nativeTasks.values { aggregate.addSummary(usage.summary) }
+            let dailyUsages: [DailyUsage] = aggregate.daily.values.sorted { $0.date < $1.date }
+            let agentUsages: [AgentUsage] = aggregate.agents.map { AgentUsage(agentType: $0.key, sessionCount: $0.value) }
+                .sorted { $0.sessionCount == $1.sessionCount
+                    ? $0.agentType.rawValue < $1.agentType.rawValue : $0.sessionCount > $1.sessionCount }
+            let sortedTools: [ToolFrequency] = aggregate.tools.map { ToolFrequency(toolName: $0.key, callCount: $0.value) }
+                .sorted { $0.callCount == $1.callCount
+                    ? $0.toolName < $1.toolName : $0.callCount > $1.callCount }
             return HistoryStatistics(totalCount: aggregate.totalCount, totalDuration: aggregate.totalDuration,
                 totalTokens: aggregate.totalTokens, totalCost: aggregate.totalCost,
-                dailyUsages: aggregate.daily.values.sorted { $0.date < $1.date },
-                agentUsages: aggregate.agents.map { AgentUsage(agentType: $0.key, sessionCount: $0.value) }
-                    .sorted { $0.sessionCount == $1.sessionCount
-                        ? $0.agentType.rawValue < $1.agentType.rawValue : $0.sessionCount > $1.sessionCount },
-                toolFrequencies: aggregate.tools.map { ToolFrequency(toolName: $0.key, callCount: $0.value) }
-                    .sorted { $0.callCount == $1.callCount
-                        ? $0.toolName < $1.toolName : $0.callCount > $1.callCount }
-                    .prefix(10).map { $0 })
+                dailyUsages: dailyUsages, agentUsages: agentUsages,
+                toolFrequencies: Array(sortedTools.prefix(10)))
         }
 
         private mutating func addSummary(_ summary: HistoryUsageSummary) {

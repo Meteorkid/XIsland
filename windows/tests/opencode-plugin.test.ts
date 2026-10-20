@@ -97,9 +97,9 @@ test('OpenCode generator validates absolute paths and preserves Windows quoting 
   assert.equal(isOwnedOpenCodePlugin(source.replace('const NODE =', 'const NODE_BAD =')), false);
   for (const path of ['relative', '', '/bad\0path', 'C:\\bad\npath']) assert.throws(() => openCodePluginSource(path, hook));
   assert.equal(openCodePluginPath('C:\\Users\\测试'), 'C:\\Users\\测试\\.config\\opencode\\plugins\\xisland.js');
-  assert.equal(openCodePluginPath('/tmp/home'), '/tmp/home/.config/opencode/plugins/xisland.js');
-  assert.equal(openCodePluginPath('/tmp/home', { XDG_CONFIG_HOME: '/tmp/config' }), '/tmp/config/opencode/plugins/xisland.js');
-  assert.equal(openCodePluginPath('/tmp/home', { XDG_CONFIG_HOME: 'relative' }), '/tmp/home/.config/opencode/plugins/xisland.js');
+  assert.equal(openCodePluginPath('/tmp/home'), join('/tmp/home', '.config', 'opencode', 'plugins', 'xisland.js'));
+  assert.equal(openCodePluginPath('/tmp/home', { XDG_CONFIG_HOME: '/tmp/config' }), join('/tmp/config', 'opencode', 'plugins', 'xisland.js'));
+  assert.equal(openCodePluginPath('/tmp/home', { XDG_CONFIG_HOME: 'relative' }), join('/tmp/home', '.config', 'opencode', 'plugins', 'xisland.js'));
   assert.equal(openCodePluginPath('\\\\server\\share\\home'), '\\\\server\\share\\home\\.config\\opencode\\plugins\\xisland.js');
 });
 

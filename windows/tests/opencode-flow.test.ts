@@ -32,6 +32,7 @@ async function fixture(t: TestContext) {
   const events: BridgeEvent[] = [], errors: unknown[] = [];
   const calls: { method: string; input: Data }[] = [];
   const connections = new Set<Socket>();
+  const expectedDisconnects = new WeakSet<Socket>();
   const channels = new Map<string, { socket: Socket; payload: Data }>();
   let sequence = 0;
   const server = createServer(socket => {
@@ -42,7 +43,10 @@ async function fixture(t: TestContext) {
       connections.delete(socket);
       if (transportRequestId && channels.delete(transportRequestId)) store.endTransport(transportRequestId);
     });
-    socket.on('error', error => errors.push(error));
+    socket.on('error', error => {
+      if ((error as NodeJS.ErrnoException).code === 'ECONNRESET' && expectedDisconnects.has(socket)) return;
+      errors.push(error);
+    });
     socket.on('data', chunk => {
       input += chunk;
       if (!input.includes('\n')) return;
@@ -95,13 +99,24 @@ process.exitCode = response.exitCode;
     permission: { reply: capture('permission.reply') }, question: { reply: capture('question.reply') },
   } });
   t.after(async () => {
+    for (const socket of connections) expectedDisconnects.add(socket);
     await hooks.dispose();
     for (const socket of connections) socket.destroy();
     await new Promise<void>(resolve => server.close(() => resolve()));
     await rm(directory, { recursive: true, force: true });
     assert.deepEqual(errors, []);
   });
-  const emit = (type: string, properties: Data) => hooks.event({ event: { type, properties } });
+  const emit = (type: string, properties: Data) => {
+    // 原生已回答会主动终止对应桥接子进程；Windows 可对这条连接返回 reset。
+    if (type === 'permission.replied') {
+      for (const { socket, payload } of channels.values()) {
+        if (payload.session_id === properties.sessionID && payload.native_request_id === properties.requestID) {
+          expectedDisconnects.add(socket);
+        }
+      }
+    }
+    return hooks.event({ event: { type, properties } });
+  };
   const seen = (type: string) => events.filter(event => event.payload.native_event === type);
   const pending = (sessionID: string) => store.snapshot().sessions.find(session => session.id === `opencode-${sessionID}`)?.pendingInteractions ?? [];
   const respond = async (sessionID: string, decision: InteractionDecision) => {

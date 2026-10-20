@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test, { type TestContext } from 'node:test';
@@ -256,10 +256,21 @@ test('Kimi Code directory replacement during commit never follows the link durin
   const outside = await realpath(await mkdtemp(join(tmpdir(), 'xisland-kimi-swap-'))); t.after(() => rm(outside, { recursive: true, force: true }));
   const probe = join(outside, 'probe'); if (!await linked(t, outside, probe, true)) return; await unlink(probe);
   const plan = await planKimiCodeIntegration('install', options); let expected: string[] = [];
+  let blockedRename: unknown;
   await assert.rejects(applyKimiCodeIntegration('install', plan.revision, { ...options, beforeReplace: async () => {
     expected = await readdir(dirname(path)); for (const name of expected) await writeFile(join(outside, name), 'outside sentinel');
-    await rename(dirname(path), dirname(path) + '.moved'); await symlink(outside, dirname(path), process.platform === 'win32' ? 'junction' : 'dir');
-  } }), rejectsCode('unsafe_path'));
+    try { await rename(dirname(path), dirname(path) + '.moved'); }
+    catch (error) {
+      // Windows 的打开目录句柄会先阻止替换；仍验证没有安装或误清理外部文件。
+      if (process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM') blockedRename = error;
+      throw error;
+    } await symlink(outside, dirname(path), process.platform === 'win32' ? 'junction' : 'dir');
+  } }), error => rejectsCode('unsafe_path')(error) || (blockedRename !== undefined && error === blockedRename));
+  if (blockedRename) {
+    assert.equal((await lstat(dirname(path))).isDirectory(), true);
+    await assert.rejects(lstat(dirname(path) + '.moved'), { code: 'ENOENT' });
+    await assert.rejects(readFile(path), { code: 'ENOENT' });
+  }
   assert.deepEqual((await readdir(outside)).sort(), expected.sort());
   for (const name of expected) assert.equal(await readFile(join(outside, name), 'utf8'), 'outside sentinel');
 });

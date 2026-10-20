@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test, { type TestContext } from 'node:test';
@@ -250,13 +250,24 @@ test('OpenCode does not follow a directory swapped to a link during commit or cl
   await unlink(probe);
   const plan = await planOpenCodeIntegration('install', options);
   let expected: string[] = [];
+  let blockedRename: unknown;
   await assert.rejects(applyOpenCodeIntegration('install', plan.revision, { ...options, beforeReplace: async () => {
     const directory = dirname(path);
     expected = await readdir(directory);
     for (const name of expected) await writeFile(join(outside, name), 'outside sentinel');
-    await rename(directory, directory + '.moved');
+    try { await rename(dirname(path), dirname(path) + '.moved'); }
+    catch (error) {
+      // Windows 的打开目录句柄会先阻止替换；仍验证没有安装或误清理外部文件。
+      if (process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM') blockedRename = error;
+      throw error;
+    }
     await symlink(outside, directory, process.platform === 'win32' ? 'junction' : 'dir');
-  } }), rejectsCode('unsafe_path'));
+  } }), error => rejectsCode('unsafe_path')(error) || (blockedRename !== undefined && error === blockedRename));
+  if (blockedRename) {
+    assert.equal((await lstat(dirname(path))).isDirectory(), true);
+    await assert.rejects(lstat(dirname(path) + '.moved'), { code: 'ENOENT' });
+    await assert.rejects(readFile(path), { code: 'ENOENT' });
+  }
   assert.deepEqual((await readdir(outside)).sort(), expected.sort());
   for (const name of expected) assert.equal(await readFile(join(outside, name), 'utf8'), 'outside sentinel');
 });

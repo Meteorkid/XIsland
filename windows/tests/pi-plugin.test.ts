@@ -37,7 +37,7 @@ else process.stdout.write(JSON.stringify({ decision: 'allow', answer: 'untrusted
 
 test('Pi path and exact source ownership support native Windows and guarded custom agent directories', () => {
   assert.equal(piPluginPath('C:\\Users\\Tester'), 'C:\\Users\\Tester\\.pi\\agent\\extensions\\xisland.ts');
-  assert.equal(piPluginPath('/home/test', { PI_CODING_AGENT_DIR: '/home/test/custom' }), '/home/test/custom/extensions/xisland.ts');
+  assert.equal(piPluginPath('/home/test', { PI_CODING_AGENT_DIR: '/home/test/custom' }), join('/home/test/custom', 'extensions', 'xisland.ts'));
   assert.throws(() => piPluginPath('/home/test', { PI_CODING_AGENT_DIR: 'relative' }));
   const source = piPluginSource('C:\\Program Files\\XIsland\\node.exe', 'C:\\Program Files\\XIsland\\xisland-hook.cjs');
   assert.equal(isOwnedPiPlugin(source), true); assert.equal(isOwnedPiPlugin(source.replace(/\n/g, '\r\n')), true);

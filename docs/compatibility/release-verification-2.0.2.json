@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "releaseVersion": "2.0.2",
-  "generatedAt": "2026-10-20T09:53:10.388091+00:00",
+  "generatedAt": "2026-10-20T10:14:53.030850+00:00",
   "status": "local_release_artifacts_verified",
   "source": {
-    "baseCommit": "84ef0274d559f1282fefdbf7803edd4c1c33d612",
+    "baseCommit": "af8491a723b06e27e200108c227265e73bfa1a91",
     "releaseTag": "v2.0.2",
-    "sourceInputsSHA256": "d50636b26b55a9349c506cb5337ccc6c2c98f200e5b984daa2313d26b2ce4474",
+    "sourceInputsSHA256": "ac8298cd12eb8464d5c37e48f652d4c4789b337bd527688fe9982b1d0f0c3b1c",
     "sourceInputFiles": 662,
     "buildInputsUnchangedAfterValidation": true
   },
@@ -16,10 +16,10 @@
       "architecture": "arm64",
       "minimumOS": "14.0",
       "dmgName": "XIsland-2.0.2.dmg",
-      "dmgSHA256": "07731bc8bc75676ace8daaf73ce7f3456e2d638aa32e323809e0a792b06b17b6",
-      "dmgBytes": 5916880,
+      "dmgSHA256": "361eb43939855450a5f4b3e6acf845d79081d4aff8c65b113011b33435874e47",
+      "dmgBytes": 5916959,
       "binarySHA256": {
-        "XIsland": "54a5c9d13b7cf659bfb4da7576e8eef624ecede7f72f8dc02b8570b62f686ab6",
+        "XIsland": "42277fa0fec53c47cb66bfeba0c80060e3d6d1d25374c6d350443174274ee459",
         "di-bridge": "852107a04d91abca2715d679ae75a2f72dcc99c9611aefebccfc0dc9c71b5775"
       },
       "signature": "ad-hoc verified on read-only mounted DMG",
@@ -50,7 +50,7 @@
         "Test skipped - 按需测量后台历史与主线程心跳",
         "Test skipped - 显式启用真实 Timer 回调计数；不是 CPU 或 FPS 测量"
       ],
-      "logSHA256": "5a56c24e167c95a97dc6b7bb350d00d193e582315df3ba7a96ee026e06eee1b8",
+      "logSHA256": "d8f0b561c8c725ca173d6ea82b66e03dd9aa718b512ddedcd2805464e7ef718e",
       "renderSuitesEnabled": true
     },
     "updateTerminationRegression": {
@@ -70,7 +70,7 @@
     "compiledBridge": {
       "status": "passed",
       "scenarios": 127,
-      "reportSHA256": "e494052d8680d8b669a42df2b413ca55684f035262910ddab3d69c40586215cc",
+      "reportSHA256": "c83a43b87da95766f106265af1a3ac9c958ab02be9fb3f419b030e85ec3baaa4",
       "realClientVerified": false
     },
     "workbuddyExport": {
@@ -81,7 +81,7 @@
     },
     "codexLifecycleApp": {
       "status": "passed",
-      "reportSHA256": "896d9c47b9e1d44591c12d8c6482966274199e3ea897a37ee4c238ca35d32839",
+      "reportSHA256": "1550b5cddd7d4b69a64337a6f42221f013991aeb6b04901845e2fb6969b3e29b",
       "scope": "Synthetic vendor payloads -> bundled di-bridge -> isolated XIsland -> diagnostics and read-only SQLite",
       "realClientVerified": false,
       "nativeTrustChanged": false
@@ -117,10 +117,10 @@
       "signature": "ad-hoc",
       "notarized": false,
       "binariesMatchTestedBundle": true,
-      "dmgSHA256": "07731bc8bc75676ace8daaf73ce7f3456e2d638aa32e323809e0a792b06b17b6",
-      "dmgBytes": 5916880,
+      "dmgSHA256": "361eb43939855450a5f4b3e6acf845d79081d4aff8c65b113011b33435874e47",
+      "dmgBytes": 5916959,
       "binarySHA256": {
-        "XIsland": "54a5c9d13b7cf659bfb4da7576e8eef624ecede7f72f8dc02b8570b62f686ab6",
+        "XIsland": "42277fa0fec53c47cb66bfeba0c80060e3d6d1d25374c6d350443174274ee459",
         "di-bridge": "852107a04d91abca2715d679ae75a2f72dcc99c9611aefebccfc0dc9c71b5775"
       },
       "cliMatchesSource": true,
