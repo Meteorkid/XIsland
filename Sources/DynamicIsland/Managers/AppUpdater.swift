@@ -50,6 +50,22 @@ enum AppUpdaterError: LocalizedError, Equatable {
 
 struct AppUpdater {
 
+    /// 期望的 Developer ID 团队标识（Team ID）。
+    ///
+    /// 当前发布包为 ad-hoc 签名（`TeamIdentifier=not set`），因此这里保持 `nil`：
+    /// 身份校验代码已就位但不启用，避免在没有证书的情况下让所有用户的自动更新失败。
+    ///
+    /// 取得 Developer ID 证书后，把 Team ID 填入此处即可切换为强制身份校验 ——
+    /// 任何未提供该 Team ID 的下载包都会被拒绝安装（由 `verifySignature` 与安装脚本双重执行）。
+    static let expectedTeamIdentifier: String? = nil
+
+    /// 代码签名校验结果。
+    enum SignatureVerification {
+        /// 校验通过。`teamIdentifier` 为 nil 表示只验证了签名自洽，未验证签名者身份。
+        case accepted(teamIdentifier: String?)
+        case rejected(reason: String)
+    }
+
     // 依赖注入所用的类型别名，便于测试中替换实现
     typealias CommandRunner = @Sendable (_ launchPath: String, _ arguments: [String]) throws -> String
     typealias Downloader = @Sendable (_ sourceURL: URL, _ destinationURL: URL) async throws -> Void
@@ -293,6 +309,50 @@ struct AppUpdater {
 
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
+
+    // MARK: - 代码签名身份校验
+
+    /// 从 `codesign -dv --verbose=4` 的输出中解析 `TeamIdentifier`。
+    ///
+    /// ad-hoc 签名输出 `TeamIdentifier=not set`，此时返回 nil —— 该情况不代表签名有效，
+    /// 只表示没有可用身份信息。
+    static func parseTeamIdentifier(from output: String) -> String? {
+        for rawLine in output.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard line.hasPrefix("TeamIdentifier=") else { continue }
+            let value = String(line.dropFirst("TeamIdentifier=".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if value.isEmpty || value == "not set" { return nil }
+            return value
+        }
+        return nil
+    }
+
+    /// 校验待安装应用的代码签名。
+    ///
+    /// `codesign --verify` 只验证签名自洽（资源封印与签名匹配），ad-hoc 自签名同样能通过，
+    /// 因此它只能拦截下载损坏或篡改，无法拦截伪造发布。签名者身份由 `TeamIdentifier` 比对承担，
+    /// 且仅在 `expectedTeamIdentifier` 已配置时启用。
+    func verifySignature(at path: String) -> SignatureVerification {
+        do {
+            _ = try runCommand("/usr/bin/codesign", ["--verify", "--deep", "--strict", path])
+        } catch {
+            return .rejected(reason: "codesign --verify failed for \(path)")
+        }
+
+        guard let expected = Self.expectedTeamIdentifier, !expected.isEmpty else {
+            return .accepted(teamIdentifier: nil)
+        }
+
+        guard let output = try? runCommand("/usr/bin/codesign", ["-dv", "--verbose=4", path]),
+              let actual = Self.parseTeamIdentifier(from: output) else {
+            return .rejected(reason: "downloaded app carries no TeamIdentifier; expected \(expected)")
+        }
+        guard actual == expected else {
+            return .rejected(reason: "TeamIdentifier mismatch: expected \(expected), got \(actual)")
+        }
+        return .accepted(teamIdentifier: actual)
+    }
 }
 
 // MARK: - 安装流程
@@ -367,10 +427,16 @@ extension AppUpdater {
             throw AppUpdaterError.appNotFound
         }
 
-        // 校验挂载应用的代码签名
-        do {
-            _ = try runCommand("/usr/bin/codesign", ["--verify", "--deep", "--strict", mountedAppPath])
-        } catch {
+        // 校验挂载应用的代码签名与（若已配置）签名者身份
+        switch verifySignature(at: mountedAppPath) {
+        case .accepted(let teamIdentifier):
+            if let teamIdentifier {
+                NSLog("XIsland update: signature verified, TeamIdentifier=%@", teamIdentifier)
+            } else {
+                NSLog("XIsland update: expectedTeamIdentifier is unset; only signature self-consistency was verified.")
+            }
+        case .rejected(let reason):
+            NSLog("XIsland update: signature rejected — %@", reason)
             throw AppUpdaterError.codeSigningFailed
         }
 
@@ -383,7 +449,8 @@ extension AppUpdater {
                 mountedAppPath: mountedAppPath,
                 appPath: appPath,
                 mountDirectory: mountDirectory,
-                tempDirectory: tempDirectory.path
+                tempDirectory: tempDirectory.path,
+                expectedTeamIdentifier: Self.expectedTeamIdentifier
             )
         } catch {
             throw AppUpdaterError.installFailed
@@ -417,14 +484,16 @@ extension AppUpdater {
         mountedAppPath: String,
         appPath: String,
         mountDirectory: String,
-        tempDirectory: String
+        tempDirectory: String,
+        expectedTeamIdentifier: String? = nil
     ) throws {
         let script = makeInstallerScript(
             currentPID: currentPID,
             mountedAppPath: mountedAppPath,
             appPath: appPath,
             mountDirectory: mountDirectory,
-            tempDirectory: tempDirectory
+            tempDirectory: tempDirectory,
+            expectedTeamIdentifier: expectedTeamIdentifier
         )
 
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
@@ -436,7 +505,8 @@ extension AppUpdater {
         mountedAppPath: String,
         appPath: String,
         mountDirectory: String,
-        tempDirectory: String
+        tempDirectory: String,
+        expectedTeamIdentifier: String? = nil
     ) -> String {
         """
         #!/bin/sh
@@ -445,6 +515,7 @@ extension AppUpdater {
         TEMP_DIR=\(shellQuoted(tempDirectory))
         APP_PATH=\(shellQuoted(appPath))
         MOUNT_DIR=\(shellQuoted(mountDirectory))
+        EXPECTED_TEAM=\(shellQuoted(expectedTeamIdentifier ?? ""))
         TRANSACTION_DIR=""
         REPLACEMENT_STARTED=0
         SUCCEEDED=0
@@ -499,6 +570,20 @@ extension AppUpdater {
         cp -R \(shellQuoted(mountedAppPath)) "$STAGED_APP"
         xattr -cr "$STAGED_APP" || true
         codesign --verify --deep --strict "$STAGED_APP"
+
+        # 签名者身份校验：仅在 EXPECTED_TEAM 非空时启用。
+        # codesign --verify 只验证签名自洽，ad-hoc 自签名同样能通过，不能作为防伪造发布的依据。
+        if [ -n "$EXPECTED_TEAM" ]; then
+          ACTUAL_TEAM=$(codesign -dv --verbose=4 "$STAGED_APP" 2>&1 | awk -F= '$1 ~ /TeamIdentifier/ {print $2; exit}')
+          if [ -z "$ACTUAL_TEAM" ] || [ "$ACTUAL_TEAM" = "not set" ]; then
+            echo "Update rejected: downloaded app carries no TeamIdentifier (expected $EXPECTED_TEAM)" >&2
+            exit 1
+          fi
+          if [ "$ACTUAL_TEAM" != "$EXPECTED_TEAM" ]; then
+            echo "Update rejected: TeamIdentifier mismatch (expected $EXPECTED_TEAM, got $ACTUAL_TEAM)" >&2
+            exit 1
+          fi
+        fi
 
         if [ -e "$APP_PATH" ] || [ -L "$APP_PATH" ]; then
           mv "$APP_PATH" "$TRANSACTION_DIR/previous.app"

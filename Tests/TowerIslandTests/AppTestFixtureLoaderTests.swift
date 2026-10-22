@@ -36,7 +36,7 @@ final class AppTestFixtureLoaderTests: XCTestCase {
         XCTAssertEqual(updateManager.latestRelease?.normalizedVersion, "1.2.9")
         XCTAssertEqual(
             updateManager.latestRelease?.dmgURL,
-            URL(string: "https://example.com/XIsland-1.2.9.dmg")
+            URL(string: "https://github.com/XIsland-1.2.9.dmg")
         )
     }
 

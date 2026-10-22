@@ -158,6 +158,33 @@ enum TerminalApp: String, CaseIterable {
 }
 
 enum TerminalJumpManager {
+    /// 外部命令解析所用的固定 PATH。
+    ///
+    /// 跳转功能通过 `/usr/bin/env` 调用 wezterm / kitty / code 等，若继承进程的 PATH，
+    /// 任何用户可写目录都可以用同名脚本劫持这些调用。这里固定为系统目录，
+    /// 并保留 Homebrew 的两个标准前缀（由 root 拥有，非用户可写）。
+    static let controlledPATH = "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin"
+
+    /// 为外部命令设置受控的执行环境。
+    private static func applyControlledEnvironment(to process: Process) {
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = controlledPATH
+        process.environment = environment
+    }
+
+    /// 转义 AppleScript 字符串字面量中的特殊字符。
+    ///
+    /// 所有插入 AppleScript 源码的变量都必须经过此函数，否则一个 `"` 就能闭合字符串字面量
+    /// 并注入任意语句（如 `do shell script`）。
+    static func appleScriptQuoted(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
+    }
+
     /// 主线程快照，避免后台线程读取 @Observable 对象产生数据竞争
     struct SessionSnapshot {
         let id: String
@@ -359,10 +386,7 @@ enum TerminalJumpManager {
         }
 
         // 转义 AppleScript 字符串中的双引号、反斜杠和换行符
-        let escapedValue = matchValue.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
+        let escapedValue = appleScriptQuoted(matchValue)
         log("iTerm jump: prop=\(matchProp) value=\(escapedValue)")
         let script = """
         tell application "iTerm2"
@@ -386,7 +410,7 @@ enum TerminalJumpManager {
 
     private static func jumpToTerminalWindow(snap: SessionSnapshot) -> Bool {
         let folderName = (snap.workingDirectory as NSString).lastPathComponent
-        let escapedFolder = folderName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let escapedFolder = appleScriptQuoted(folderName)
         let hasWindowId = snap.windowNumber != nil
         guard hasWindowId || !folderName.isEmpty else { return false }
 
@@ -519,6 +543,8 @@ enum TerminalJumpManager {
     private static func jumpToTmuxSession(snap: SessionSnapshot, app: TerminalApp) {
         let dir = snap.workingDirectory
         guard !dir.isEmpty else { return }
+        // workingDirectory 直接来自 socket 消息，未经校验；必须转义后再插入 AppleScript。
+        let quotedDir = appleScriptQuoted(dir)
 
         let script: String
         switch app {
@@ -529,7 +555,7 @@ enum TerminalJumpManager {
                 tell current window
                     repeat with aTab in tabs
                         repeat with aSession in sessions of aTab
-                            if name of aSession contains "\(dir)" then
+                            if name of aSession contains "\(quotedDir)" then
                                 select aTab
                                 select aSession
                                 return
@@ -553,6 +579,7 @@ enum TerminalJumpManager {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["wezterm", "cli", "list", "--format", "json"]
+        applyControlledEnvironment(to: process)
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -569,6 +596,7 @@ enum TerminalJumpManager {
                             let activate = Process()
                             activate.executableURL = URL(fileURLWithPath: "/usr/bin/env")
                             activate.arguments = ["wezterm", "cli", "activate-tab", "--tab-id", String(tabId)]
+                            applyControlledEnvironment(to: activate)
                             activate.standardOutput = FileHandle.nullDevice
                             activate.standardError = FileHandle.nullDevice
                             try? activate.run()
@@ -591,6 +619,7 @@ enum TerminalJumpManager {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["kitty", "@", "ls"]
+        applyControlledEnvironment(to: process)
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -609,6 +638,7 @@ enum TerminalJumpManager {
                                     let focus = Process()
                                     focus.executableURL = URL(fileURLWithPath: "/usr/bin/env")
                                     focus.arguments = ["kitty", "@", "focus-window", "--match", "id:\(id)"]
+                                    applyControlledEnvironment(to: focus)
                                     focus.standardOutput = FileHandle.nullDevice
                                     focus.standardError = FileHandle.nullDevice
                                     try? focus.run()
@@ -757,6 +787,7 @@ enum TerminalJumpManager {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.arguments = candidate + [dir]
+            applyControlledEnvironment(to: process)
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice
 

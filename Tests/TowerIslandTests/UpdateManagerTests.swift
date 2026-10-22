@@ -95,22 +95,56 @@ final class UpdateManagerTests: XCTestCase {
 
     @MainActor
     func testParsesGitHubReleasePayload() throws {
-        let data = #"{"tag_name":"v1.2.6","html_url":"https://example.com/release","published_at":"2026-04-14T12:00:00Z","assets":[{"name":"XIsland-1.2.6.dmg","browser_download_url":"https://example.com/XIsland-1.2.6.dmg"}]}"#.data(using: .utf8)!
+        let data = #"{"tag_name":"v1.2.6","html_url":"https://github.com/release","published_at":"2026-04-14T12:00:00Z","assets":[{"name":"XIsland-1.2.6.dmg","browser_download_url":"https://github.com/XIsland-1.2.6.dmg"}]}"#.data(using: .utf8)!
         let release = try UpdateManager.githubReleaseDecoder.decode(UpdateManager.ReleaseInfo.self, from: data)
         let expectedDate = ISO8601DateFormatter().date(from: "2026-04-14T12:00:00Z")
 
         XCTAssertEqual(release.tagName, "v1.2.6")
-        XCTAssertEqual(release.htmlURL, URL(string: "https://example.com/release"))
+        XCTAssertEqual(release.htmlURL, URL(string: "https://github.com/release"))
         XCTAssertEqual(release.publishedAt, expectedDate)
-        XCTAssertEqual(release.dmgURL, URL(string: "https://example.com/XIsland-1.2.6.dmg"))
+        XCTAssertEqual(release.dmgURL, URL(string: "https://github.com/XIsland-1.2.6.dmg"))
     }
 
     @MainActor
     func testReleaseInfoPrefersExactVersionedDmgAsset() throws {
-        let data = #"{"tag_name":"v1.2.6","html_url":"https://example.com/release","published_at":"2026-04-14T12:00:00Z","assets":[{"name":"XIsland-intel.dmg","browser_download_url":"https://example.com/wrong.dmg"},{"name":"XIsland-1.2.6.dmg","browser_download_url":"https://example.com/XIsland-1.2.6.dmg"}]}"#.data(using: .utf8)!
+        let data = #"{"tag_name":"v1.2.6","html_url":"https://github.com/release","published_at":"2026-04-14T12:00:00Z","assets":[{"name":"XIsland-intel.dmg","browser_download_url":"https://github.com/wrong.dmg"},{"name":"XIsland-1.2.6.dmg","browser_download_url":"https://github.com/XIsland-1.2.6.dmg"}]}"#.data(using: .utf8)!
         let release = try UpdateManager.githubReleaseDecoder.decode(UpdateManager.ReleaseInfo.self, from: data)
 
-        XCTAssertEqual(release.dmgURL, URL(string: "https://example.com/XIsland-1.2.6.dmg"))
+        XCTAssertEqual(release.dmgURL, URL(string: "https://github.com/XIsland-1.2.6.dmg"))
+    }
+
+    /// 下载资产只允许来自 GitHub 自有发布域。
+    ///
+    /// `browserDownloadURL` 取自 GitHub API 的应答内容，不做校验会让应答把更新载荷
+    /// 指向任意主机，从而绕过 codesign 之外的所有防护。
+    func testDmgURLRejectsHostsOutsideTheAllowlist() {
+        let allowed = UpdateManager.ReleaseInfo.allowedDownloadHosts
+
+        for host in allowed {
+            let release = UpdateManager.ReleaseInfo(
+                tagName: "v1.2.6",
+                htmlURL: URL(string: "https://github.com/release")!,
+                publishedAt: Date(),
+                assets: [
+                    .init(name: "XIsland-1.2.6.dmg",
+                          browserDownloadURL: URL(string: "https://\(host)/XIsland-1.2.6.dmg")!)
+                ]
+            )
+            XCTAssertNotNil(release.dmgURL, "\(host) 应被视为允许的下载来源")
+        }
+
+        for host in ["evil.example", "github.com.evil.test", "objects.githubusercontent.com.evil.test"] {
+            let release = UpdateManager.ReleaseInfo(
+                tagName: "v1.2.6",
+                htmlURL: URL(string: "https://github.com/release")!,
+                publishedAt: Date(),
+                assets: [
+                    .init(name: "XIsland-1.2.6.dmg",
+                          browserDownloadURL: URL(string: "https://\(host)/XIsland-1.2.6.dmg")!)
+                ]
+            )
+            XCTAssertNil(release.dmgURL, "\(host) 必须被下载来源白名单拒绝")
+        }
     }
 
     @MainActor
@@ -124,7 +158,7 @@ final class UpdateManagerTests: XCTestCase {
             bumpedParts[bumpedParts.count - 1] += 1
             return "v" + bumpedParts.map(String.init).joined(separator: ".")
         }()
-        let data = #"{"tag_name":"\#(remoteVersion)","html_url":"https://example.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
+        let data = #"{"tag_name":"\#(remoteVersion)","html_url":"https://github.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
         let release = try UpdateManager.githubReleaseDecoder.decode(UpdateManager.ReleaseInfo.self, from: data)
 
         manager.applyCheckResult(release)
@@ -138,7 +172,7 @@ final class UpdateManagerTests: XCTestCase {
     func testApplyCheckResultTransitionsToUpToDateForNonNewerRelease() throws {
         let manager = UpdateManager()
         let currentVersion = manager.currentVersion
-        let data = #"{"tag_name":"v\#(currentVersion)","html_url":"https://example.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
+        let data = #"{"tag_name":"v\#(currentVersion)","html_url":"https://github.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
         let release = try UpdateManager.githubReleaseDecoder.decode(UpdateManager.ReleaseInfo.self, from: data)
 
         manager.applyCheckResult(release)
@@ -152,7 +186,7 @@ final class UpdateManagerTests: XCTestCase {
     func testApplyCheckResultRejectsMalformedReleaseTag() throws {
         let manager = UpdateManager()
         let currentVersion = manager.currentVersion
-        let data = #"{"tag_name":"v\#(currentVersion)-beta","html_url":"https://example.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
+        let data = #"{"tag_name":"v\#(currentVersion)-beta","html_url":"https://github.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
         let release = try UpdateManager.githubReleaseDecoder.decode(UpdateManager.ReleaseInfo.self, from: data)
 
         manager.applyCheckResult(release)
@@ -171,7 +205,7 @@ final class UpdateManagerTests: XCTestCase {
         let manager = UpdateManager(fetchReleaseData: {
             Data("not valid json".utf8)
         })
-        let staleData = #"{"tag_name":"v9.9.9","html_url":"https://example.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
+        let staleData = #"{"tag_name":"v9.9.9","html_url":"https://github.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
         manager.latestRelease = try UpdateManager.githubReleaseDecoder.decode(UpdateManager.ReleaseInfo.self, from: staleData)
 
         await manager.checkForUpdates()
@@ -191,17 +225,17 @@ final class UpdateManagerTests: XCTestCase {
         let expectedHash = String(repeating: "a", count: 64)
         let release = UpdateManager.ReleaseInfo(
             tagName: "v1.2.6",
-            htmlURL: URL(string: "https://example.com/release")!,
+            htmlURL: URL(string: "https://github.com/release")!,
             publishedAt: ISO8601DateFormatter().date(from: "2026-04-14T12:00:00Z")!,
             assets: [
                 .init(
                     name: "XIsland-1.2.6.dmg",
-                    browserDownloadURL: URL(string: "https://example.com/XIsland-1.2.6.dmg")!
+                    browserDownloadURL: URL(string: "https://github.com/XIsland-1.2.6.dmg")!
                 )
             ],
             body: "XIsland-1.2.6.dmg SHA256: \(expectedHash)"
         )
-        let expectedDMGURL = URL(string: "https://example.com/XIsland-1.2.6.dmg")!
+        let expectedDMGURL = URL(string: "https://github.com/XIsland-1.2.6.dmg")!
         let capturedReleaseURL = URLCapture()
         let updater = AppUpdater(
             runCommand: { _, _ in "" },
@@ -249,7 +283,7 @@ final class UpdateManagerTests: XCTestCase {
     func testInstallUpdateRequiresDmgAsset() async {
         let release = UpdateManager.ReleaseInfo(
             tagName: "v1.2.6",
-            htmlURL: URL(string: "https://example.com/release")!,
+            htmlURL: URL(string: "https://github.com/release")!,
             publishedAt: ISO8601DateFormatter().date(from: "2026-04-14T12:00:00Z")!,
             assets: []
         )
@@ -280,7 +314,7 @@ final class UpdateManagerTests: XCTestCase {
         })
         let manager = UpdateManager(updater: updater)
         manager.latestRelease = .init(tagName: "v2.0.2", htmlURL: URL(string: "https://example.invalid/release")!,
-            publishedAt: Date(), assets: [.init(name: "XIsland-2.0.2.dmg", browserDownloadURL: URL(string: "https://example.invalid/update.dmg")!)],
+            publishedAt: Date(), assets: [.init(name: "XIsland-2.0.2.dmg", browserDownloadURL: URL(string: "https://github.com/update.dmg")!)],
             body: "XIsland-2.0.2.dmg SHA256: " + String(repeating: "a", count: 64))
         let first = Task { await manager.installUpdate() }
         await fulfillment(of: [started], timeout: 5)
@@ -312,12 +346,12 @@ final class UpdateManagerTests: XCTestCase {
         let capturedHash = StringCapture()
         let release = UpdateManager.ReleaseInfo(
             tagName: "v1.2.6",
-            htmlURL: URL(string: "https://example.com/release")!,
+            htmlURL: URL(string: "https://github.com/release")!,
             publishedAt: ISO8601DateFormatter().date(from: "2026-04-14T12:00:00Z")!,
             assets: [
                 .init(
                     name: "XIsland-1.2.6.dmg",
-                    browserDownloadURL: URL(string: "https://example.com/XIsland-1.2.6.dmg")!
+                    browserDownloadURL: URL(string: "https://github.com/XIsland-1.2.6.dmg")!
                 )
             ],
             body: "XIsland-1.2.6.dmg SHA256: \(expectedHash)"
@@ -346,7 +380,7 @@ final class UpdateManagerTests: XCTestCase {
             }
             return Data()
         })
-        let staleData = #"{"tag_name":"v9.9.9","html_url":"https://example.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
+        let staleData = #"{"tag_name":"v9.9.9","html_url":"https://github.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
         let staleRelease = try! UpdateManager.githubReleaseDecoder.decode(UpdateManager.ReleaseInfo.self, from: staleData)
         manager.latestRelease = staleRelease
         let task = Task { @MainActor in
@@ -369,7 +403,7 @@ final class UpdateManagerTests: XCTestCase {
         let manager = UpdateManager(fetchReleaseData: {
             throw URLError(.cancelled)
         })
-        let staleData = #"{"tag_name":"v9.9.9","html_url":"https://example.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
+        let staleData = #"{"tag_name":"v9.9.9","html_url":"https://github.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
         let staleRelease = try UpdateManager.githubReleaseDecoder.decode(UpdateManager.ReleaseInfo.self, from: staleData)
         manager.latestRelease = staleRelease
 
@@ -387,7 +421,7 @@ final class UpdateManagerTests: XCTestCase {
         var bumpedParts = parts.isEmpty ? [1] : parts
         bumpedParts[bumpedParts.count - 1] += 1
         let remoteVersion = "v" + bumpedParts.map(String.init).joined(separator: ".")
-        let data = #"{"tag_name":"\#(remoteVersion)","html_url":"https://example.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
+        let data = #"{"tag_name":"\#(remoteVersion)","html_url":"https://github.com/release","published_at":"2026-04-14T12:00:00Z"}"#.data(using: .utf8)!
         let gate = FetchGate()
         let manager = UpdateManager(fetchReleaseData: {
             await gate.wait()
@@ -430,7 +464,7 @@ final class UpdateManagerTests: XCTestCase {
     @MainActor
     func testCheckForUpdatesRecoversAfterTransientFailure() async {
         let currentVersion = UpdateManager().currentVersion
-        let successData = #"{"tag_name":"v\#(currentVersion)","html_url":"https://example.com/release","published_at":"2026-04-15T07:00:00Z","assets":[{"name":"XIsland.dmg","browser_download_url":"https://example.com/XIsland.dmg"}]}"#
+        let successData = #"{"tag_name":"v\#(currentVersion)","html_url":"https://github.com/release","published_at":"2026-04-15T07:00:00Z","assets":[{"name":"XIsland.dmg","browser_download_url":"https://github.com/XIsland.dmg"}]}"#
             .data(using: .utf8)!
         let sequence = FetchSequence([
             .failure(URLError(.cannotConnectToHost)),
@@ -462,12 +496,12 @@ final class UpdateManagerTests: XCTestCase {
             state: .updateAvailable,
             release: UpdateManager.ReleaseInfo(
                 tagName: "v1.2.9",
-                htmlURL: URL(string: "https://example.com/release")!,
+                htmlURL: URL(string: "https://github.com/release")!,
                 publishedAt: ISO8601DateFormatter().date(from: "2026-04-15T08:00:00Z")!,
                 assets: [
                     .init(
                         name: "XIsland-1.2.9.dmg",
-                        browserDownloadURL: URL(string: "https://example.com/XIsland-1.2.9.dmg")!
+                        browserDownloadURL: URL(string: "https://github.com/XIsland-1.2.9.dmg")!
                     )
                 ]
             ),
@@ -489,7 +523,7 @@ final class UpdateManagerTests: XCTestCase {
             state: .idle,
             release: UpdateManager.ReleaseInfo(
                 tagName: "v1.2.9",
-                htmlURL: URL(string: "https://example.com/release")!,
+                htmlURL: URL(string: "https://github.com/release")!,
                 publishedAt: ISO8601DateFormatter().date(from: "2026-04-15T08:00:00Z")!,
                 assets: []
             ),

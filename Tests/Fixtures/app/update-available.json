@@ -4,12 +4,12 @@
     "state": "updateAvailable",
     "release": {
       "tag_name": "v1.2.9",
-      "html_url": "https://example.com/release",
+      "html_url": "https://github.com/release",
       "published_at": "2026-04-15T08:00:00Z",
       "assets": [
         {
           "name": "XIsland-1.2.9.dmg",
-          "browser_download_url": "https://example.com/XIsland-1.2.9.dmg"
+          "browser_download_url": "https://github.com/XIsland-1.2.9.dmg"
         }
       ]
     }
