@@ -69,6 +69,24 @@ final class IntegrationSetupPresentationTests: XCTestCase {
         XCTAssertEqual(primary([row(.zed, .needsConfiguration)]), .openGuide(.zed))
     }
 
+    func testFocusedRequestWaitsForDiscoveryAndUsesCurrentPhase() {
+        let request = IntegrationSetupFocusRequest(agent: .codex)
+        XCTAssertNil(IntegrationSetupPresentation.focusTarget(request, rows: [], handledID: nil))
+        for phase in IntegrationSetupPhase.allCases {
+            let target = IntegrationSetupPresentation.focusTarget(request, rows: [row(.codex, phase)], handledID: nil)
+            XCTAssertEqual(target?.request, request)
+            XCTAssertEqual(target?.phase, phase)
+        }
+    }
+
+    func testPeriodicRefreshDoesNotRepeatFocusButAnotherClickCan() {
+        let first = IntegrationSetupFocusRequest(agent: .codex)
+        XCTAssertNil(IntegrationSetupPresentation.focusTarget(first, rows: [row(.codex, .connected)], handledID: first.id))
+        let repeated = IntegrationSetupFocusRequest(agent: .codex)
+        XCTAssertNotNil(IntegrationSetupPresentation.focusTarget(repeated, rows: [row(.codex, .connected)], handledID: first.id))
+        XCTAssertNil(IntegrationSetupPresentation.focusTarget(nil, rows: [row(.codex, .needsAuthorization)], handledID: nil))
+    }
+
     private func primary(_ rows: [IntegrationSetupRow]) -> IntegrationSetupAction? {
         IntegrationSetupPresentation.primaryAction(rows, canPrepareAll: true, canPrepareFiles: true)
     }

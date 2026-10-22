@@ -20,15 +20,22 @@ struct IntegrationSetupView: View {
     let onLater: () -> Void
     var onPrepareFiles: ((AgentType) -> Void)? = nil
     var onPrepareAll: (() -> Void)? = nil
+    var focusRequest: IntegrationSetupFocusRequest? = nil
+    var clientLaunchFailure: IntegrationClientLauncher.Failure? = nil
+    var openingAgent: AgentType? = nil
 
     @State private var showsReadySources = false
     @State private var showsAllSources = false
     @State private var expandedDetails: Set<String> = []
+    @State private var handledFocusID: UUID?
 
     private var pendingRows: [IntegrationSetupRow] { IntegrationSetupPresentation.pendingRows(rows) }
     private var readyRows: [IntegrationSetupRow] { IntegrationSetupPresentation.readyRows(rows) }
     private var otherRows: [IntegrationSetupRow] { IntegrationSetupPresentation.otherRows(rows) }
     private var hasDisabledSources: Bool { otherRows.contains { $0.phase == .disabled } }
+    private var focusTarget: IntegrationSetupFocusTarget? {
+        IntegrationSetupPresentation.focusTarget(focusRequest, rows: rows, handledID: handledFocusID)
+    }
     private var allConnected: Bool {
         pendingRows.isEmpty && !readyRows.isEmpty && readyRows.allSatisfy { $0.phase == .connected }
     }
@@ -41,14 +48,29 @@ struct IntegrationSetupView: View {
         VStack(alignment: .leading, spacing: 0) {
             header.padding(24)
             Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if pendingRows.isEmpty { settledStatus }
-                    else { pendingSources }
-                    if !readyRows.isEmpty { readySources }
-                    if !otherRows.isEmpty { otherSources }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if pendingRows.isEmpty { settledStatus }
+                        else { pendingSources }
+                        if !readyRows.isEmpty { readySources }
+                        if !otherRows.isEmpty { otherSources }
+                    }
+                    .padding(24)
                 }
-                .padding(24)
+                .task(id: focusTarget) {
+                    guard let target = focusTarget else { return }
+                    if readyRows.contains(where: { $0.agent == target.request.agent }) { showsReadySources = true }
+                    if otherRows.contains(where: { $0.agent == target.request.agent }) { showsAllSources = true }
+                    expandedDetails.insert(target.request.agent.rawValue)
+                    // 展开目标分组后，让布局先登记行的位置，再执行一次定位。
+                    await withCheckedContinuation { continuation in
+                        DispatchQueue.main.async { continuation.resume() }
+                    }
+                    guard !Task.isCancelled, focusTarget == target else { return }
+                    proxy.scrollTo(target.request.agent.rawValue, anchor: .top)
+                    handledFocusID = target.request.id
+                }
             }
             Divider()
             footer.padding(.horizontal, 24).padding(.vertical, 12)
@@ -87,7 +109,7 @@ struct IntegrationSetupView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .disabled(isRefreshing)
+                    .disabled(isRefreshing || openingAgent != nil)
                     .accessibilityIdentifier("integration-setup.primary")
                 }
                 .padding(.top, 8)
@@ -164,6 +186,7 @@ struct IntegrationSetupView: View {
         VStack(spacing: 0) {
             ForEach(Array(sources.enumerated()), id: \.element.id) { index, row in
                 sourceRow(row)
+                    .id(row.id)
                 if index < sources.count - 1 { Divider().padding(.leading, 56) }
             }
         }
@@ -190,21 +213,42 @@ struct IntegrationSetupView: View {
                     Text(row.phase == .disabled
                          ? copy("已在设置中关闭，可在 X Island 设置中重新开启。", "Disabled in settings. Re-enable this connection in X Island settings.")
                          : row.agent == .codex && row.phase == .needsAuthorization
-                         ? copy("只选择 12 条 X Island 钩子，一批确认。", "Select only the 12 X Island hooks and allow them together.") : row.detail)
+                         ? copy("配置已准备，还需你在 Codex 中确认信任。", "Setup is ready. Confirm trust in Codex to continue.") : row.detail)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if let action = IntegrationSetupPresentation.rowAction(row, canPrepareFiles: onPrepareFiles != nil) {
-                    Button(actionTitle(action)) { perform(action) }
+                    Button(openingAgent == row.agent ? copy("正在打开…", "Opening…")
+                           : row.agent == .codex && row.phase == .needsAuthorization
+                           ? copy("打开 Codex 确认", "Open Codex to confirm") : actionTitle(action)) { perform(action) }
                         .buttonStyle(.bordered)
                         .controlSize(.large)
-                        .disabled(isRefreshing)
+                        .disabled(isRefreshing || openingAgent != nil)
                         .accessibilityIdentifier(isFileAction(action) ? "integration-setup.files.\(row.id)" : "integration-setup.action.\(row.id)")
                 }
             }
-            rowDetails(row).padding(.leading, 40)
+            if let failure = clientLaunchFailure, failure.agent == row.agent, row.phase == .needsAuthorization {
+                Text(failure.message(language: L10n.effectiveLanguage))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 40)
+                    .accessibilityIdentifier("integration-setup.open-error.\(row.id)")
+            }
+            if row.agent == .codex && row.phase == .needsAuthorization {
+                CodexAuthorizationSteps()
+                    .padding(.leading, 40)
+                    .padding(.top, 8)
+                Button(copy("打开完整指南", "Open full guide")) { onOpenGuide(.codex) }
+                    .buttonStyle(.link)
+                    .font(.system(size: 12))
+                    .padding(.leading, 40)
+                    .accessibilityIdentifier("integration-setup.guide.codex")
+            } else {
+                rowDetails(row).padding(.leading, 40)
+            }
         }
         .padding(16)
         .accessibilityElement(children: .contain)
@@ -216,17 +260,10 @@ struct IntegrationSetupView: View {
             if $0 { expandedDetails.insert(row.id) } else { expandedDetails.remove(row.id) }
         })) {
             VStack(alignment: .leading, spacing: 8) {
-                if row.agent == .codex && row.phase == .needsAuthorization {
-                    Text(copy("在 Codex 输入区点击「审查钩子 / Review hooks」，只勾选 12 条 X Island 钩子，再点击「允许所选项 / Allow selected」。",
-                              "In the Codex composer, choose Review hooks, select only the 12 X Island hooks, then choose Allow selected."))
-                    Text(copy("同一组定义会记住，变更后需再次确认。不要使用用户配置来源的「全部信任 / Trust all」，其中可能包含其他插件。",
-                              "Your choice is remembered for the same definitions. Changes need a new confirmation. Do not use Trust all for the user configuration source; it may include other plugins."))
-                } else {
-                    Text(row.detail)
-                    if row.phase == .connected, let date = row.lastSeen {
-                        Text(copy("最近活动：", "Last activity: ") + date.formatted(
-                            .dateTime.year().month().day().hour().minute().locale(Locale(identifier: L10n.effectiveLanguage))))
-                    }
+                Text(row.detail)
+                if row.phase == .connected, let date = row.lastSeen {
+                    Text(copy("最近活动：", "Last activity: ") + date.formatted(
+                        .dateTime.year().month().day().hour().minute().locale(Locale(identifier: L10n.effectiveLanguage))))
                 }
                 Button(copy("打开完整指南", "Open full guide")) { onOpenGuide(row.agent) }
                     .buttonStyle(.link)
@@ -238,12 +275,12 @@ struct IntegrationSetupView: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(.vertical, 8)
         } label: {
-            Text(row.agent == .codex && row.phase == .needsAuthorization ? copy("如何确认", "How to confirm") : copy("详情", "Details"))
+            Text(copy("详情", "Details"))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .frame(minHeight: 24)
         }
-        .accessibilityIdentifier(row.agent == .codex ? "integration-setup.codex-guide" : "integration-setup.details.\(row.id)")
+        .accessibilityIdentifier("integration-setup.details.\(row.id)")
     }
 
     private var footer: some View {
@@ -314,6 +351,64 @@ struct IntegrationSetupView: View {
         case .connected: copy("已接入", "Connected")
         case .checkFailed: copy("检查失败", "Check failed")
         }
+    }
+
+    private func copy(_ chinese: String, _ english: String) -> String {
+        L10n.effectiveLanguage == "zh" ? chinese : english
+    }
+}
+
+struct CodexAuthorizationNotice: View {
+    let onShowSteps: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(copy("勾选仅启用接入，还需在 Codex 中确认信任。",
+                      "The switch enables this connection. Trust still needs confirmation in Codex."))
+                .foregroundStyle(.secondary)
+            Text(copy("Codex 输入区 → Review hooks → 选择 X Island 项 → Allow selected",
+                      "Codex composer → Review hooks → select X Island entries → Allow selected"))
+            Button(copy("查看授权步骤", "View authorization steps"), action: onShowSteps)
+                .buttonStyle(.link)
+                .accessibilityIdentifier("preferences.integration-authorization.codex.open")
+        }
+        .font(.system(size: 12))
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("preferences.integration-authorization.codex")
+    }
+
+    private func copy(_ chinese: String, _ english: String) -> String {
+        L10n.effectiveLanguage == "zh" ? chinese : english
+    }
+}
+
+struct CodexAuthorizationSteps: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            step("1", copy("在 Codex 输入区点击「审查钩子 / Review hooks」。",
+                           "In the Codex composer, choose Review hooks."))
+            step("2", copy("核对命令，只勾选 12 条 X Island 钩子，点击「允许所选项 / Allow selected」。",
+                           "Review the commands, select only the 12 X Island hooks, then choose Allow selected."))
+            step("3", copy("开始一条任务，再回这里点「重新检查」；收到真实活动后才会显示已接入。",
+                           "Start a task, then return here and choose Check again. Connected appears after activity arrives."))
+            Text(copy("同一组配置的有效授权会记住；配置改变或授权撤销后需要重新确认。不要使用包含其他插件的「全部信任 / Trust all」。",
+                      "Valid authorization is remembered for unchanged hooks. Review again after changes or revocation. Avoid Trust all when it includes other plugins."))
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+        .font(.system(size: 12))
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("integration-setup.codex-guide")
+    }
+
+    private func step(_ number: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(number).fontWeight(.semibold).foregroundStyle(.secondary).frame(width: 14)
+            Text(text).frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private func copy(_ chinese: String, _ english: String) -> String {

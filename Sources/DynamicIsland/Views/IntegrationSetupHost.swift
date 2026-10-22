@@ -7,13 +7,17 @@ struct IntegrationSetupHost: View {
     let onOpenGuide: (AgentType) -> Void
     let onLater: () -> Void
     var onPrepareFiles: ((AgentType) -> Void)? = nil
+    var focusRequest: IntegrationSetupFocusRequest? = nil
+    var clientLauncher: IntegrationClientLauncher? = nil
 
     var body: some View {
         IntegrationSetupView(rows: manager.rows, isRefreshing: manager.isRefreshing,
             onConfigure: { agent in Task { await manager.configure(agent) } },
             onOpenClient: onOpenClient, onOpenGuide: onOpenGuide,
-            onRefresh: { Task { await manager.refresh() } },
+            onRefresh: { clientLauncher?.reset(); Task { await manager.refresh() } },
             onLater: onLater, onPrepareFiles: onPrepareFiles,
-            onPrepareAll: { Task { await manager.prepareAll() } })
+            onPrepareAll: { Task { await manager.prepareAll() } },
+            focusRequest: focusRequest, clientLaunchFailure: clientLauncher?.failure,
+            openingAgent: clientLauncher?.openingAgent)
     }
 }

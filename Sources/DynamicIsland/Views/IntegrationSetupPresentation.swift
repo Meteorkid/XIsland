@@ -9,8 +9,25 @@ enum IntegrationSetupAction: Equatable {
     case refresh
 }
 
+struct IntegrationSetupFocusRequest: Equatable {
+    let agent: AgentType
+    let id = UUID()
+}
+
+struct IntegrationSetupFocusTarget: Equatable {
+    let request: IntegrationSetupFocusRequest
+    let phase: IntegrationSetupPhase
+}
+
 /// 展示次序和下一步动作只依据已有证据，不在界面中推断授权。
 enum IntegrationSetupPresentation {
+    static func focusTarget(_ request: IntegrationSetupFocusRequest?, rows: [IntegrationSetupRow],
+                            handledID: UUID?) -> IntegrationSetupFocusTarget? {
+        guard let request, request.id != handledID,
+              let row = rows.first(where: { $0.agent == request.agent }) else { return nil }
+        return IntegrationSetupFocusTarget(request: request, phase: row.phase)
+    }
+
     static func pendingRows(_ rows: [IntegrationSetupRow]) -> [IntegrationSetupRow] {
         rows.enumerated().filter { priority($0.element) != nil }.sorted {
             let left = priority($0.element)!, right = priority($1.element)!

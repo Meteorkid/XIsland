@@ -1222,8 +1222,8 @@ struct PreferencesView: View {
         return section(integrationCopy("软件接入与授权", "App connections and authorization")) {
             card {
                 row(integrationCopy("完成软件接入", "Connect your apps"),
-                    subtitle: integrationCopy("仅支持的项目能自动配置；其他项目按步骤在客户端启用。",
-                                              "Supported integrations can be configured automatically; enable the others in their apps.")) {
+                    subtitle: integrationCopy("支持的配置会自动准备；勾选仅启用接入，首次信任仍需在对应软件确认。",
+                                              "Supported setup is prepared automatically. Enabling a connection does not grant trust; confirm it in the app.")) {
                     VStack(alignment: .trailing, spacing: 8) {
                         if let manager {
                             if manager.isRefreshing {
@@ -1267,41 +1267,47 @@ struct PreferencesView: View {
         case .needsAuthorization, .checkFailed: .orange
         default: .secondary.opacity(0.4)
         }
-        return row(agent.displayName, subtitle: routeLabel) {
-            HStack(spacing: 10) {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(color)
-                        .frame(width: 6, height: 6)
-                    Text(label)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                .accessibilityIdentifier("preferences.integration-status.\(agent.rawValue)")
-                .help(status == .externalKiro ? L10n.hookKiroHint : status == .modelSource ? L10n.hookModelClientHint : status == .externalWorkBuddy ? L10n.hookWorkBuddyHint : status == .externalAmazonQ ? L10n.hookAmazonQHint : status == .externalCody ? L10n.hookCodyHint : status == .externalObserver ? L10n.hookObserverHint : status == .externalAgent ? L10n.hookACPHint : status == .unverified ? L10n.hookPendingHint : status == .externalExtension ? L10n.hookExtensionHint : L10n.hookConfigurationHint)
+        return VStack(alignment: .leading, spacing: 0) {
+            row(agent.displayName, subtitle: routeLabel) {
+                HStack(spacing: 10) {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(color)
+                            .frame(width: 6, height: 6)
+                        Text(label)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityIdentifier("preferences.integration-status.\(agent.rawValue)")
+                    .help(status == .externalKiro ? L10n.hookKiroHint : status == .modelSource ? L10n.hookModelClientHint : status == .externalWorkBuddy ? L10n.hookWorkBuddyHint : status == .externalAmazonQ ? L10n.hookAmazonQHint : status == .externalCody ? L10n.hookCodyHint : status == .externalObserver ? L10n.hookObserverHint : status == .externalAgent ? L10n.hookACPHint : status == .unverified ? L10n.hookPendingHint : status == .externalExtension ? L10n.hookExtensionHint : L10n.hookConfigurationHint)
 
-                if status == .modelSource || status == .externalKiro {
-                    Link(L10n.setupGuide, destination: URL(string: "https://github.com/Meteorkid/XIsland/blob/main/docs/compatibility/\(status == .modelSource ? "glm" : "kiro")-setup.md")!)
-                        .font(.system(size: 11))
-                } else if status != .unverified {
-                    Toggle(
-                        "",
-                        isOn: Binding(
-                            get: { ZeroConfigManager.isAutoConfigEnabled(for: agent) },
-                            set: { enabled in
-                                configurationTasks[agent]?.cancel()
-                                configurationTasks[agent] = Task {
-                                    await ZeroConfigManager.setAutoConfigEnabled(enabled, for: agent)
-                                    guard !Task.isCancelled else { return }
-                                    await AppDelegate.shared?.integrationSetupManager.refresh()
+                    if status == .modelSource || status == .externalKiro {
+                        Link(L10n.setupGuide, destination: URL(string: "https://github.com/Meteorkid/XIsland/blob/main/docs/compatibility/\(status == .modelSource ? "glm" : "kiro")-setup.md")!)
+                            .font(.system(size: 11))
+                    } else if status != .unverified {
+                        Toggle(
+                            "",
+                            isOn: Binding(
+                                get: { ZeroConfigManager.isAutoConfigEnabled(for: agent) },
+                                set: { enabled in
+                                    configurationTasks[agent]?.cancel()
+                                    configurationTasks[agent] = Task {
+                                        await ZeroConfigManager.setAutoConfigEnabled(enabled, for: agent)
+                                        guard !Task.isCancelled else { return }
+                                        await AppDelegate.shared?.integrationSetupManager.refresh()
+                                    }
                                 }
-                            }
+                            )
                         )
-                    )
-                    .labelsHidden()
-                    .disabled(AppPreferences.isIsolated)
-                    .accessibilityIdentifier("preferences.integration-enabled.\(agent.rawValue)")
+                        .labelsHidden()
+                        .disabled(AppPreferences.isIsolated)
+                        .accessibilityIdentifier("preferences.integration-enabled.\(agent.rawValue)")
+                    }
                 }
+            }
+            if agent == .codex, setup?.phase == .needsAuthorization {
+                CodexAuthorizationNotice { AppDelegate.shared?.showIntegrationSetup(focusing: .codex) }
+                    .padding(.bottom, 10)
             }
         }
     }

@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "releaseVersion": "2.0.3",
+  "generatedAt": "2026-10-22T05:56:35.884567+00:00",
+  "status": "local_release_artifacts_verified",
+  "source": {
+    "baseCommit": "1abf90fef0469e64c52d9cc9e8aeb35012597d56",
+    "releaseTag": "v2.0.3",
+    "sourceInputsSHA256": "7f44e78060bb0a3c9ac9e4f2ebeb9f44e002fd0616511a5ba46dbde186821c1d",
+    "sourceInputFiles": 665
+  },
+  "scope": "macOS authorization guidance, targeted navigation and client launch feedback; no native trust granted",
+  "releaseArtifacts": {
+    "macOS": {
+      "dmgName": "XIsland-2.0.3.dmg",
+      "dmgSHA256": "cf70fb204c768f965872ba7afe19be880b508540e55dc64a719172a29dd1eced",
+      "dmgBytes": 5961103,
+      "architecture": "arm64",
+      "minimumOS": "14.0",
+      "binarySHA256": {
+        "XIsland": "befe23916df636e788269a4acd2a32a9e9def4fde34404da7f7edc25228fba6d",
+        "di-bridge": "852107a04d91abca2715d679ae75a2f72dcc99c9611aefebccfc0dc9c71b5775"
+      },
+      "signature": "ad-hoc, verified on read-only mounted DMG",
+      "notarized": false
+    },
+    "vscodeCompanion": {
+      "version": "1.0.0",
+      "assetName": "xisland-vscode-1.0.0.vsix",
+      "sha256": "676bfe748ad6d681c5c84ec17f61de8a2079f70c04d66554243bec8700a78d46",
+      "unchangedFrom": "2.0.2"
+    },
+    "windows": {
+      "changed": false,
+      "publishedInThisRelease": false
+    }
+  },
+  "releaseValidation": {
+    "swift": {
+      "status": "passed",
+      "testsTotal": 1405,
+      "passed": 1400,
+      "failures": 0,
+      "skipped": 5,
+      "skippedScope": "opt-in performance and soak tests",
+      "fullRunLogSHA256": "95e124518e52f35f7c5be6dfbe99b0f0bfe5c32cd2909632156775a920e1d515",
+      "testedSwiftFiles": 337,
+      "allSwiftSourcesStillMatchFullTestSnapshot": true,
+      "rerunForPackaging": false
+    },
+    "targetedRegression": {
+      "tests": 150,
+      "failures": 0,
+      "screenshots": 37,
+      "isolatedWindowScrollingVerified": true,
+      "injectedClientLaunchResultsVerified": true,
+      "logSHA256": "8d2c97771313d05eb60b1317679c2b3b1c2865ec2264b963776b1113514699bf"
+    },
+    "releaseBuild": {
+      "status": "passed",
+      "logSHA256": "e2bf5f51c3844a82d42d87993bfcd952bae0f7fe63defef6522b38c92d567427"
+    },
+    "package": {
+      "status": "passed",
+      "version": "2.0.3",
+      "readOnlyMounted": true,
+      "architecture": "arm64",
+      "minimumOS": "14.0",
+      "signatureVerified": true,
+      "signature": "ad-hoc",
+      "notarized": false,
+      "binariesMatchTestedBundle": true,
+      "dmgSHA256": "cf70fb204c768f965872ba7afe19be880b508540e55dc64a719172a29dd1eced",
+      "dmgBytes": 5961103,
+      "binarySHA256": {
+        "XIsland": "befe23916df636e788269a4acd2a32a9e9def4fde34404da7f7edc25228fba6d",
+        "di-bridge": "852107a04d91abca2715d679ae75a2f72dcc99c9611aefebccfc0dc9c71b5775"
+      },
+      "cliMatchesSource": true,
+      "appIconPresent": true,
+      "vsixSHA256": "676bfe748ad6d681c5c84ec17f61de8a2079f70c04d66554243bec8700a78d46",
+      "vsixCRCVerified": true
+    },
+    "compiledBridge": {
+      "status": "passed",
+      "scenarios": 127,
+      "reportSHA256": "e5a3d48b43748c903c62b9b70ffce46933b6f3760f82706e12519323b9463bf2",
+      "realClientVerified": false
+    },
+    "workbuddyExport": {
+      "status": "passed",
+      "events": 11,
+      "reportSHA256": "3d857d3363e05b56968cc4f172322787fbe9ebfd02439cd31b1f53d54dec406f",
+      "realClientVerified": false
+    },
+    "codexLifecycleApp": {
+      "status": "passed",
+      "scope": "Synthetic vendor payloads -> bundled di-bridge -> isolated XIsland -> diagnostics and read-only SQLite",
+      "reportSHA256": "a4e594bb2830ec1238ee7f9437694c4b369d8ebf121fbee37ab899c369a46ffe",
+      "realClientVerified": false,
+      "nativeTrustChanged": false
+    },
+    "githubCI": {
+      "requiredBeforePublication": true,
+      "resultLocation": "GitHub checks on the release tag commit and public release notes"
+    },
+    "publishedAssetDownload": {
+      "requiredAfterPublication": true,
+      "resultLocation": "Public release notes and local deployment record"
+    }
+  },
+  "knownAcceptanceGaps": [
+    "VoiceOver speech, actual application FPS and external multi-display behavior remain unverified.",
+    "Native client authorization and complete task/approval loops are not established by fixture tests.",
+    "Final GUI revision has not been subjected to a new eight-hour soak.",
+    "Developer ID signing and Apple notarization are not provided."
+  ],
+  "publicationPolicy": {
+    "userAuthorizedCommitPushReleaseAndLocalUpdate": true,
+    "rawRuntimeEvidence": "local only",
+    "nativeTrustChanged": false
+  },
+  "reproduce": {
+    "build": "X_ISLAND_SKIP_BRIDGE_INSTALL=1 X_ISLAND_SKIP_PATH_CONFIGURE=1 X_ISLAND_BUILD_DMG=1 bash Scripts/build.sh",
+    "bridge": "python3 Scripts/test-native-hook-bridge.py --binary \".build/X Island.app/Contents/MacOS/di-bridge\""
+  }
+}

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import XIsland
 
@@ -148,6 +149,34 @@ final class SettingsRoutingTests: XCTestCase {
 
         XCTAssertTrue(delegate.integrationSetupManager.rows.isEmpty)
         XCTAssertEqual(Set(NSApp.windows.map(ObjectIdentifier.init)), existingWindows)
+    }
+
+    func testAuthorizationEntryRetargetsExistingWindowAndCanRepeatSameClient() async throws {
+        let delegate = makeDelegate()
+        let before = Set(NSApp.windows.map(ObjectIdentifier.init))
+        delegate.showIntegrationSetup(focusing: .codex)
+        let window = try XCTUnwrap(NSApp.windows.first {
+            !before.contains(ObjectIdentifier($0)) && $0.contentView is NSHostingView<IntegrationSetupHost>
+        })
+        window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
+        defer { window.close() }
+        let host = try XCTUnwrap(window.contentView as? NSHostingView<IntegrationSetupHost>)
+        let first = try XCTUnwrap(host.rootView.focusRequest)
+        XCTAssertEqual(first.agent, .codex)
+
+        delegate.showIntegrationSetup()
+        XCTAssertTrue(window.contentView === host)
+        XCTAssertEqual(host.rootView.focusRequest, first, "普通菜单入口只前置窗口，不重置用户位置")
+        delegate.showIntegrationSetup(focusing: .codex)
+        let repeated = try XCTUnwrap(host.rootView.focusRequest)
+        XCTAssertEqual(repeated.agent, .codex)
+        XCTAssertNotEqual(repeated.id, first.id)
+        delegate.showIntegrationSetup(focusing: .cursor)
+        XCTAssertEqual(host.rootView.focusRequest?.agent, .cursor)
+        XCTAssertEqual(NSApp.windows.filter { !before.contains(ObjectIdentifier($0)) && $0.isVisible }.count, 1)
+        window.close()
+        await drainMainQueue()
+        XCTAssertFalse(delegate.integrationSetupManager.isPresented)
     }
 
     private func makeDelegate() -> AppDelegate {

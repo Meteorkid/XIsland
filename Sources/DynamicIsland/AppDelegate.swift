@@ -57,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var integrationRefreshTask: Task<Void, Never>?
     private var integrationReminderTask: Task<Void, Never>?
     private var integrationWindow: NSWindow?
+    private let integrationClientLauncher = IntegrationClientLauncher()
     private var integrationWindowObserver: NSObjectProtocol?
     private var integrationActivationObserver: NSObjectProtocol?
     private var recheckIntegrationOnActivation = false
@@ -470,7 +471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Show Island", action: #selector(showNotch), keyEquivalent: "s"))
-        menu.addItem(NSMenuItem(title: integrationSetupTitle, action: #selector(showIntegrationSetup), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: integrationSetupTitle, action: #selector(showIntegrationSetup as () -> Void), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         let checkForUpdatesItem = NSMenuItem(
             title: "Check for Updates...",
@@ -715,7 +716,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showIntegrationSetup() {
+        showIntegrationSetup(focusing: nil)
+    }
+
+    func showIntegrationSetup(focusing agent: AgentType?) {
+        let request = agent.map { IntegrationSetupFocusRequest(agent: $0) }
         if let window = integrationWindow, window.isVisible {
+            if let request {
+                let view = integrationSetupHost(focusRequest: request)
+                if let host = window.contentView as? NSHostingView<IntegrationSetupHost> {
+                    host.rootView = view
+                } else {
+                    window.contentView = NSHostingView(rootView: view)
+                }
+            }
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -725,21 +739,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.title = L10n.effectiveLanguage.hasPrefix("zh") ? "X Island · 软件接入与授权" : "X Island · App Connections"
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        panel.contentView = NSHostingView(rootView: IntegrationSetupHost(
-            manager: integrationSetupManager,
-            onOpenClient: { [weak self] in self?.openIntegrationClient($0) },
-            onOpenGuide: { agent in
-                if let url = IntegrationSetupDescriptor.descriptor(for: agent).setupURL { NSWorkspace.shared.open(url) }
-            },
-            onLater: { [weak self] in self?.integrationWindow?.close() },
-            onPrepareFiles: { [weak self] agent in
-                Task { @MainActor [weak self] in
-                    guard let self, !self.testConfiguration.isEnabled,
-                          let url = await self.integrationSetupManager.prepareFiles(for: agent),
-                          !Task.isCancelled else { return }
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
-                }
-            }))
+        integrationClientLauncher.reset()
+        panel.contentView = NSHostingView(rootView: integrationSetupHost(focusRequest: request))
         panel.center()
         integrationWindow = panel
         integrationSetupManager.markPresented()
@@ -752,6 +753,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self, let panel, self.integrationWindow === panel else { return }
                 self.integrationSetupManager.endMonitoring()
                 self.integrationSetupManager.markPresented()
+                self.integrationClientLauncher.reset()
                 self.integrationWindow = nil
             }
         }
@@ -759,13 +761,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    private func integrationSetupHost(focusRequest: IntegrationSetupFocusRequest?) -> IntegrationSetupHost {
+        IntegrationSetupHost(
+            manager: integrationSetupManager,
+            onOpenClient: { [weak self] in self?.openIntegrationClient($0) },
+            onOpenGuide: { [weak self] agent in
+                guard self?.testConfiguration.isEnabled == false else { return }
+                if let url = IntegrationSetupDescriptor.descriptor(for: agent).setupURL { NSWorkspace.shared.open(url) }
+            },
+            onLater: { [weak self] in self?.integrationWindow?.close() },
+            onPrepareFiles: { [weak self] agent in
+                Task { @MainActor [weak self] in
+                    guard let self, !self.testConfiguration.isEnabled,
+                          let url = await self.integrationSetupManager.prepareFiles(for: agent),
+                          !Task.isCancelled else { return }
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
+            }, focusRequest: focusRequest, clientLauncher: integrationClientLauncher)
+    }
+
     private func openIntegrationClient(_ agent: AgentType) {
         guard !testConfiguration.isEnabled else { return }
-        if let url = integrationSetupManager.appURL(for: agent) {
-            recheckIntegrationOnActivation = true
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
-        } else if let guide = IntegrationSetupDescriptor.descriptor(for: agent).setupURL {
-            NSWorkspace.shared.open(guide)
+        let url = integrationSetupManager.appURL(for: agent)
+        Task { @MainActor [weak self] in
+            guard let self, !self.isTerminating else { return }
+            if await self.integrationClientLauncher.open(agent, at: url) {
+                self.recheckIntegrationOnActivation = true
+            }
         }
     }
 

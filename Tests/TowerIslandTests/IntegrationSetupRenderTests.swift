@@ -21,7 +21,8 @@ final class IntegrationSetupRenderTests: XCTestCase {
             else { defaults.removeObject(forKey: "appLanguage") }
         }
         _ = NSApplication.shared
-        let output = URL(fileURLWithPath: "/tmp/xisland-integration-setup-render", isDirectory: true)
+        let output = URL(fileURLWithPath: ProcessInfo.processInfo.environment["X_ISLAND_RENDER_INTEGRATION_SETUP_DIR"]
+                         ?? "/tmp/xisland-integration-setup-render", isDirectory: true)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
 
         for language in ["zh", "en"] {
@@ -57,6 +58,23 @@ final class IntegrationSetupRenderTests: XCTestCase {
 
             try render([authorization, connected, missing], language: language, scheme: .light,
                        to: output.appendingPathComponent("\(language)-authorization.png"))
+            try render([authorization, connected, missing], language: language, scheme: .dark,
+                       to: output.appendingPathComponent("\(language)-authorization-dark.png"))
+            try render([authorization], language: language, scheme: .light,
+                       failure: .init(agent: .codex, kind: .applicationMissing),
+                       to: output.appendingPathComponent("\(language)-application-missing.png"))
+            try render([authorization], language: language, scheme: .dark,
+                       failure: .init(agent: .codex, kind: .launchFailed),
+                       to: output.appendingPathComponent("\(language)-launch-failed-dark.png"))
+            for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
+                let notice = CodexAuthorizationNotice { XCTFail("渲染不应打开授权窗口") }
+                    .padding(16)
+                    .frame(width: 580, alignment: .leading)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .preferredColorScheme(scheme)
+                try snapshot(notice, scheme: scheme, size: NSSize(width: 580, height: 150),
+                             to: output.appendingPathComponent("\(language)-authorization-notice-\(name).png"))
+            }
             try render([connected], language: language, scheme: .dark,
                        to: output.appendingPathComponent("\(language)-connected-dark.png"))
             try render([manual, missing], language: language, scheme: .light,
@@ -80,7 +98,8 @@ final class IntegrationSetupRenderTests: XCTestCase {
         }
     }
 
-    private func render(_ rows: [IntegrationSetupRow], language: String, scheme: ColorScheme, to url: URL) throws {
+    private func render(_ rows: [IntegrationSetupRow], language: String, scheme: ColorScheme,
+                        failure: IntegrationClientLauncher.Failure? = nil, to url: URL) throws {
         let view = IntegrationSetupView(rows: rows, isRefreshing: false,
             onConfigure: { _ in XCTFail("渲染不应配置真实软件") },
             onOpenClient: { _ in XCTFail("渲染不应打开真实客户端") },
@@ -88,18 +107,23 @@ final class IntegrationSetupRenderTests: XCTestCase {
             onRefresh: { XCTFail("渲染不应读取真实接入状态") },
             onLater: { XCTFail("渲染不应写入提醒状态") },
             onPrepareFiles: { _ in XCTFail("渲染不应生成真实接入文件或打开 Finder") },
-            onPrepareAll: { XCTFail("渲染不应批量配置真实软件") })
+            onPrepareAll: { XCTFail("渲染不应批量配置真实软件") },
+            clientLaunchFailure: failure)
             .environment(\.locale, Locale(identifier: language))
             .preferredColorScheme(scheme)
             .defaultAppStorage(AppPreferences.defaults)
+        try snapshot(view, scheme: scheme, size: NSSize(width: 680, height: 640), to: url)
+    }
+
+    private func snapshot<V: View>(_ view: V, scheme: ColorScheme, size: NSSize, to url: URL) throws {
         let host = NSHostingView(rootView: view)
         host.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
-        host.frame = NSRect(x: 0, y: 0, width: 680, height: 640)
+        host.frame = NSRect(origin: .zero, size: size)
         host.layoutSubtreeIfNeeded()
         let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: bitmap)
-        XCTAssertGreaterThanOrEqual(bitmap.pixelsWide, 680)
-        XCTAssertGreaterThanOrEqual(bitmap.pixelsHigh, 640)
+        XCTAssertGreaterThanOrEqual(bitmap.pixelsWide, Int(size.width))
+        XCTAssertGreaterThanOrEqual(bitmap.pixelsHigh, Int(size.height))
         try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: url)
     }
 }
