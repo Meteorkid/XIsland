@@ -82,6 +82,7 @@ struct PreferencesView: View {
     @AppStorage("animationIntensity") private var animationIntensity = IslandAnimationIntensity.defaultValue.rawValue
     @AppStorage("jellyIntensity") private var jellyIntensity = IslandJellyIntensity.defaultValue.rawValue
     @AppStorage("showCollapsedAgentIcon") private var showCollapsedAgentIcon = true
+    @AppStorage("collapsedRecentTaskLimit") private var collapsedRecentTaskLimit = CollapsedTaskSelection.defaultLimit
     @AppStorage("showCollapsedSessionCount") private var showCollapsedSessionCount = true
     @AppStorage("showCollapsedQuota") private var showCollapsedQuota = true
     @AppStorage("showActivityTicker") private var showActivityTicker = true
@@ -475,6 +476,23 @@ struct PreferencesView: View {
                 card {
                     settingRow(L10n.showCollapsedAgentIcon, id: "showCollapsedAgentIcon", description: L10n.showCollapsedAgentIconDesc) {
                         Toggle("", isOn: $showCollapsedAgentIcon).labelsHidden()
+                    }
+                    dividerLine
+                    settingRow(L10n.collapsedRecentTaskLimit, id: "collapsedRecentTaskLimit",
+                               description: L10n.collapsedRecentTaskLimitDesc(CollapsedTaskSelection.normalizedLimit(collapsedRecentTaskLimit))) {
+                        Picker("", selection: Binding(
+                            get: { CollapsedTaskSelection.normalizedLimit(collapsedRecentTaskLimit) },
+                            set: { collapsedRecentTaskLimit = CollapsedTaskSelection.normalizedLimit($0) }
+                        )) {
+                            ForEach(CollapsedTaskSelection.limitRange, id: \.self) { limit in
+                                Text("\(limit)").tag(limit)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 180)
+                        .disabled(!showCollapsedAgentIcon)
+                        .accessibilityIdentifier("preferences.collapsed-recent-task-limit")
+                        .accessibilityLabel(L10n.collapsedRecentTaskLimit)
                     }
                     dividerLine
                     settingRow(L10n.showCollapsedSessionCount, id: "showCollapsedSessionCount", description: L10n.showCollapsedSessionCountDesc) {

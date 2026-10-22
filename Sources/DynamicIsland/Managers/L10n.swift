@@ -969,6 +969,12 @@ enum L10n {
             en: "Show agent icons")
     }
 
+    static var collapsedRecentTaskLimit: String {
+        localized("collapsedRecentTaskLimit",
+            zh: "最近任务数量", ko: "최근 작업 수", ja: "最近のタスク数", fr: "Nombre de tâches récentes",
+            en: "Recent task count")
+    }
+
     static var showCollapsedSessionCount: String {
         localized("showCollapsedSessionCount",
             zh: "显示会话数量", ko: "세션 수 표시", ja: "セッション数を表示", fr: "Afficher le nombre de sessions",
@@ -1478,6 +1484,15 @@ enum L10n {
             ja: "折りたたみ時にアクティブセッションのエージェントアイコンを表示します。オフにすると他の状態モジュールだけ残ります。",
             fr: "Affiche les icônes d'agent quand l'île est repliée ; désactivez pour ne garder que les autres modules d'état.",
             en: "Show active-session agent icons while the island is collapsed; turn this off to keep only the other status modules.")
+    }
+
+    static func collapsedRecentTaskLimitDesc(_ count: Int) -> String {
+        localized("collapsedRecentTaskLimitDesc",
+            zh: "收起时最多显示或轮换 \(count) 个任务图标，待处理请求优先，其余按最近活动排序。展开列表仍显示全部任务。",
+            ko: "접힌 상태에서 최대 \(count)개의 작업 아이콘을 표시하거나 순환합니다. 대기 중인 요청을 우선하고 나머지는 최근 활동 순으로 정렬합니다. 펼친 목록에는 모든 작업이 표시됩니다.",
+            ja: "折りたたみ時は最大 \(count) 件のタスクアイコンを表示または切り替えます。対応待ちのリクエストを優先し、残りは最近のアクティビティ順に並べます。展開したリストにはすべてのタスクが表示されます。",
+            fr: "Affiche ou fait défiler jusqu'à \(count) icônes de tâches dans l'état replié. Les demandes en attente sont prioritaires ; les autres tâches sont triées par activité récente. La liste dépliée affiche toujours toutes les tâches.",
+            en: "Show or rotate through up to \(count) task icons while collapsed. Pending requests come first, followed by the most recently active tasks. The expanded list still shows all tasks.")
     }
 
     static var showCollapsedSessionCountDesc: String {
