@@ -67,19 +67,19 @@ final class IslandIntegrationSettingsTests: XCTestCase {
         )
     }
 
-    func testShouldShowOnLaunchFallsBackWhenPreferredAppIsNotRunning() {
+    func testShouldShowOnLaunchFallsBackWhenPreferredAppIsNotVisible() {
         XCTAssertTrue(
             IslandIntegrationSettings.shouldShowOnLaunch(
                 currentApp: .xisland,
                 preferredApp: .xnook,
-                preferredAppRunning: false
+                preferredAppVisible: false
             )
         )
         XCTAssertFalse(
             IslandIntegrationSettings.shouldShowOnLaunch(
                 currentApp: .xisland,
                 preferredApp: .xnook,
-                preferredAppRunning: true
+                preferredAppVisible: true
             )
         )
     }

@@ -143,8 +143,8 @@ enum IslandIntegrationSettings {
     static func shouldShowOnLaunch(
         currentApp: IslandApp,
         preferredApp: IslandApp,
-        preferredAppRunning: Bool
+        preferredAppVisible: Bool
     ) -> Bool {
-        currentApp == preferredApp || !preferredAppRunning
+        currentApp == preferredApp || !preferredAppVisible
     }
 }

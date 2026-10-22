@@ -75,17 +75,44 @@ final class NotchWindow: NSPanel {
     /// 审批期间锚定的屏幕。非 nil 时所有重排都以该屏为基准，
     /// 否则 resizeToFit / setFrame / 鼠标跟随定时器会各自按鼠标所在屏重算，把面板拉回错误的屏幕。
     private var pinnedScreenID: CGDirectDisplayID?
+    private let defaults: UserDefaults
+    private let markVisible: @MainActor () -> Void
+    private let onExplicitShow: @MainActor () -> Void
+    private let fullscreenProbe: (@Sendable () async -> Bool)?
+    private var visibilityGeneration: UInt64 = 0
+    private(set) var lastExplicitShowTime: TimeInterval = 0
 
     /// 横滑切换手势识别器
     let swipeRecognizer = SwipeGestureRecognizer()
     /// 灵动岛当前状态（由 NotchContentView 同步）
     var islandState: IslandState = .collapsed
     /// 正在切换应用时临时禁用 activeSpaceDidChange 的自动显示
-    var isSwitchingApps = false
+    var isSwitchingApps = false {
+        didSet {
+            if oldValue != isSwitchingApps { visibilityGeneration &+= 1 }
+        }
+    }
     /// 已让位给另一个灵动岛，收到显式显示命令前禁止自动显示
-    var isHiddenByIslandSwitch = false
+    var isHiddenByIslandSwitch = false {
+        didSet {
+            if oldValue != isHiddenByIslandSwitch { visibilityGeneration &+= 1 }
+        }
+    }
 
-    init() {
+    init(
+        defaults: UserDefaults = AppPreferences.defaults,
+        markVisible: @escaping @MainActor () -> Void = {
+            if let currentIsland = AppSwitcher.shared.currentIsland {
+                IslandIntegrationSettings.markVisible(currentIsland)
+            }
+        },
+        onExplicitShow: @escaping @MainActor () -> Void = { AppSwitcher.shared.cancelSwitch() },
+        fullscreenProbe: (@Sendable () async -> Bool)? = nil
+    ) {
+        self.defaults = defaults
+        self.markVisible = markVisible
+        self.onExplicitShow = onExplicitShow
+        self.fullscreenProbe = fullscreenProbe
         let screen = Self.bestScreen()
         let width: CGFloat = 220
         let height = IslandSizeCalculator.collapsedShapeHeight
@@ -183,7 +210,7 @@ final class NotchWindow: NSPanel {
     }
 
     func applySpaceBehavior() {
-        let allSpaces = AppPreferences.defaults.bool(forKey: "showOnAllSpaces")
+        let allSpaces = defaults.bool(forKey: "showOnAllSpaces")
         if allSpaces {
             collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         } else {
@@ -192,35 +219,50 @@ final class NotchWindow: NSPanel {
     }
 
     @objc private func activeSpaceDidChange(_ note: Notification) {
-        // 切换应用期间不自动显示窗口
-        guard !isSwitchingApps, !isHiddenByIslandSwitch else { return }
+        refreshFullscreenVisibility()
+    }
 
-        let hideInFullscreen = AppPreferences.defaults.bool(forKey: "hideInFullscreen")
+    @discardableResult
+    func refreshFullscreenVisibility() -> Task<Void, Never>? {
+        // 新检查与显式显示都会淘汰此前的结果，包括标志已恢复原值的情况。
+        visibilityGeneration &+= 1
+        let generation = visibilityGeneration
+        // 切换应用期间不自动显示窗口
+        guard !isSwitchingApps, !isHiddenByIslandSwitch else { return nil }
+
+        let hideInFullscreen = defaults.bool(forKey: "hideInFullscreen")
         guard hideInFullscreen else {
             // 不再自动显示窗口——窗口只在明确命令时显示
-            return
+            return nil
         }
-        // Phase 1: snapshot MainActor-isolated state before leaving the main thread
-        let screen = NSScreen.main
-        let windowSnapshots: [(screen: NSScreen?, styleMask: NSWindow.StyleMask)] =
-            NSApplication.shared.windows.map { ($0.screen, $0.styleMask) }
-        let frontApp = NSWorkspace.shared.frontmostApplication
-
-        // Phase 2: slow CGWindowList work off the main thread
-        Task.detached(priority: .userInitiated) { [weak self] in
+        let fullscreenProbe = fullscreenProbe
+        return Task { [weak self] in
+            let inFullscreen: Bool
+            if let fullscreenProbe {
+                inFullscreen = await fullscreenProbe()
+            } else {
+                // Phase 1: snapshot MainActor-isolated state before leaving the main thread
+                let screen = NSScreen.main
+                let windowSnapshots: [(screen: NSScreen?, styleMask: NSWindow.StyleMask)] =
+                    NSApplication.shared.windows.map { ($0.screen, $0.styleMask) }
+                let frontApp = NSWorkspace.shared.frontmostApplication
+                // Phase 2: slow CGWindowList work off the main thread
+                inFullscreen = await Task.detached(priority: .userInitiated) {
+                    screen.map {
+                        Self.isScreenInFullscreenOffMain($0, windowSnapshots: windowSnapshots, frontApp: frontApp)
+                    } ?? false
+                }.value
+            }
             guard let self else { return }
-            let inFullscreen = screen.map {
-                Self.isScreenInFullscreenOffMain($0, windowSnapshots: windowSnapshots, frontApp: frontApp)
-            } ?? false
-            await MainActor.run {
-                guard !self.isSwitchingApps, !self.isHiddenByIslandSwitch else { return }
-                if inFullscreen {
-                    self.pauseMouseTracking()
-                    self.orderOut(nil)
-                } else {
-                    self.resumeMouseTracking()
-                    self.orderFrontRegardless()
-                }
+            guard self.visibilityGeneration == generation,
+                  self.defaults.bool(forKey: "hideInFullscreen"),
+                  !self.isSwitchingApps, !self.isHiddenByIslandSwitch else { return }
+            if inFullscreen {
+                self.pauseMouseTracking()
+                self.orderOut(nil)
+            } else {
+                self.resumeMouseTracking()
+                self.orderFrontRegardless()
             }
         }
     }
@@ -568,10 +610,11 @@ final class NotchWindow: NSPanel {
 
     /// 在鼠标所在屏幕显示窗口（URL Scheme 唤醒时调用）
     func showAtMouseScreen() {
+        lastExplicitShowTime = Date().timeIntervalSince1970
+        onExplicitShow()
+        visibilityGeneration &+= 1
         isHiddenByIslandSwitch = false
-        if let currentIsland = AppSwitcher.shared.currentIsland {
-            IslandIntegrationSettings.markVisible(currentIsland)
-        }
+        markVisible()
         // 明确要求在鼠标所在屏显示，解除审批期间的锚定
         pinnedScreenID = nil
         let mouseLocation = NSEvent.mouseLocation
@@ -586,10 +629,11 @@ final class NotchWindow: NSPanel {
     /// 在当前"正在显示的主界面"所在屏幕显示并置顶（审批/问答/计划评审时使用）。
     /// 与 showAtMouseScreen 不同，不依赖鼠标位置，避免多显示器时展开到错误的屏幕。
     func showAtActiveScreen() {
+        lastExplicitShowTime = Date().timeIntervalSince1970
+        onExplicitShow()
+        visibilityGeneration &+= 1
         isHiddenByIslandSwitch = false
-        if let currentIsland = AppSwitcher.shared.currentIsland {
-            IslandIntegrationSettings.markVisible(currentIsland)
-        }
+        markVisible()
         // 先锚定再重排：锚定后 layoutScreen() 一律返回该屏，
         // 后续的 resizeToFit / setFrame / 鼠标跟随都不会再把面板拉回鼠标所在屏
         let target = Self.activeScreen()
@@ -599,10 +643,11 @@ final class NotchWindow: NSPanel {
     }
 
     func showWindow() {
+        lastExplicitShowTime = Date().timeIntervalSince1970
+        onExplicitShow()
+        visibilityGeneration &+= 1
         isHiddenByIslandSwitch = false
-        if let currentIsland = AppSwitcher.shared.currentIsland {
-            IslandIntegrationSettings.markVisible(currentIsland)
-        }
+        markVisible()
         orderFrontRegardless()
     }
 

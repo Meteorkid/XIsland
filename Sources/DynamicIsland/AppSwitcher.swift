@@ -31,8 +31,68 @@ final class AppSwitcher {
         "xisland": "xisland",
     ]
 
-    /// 用于延迟清除 isSwitchingApps 标志的 WorkItem
-    private var clearSwitchingAppsWorkItem: DispatchWorkItem?
+    struct Environment {
+        var applicationURL: (String) -> URL?
+        var open: (URL, URL, @escaping @MainActor (Bool) -> Void) -> Void
+        var isVisible: (String) -> Bool
+        var isFrontmost: (String) -> Bool
+        var setSwitching: (Bool) -> Void
+        var hideSource: () -> Void
+        var restoreSource: () -> Void
+        var schedule: (TimeInterval, @escaping @MainActor () -> Void) -> () -> Void
+    }
+
+    private let environment: Environment
+    private var requestID: UUID?
+    private var targetName: String?
+    private var cancelTimeout: (() -> Void)?
+    private var cancelPoll: (() -> Void)?
+    private(set) var lastSwitchFailed = false
+
+    init(environment: Environment? = nil) {
+        self.environment = environment ?? Self.liveEnvironment
+    }
+
+    private static func applicationURL(for bundleID: String) -> URL? {
+        // 优先正式安装位置，避免 URL scheme 被构建目录或备份 App 抢占。
+        let name = bundleID == "com.meteorkid.xnook" ? "X Nook.app" : "X Island.app"
+        for directory in [URL(fileURLWithPath: "/Applications"), FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications")] {
+            let url = directory.appendingPathComponent(name)
+            if Bundle(url: url)?.bundleIdentifier == bundleID { return url }
+        }
+        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+    }
+
+    private static var liveEnvironment: Environment {
+        Environment(
+            applicationURL: { applicationURL(for: $0) },
+            open: { url, appURL, completion in
+                let configuration = NSWorkspace.OpenConfiguration()
+                configuration.activates = false
+                NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: configuration) { app, error in
+                    DispatchQueue.main.async { completion(app != nil && error == nil) }
+                }
+            },
+            isVisible: { bundleID in
+                IslandHandoffVisibility.isPeerVisible(bundleIdentifier: bundleID, applicationURL: applicationURL(for: bundleID))
+            },
+            isFrontmost: { bundleID in
+                IslandHandoffVisibility.isPeerFrontmost(bundleIdentifier: bundleID, applicationURL: applicationURL(for: bundleID))
+            },
+            setSwitching: { AppDelegate.shared?.notchWindow?.isSwitchingApps = $0 },
+            hideSource: {
+                guard let window = AppDelegate.shared?.notchWindow else { return }
+                window.isHiddenByIslandSwitch = true
+                window.orderOut(nil)
+            },
+            restoreSource: { AppDelegate.shared?.notchWindow?.showWindow() },
+            schedule: { delay, action in
+                let work = DispatchWorkItem { action() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+                return { work.cancel() }
+            }
+        )
+    }
 
     /// 当前应用名
     var currentAppName: String? {
@@ -68,47 +128,81 @@ final class AppSwitcher {
 
     /// 切换到指定的灵动岛
     func switchToIsland(named targetName: String) {
-        // 防止切换到自身
         guard targetName != currentAppName,
-              islandApps[targetName] != nil else { return }
-
-        // 检查目标应用是否已安装
-        guard isIslandInstalled(named: targetName) else {
-            // 目标应用未安装，不执行切换
+              let bundleID = islandApps[targetName],
+              let url = switchURL(for: targetName) else { return }
+        guard let appURL = environment.applicationURL(bundleID) else {
+            cancelSwitch()
+            lastSwitchFailed = true
+            environment.restoreSource()
             return
         }
-
-        // 设置切换标志，防止 activeSpaceDidChange 重新显示窗口
-        if let window = AppDelegate.shared?.notchWindow {
-            window.isSwitchingApps = true
+        guard self.targetName != targetName else { return }
+        cancelSwitch()
+        let id = UUID()
+        requestID = id
+        self.targetName = targetName
+        lastSwitchFailed = false
+        environment.setSwitching(true)
+        cancelTimeout = environment.schedule(8) { [weak self] in self?.failSwitch(id) }
+        environment.open(url, appURL) { [weak self] opened in
+            guard let self, self.requestID == id else { return }
+            if opened { self.checkTarget(id) } else { self.failSwitch(id) }
         }
+    }
 
-        // 通过目标应用独立的 URL Scheme 唤醒它
-        guard let url = switchURL(for: targetName) else {
-            AppDelegate.shared?.notchWindow?.isSwitchingApps = false
-            return
+    private func checkTarget(_ id: UUID) {
+        guard requestID == id, let targetName, let bundleID = islandApps[targetName] else { return }
+        // 打开请求成功不等于窗口已显示；继续保留来源，直到窗口服务器确认目标岛。
+        if environment.isVisible(bundleID) {
+            cancelSwitch()
+            environment.hideSource()
+        } else {
+            cancelPoll = environment.schedule(0.1) { [weak self] in self?.checkTarget(id) }
         }
+    }
 
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = false
-        NSWorkspace.shared.open(url, configuration: configuration) { [weak self] _, error in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                if error != nil {
-                    // 目标未确认显示，立即清除切换标志
-                    AppDelegate.shared?.notchWindow?.isSwitchingApps = false
-                } else {
-                    // 成功打开 URL，延迟清除切换标志（确保空间切换完成）
-                    // 使用 DispatchWorkItem 以便在需要时取消
-                    let clearWork = DispatchWorkItem { [weak self] in
-                        guard self != nil else { return }
-                        AppDelegate.shared?.notchWindow?.isSwitchingApps = false
-                    }
-                    self.clearSwitchingAppsWorkItem = clearWork
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: clearWork)
-                }
+    private func failSwitch(_ id: UUID) {
+        guard requestID == id else { return }
+        cancelSwitch()
+        lastSwitchFailed = true
+        environment.restoreSource()
+    }
+
+    var isSwitchInProgress: Bool { requestID != nil }
+
+    func cancelSwitch() {
+        let wasSwitching = requestID != nil
+        requestID = nil
+        targetName = nil
+        cancelTimeout?(); cancelTimeout = nil
+        cancelPoll?(); cancelPoll = nil
+        if wasSwitching { environment.setSwitching(false) }
+    }
+
+    /// 兼容旧版裸 hide 通知：无正在进行的切换时，只有置顶的目标岛可要求让位。
+    func acceptPeerHideRequest(from peer: String? = nil, shownAt: TimeInterval? = nil,
+                               after lastExplicitShow: TimeInterval = 0) -> Bool {
+        let ready: Bool
+        if peer != nil || shownAt != nil {
+            guard let peer, let shownAt, shownAt.isFinite, shownAt > lastExplicitShow,
+                  otherIslandNames.contains(peer), let bundleID = islandApps[peer] else { return false }
+            ready = environment.isVisible(bundleID)
+        } else if let targetName, let bundleID = islandApps[targetName] {
+            ready = environment.isVisible(bundleID)
+        } else {
+            ready = otherIslandNames.contains { name in
+                islandApps[name].map(environment.isFrontmost) ?? false
             }
         }
+        guard ready else { return false }
+        cancelSwitch()
+        return true
+    }
+
+    func isIslandVisible(named name: String) -> Bool {
+        guard let bundleID = islandApps[name] else { return false }
+        return environment.isVisible(bundleID)
     }
 
     func switchURL(for targetName: String) -> URL? {
@@ -120,7 +214,7 @@ final class AppSwitcher {
 
     func isIslandInstalled(named islandName: String) -> Bool {
         guard let bundleID = islandApps[islandName] else { return false }
-        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil
+        return environment.applicationURL(bundleID) != nil
     }
 
     func isIslandRunning(named islandName: String) -> Bool {

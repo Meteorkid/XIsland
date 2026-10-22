@@ -75,6 +75,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let launchHooks: LaunchHooks
     private var scrollMonitor: Any?
     private var islandHideObserver: NSObjectProtocol?
+    private var clearSwitchingAppsWorkItem: DispatchWorkItem?
+    private var pendingIslandShowURL: URL?
+    private var hasExplicitIslandVisibilityRequest = false
 
     override convenience init() {
         self.init(testConfiguration: AppTestConfiguration.current())
@@ -144,6 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         launchHooks.performInitialStartup(self)
+        if let pendingIslandShowURL { handleIslandCommand(pendingIslandShowURL) }
 
         if testConfiguration.runsProductionGlobalStartupSideEffects {
             launchHooks.performProductionGlobalStartup(self)
@@ -166,9 +170,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 forName: Notification.Name(hideNotification),
                 object: nil,
                 queue: .main
-            ) { [weak self] _ in
+            ) { [weak self] note in
+                let peer = note.userInfo?["source"] as? String
+                let shownAt = note.userInfo?["shownAt"] as? TimeInterval
                 Task { @MainActor [weak self] in
-                    self?.hideIslandForSwitch()
+                    self?.hideIslandForSwitch(from: peer, shownAt: shownAt)
                 }
             }
         }
@@ -289,16 +295,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // url.host 是目标应用名，检查是否是发给自己的
         guard let targetName = url.host,
               targetName == AppSwitcher.shared.currentAppName,
-              url.pathComponents.contains("show"),
-              let window = notchWindow else { return }
+              url.path == "/show" else { return }
+        hasExplicitIslandVisibilityRequest = true
+        guard let window = notchWindow else {
+            pendingIslandShowURL = url
+            return
+        }
+        pendingIslandShowURL = nil
+        AppSwitcher.shared.cancelSwitch()
 
         // 立即设置切换标志（同步），防止 activeSpaceDidChange 重新显示窗口
         window.isHiddenByIslandSwitch = false
         window.isSwitchingApps = true
         window.swipeRecognizer.suppress(for: 0.8)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            window.isSwitchingApps = false
-        }
+        scheduleClearSwitchingApps(window: window, delay: 1.5)
 
         // 先收起并显示自身，确认接管后再请求来源岛隐藏
         NotificationCenter.default.post(name: .xislandCollapse, object: nil)
@@ -311,14 +321,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func hideIslandForSwitch() {
-        guard let window = notchWindow else { return }
+    func hideIslandForSwitch(from peer: String? = nil, shownAt: TimeInterval? = nil,
+                             using switcher: AppSwitcher? = nil) {
+        guard let window = notchWindow,
+              (switcher ?? .shared).acceptPeerHideRequest(from: peer, shownAt: shownAt, after: window.lastExplicitShowTime)
+        else { return }
+        hasExplicitIslandVisibilityRequest = true
         window.isHiddenByIslandSwitch = true
         window.isSwitchingApps = true
         window.orderOut(nil)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            window.isSwitchingApps = false
+        scheduleClearSwitchingApps(window: window, delay: 1.0)
+    }
+
+    private func scheduleClearSwitchingApps(window: NotchWindow, delay: TimeInterval) {
+        clearSwitchingAppsWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self, weak window] in
+            guard let window else { return }
+            self?.clearSwitchingProtection(window: window)
         }
+        clearSwitchingAppsWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    func clearSwitchingProtection(window: NotchWindow, using switcher: AppSwitcher? = nil) {
+        guard !(switcher ?? .shared).isSwitchInProgress else { return }
+        window.isSwitchingApps = false
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -650,6 +677,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func resolveInitialIslandVisibility() {
+        guard !hasExplicitIslandVisibilityRequest, !AppSwitcher.shared.isSwitchInProgress else { return }
         guard let currentIsland = AppSwitcher.shared.currentIsland else {
             showIsland(preferMouseScreen: false, hidePeers: false)
             return
@@ -660,11 +688,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             currentApp: currentIsland,
             otherAppInstalled: otherInstalled
         )
-        let preferredRunning = AppSwitcher.shared.isIslandRunning(named: preferredIsland.rawValue)
+        let preferredVisible = AppSwitcher.shared.isIslandVisible(named: preferredIsland.rawValue)
         let shouldShow = IslandIntegrationSettings.shouldShowOnLaunch(
             currentApp: currentIsland,
             preferredApp: preferredIsland,
-            preferredAppRunning: preferredRunning
+            preferredAppVisible: preferredVisible
         )
 
         guard shouldShow else { return }
@@ -674,6 +702,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showIsland(preferMouseScreen: Bool, hidePeers: Bool) {
         guard let window = notchWindow else { return }
+        hasExplicitIslandVisibilityRequest = true
+        AppSwitcher.shared.cancelSwitch()
 
         if preferMouseScreen {
             window.showAtMouseScreen()
@@ -1015,11 +1045,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func postHideNotification(_ name: String) {
-        guard !testConfiguration.isEnabled, !AppPreferences.isIsolated else { return }
+        guard !testConfiguration.isEnabled, !AppPreferences.isIsolated,
+              notchWindow?.isVisible == true else { return }
         DistributedNotificationCenter.default().postNotificationName(
             Notification.Name(name),
             object: nil,
-            userInfo: nil,
+            userInfo: ["source": AppSwitcher.shared.currentAppName ?? "",
+                       "shownAt": notchWindow?.lastExplicitShowTime ?? 0],
             deliverImmediately: true
         )
     }
