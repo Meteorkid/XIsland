@@ -245,7 +245,16 @@ final class AppSwitcher {
         let expectedBundleID = islandApps[island.rawValue]
         let installed = isIslandInstalled(named: island.rawValue)
         let running = isIslandRunning(named: island.rawValue)
-        let protocolConfigured = expectedBundleID == registeredHandlerBundleIdentifier(for: island)
+        let protocolConfigured: Bool
+        if let expectedBundleID, let appURL = environment.applicationURL(expectedBundleID) {
+            protocolConfigured = Self.supportsSwitchURL(
+                bundleInfo: Bundle(url: appURL)?.infoDictionary,
+                bundleIdentifier: expectedBundleID,
+                scheme: islandSchemes[island.rawValue] ?? ""
+            )
+        } else {
+            protocolConfigured = false
+        }
         return IslandPeerStatus(
             island: island,
             isInstalled: installed,
@@ -254,14 +263,10 @@ final class AppSwitcher {
         )
     }
 
-    private func registeredHandlerBundleIdentifier(for island: IslandApp) -> String? {
-        guard let scheme = islandSchemes[island.rawValue],
-              let url = URL(string: "\(scheme)://island/show"),
-              let applicationURL = NSWorkspace.shared.urlForApplication(toOpen: url)
-        else {
-            return nil
-        }
-
-        return Bundle(url: applicationURL)?.bundleIdentifier
+    /// 定向启动使用目标包自己的 URL 声明；不能要求目标先运行过，也不依赖默认处理器。
+    static func supportsSwitchURL(bundleInfo: [String: Any]?, bundleIdentifier: String, scheme: String) -> Bool {
+        guard !scheme.isEmpty, bundleInfo?["CFBundleIdentifier"] as? String == bundleIdentifier,
+              let types = bundleInfo?["CFBundleURLTypes"] as? [[String: Any]] else { return false }
+        return types.contains { ($0["CFBundleURLSchemes"] as? [String])?.contains(scheme) == true }
     }
 }

@@ -131,6 +131,17 @@ final class AppSwitcherTests: XCTestCase {
         XCTAssertFalse(switcher.acceptPeerHideRequest(from: "xnook", shownAt: 11, after: 10))
     }
 
+    func testInstalledTargetDeclaresSwitchSupportWithoutPriorLaunchOrDefaultHandler() {
+        let info: [String: Any] = [
+            "CFBundleIdentifier": "dev.xisland.app",
+            "CFBundleURLTypes": [["CFBundleURLSchemes": ["xisland"]]]
+        ]
+        XCTAssertTrue(AppSwitcher.supportsSwitchURL(bundleInfo: info, bundleIdentifier: "dev.xisland.app", scheme: "xisland"))
+        XCTAssertFalse(AppSwitcher.supportsSwitchURL(bundleInfo: info, bundleIdentifier: "com.meteorkid.xnook", scheme: "xisland"))
+        XCTAssertFalse(AppSwitcher.supportsSwitchURL(bundleInfo: info, bundleIdentifier: "dev.xisland.app", scheme: "xnook"))
+        XCTAssertFalse(AppSwitcher.supportsSwitchURL(bundleInfo: [:], bundleIdentifier: "dev.xisland.app", scheme: "xisland"))
+    }
+
     @MainActor
     private final class Harness {
         var installed = true
