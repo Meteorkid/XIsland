@@ -13,9 +13,12 @@ enum IslandHandoffVisibility {
         applicationURL: URL?,
         sourcePID: pid_t = ProcessInfo.processInfo.processIdentifier
     ) -> Bool {
+        guard let peerWindowLevel = windowLevel(for: bundleIdentifier) else { return false }
         let peerPIDs = runningPeerPIDs(bundleIdentifier: bundleIdentifier, applicationURL: applicationURL)
         guard !peerPIDs.isEmpty, let windows = onScreenWindows() else { return false }
-        return isPeerVisible(windowList: windows, peerPIDs: peerPIDs, sourcePID: sourcePID)
+        return isPeerVisible(
+            windowList: windows, peerPIDs: peerPIDs, sourcePID: sourcePID, peerWindowLevel: peerWindowLevel
+        )
     }
 
     @MainActor
@@ -24,9 +27,24 @@ enum IslandHandoffVisibility {
         applicationURL: URL?,
         sourcePID: pid_t = ProcessInfo.processInfo.processIdentifier
     ) -> Bool {
+        guard let peerWindowLevel = windowLevel(for: bundleIdentifier),
+              let sourceWindowLevel = windowLevel(
+                  for: NSRunningApplication(processIdentifier: sourcePID)?.bundleIdentifier
+              ) else { return false }
         let peerPIDs = runningPeerPIDs(bundleIdentifier: bundleIdentifier, applicationURL: applicationURL)
         guard !peerPIDs.isEmpty, let windows = onScreenWindows() else { return false }
-        return isPeerFrontmost(windowList: windows, peerPIDs: peerPIDs, sourcePID: sourcePID)
+        return isPeerFrontmost(
+            windowList: windows, peerPIDs: peerPIDs, sourcePID: sourcePID,
+            peerWindowLevel: peerWindowLevel, sourceWindowLevel: sourceWindowLevel
+        )
+    }
+
+    static func windowLevel(for bundleIdentifier: String?) -> Int? {
+        switch bundleIdentifier {
+        case "dev.xisland.app": return NSWindow.Level.statusBar.rawValue + 1
+        case "com.meteorkid.xnook": return NSWindow.Level.statusBar.rawValue + 2
+        default: return nil
+        }
     }
 
     static func peerProcessIdentifiers(
@@ -51,10 +69,11 @@ enum IslandHandoffVisibility {
     static func isPeerVisible(
         windowList: [[String: Any]],
         peerPIDs: Set<pid_t>,
-        sourcePID: pid_t
+        sourcePID: pid_t,
+        peerWindowLevel: Int = NSWindow.Level.statusBar.rawValue + 1
     ) -> Bool {
         windowList.contains { info in
-            guard let ownerPID = islandWindowOwnerPID(info) else { return false }
+            guard let ownerPID = islandWindowOwnerPID(info, windowLevel: peerWindowLevel) else { return false }
             return ownerPID != sourcePID && peerPIDs.contains(ownerPID)
         }
     }
@@ -62,23 +81,27 @@ enum IslandHandoffVisibility {
     static func isPeerFrontmost(
         windowList: [[String: Any]],
         peerPIDs: Set<pid_t>,
-        sourcePID: pid_t
+        sourcePID: pid_t,
+        peerWindowLevel: Int = NSWindow.Level.statusBar.rawValue + 1,
+        sourceWindowLevel: Int = NSWindow.Level.statusBar.rawValue + 1
     ) -> Bool {
         // CGWindowList 按前后顺序返回；源岛重新置顶后，迟到的 hide 不能通过确认。
         for info in windowList {
-            guard let ownerPID = islandWindowOwnerPID(info),
+            guard let ownerPID = info[kCGWindowOwnerPID as String] as? pid_t,
                   ownerPID == sourcePID || peerPIDs.contains(ownerPID) else { continue }
+            let expectedLevel = ownerPID == sourcePID ? sourceWindowLevel : peerWindowLevel
+            guard islandWindowOwnerPID(info, windowLevel: expectedLevel) != nil else { continue }
             return ownerPID != sourcePID
         }
         return false
     }
 
-    private static func islandWindowOwnerPID(_ info: [String: Any]) -> pid_t? {
+    private static func islandWindowOwnerPID(_ info: [String: Any], windowLevel: Int) -> pid_t? {
         guard let ownerPID = info[kCGWindowOwnerPID as String] as? pid_t,
               ownerPID > 0,
               let layer = info[kCGWindowLayer as String] as? Int,
-              // XIsland 与 XNook 分别使用 statusBar + 1 和 + 2。
-              layer == NSWindow.Level.statusBar.rawValue + 1 || layer == NSWindow.Level.statusBar.rawValue + 2,
+              // XIsland 设置窗也使用 statusBar + 2，必须按所属应用匹配精确岛层级。
+              layer == windowLevel,
               info[kCGWindowIsOnscreen as String] as? Bool == true,
               let alpha = info[kCGWindowAlpha as String] as? CGFloat,
               alpha.isFinite, alpha > 0,

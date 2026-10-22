@@ -9,10 +9,18 @@ final class IslandHandoffVisibilityTests: XCTestCase {
 
     func testBothKnownIslandLevelsAreVisibleAndFrontmost() {
         for levelOffset in [1, 2] {
-            let windows = [window(pid: peerPID, layer: NSWindow.Level.statusBar.rawValue + levelOffset), window(pid: sourcePID)]
-            XCTAssertTrue(isVisible(windows))
-            XCTAssertTrue(isFrontmost(windows))
+            let level = NSWindow.Level.statusBar.rawValue + levelOffset
+            let windows = [window(pid: peerPID, layer: level), window(pid: sourcePID)]
+            XCTAssertTrue(isVisible(windows, peerWindowLevel: level))
+            XCTAssertTrue(isFrontmost(windows, peerWindowLevel: level))
         }
+    }
+
+    func testBundleIdentitySelectsExactIslandLayer() {
+        XCTAssertEqual(IslandHandoffVisibility.windowLevel(for: "dev.xisland.app"), NSWindow.Level.statusBar.rawValue + 1)
+        XCTAssertEqual(IslandHandoffVisibility.windowLevel(for: "com.meteorkid.xnook"), NSWindow.Level.statusBar.rawValue + 2)
+        XCTAssertNil(IslandHandoffVisibility.windowLevel(for: "com.example.other"))
+        XCTAssertNil(IslandHandoffVisibility.windowLevel(for: nil))
     }
 
     func testSourceReclaimedFrontPreventsLateHideButStillRecognizesVisiblePeer() {
@@ -27,7 +35,7 @@ final class IslandHandoffVisibilityTests: XCTestCase {
             window(pid: peerPID, layer: NSWindow.Level.statusBar.rawValue + 1),
         ]
         XCTAssertTrue(isVisible(windows))
-        XCTAssertFalse(isFrontmost(windows))
+        XCTAssertFalse(isFrontmost(windows, sourceWindowLevel: NSWindow.Level.statusBar.rawValue + 2))
     }
 
     func testPeerIsAcceptedWhenSourceHasNoWindow() {
@@ -48,6 +56,30 @@ final class IslandHandoffVisibilityTests: XCTestCase {
             XCTAssertFalse(isFrontmost([window(pid: peerPID, layer: layer)]))
         }
         XCTAssertTrue(isFrontmost([window(pid: sourcePID, layer: 0), window(pid: peerPID)]))
+    }
+
+    func testXIslandSettingsWindowCannotConfirmXIslandVisibility() {
+        let windows = [window(pid: peerPID, layer: NSWindow.Level.statusBar.rawValue + 2)]
+        XCTAssertFalse(isVisible(windows))
+        XCTAssertFalse(isFrontmost(windows))
+    }
+
+    func testXIslandSourceSettingsWindowDoesNotOwnHandoff() {
+        let sourceSettings = window(pid: sourcePID, layer: NSWindow.Level.statusBar.rawValue + 2)
+        XCTAssertTrue(isFrontmost([sourceSettings, window(pid: peerPID), window(pid: sourcePID)]))
+        XCTAssertFalse(isFrontmost([sourceSettings, window(pid: sourcePID), window(pid: peerPID)]))
+        let xnookLevel = NSWindow.Level.statusBar.rawValue + 2
+        XCTAssertTrue(isFrontmost(
+            [sourceSettings, window(pid: peerPID, layer: xnookLevel), window(pid: sourcePID)],
+            peerWindowLevel: xnookLevel
+        ))
+    }
+
+    func testXNookPeerRequiresItsOwnIslandLayer() {
+        let windows = [window(pid: peerPID)]
+        let xnookLevel = NSWindow.Level.statusBar.rawValue + 2
+        XCTAssertFalse(isVisible(windows, peerWindowLevel: xnookLevel))
+        XCTAssertFalse(isFrontmost(windows, peerWindowLevel: xnookLevel))
     }
 
     func testTransparentAndOffscreenWindowsAreRejected() {
@@ -161,12 +193,24 @@ final class IslandHandoffVisibilityTests: XCTestCase {
         ).isEmpty)
     }
 
-    private func isVisible(_ windows: [[String: Any]]) -> Bool {
-        IslandHandoffVisibility.isPeerVisible(windowList: windows, peerPIDs: [peerPID], sourcePID: sourcePID)
+    private func isVisible(
+        _ windows: [[String: Any]],
+        peerWindowLevel: Int = NSWindow.Level.statusBar.rawValue + 1
+    ) -> Bool {
+        IslandHandoffVisibility.isPeerVisible(
+            windowList: windows, peerPIDs: [peerPID], sourcePID: sourcePID, peerWindowLevel: peerWindowLevel
+        )
     }
 
-    private func isFrontmost(_ windows: [[String: Any]]) -> Bool {
-        IslandHandoffVisibility.isPeerFrontmost(windowList: windows, peerPIDs: [peerPID], sourcePID: sourcePID)
+    private func isFrontmost(
+        _ windows: [[String: Any]],
+        peerWindowLevel: Int = NSWindow.Level.statusBar.rawValue + 1,
+        sourceWindowLevel: Int = NSWindow.Level.statusBar.rawValue + 1
+    ) -> Bool {
+        IslandHandoffVisibility.isPeerFrontmost(
+            windowList: windows, peerPIDs: [peerPID], sourcePID: sourcePID,
+            peerWindowLevel: peerWindowLevel, sourceWindowLevel: sourceWindowLevel
+        )
     }
 
     private func application(pid: pid_t, path: String?) -> IslandHandoffVisibility.RunningApplication {
