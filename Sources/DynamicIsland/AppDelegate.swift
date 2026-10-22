@@ -131,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "completedLingerDuration": 120.0,
             "showActivityTicker": true,
             "showCollapsedAgentIcon": true,
+            "collapsedRecentTaskLimit": CollapsedTaskSelection.defaultLimit,
             "showCollapsedSessionCount": true,
             "showCollapsedQuota": true,
             "tickerSpeed": 25.0,

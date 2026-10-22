@@ -6,8 +6,7 @@ struct CollapsedPillView: View {
     @Environment(AudioEngine.self) private var audio
     @Environment(QuotaTracker.self) private var quotaTracker
     @Environment(ThemeManager.self) private var themeManager
-    /// Obscured: left = expanded-list session that last received a message; right = active count.
-    /// Unobscured: same session count/order as the expanded list (`visibleSessions`).
+    /// 两种布局共享最近任务候选；数量限制只影响图标，不影响完整列表及计数。
     let obscuredByNotch: Bool
     let isExpanded: Bool
     let onTap: () -> Void
@@ -17,8 +16,13 @@ struct CollapsedPillView: View {
     @AppStorage("reduceMotion") private var appReduceMotion = false
     @AppStorage("disableAnimations") private var disableAnimations = false
     @AppStorage("showCollapsedAgentIcon") private var showCollapsedAgentIcon = true
+    @AppStorage("collapsedRecentTaskLimit") private var collapsedRecentTaskLimit = CollapsedTaskSelection.defaultLimit
     @AppStorage("showCollapsedSessionCount") private var showCollapsedSessionCount = true
     @AppStorage("showCollapsedQuota") private var showCollapsedQuota = true
+
+    private var displayedSessions: [AgentSession] {
+        CollapsedTaskSelection.select(from: visible, limit: collapsedRecentTaskLimit)
+    }
 
     private var reduceMotion: Bool {
         !IslandMotionPolicy(
@@ -99,9 +103,8 @@ struct CollapsedPillView: View {
                 if visible.isEmpty {
                     appIconFallback
                 } else {
-                    let maxIcons = 5
-                    let shown = Array(visible.prefix(maxIcons))
-                    let overflow = visible.count - maxIcons
+                    let shown = displayedSessions
+                    let overflow = visible.count - shown.count
                     HStack(spacing: 6) {
                         ForEach(shown) { session in
                             AgentIcon(agentType: session.agentType, size: 22, status: session.status)
@@ -134,7 +137,7 @@ struct CollapsedPillView: View {
 
     @ViewBuilder
     private var obscuredLeadingIcon: some View {
-        let sessions = visible
+        let sessions = displayedSessions
         if sessions.isEmpty {
             appIconFallback
         } else if sessions.count == 1 || reduceMotion {
