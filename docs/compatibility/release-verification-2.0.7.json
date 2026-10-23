@@ -1,0 +1,121 @@
+{
+  "version": "2.0.7",
+  "preparedAt": "2026-10-23T15:56:17.995878+00:00",
+  "sourceCommit": "7a8faac980b5d8f12efe1a6dfd81c72b64ab5512",
+  "previousRelease": "v2.0.6",
+  "platform": "macOS",
+  "minimumOS": "14.0",
+  "architecture": "arm64",
+  "companionVersion": "1.0.1",
+  "companionRequiresXIsland": "2.0.7",
+  "swiftTests": {
+    "total": 1524,
+    "passed": 1508,
+    "skipped": 16,
+    "failed": 0,
+    "fullSuiteExecuted": true,
+    "exitCode": 0,
+    "reusedBecauseRuntimeSourceUnchanged": true,
+    "sourceMatch": {
+      "matched": true,
+      "sourceCommit": "7a8faac980b5d8f12efe1a6dfd81c72b64ab5512",
+      "files": {
+        "Scripts/test-vscode-app.py": true,
+        "Scripts/test-vscode-observation.py": true,
+        "Scripts/test-vscode-transport.py": true,
+        "Sources/DIBridge/DIBridge.swift": true,
+        "Sources/DynamicIsland/Managers/SocketResponseChannel.swift": true,
+        "Sources/DynamicIsland/Managers/SocketServer.swift": true,
+        "Sources/XIslandVSCode/src/transport.ts": true,
+        "Sources/XIslandVSCode/test/extension.test.cjs": true,
+        "Sources/XIslandVSCode/test/transport.test.cjs": true,
+        "Tests/TowerIslandTests/SocketResponseChannelTests.swift": true,
+        "Tests/TowerIslandTests/SocketServerAcceptTests.swift": true,
+        "Sources/DIBridge/VSCodeObservationCommand.swift": true,
+        "Sources/XIslandVSCode/test/bridge-fixture.cjs": true,
+        "Tests/TowerIslandTests/ProductionPeerPolicyTests.swift": true,
+        "Tests/TowerIslandTests/VSCodeObservationCommandTests.swift": true
+      }
+    }
+  },
+  "companionTests": {
+    "total": 45,
+    "passed": 45,
+    "failed": 0,
+    "runForReleaseMetadata": true
+  },
+  "package": {
+    "status": "passed",
+    "version": "2.0.7",
+    "readOnlyMounted": true,
+    "architecture": "arm64",
+    "minimumOS": "14.0",
+    "signatureVerified": true,
+    "signature": "ad-hoc",
+    "notarized": false,
+    "binariesMatchTestedBundle": true,
+    "dmgSHA256": "cd1087ec3a83047df91bd8e4e570b268487048316674a058667f9ec51e6e1eca",
+    "dmgBytes": 6064451,
+    "binarySHA256": {
+      "XIsland": "ae32c4f379a983dcb69bc51318e84fed7a826e6201fdb18aee4b960dfe32f1ac",
+      "di-bridge": "ad2cdbd9bb313ca8b556891ebb1e34db97bf1469787b696d638f8c4ec1fe4f6a"
+    },
+    "cliMatchesSource": true,
+    "appIconPresent": true,
+    "vsixSHA256": "6be6a45c660c600f1e2d5d236f911b560d8ddc435d5e767269cbbc5d0337cd07",
+    "vsixCRCVerified": true
+  },
+  "packagedChecks": {
+    "bridgeScenariosPassed": 127,
+    "workbuddyEventsPassed": 11,
+    "vscodeApp": {
+      "sentEvents": 48,
+      "verifiedSessions": 16,
+      "finalStatus": "idle",
+      "binarySHA256": "ae32c4f379a983dcb69bc51318e84fed7a826e6201fdb18aee4b960dfe32f1ac",
+      "bridgeSHA256": "ad2cdbd9bb313ca8b556891ebb1e34db97bf1469787b696d638f8c4ec1fe4f6a",
+      "strictPeerAuthentication": true,
+      "directNodeRejected": true,
+      "transportSHA256": "a24e715c6f859f993d5e6d558aef827c64486ae87584bdca754461305cb36bd5",
+      "scope": "Compiled companion transport -> native di-bridge -> strict-peer isolated app SocketServer -> SessionManager -> diagnostics",
+      "realClientVerified": false,
+      "vendorClientLaunched": false
+    },
+    "vscodeObservation": {
+      "passed": true,
+      "observationRecords": 4,
+      "nativeTaskIdPreserved": true,
+      "normalExitObserved": true,
+      "crashLeaseExpired": true,
+      "expirySeconds": 30.07,
+      "reloadedInstanceStayedActive": true,
+      "noTaskMarkedCompleted": true,
+      "persistedObservationRecords": 4,
+      "heartbeatsSent": 3,
+      "strictPeerAuthentication": true,
+      "bridgeSHA256": "ad2cdbd9bb313ca8b556891ebb1e34db97bf1469787b696d638f8c4ec1fe4f6a",
+      "appSHA256": "ae32c4f379a983dcb69bc51318e84fed7a826e6201fdb18aee4b960dfe32f1ac",
+      "sourceSHA256": {
+        "Sources/XIslandVSCode/src/task-observer.ts": "257c1f34f200e300f7a63f3e8ce85b992772dc76ea7a135c5aaf0446576e1427",
+        "Sources/XIslandVSCode/src/transport.ts": "a24e715c6f859f993d5e6d558aef827c64486ae87584bdca754461305cb36bd5",
+        "Sources/DynamicIsland/Models/ObservationLease.swift": "3f7eeabcc50c91e05350cbfa6ed277d2b0e4a14d8fccac30c3ee52540583c528",
+        "Sources/DynamicIsland/Managers/SessionManager.swift": "71437f82032ac0b3fb680534b31824d443695970a9525fa491dea468745b806c"
+      },
+      "scope": "Compiled TS observer and transport -> native di-bridge -> strict-peer isolated XIsland app; synthetic vendor events",
+      "realClientVerified": false,
+      "vendorClientLaunched": false
+    },
+    "realVendorClientExecution": false,
+    "nativeTrustChanged": false
+  },
+  "notVerified": [
+    "Production installation of final published 2.0.7 DMG (planned after publication)",
+    "Real Roo Code / PearAI editor model-task lifecycle",
+    "Real remote SSH reverse tunnel",
+    "VoiceOver actual speech",
+    "Continuous native FPS",
+    "External multi-display",
+    "Developer ID signing/notarization and enabled publisher identity enforcement",
+    "Strong mutual peer authentication / same-UID fake-server defense"
+  ]
+}

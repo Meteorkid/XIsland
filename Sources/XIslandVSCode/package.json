@@ -2,7 +2,7 @@
     "name": "xisland-vscode",
     "displayName": "X Island Bridge",
     "description": "Observe verified Roo Code and experimental PearAI task events in X Island",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "publisher": "meteorkid",
     "engines": {
         "vscode": "^1.84.0"
