@@ -1,0 +1,105 @@
+{
+  "version": "2.0.5",
+  "preparedAt": "2026-10-23T03:20:01.813968+00:00",
+  "sourceCommit": "bfff6d7bb3800a751fa75143490b1a71b5e82e20",
+  "previousRelease": "v2.0.4",
+  "platform": "macOS",
+  "minimumOS": "14.0",
+  "architecture": "arm64",
+  "scope": "Collapsed recent task count only; no socket authentication, animation or haptic redesign.",
+  "swiftTests": {
+    "total": 1456,
+    "passed": 1442,
+    "skipped": 14,
+    "failed": 0,
+    "fullSuiteExecuted": true,
+    "exitCode": 0,
+    "renderFlagEnabled": true
+  },
+  "package": {
+    "status": "passed",
+    "version": "2.0.5",
+    "readOnlyMounted": true,
+    "architecture": "arm64",
+    "minimumOS": "14.0",
+    "signatureVerified": true,
+    "signature": "ad-hoc",
+    "notarized": false,
+    "binariesMatchTestedBundle": true,
+    "dmgSHA256": "ac40a097366b3dc311360a9fb83c54df43f650f63b859970fa3d8e231c9a2eec",
+    "dmgBytes": 5996358,
+    "binarySHA256": {
+      "XIsland": "3d639d9e235d41fc3d965d2228a01eb84da97537fb051788e80fe1a3f0f15f28",
+      "di-bridge": "0fcd4b73057e5cc5cfbf935a15f25c955fdb1c1e18ad96ff636e62754000fb4c"
+    },
+    "cliMatchesSource": true,
+    "appIconPresent": true,
+    "vsixSHA256": "676bfe748ad6d681c5c84ec17f61de8a2079f70c04d66554243bec8700a78d46",
+    "vsixCRCVerified": true
+  },
+  "packagedChecks": {
+    "bridgeScenariosPassed": 127,
+    "workbuddyEventsPassed": 11,
+    "syntheticCodexLifecyclePassed": true,
+    "realVendorClientExecution": false,
+    "nativeTrustChanged": false
+  },
+  "featureValidation": {
+    "limits": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "default": 3,
+    "isolatedNativePreferenceControlPassed": true,
+    "renderSnapshots": [
+      "icons-off-limit-1.png",
+      "icons-off-limit-5.png",
+      "notch-empty-icon-off.png",
+      "notch-empty-icon-on.png",
+      "notch-expected-latest.png",
+      "notch-limit-1-total.png",
+      "notch-limit-3-total.png",
+      "notch-limit-5-total.png",
+      "notch-recent-1.png",
+      "notch-session-icon-off.png",
+      "notch-session-icon-on.png",
+      "recent-limit-1-total.png",
+      "recent-limit-1.png",
+      "recent-limit-3-total.png",
+      "recent-limit-3.png",
+      "recent-limit-5-total.png",
+      "recent-limit-5.png",
+      "settings-default-3.png",
+      "settings-icons-off-retains-5.png",
+      "unobscured-empty-icon-off.png",
+      "unobscured-empty-icon-on.png",
+      "unobscured-session-icon-off.png",
+      "unobscured-session-icon-on.png"
+    ],
+    "sourceMatch": {
+      "matched": true,
+      "files": {
+        "Sources/DynamicIsland/AppDelegate.swift": "2adbabfe8705ea1f8b0370dc8f0a21cd647eb0766cb10e4babbb8152020d60a2",
+        "Sources/DynamicIsland/Managers/L10n.swift": "3cdc449bda37335cedda0cc265bc8e714646787882d710a5491434225fb87d9a",
+        "Sources/DynamicIsland/Models/CollapsedTaskSelection.swift": "a175ae55bb5c2059aac0865ba3228535c6b6af4ffdf507e2886d1fdef55e4cb5",
+        "Sources/DynamicIsland/Views/CollapsedPillView.swift": "9fbdc3595dac49f9ac543247e982aef27e6e06c15648c92f4bc645f69b32831d",
+        "Sources/DynamicIsland/Views/PreferencesView.swift": "60fafdc23663c77ecf2220690507bdfa7b4461f10345834829997165896abd79",
+        "Tests/TowerIslandTests/CollapsedTaskSelectionTests.swift": "a3a8cd2a678d41c756f7773df354779aba760d8979b146178999a67e65ea654b",
+        "Tests/TowerIslandTests/CollapsedRecentTaskRenderTests.swift": "8d578ad028549c5fd300c8e213f0a03c9e4351c78d96c2fd3d6b4c984d12f985",
+        "Tests/TowerIslandTests/CollapsedTaskPreferencesTests.swift": "96347e32a6a30b084251218cabf118d400ed5d7953bad8f240efa13807b98716"
+      },
+      "sourceCommit": "bfff6d7bb3800a751fa75143490b1a71b5e82e20"
+    }
+  },
+  "notVerified": [
+    "Fresh production installation of final 2.0.5 DMG (scheduled after publication)",
+    "VoiceOver actual speech",
+    "Continuous native FPS",
+    "External multi-display",
+    "All vendor client end-to-end acceptance",
+    "Apple Developer ID signing and notarization"
+  ]
+}
