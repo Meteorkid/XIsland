@@ -353,4 +353,31 @@ final class NotchContentViewTests: XCTestCase {
         XCTAssertFalse(NotchContentView.shouldShowAgentFlowEntry(state: .question("s1"), hasAnyBlocker: false))
         XCTAssertFalse(NotchContentView.shouldShowAgentFlowEntry(state: .planReview("s1"), hasAnyBlocker: false))
     }
+
+    // MARK: - 收起看门狗
+
+    /// 正常卡住场景：世代一致且仍在动画中 → 应当介入。
+    func testCollapseWatchdogFiresWhenStillAnimatingInSameGeneration() {
+        XCTAssertTrue(NotchContentView.shouldWatchdogForceSettle(
+            watchdogGeneration: 3, currentGeneration: 3, collapseAnimating: true
+        ))
+    }
+
+    /// 动画已正常收尾 → 不得介入，否则会与正常路径重复复位窗口。
+    func testCollapseWatchdogSkipsWhenAnimationAlreadyFinished() {
+        XCTAssertFalse(NotchContentView.shouldWatchdogForceSettle(
+            watchdogGeneration: 3, currentGeneration: 3, collapseAnimating: false
+        ))
+    }
+
+    /// 世代已被后续操作递增（新的收起或展开）→ 不得介入。
+    /// 这是最重要的一条：否则旧的看门狗会打断新动画，造成窗口尺寸错乱。
+    func testCollapseWatchdogSkipsWhenGenerationAdvanced() {
+        XCTAssertFalse(NotchContentView.shouldWatchdogForceSettle(
+            watchdogGeneration: 3, currentGeneration: 4, collapseAnimating: true
+        ))
+        XCTAssertFalse(NotchContentView.shouldWatchdogForceSettle(
+            watchdogGeneration: 3, currentGeneration: 5, collapseAnimating: false
+        ))
+    }
 }

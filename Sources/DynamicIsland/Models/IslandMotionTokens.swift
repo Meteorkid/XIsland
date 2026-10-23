@@ -14,30 +14,53 @@ import SwiftUI
 /// 两者数值**不可直接换算**，因此这里沿用项目既有的三档强度骨架，只把「分工原则」搬过来。
 enum IslandMotionTokens {
 
-    // MARK: - 弹簧（按强度分级）
+    // MARK: - 弹簧参数表（按强度分级）
 
-    /// 展开面板的弹簧。
-    static func expandSpring(for intensity: IslandAnimationIntensity) -> Animation {
-        switch intensity {
-        case .low:
-            return .spring(response: 0.28, dampingFraction: 0.92)
-        case .medium:
-            return .spring(response: 0.4, dampingFraction: 0.82)
-        case .high:
-            return .spring(response: 0.5, dampingFraction: 0.74)
+    /// 一组弹簧参数。
+    ///
+    /// 之所以不直接存 `Animation`：`Animation` 不暴露 `response` / `dampingFraction`，
+    /// 而收起看门狗需要按弹簧参数反推兜底超时（见 `settleDuration`）。
+    /// 先存参数、按需构造 `Animation`，可保证「同一组数值只写一遍」。
+    struct Spring: Equatable {
+        var response: Double
+        var dampingFraction: Double
+
+        var animation: Animation {
+            .spring(response: response, dampingFraction: dampingFraction)
         }
     }
 
-    /// 收起面板的弹簧。收起比展开略快，符合「进入慢、退出快」的通用直觉。
-    static func collapseSpring(for intensity: IslandAnimationIntensity) -> Animation {
+    /// 展开 / 收起的参数表。
+    ///
+    /// **取向刻意相反**（借鉴 Sapphire 的 `NotchConfiguration`）：
+    /// - **展开**用低阻尼（medium 档 0.55），保留一次明显回弹。面板是「从刘海长出来」的，
+    ///   需要一点生命感；此前 medium 档为 0.82，接近线性位移，观感生硬。
+    /// - **收起**阻尼接近临界（0.98），几乎不过冲。收回是「消失」，尾部抖动会显得廉价；
+    ///   此前 medium 档为 0.8，低于临界阻尼会产生可见回弹，与意图相反。
+    ///
+    /// low 档保留较高阻尼，供偏好「克制」的用户选择；high 档阻尼更低、周期更长。
+    static func spring(for intensity: IslandAnimationIntensity) -> (expand: Spring, collapse: Spring) {
         switch intensity {
         case .low:
-            return .spring(response: 0.24, dampingFraction: 0.9)
+            return (Spring(response: 0.28, dampingFraction: 0.92),
+                    Spring(response: 0.24, dampingFraction: 0.95))
         case .medium:
-            return .spring(response: 0.35, dampingFraction: 0.8)
+            return (Spring(response: 0.4, dampingFraction: 0.55),
+                    Spring(response: 0.3, dampingFraction: 0.98))
         case .high:
-            return .spring(response: 0.44, dampingFraction: 0.72)
+            return (Spring(response: 0.5, dampingFraction: 0.45),
+                    Spring(response: 0.34, dampingFraction: 0.98))
         }
+    }
+
+    /// 展开面板的弹簧。
+    static func expandSpring(for intensity: IslandAnimationIntensity) -> Animation {
+        spring(for: intensity).expand.animation
+    }
+
+    /// 收起面板的弹簧。
+    static func collapseSpring(for intensity: IslandAnimationIntensity) -> Animation {
+        spring(for: intensity).collapse.animation
     }
 
     /// 展开态内容淡入。
@@ -92,17 +115,29 @@ enum IslandMotionTokens {
 
     // MARK: - 时长
 
+    /// 收起弹簧从开始到视觉稳定所需的近似时长。
+    ///
+    /// 用途：收起看门狗的兜底超时。正常路径由 `TransitionTiming.collapseCompletionDelay`
+    /// 触发复位，但若该回调因异常未执行，`collapseAnimating` 会永久为真，
+    /// 导致后续尺寸上报被拦（`reportSize` 首行即 return），面板表现为「卡住」。
+    /// 本函数给出一个「弹簧肯定已停」的上界，供看门狗兜底。
+    ///
+    /// 系数说明：低阻尼会显著拖长尾部震荡，故取比临界阻尼更大的系数。
+    /// 这与 Sapphire `NotchMorphSpringStepper` 用 `visualSettleFraction` 提前收敛是同一考虑，
+    /// 但此处无需精确到帧，只需一个安全上界。
+    static func settleDuration(for intensity: IslandAnimationIntensity) -> TimeInterval {
+        let spring = self.spring(for: intensity).collapse
+        let overshootFactor = spring.dampingFraction < 0.8 ? 2.4 : 1.6
+        return spring.response * overshootFactor
+    }
+
     enum Duration {
         /// 工具完成闪光的保持时长。
         static let toolFlashHold: TimeInterval = 0.5
         /// 活动日志扫光的总时长（含等待）。
         static let logSweepTotal: TimeInterval = 0.7
-        /// 会话状态扫光触发后的等待。
-        static let statusSweepHold: TimeInterval = 0.6
         /// 入场级联的相邻元素间隔。
         static let cascadeStagger: TimeInterval = 0.048
-        /// 入场级联单元素的动画时长。
-        static let cascadeItem: TimeInterval = 0.34
         /// 入场级联整体上限，超出后不再累加延迟（避免长列表末尾等待过久）。
         static let cascadeMaxTotal: TimeInterval = 0.42
     }
