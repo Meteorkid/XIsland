@@ -1,0 +1,134 @@
+{
+  "version": "2.0.6",
+  "preparedAt": "2026-10-23T05:50:00.000000+00:00",
+  "sourceCommit": "df16822d0090bce44c0d8a80af402ce839c5778c",
+  "previousRelease": "v2.0.5",
+  "platform": "macOS",
+  "minimumOS": "14.0",
+  "architecture": "arm64",
+  "scope": "Update-channel publisher verification, local socket peer authentication, animation spring orientation fix, collapse watchdog, haptic feedback and interaction effects. Includes two pre-release fixes to peer authentication that would otherwise have made the panel completely unresponsive.",
+  "swiftTests": {
+    "total": 1499,
+    "passed": 1483,
+    "skipped": 16,
+    "failed": 0,
+    "fullSuiteExecuted": true,
+    "exitCode": 0,
+    "renderFlagEnabled": true,
+    "note": "1495 pre-existing plus 4 new peer-authentication regression tests in SocketServerAcceptTests."
+  },
+  "package": {
+    "status": "passed",
+    "version": "2.0.6",
+    "readOnlyMounted": true,
+    "architecture": "arm64",
+    "minimumOS": "14.0",
+    "signatureVerified": true,
+    "signature": "ad-hoc",
+    "notarized": false,
+    "binariesMatchTestedBundle": true,
+    "dmgSHA256": "f7190ab9f83404c90ad0dc3dec0dab1bddbc4eed70d7c289e26d66439801b2e4",
+    "dmgBytes": 6054412,
+    "binarySHA256": {
+      "XIsland": "e3f0cb653901d67c69a816fefbaf6582f5e9798a205eb111b46c559ac52179d7",
+      "di-bridge": "852107a04d91abca2715d679ae75a2f72dcc99c9611aefebccfc0dc9c71b5775"
+    },
+    "cliMatchesSource": true,
+    "appIconPresent": true,
+    "vsixSHA256": "676bfe748ad6d681c5c84ec17f61de8a2079f70c04d66554243bec8700a78d46",
+    "vsixCRCVerified": true
+  },
+  "packagedChecks": {
+    "bridgeScenariosPassed": 127,
+    "workbuddyEventsPassed": 11,
+    "syntheticCodexLifecyclePassed": true,
+    "syntheticCodexLifecycleChecks": 23,
+    "cliTestsPassed": true,
+    "realVendorClientExecution": false,
+    "nativeTrustChanged": false
+  },
+  "peerAuthenticationFixes": {
+    "defect1_uidReadFromWrongConstant": {
+      "symptom": "Every connection rejected; panel receives no agent messages at all.",
+      "cause": "Peer UID was read via getsockopt(SOL_LOCAL, 0x005). On macOS 0x005 is LOCAL_PEEREUUID (peer UUID), not a UID; sys/un.h defines no LOCAL_PEEREUID. The first 4 bytes of the peer UUID were compared against the real UID and never matched.",
+      "measuredBefore": {
+        "getsockopt_0x005_value": 2024211864,
+        "realUID": 501
+      },
+      "fix": "Use getpeereid(3) to read the peer effective UID.",
+      "regressionTest": "Tests/TowerIslandTests/SocketServerAcceptTests.swift::testPeerIdentityReadsRealUIDNotPeerUUIDPrefix",
+      "regressionTestVerifiedToFail": true
+    },
+    "defect2_exitedPeerTreatedAsUntrusted": {
+      "symptom": "All non-interactive hooks silently dropped; interactive approvals still worked.",
+      "cause": "Non-interactive hooks send and exit immediately. When the server accepts, the peer is often already gone, so LOCAL_PEERPID fails with ENOTCONN (measured errno 57) and the executable path cannot be resolved. The original guard treated a missing path as untrusted and closed the connection.",
+      "measuredBefore": {
+        "LOCAL_PEERPID_rc": -1,
+        "LOCAL_PEERPID_errno": 57,
+        "getpeereid_rc": 0,
+        "getpeereid_uid": 501
+      },
+      "fix": "Treat an unresolvable executable path as a UID-only decision rather than a rejection. UID is snapshotted by the kernel and remains reliable.",
+      "regressionTests": [
+        "Tests/TowerIslandTests/SocketServerAcceptTests.swift::testExitedPeerWithoutPathIsStillTrusted",
+        "Tests/TowerIslandTests/SocketServerAcceptTests.swift::testResolvableUnapprovedPathIsStillUntrusted"
+      ]
+    },
+    "endToEndVerification": {
+      "script": "scripts/test-codex-lifecycle-app.py",
+      "passed": true,
+      "checks": 23,
+      "path": "Synthetic vendor payloads -> bundled di-bridge -> isolated XIsland -> diagnostics and read-only SQLite"
+    }
+  },
+  "featureValidation": {
+    "springOrientation": {
+      "invariant": "Expand bounces (dampingFraction < 1.0 for medium/high), collapse is near-critically damped for all intensities.",
+      "tests": [
+        "Tests/TowerIslandTests/IslandMotionTokensTests.swift::testExpandIsBouncierThanCollapseWithinEachIntensity",
+        "Tests/TowerIslandTests/IslandMotionTokensTests.swift::testAllCollapseIntensitiesAreNearCriticallyDamped"
+      ]
+    },
+    "collapseWatchdog": {
+      "invariant": "A stale collapse generation must not be force-settled; an in-flight one must be.",
+      "tests": [
+        "Tests/TowerIslandTests/NotchContentViewTests.swift::testWatchdogDoesNotFireForStaleGeneration",
+        "Tests/TowerIslandTests/NotchContentViewTests.swift::testWatchdogFiresWhileCollapseStillAnimating"
+      ]
+    },
+    "sourceMatch": {
+      "matched": true,
+      "files": {
+        "Sources/DynamicIsland/Managers/SocketServer.swift": "acacee40d87b1a4767266bd5ab1ed48aabbb84d740e10f2b4055eca237686a9e",
+        "Sources/DynamicIsland/Models/IslandMotionTokens.swift": "7bce93fa1fea3607b9d22aff5044ba91dfb50cde0cdaaf90910aa6de98e45fc6",
+        "Sources/DynamicIsland/Managers/IslandHapticEngine.swift": "c9a195c7462b834dc19fc1c49cdbebdf7b4c9f08a9d86dcb4ecc959646ff2064",
+        "Sources/DynamicIsland/Views/NotchContentView.swift": "7c2e0709f906fc38eb03dfa36f1ae5e762446978f92407096060497dacced99f",
+        "Sources/DynamicIsland/Managers/AppUpdater.swift": "9b97edee4dd3dac63ee00f9417555375fbd6794566432142d7cde8daa84ebed4",
+        "Sources/DynamicIsland/Managers/SocketResponseChannel.swift": "f3b3842c63b57cafd85bec3ce90be2772fa083f0358386ac6b22a413d2af4db0",
+        "Sources/DynamicIsland/Managers/TerminalJumpManager.swift": "4ebd3ae90add2f865254f93fdd6abf103d48bb48468ad25f348605adf9f6fb33",
+        "Sources/DynamicIsland/Managers/UpdateManager.swift": "63046e97eeb57765df22d2b925af88ff2ade3cf0b45a0ae56a54bce509983e5b",
+        "Sources/DynamicIsland/Views/Components/IslandInteractionEffects.swift": "939c0fe94e72e8d087d0c540da5ba59bdbf8e2117dc0aa104f3c7cc546a28b84",
+        "Sources/DynamicIsland/Views/Components/IslandSymbolEffects.swift": "01f9509aeb595f51dbde9241d2b4c9b98f747a8a4fe2d0332003af5be6fe70c1",
+        "Sources/DynamicIsland/Views/Components/AnimationEffects.swift": "aaee85e2781fdb0f580e7a0f9f160b04f09e281a1b272a177783a5873cfc1c1e",
+        "Sources/DynamicIsland/Views/PendingTaskCardView.swift": "4530541901bc0b311c692fdd71ead4a651dabde4f46aa645da4665250cb761ff",
+        "Sources/DynamicIsland/Views/PreferencesView.swift": "e75565ab57a063ffba2f6ab271707426ef254b454eeda72d0c070121c861b2a1",
+        "Sources/DynamicIsland/Views/SessionListView.swift": "914b3bc43f73f9ce7970041a752c388c734722b695d04e7e98f652ccf615d44a",
+        "Tests/TowerIslandTests/SocketServerAcceptTests.swift": "e9b1c39a8003b946bb4a26f6ef76c55207c36fbd3a3191e688f414dbe84b8fb3",
+        "Tests/TowerIslandTests/IslandMotionTokensTests.swift": "68071c176d95f8198cfa7b2bb4e974fb66e305b1c5599c1baf7856e94086c218",
+        "Tests/TowerIslandTests/NotchContentViewTests.swift": "9a817bacc24edff9869559023c39fc18d35b33110c47505567b6f31039a00b10",
+        "Tests/TowerIslandTests/IslandHapticEngineTests.swift": "2e5ab8e7786169aa8c2e3950203c590d8c4b64babb1cfcb18b12160cfd87a530"
+      },
+      "sourceCommit": "df16822d0090bce44c0d8a80af402ce839c5778c"
+    }
+  },
+  "notVerified": [
+    "Fresh production installation of final 2.0.6 DMG (scheduled after publication)",
+    "VoiceOver actual speech",
+    "Continuous native FPS",
+    "External multi-display",
+    "All vendor client end-to-end acceptance",
+    "Apple Developer ID signing and notarization",
+    "Update-channel publisher identity strict comparison (release is still ad-hoc signed)",
+    "Strong peer authentication (same-UID bypass via system shell or early exit remains possible)"
+  ]
+}

@@ -33,10 +33,6 @@ final class SocketServer: @unchecked Sendable {
         "/usr/bin/env"
     ]
 
-    /// `LOCAL_PEEREUID`（sys/socket.h）在 Swift 的 Darwin 模块中未导出，按内核取值显式定义。
-    /// 与 `LOCAL_PEERPID` 一样由内核在 accept 时快照，对端无法伪造。
-    private static let localPeerEffectiveUID: Int32 = 0x005
-
     private let logger = Logger(subsystem: "dev.xisland", category: "socket")
     private let sessionManager: SessionManager
     private let queue = DispatchQueue(label: "dev.towerisland.socket", qos: .userInitiated)
@@ -159,8 +155,12 @@ final class SocketServer: @unchecked Sendable {
     // MARK: - 对端认证
 
     /// 连接对端的进程身份。
+    ///
+    /// `pid` 可能为 `nil`：非交互 hook 的桥接程序在写入后立即 `shutdown`/`close` 并退出，
+    /// 此时 `LOCAL_PEERPID` 会以 `ENOTCONN` 失败（实测 errno 57），而对端 UID 仍可读出。
+    /// 因此 PID 缺失只意味着拿不到可执行路径，**不构成认证失败**。
     struct PeerIdentity {
-        let pid: pid_t
+        let pid: pid_t?
         let effectiveUID: uid_t
         let executablePath: String?
     }
@@ -170,19 +170,30 @@ final class SocketServer: @unchecked Sendable {
         case untrusted(reason: String)
     }
 
-    /// 读取对端进程的 PID 与有效 UID。
+    /// 读取对端进程的有效 UID 与（尽可能的）PID。
     ///
-    /// 这两个值由内核在 `accept` 时快照，无法被对端伪造。
+    /// 有效 UID 由内核在连接建立时快照，无法被对端伪造，是认证的基准。
+    ///
+    /// UID 必须用 `getpeereid(3)` 读取：macOS 的 `sys/un.h` 只定义了
+    /// `LOCAL_PEERCRED` / `LOCAL_PEERPID` / `LOCAL_PEEREPID` / `LOCAL_PEERUUID` /
+    /// `LOCAL_PEEREUUID` / `LOCAL_PEERTOKEN`，**没有** `LOCAL_PEEREUID`。
+    /// 若把 `0x005`（实为 `LOCAL_PEEREUUID`）当 UID 读，取到的是 16 字节对端 UUID 的
+    /// 前 4 字节，与真实 UID 永不相等，会导致所有连接被判为不可信而全部关闭。
     static func peerIdentity(of fd: Int32) -> PeerIdentity? {
+        var effectiveUID: uid_t = 0
+        var effectiveGID: gid_t = 0
+        guard getpeereid(fd, &effectiveUID, &effectiveGID) == 0 else { return nil }
+
+        // PID 仅在能取到时用于解析可执行路径；对端已退出时取不到属正常情况。
         var pid: pid_t = 0
         var pidLength = socklen_t(MemoryLayout<pid_t>.size)
-        guard getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &pidLength) == 0 else { return nil }
+        let hasPID = getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &pidLength) == 0
 
-        var effectiveUID: uid_t = 0
-        var uidLength = socklen_t(MemoryLayout<uid_t>.size)
-        guard getsockopt(fd, SOL_LOCAL, localPeerEffectiveUID, &effectiveUID, &uidLength) == 0 else { return nil }
-
-        return PeerIdentity(pid: pid, effectiveUID: effectiveUID, executablePath: processPath(of: pid))
+        return PeerIdentity(
+            pid: hasPID ? pid : nil,
+            effectiveUID: effectiveUID,
+            executablePath: hasPID ? processPath(of: pid) : nil
+        )
     }
 
     /// 取指定进程的可执行文件路径。
@@ -204,12 +215,19 @@ final class SocketServer: @unchecked Sendable {
 
     /// 判定对端是否可信。
     ///
-    /// 判定顺序：有效 UID 一致 → 测试模式放行 → 白名单路径 → 拒绝。
-    /// 白名单内的 `di-bridge` 额外要求属主为当前用户且非组/其他可写，
+    /// 判定顺序：有效 UID 一致 → 测试模式放行 → 可执行路径白名单 → 拒绝。
+    ///
+    /// 有效 UID 是唯一始终可用的判据，也是认证基准。可执行路径是**尽力而为**的加强项：
+    /// 非交互 hook 的桥接程序写入后立即退出，服务端 `accept` 到时对端往往已消失，
+    /// `LOCAL_PEERPID` 返回 `ENOTCONN`，此时拿不到路径。若把这种情况判为不可信，
+    /// 会导致所有非交互 hook 全部无法送达，因此路径不可得时回退为「仅按 UID 判定」。
+    ///
+    /// 白名单内的 `di-bridge` 在路径可得时额外要求属主为当前用户且非组/其他可写，
     /// 因为该文件已被注入所有 agent 的全局 hook 配置，一旦被篡改即为常驻执行点。
     ///
-    /// 效力边界：同 UID 下无法做真正的强认证 —— 攻击者可以直接运行合法客户端。
-    /// 这里的实际收益是拦截跨用户连接、拦截未走既定调用链的进程，以及检测 di-bridge 被篡改。
+    /// 效力边界：同 UID 下无法做真正的强认证 —— 攻击者可以直接运行合法客户端，
+    /// 也可以抢先退出以跳过路径校验。这里的实际收益是拦截跨用户连接，
+    /// 并在路径可得时拦截未走既定调用链的进程、检测 di-bridge 被篡改。
     static func evaluatePeer(
         _ identity: PeerIdentity?,
         ownUID: uid_t,
@@ -226,8 +244,9 @@ final class SocketServer: @unchecked Sendable {
         if isTestMode {
             return .trusted
         }
+        // 对端已退出（短命 hook 客户端）：路径不可得，按 UID 放行。
         guard let path = identity.executablePath, !path.isEmpty else {
-            return .untrusted(reason: "peer pid \(identity.pid) has no resolvable executable path")
+            return .trusted
         }
         if path == sshPeerPath {
             return .trusted
