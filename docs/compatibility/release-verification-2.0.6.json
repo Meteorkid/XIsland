@@ -81,6 +81,51 @@
       "path": "Synthetic vendor payloads -> bundled di-bridge -> isolated XIsland -> diagnostics and read-only SQLite"
     }
   },
+  "localInstallVerification": {
+    "performedAt": "2026-10-23T06:36:00.000000+00:00",
+    "installPath": "/Applications/X Island.app",
+    "replacedVersion": "2.0.5",
+    "installedVersion": "2.0.6",
+    "backupPath": ".build/installed-2.0.5-backup",
+    "mode": "production",
+    "productionModeMeansPeerAuthenticationFullyEnabled": true,
+    "signatureValid": true,
+    "binariesMatchPublishedDmg": true,
+    "existingPreferencesPreserved": true,
+    "endToEndDelivery": {
+      "transport": "real ~/.xisland/bin/di-bridge against the installed production app",
+      "nonInteractiveSessionStart": {
+        "sessionId": "codex-prod-verify-1",
+        "agentType": "codex",
+        "persistedInStore": true
+      },
+      "interactivePermissionRequest": {
+        "sessionId": "codex-prod-perm-1",
+        "agentType": "codex",
+        "persistedInStore": true
+      },
+      "store": "~/Library/Application Support/default.store (table ZSTOREDSESSION)",
+      "note": "These are exactly the two paths the two pre-release defects had broken: non-interactive hooks (defect 2) and every connection (defect 1)."
+    },
+    "reverifiedChecks": {
+      "swiftTests": {
+        "total": 1499,
+        "passed": 1483,
+        "skipped": 16,
+        "failed": 0,
+        "exitCode": 0,
+        "note": "9 log lines matched error:|failed but all are intentional negative-case output from the test environment (signature rejection, NSCocoaErrorDomain 513 permission-denied writes, container setup failure). Test Case .* failed count is 0."
+      },
+      "bridgeScenariosPassed": 127,
+      "workbuddyEventsPassed": 11,
+      "cliTestsPassed": true,
+      "syntheticCodexLifecyclePassed": true,
+      "syntheticCodexLifecycleChecks": 23,
+      "syntheticCodexLifecycleHookCount": 21,
+      "syntheticCodexLifecycleCheckpointCount": 23,
+      "syntheticCodexLifecycleError": null
+    }
+  },
   "featureValidation": {
     "springOrientation": {
       "invariant": "Expand bounces (dampingFraction < 1.0 for medium/high), collapse is near-critically damped for all intensities.",
@@ -122,7 +167,6 @@
     }
   },
   "notVerified": [
-    "Fresh production installation of final 2.0.6 DMG (scheduled after publication)",
     "VoiceOver actual speech",
     "Continuous native FPS",
     "External multi-display",

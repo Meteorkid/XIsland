@@ -1,56 +1,30 @@
 #!/bin/bash
 set -euo pipefail
 
+###############################################################################
+# X Island — 完整自动化测试入口
+#
+#   1. Swift 单元测试（swift test）
+#   2. 集成测试（Scripts/test.sh，自行拉起隔离实例，不触碰生产 App 与用户数据）
+#
+# 说明：早期版本这里会先 pkill 掉正在运行的 X Island 再重启生产实例；
+# 现在集成测试完全跑在隔离实例上（独立 runtime 目录 / defaults suite / socket），
+# 因此不再需要、也不应该打扰用户正在使用的生产实例。
+#
+# 用法：
+#   bash Scripts/test-all.sh
+###############################################################################
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-SOCK="$HOME/.xisland/di.sock"
-APP_BUNDLE="$PROJECT_DIR/.build/X Island.app"
-SYSTEM_APP_BUNDLE="/Applications/X Island.app"
 
 cd "$PROJECT_DIR"
-
-resolve_app_bundle() {
-    if [[ -d "$APP_BUNDLE" ]]; then
-        printf '%s\n' "$APP_BUNDLE"
-        return 0
-    fi
-    if [[ -d "$SYSTEM_APP_BUNDLE" ]]; then
-        printf '%s\n' "$SYSTEM_APP_BUNDLE"
-        return 0
-    fi
-    return 1
-}
-
-restart_xisland() {
-    local app_to_open
-    if ! app_to_open="$(resolve_app_bundle)"; then
-        echo "ERROR: X Island socket not found at $SOCK"
-        echo "Please launch X Island first, then rerun: bash Scripts/test-all.sh"
-        exit 1
-    fi
-
-    echo "==> Restarting X Island for integration tests..."
-    pkill -f "XIsland" 2>/dev/null || true
-    rm -f "$SOCK"
-    open "$app_to_open"
-
-    for _ in {1..50}; do
-        if [[ -S "$SOCK" ]]; then
-            return 0
-        fi
-        sleep 0.2
-    done
-
-    echo "ERROR: X Island socket not found at $SOCK after launching $app_to_open"
-    exit 1
-}
 
 echo "==> [1/2] Running Swift unit tests..."
 swift test
 
-echo "==> [2/2] Running integration tests..."
-restart_xisland
-
+echo ""
+echo "==> [2/2] Running integration tests (isolated instance)..."
 bash Scripts/test.sh
 
 echo ""
