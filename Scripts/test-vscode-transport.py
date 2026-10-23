@@ -3,27 +3,34 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 import time
 
 
-def verify(repository: Path) -> dict:
+def verify(repository: Path, bridge_binary: Path) -> dict:
     extension = repository / 'Sources/XIslandVSCode'
     receiver = repository / 'Sources/DynamicIsland/Managers/SocketServer.swift'
     protocol = repository / 'Sources/DIShared/Protocol.swift'
     source = receiver.read_text()
-    reader = re.search(r'    static func readMessage\(from fd: Int32\) -> Data\? \{.*?\n    \}', source, re.S)
+    reader = re.search(r'    static func readMessage\(from fd: Int32[^\n]*\) -> Data\? \{.*?\n    \}', source, re.S)
     limit = re.search(r'    static let maxMessageBytes = [^\n]+', source)
-    assert reader and limit, 'SocketServer 读取函数结构已变，请更新交叉验证入口'
+    timeout = re.search(r'    static let receiveTimeoutSeconds[^\n]+', source)
+    assert reader and limit and timeout, 'SocketServer 读取函数结构已变，请更新交叉验证入口'
     with tempfile.TemporaryDirectory(prefix='xi-vsc-swift-', dir='/tmp') as folder:
         root = Path(folder)
+        bridge = root / 'bin/di-bridge'
+        bridge.parent.mkdir(mode=0o700)
+        shutil.copy2(bridge_binary, bridge)
+        bridge.chmod(0o700)
         main = root / 'main.swift'
-        main.write_text('import Foundation\nimport Darwin\nenum SocketServer {\n' + limit[0] + '\n' + reader[0] + '\n}\n' + r'''
+        main.write_text('import Foundation\nimport Darwin\nenum SocketServer {\n' + limit[0] + '\n' + timeout[0] + '\n' + reader[0] + '\n}\n' + r'''
 let path = CommandLine.arguments[1]
 let expected = Int(CommandLine.arguments[2])!
 let fd = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -54,14 +61,25 @@ FileManager.default.createFile(atPath: path + ".done", contents: Data())
         subprocess.run(['node', str(extension / 'node_modules/typescript/bin/tsc'), '-p', str(extension),
                         '--outDir', str(root / 'js')], check=True, timeout=30)
         subprocess.run(['swiftc', str(protocol), str(main), '-o', str(root / 'receiver')], check=True, timeout=60)
-        base = {'type': 'status_update', 'sessionId': 'transport-fixture', 'agentType': 'roo_code',
-                'timestamp': '2026-09-24T00:00:00Z'}
+        def source(agent):
+            return f'{agent}-' + 'a' * 24 + '-11111111-1111-4111-8111-111111111111'
+        def session(agent, task):
+            return source(agent) + '-' + base64.urlsafe_b64encode(task.encode()).decode().rstrip('=')
+        base = {'type': 'status_update', 'sessionId': session('roo_code', '原生任务🙂'), 'agentType': 'roo_code',
+                'timestamp': '2026-09-24T00:00:00Z', 'sourceNamespace': 'a' * 24,
+                'sourceInstanceId': '11111111-1111-4111-8111-111111111111',
+                'nativeTaskId': '原生任务🙂', 'observationSequence': 42}
         messages = [{**base, 'type': 'session_start'},
                     {**base, 'nativeMessageId': 'stream-1', 'status': 'partial'},
                     {**base, 'nativeMessageId': 'stream-1', 'status': 'final'},
                     {**base, 'status': '大' * 80000}]
-        messages.extend({**base, 'agentType': 'pearai', 'sessionId': f'pear-{i}', 'status': f'event-{i}'} for i in range(64))
-        messages.append({**base, 'type': 'session_end'})
+        messages.extend({**base, 'agentType': 'pearai', 'sessionId': session('pearai', f'pear-{i}'),
+                         'nativeTaskId': f'pear-{i}', 'status': f'event-{i}'} for i in range(64))
+        ended = {**base, 'type': 'observation_ended', 'sessionId': source('roo_code')}
+        del ended['nativeTaskId']
+        messages.append(ended)
+        for sequence, message in enumerate(messages, 1):
+            message['observationSequence'] = sequence
         expected = messages[:1] + messages[2:]
         (root / 'messages.json').write_text(json.dumps(messages, ensure_ascii=False))
         sender = root / 'sender.cjs'
@@ -69,7 +87,7 @@ FileManager.default.createFile(atPath: path + ".done", contents: Data())
 const fs = require('node:fs');
 const { ObservationTransport } = require('./js/transport');
 const socketPath = process.argv[2], deadline = Date.now() + 5000;
-const transport = new ObservationTransport(socketPath, () => {}, 20);
+const transport = new ObservationTransport(socketPath, () => {}, 20, undefined, process.argv[4]);
 for (const message of JSON.parse(fs.readFileSync(process.argv[3], 'utf8'))) transport.send(message);
 const timer = setInterval(() => {
     const complete = fs.existsSync(socketPath + '.done');
@@ -87,7 +105,7 @@ const timer = setInterval(() => {
                 while not Path(socket_path + '.ready').exists():
                     assert process.poll() is None and time.monotonic() < deadline, 'Swift receiver did not start'
                     time.sleep(.01)
-                subprocess.run(['node', str(sender), socket_path, str(root / 'messages.json')], check=True, timeout=8)
+                subprocess.run(['node', str(sender), socket_path, str(root / 'messages.json'), str(bridge)], check=True, timeout=8)
                 assert process.wait(timeout=5) == 0, 'Swift receiver failed'
             finally:
                 if process.poll() is None:
@@ -98,6 +116,7 @@ const timer = setInterval(() => {
         assert not (root / 'receiver.stderr').read_bytes(), 'Swift receiver emitted errors'
     return {'scenarios': ['one-frame-per-connection', 'queued-stream-coalescing', 'roo-and-pear-burst-order',
                           'large-utf8-frame-through-production-reader-and-decoder'],
+            'bridgeSHA256': hashlib.sha256(bridge_binary.read_bytes()).hexdigest(),
             'sentEvents': len(messages), 'receivedEvents': len(received),
             'receiverScope': 'Current SocketServer.readMessage and DIProtocol.decode; isolated accept/close harness',
             'sourceSha256': {str(path.relative_to(repository)): hashlib.sha256(path.read_bytes()).hexdigest()
@@ -108,8 +127,9 @@ const timer = setInterval(() => {
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--report', type=Path)
+    parser.add_argument('--bridge-path', type=Path, default=Path(__file__).resolve().parent.parent / '.build/debug/DIBridge')
     arguments = parser.parse_args()
-    result = verify(Path(__file__).resolve().parent.parent)
+    result = verify(Path(__file__).resolve().parent.parent, arguments.bridge_path.resolve(strict=True))
     encoded = json.dumps(result, ensure_ascii=False, indent=2)
     if arguments.report:
         arguments.report.write_text(encoded + '\n')

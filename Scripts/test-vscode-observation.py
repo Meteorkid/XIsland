@@ -19,11 +19,20 @@ def verify(repository: Path, app: Path) -> dict:
     with (app / 'Contents/Info.plist').open('rb') as file:
         binary = app / 'Contents/MacOS' / plistlib.load(file)['CFBundleExecutable']
     assert binary.stat().st_mtime >= max(p.stat().st_mtime for p in (repository / 'Sources/DynamicIsland').rglob('*.swift')), '请先构建最新隔离应用'
-    root = Path(tempfile.mkdtemp(prefix='xi-observe-', dir='/tmp'))
+    bridge_binary = app / 'Contents/MacOS/di-bridge'
+    assert bridge_binary.stat().st_mtime >= max(p.stat().st_mtime for p in (repository / 'Sources/DIBridge').glob('*.swift')), '请先构建最新原生观察入口'
+    root = Path(tempfile.mkdtemp(prefix='xi-observe-', dir='/tmp')).resolve()
     suite = 'dev.xisland.tests.observe-' + uuid.uuid4().hex
     processes: list[subprocess.Popen] = []
     succeeded = False
     try:
+        diagnostics = root / 'diagnostics.json'
+        # runtime 与 diagnostics 同为已存在路径，供 Foundation 一致解析 /tmp 别名。
+        diagnostics.write_text('{}')
+        bridge = root / 'bin/di-bridge'
+        bridge.parent.mkdir(mode=0o700)
+        shutil.copy2(bridge_binary, bridge)
+        bridge.chmod(0o700)
         extension = repository / 'Sources/XIslandVSCode'
         subprocess.run(['node', str(extension / 'node_modules/typescript/bin/tsc'), '-p', str(extension),
                         '--outDir', str(root / 'js')], check=True, timeout=30)
@@ -36,7 +45,7 @@ const { ObservationTransport } = require('./js/transport');
 const root = process.argv[2], mode = process.argv[3], sources = [], manifest = {};
 for (const [label, agent] of mode === 'first' ? [['a', 'roo_code'], ['b', 'roo_code'], ['pear', 'pearai']] : [['reload', 'roo_code']]) {
     const api = new EventEmitter();
-    const transport = new ObservationTransport(root + '/di.sock', () => {}, 20);
+    const transport = new ObservationTransport(root + '/di.sock', () => {}, 20, undefined, root + '/bin/di-bridge');
     const observer = observeTasks(api, agent, 'a'.repeat(24), message => {
         fs.appendFileSync(root + '/events-' + mode + '.jsonl', JSON.stringify(message) + '\n');
         if (message.type === 'session_start') manifest[label] = message.sessionId;
@@ -59,7 +68,7 @@ setTimeout(() => { clearInterval(timer); for (const source of sources) { source.
 ''')
         env = {key: value for key, value in os.environ.items() if not key.startswith('X_ISLAND_TEST_')}
         env.update({'X_ISLAND_TEST_MODE': '1', 'X_ISLAND_TEST_RUNTIME_DIR': str(root),
-                    'X_ISLAND_TEST_DEFAULTS_SUITE': suite,
+                    'X_ISLAND_TEST_DEFAULTS_SUITE': suite, 'X_ISLAND_TEST_ENFORCE_PEER_AUTH': '1',
                     'X_ISLAND_TEST_DIAGNOSTICS_PATH': str(root / 'diagnostics.json'), 'X_ISLAND_DISABLE_ANIMATIONS': '1'})
         with (root / 'app.log').open('wb') as log:
             app_process = subprocess.Popen([str(binary), '--ui-test-mode', '--ui-test-socket', '--fixture-path',
@@ -88,7 +97,14 @@ setTimeout(() => { clearInterval(timer); for (const source of sources) { source.
                         for key, state in expected.items()) else None
                 return wait_for(matches, timeout)
 
-            wait_for(lambda: (root / 'di.sock').exists() and (root / 'diagnostics.json').exists())
+            def diagnostics_ready():
+                try:
+                    snapshot = json.loads(diagnostics.read_text())
+                except (OSError, json.JSONDecodeError):
+                    return False
+                return (root / 'di.sock').exists() and isinstance(snapshot.get('visibleSessions'), list) and isinstance(snapshot.get('handledMessageCount'), int)
+
+            wait_for(diagnostics_ready)
             assert rows() == {}
             first = subprocess.Popen(['node', str(sender), str(root), 'first'])
             processes.append(first)
@@ -136,12 +152,14 @@ setTimeout(() => { clearInterval(timer); for (const source of sources) { source.
                 'reloadedInstanceStayedActive': True, 'noTaskMarkedCompleted': True,
                 'persistedObservationRecords': len(stored),
                 'heartbeatsSent': sum(frame['type'] == 'observation_heartbeat' for frame in captured),
+                'strictPeerAuthentication': True,
+                'bridgeSHA256': hashlib.sha256(bridge_binary.read_bytes()).hexdigest(),
                 'appSHA256': hashlib.sha256(binary.read_bytes()).hexdigest(),
                 'sourceSHA256': {str(path.relative_to(repository)): hashlib.sha256(path.read_bytes()).hexdigest()
                     for path in [extension / 'src/task-observer.ts', extension / 'src/transport.ts',
                                  repository / 'Sources/DynamicIsland/Models/ObservationLease.swift',
                                  repository / 'Sources/DynamicIsland/Managers/SessionManager.swift']},
-                'scope': 'Compiled TS observer and transport -> isolated XIsland app; synthetic vendor events',
+                'scope': 'Compiled TS observer and transport -> native di-bridge -> strict-peer isolated XIsland app; synthetic vendor events',
                 'realClientVerified': False, 'vendorClientLaunched': False}
     finally:
         for process in reversed(processes):

@@ -18,6 +18,10 @@ struct DIBridge {
 
     static func main() {
         let command = CommandLine.arguments.dropFirst().first
+        if command == "vscode-observation" {
+            guard CommandLine.arguments.count == 2 else { exit(64) }
+            exit(VSCodeObservationCommand.run())
+        }
         if command == "kiro-config-v3" {
             exit(KiroConfigurationCommand.run(arguments: Array(CommandLine.arguments.dropFirst(2)), bridgePath: CommandLine.arguments[0]))
         }

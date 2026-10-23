@@ -124,6 +124,7 @@ for (const sessionId of [undefined, 'shared-vscode-session']) {
 
 const fs = require('node:fs'), net = require('node:net');
 const { ObservationTransport } = require('../out/transport');
+const { createBridge } = require('./bridge-fixture.cjs');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(predicate) {
     const deadline = Date.now() + 3000;
@@ -143,7 +144,8 @@ test('activate keeps its instance across socket reconnects and drains observatio
             if (packets.length === 1) socket.destroy(); else socket.end();
         });
     });
-    class LocalTransport extends ObservationTransport { constructor(_, status) { super(socketPath, status, 20); } }
+    const bridgePath = createBridge(root);
+    class LocalTransport extends ObservationTransport { constructor(_, status) { super(socketPath, status, 20, undefined, bridgePath); } }
     const h = host({ Transport: LocalTransport });
     try {
         await new Promise(resolve => server.listen(socketPath, resolve));

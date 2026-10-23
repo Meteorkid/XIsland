@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import base64
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
 import plistlib
+import shutil
 import subprocess
 import tempfile
 import time
@@ -20,32 +23,52 @@ def verify(repository: Path, app: Path) -> dict:
     # 旧二进制不包含测试启动隔离修复；不自动启动过期构建。
     sources = list((repository / 'Sources/DynamicIsland').rglob('*.swift'))
     assert binary.stat().st_mtime >= max(path.stat().st_mtime for path in sources), '请先重新构建包含测试隔离修复的应用'
+    bridge_binary = app / 'Contents/MacOS/di-bridge'
+    assert bridge_binary.stat().st_mtime >= max(path.stat().st_mtime for path in (repository / 'Sources/DIBridge').glob('*.swift')), '请先重新构建原生观察入口'
     extension = repository / 'Sources/XIslandVSCode'
     suite = 'dev.xisland.tests.vscode-' + uuid.uuid4().hex
     with tempfile.TemporaryDirectory(prefix='xi-vsc-app-', dir='/tmp') as folder:
-        root = Path(folder)
+        root = Path(folder).resolve()
         diagnostics = root / 'diagnostics.json'
+        # 让 Foundation 对 runtime 和 diagnostics 都解析已存在路径，避免 /tmp 别名分歧。
+        diagnostics.write_text('{}')
+        bridge = root / 'bin/di-bridge'
+        bridge.parent.mkdir(mode=0o700)
+        shutil.copy2(bridge_binary, bridge)
+        bridge.chmod(0o700)
         env = {key: value for key, value in os.environ.items() if not key.startswith('X_ISLAND_TEST_')}
-        env.update({'X_ISLAND_TEST_MODE': '1', 'X_ISLAND_TEST_RUNTIME_DIR': folder,
-                    'X_ISLAND_TEST_DEFAULTS_SUITE': suite,
+        env.update({'X_ISLAND_TEST_MODE': '1', 'X_ISLAND_TEST_RUNTIME_DIR': str(root),
+                    'X_ISLAND_TEST_DEFAULTS_SUITE': suite, 'X_ISLAND_TEST_ENFORCE_PEER_AUTH': '1',
                     'X_ISLAND_TEST_DIAGNOSTICS_PATH': str(diagnostics),
                     'X_ISLAND_DISABLE_ANIMATIONS': '1'})
         subprocess.run(['node', str(extension / 'node_modules/typescript/bin/tsc'), '-p', str(extension),
                         '--outDir', str(root / 'js')], check=True, timeout=30)
-        tasks = [(f'{agent}-socket-{index}', agent) for agent in ['roo_code', 'pearai'] for index in range(8)]
+        namespace = 'a' * 24
+        instances = {agent: str(uuid.uuid4()) for agent in ['roo_code', 'pearai']}
+        def source(agent):
+            return f'{agent}-{namespace}-{instances[agent]}'
+        def session(agent, task):
+            return source(agent) + '-' + base64.urlsafe_b64encode(task.encode()).decode().rstrip('=')
+        tasks = [(session(agent, f'{agent}-socket-{index}'), agent, f'{agent}-socket-{index}')
+                 for agent in instances for index in range(8)]
+        sequences = {agent: 0 for agent in instances}
+        timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
         messages = []
-        for identifier, agent in tasks:
+        for identifier, agent, native_task in tasks:
             base = {'sessionId': identifier, 'agentType': agent, 'terminal': 'Visual Studio Code',
-                    'timestamp': '2026-10-09T00:00:00Z', 'statusIsAssistantReply': False}
-            messages.extend([{**base, 'type': 'session_start', 'prompt': identifier},
-                             {**base, 'type': 'status_update', 'observedState': 'active'},
-                             {**base, 'type': 'status_update', 'observedState': 'idle'}])
+                    'timestamp': timestamp, 'statusIsAssistantReply': False, 'sourceNamespace': namespace,
+                    'sourceInstanceId': instances[agent], 'nativeTaskId': native_task}
+            for fields in [{'type': 'session_start', 'prompt': identifier},
+                           {'type': 'status_update', 'observedState': 'active'},
+                           {'type': 'status_update', 'observedState': 'idle'}]:
+                sequences[agent] += 1
+                messages.append({**base, **fields, 'observationSequence': sequences[agent]})
         (root / 'messages.json').write_text(json.dumps(messages))
         sender = root / 'sender.cjs'
         sender.write_text(r'''
 const fs = require('node:fs');
 const { ObservationTransport } = require('./js/transport');
-const transport = new ObservationTransport(process.argv[2], () => {}, 20);
+const transport = new ObservationTransport(process.argv[2], () => {}, 20, undefined, process.argv[5]);
 for (const message of JSON.parse(fs.readFileSync(process.argv[3], 'utf8'))) transport.send(message);
 const timer = setInterval(() => {
     if (!fs.existsSync(process.argv[4])) return;
@@ -61,13 +84,35 @@ timeout.unref();
                                            env=env, stdout=log, stderr=log)
             try:
                 deadline = time.monotonic() + 15
-                while not (root / 'di.sock').exists() or not diagnostics.exists():
-                    assert app_process.poll() is None and time.monotonic() < deadline, '隔离应用未就绪'
+                while True:
+                    assert app_process.poll() is None and time.monotonic() < deadline, (
+                        f'隔离应用未就绪 (exit={app_process.poll()}): ' + (root / 'app.log').read_text(errors='replace')[-6000:])
+                    try:
+                        initial = json.loads(diagnostics.read_text())
+                    except (OSError, json.JSONDecodeError):
+                        initial = {}
+                    if (root / 'di.sock').exists() and isinstance(initial.get('visibleSessions'), list) and isinstance(initial.get('handledMessageCount'), int):
+                        break
                     time.sleep(.05)
-                initial = json.loads(diagnostics.read_text())
                 assert initial['visibleSessions'] == [], '必须从空 fixture 开始'
+                # 负例保持 Node 连接直至服务端关闭，不能因发送方先退出而误判身份拒绝。
+                direct = {'type': 'session_start', 'sessionId': 'forbidden-direct-node', 'agentType': 'roo_code',
+                          'timestamp': '2026-10-09T00:00:00Z', 'prompt': 'must not be accepted'}
+                subprocess.run(['node', '-e', r'''
+const net = require('node:net');
+const socket = net.createConnection(process.argv[1]);
+let connected = false;
+const timer = setTimeout(() => { socket.destroy(); process.exitCode = 1; }, 2000);
+socket.on('connect', () => { connected = true; socket.write(process.argv[2] + '\n'); });
+socket.on('error', () => {});
+socket.on('close', () => { clearTimeout(timer); if (!connected) process.exitCode = 1; });
+''', str(root / 'di.sock'), json.dumps(direct)], check=True, timeout=3)
+                negative_deadline = time.monotonic() + 0.5
+                while time.monotonic() < negative_deadline:
+                    assert json.loads(diagnostics.read_text())['visibleSessions'] == [], '严格 peer 检查仍接受直接 Node 连接'
+                    time.sleep(.05)
                 sender_process = subprocess.Popen(['node', str(sender), str(root / 'di.sock'),
-                                                   str(root / 'messages.json'), str(root / 'done')])
+                                                   str(root / 'messages.json'), str(root / 'done'), str(bridge)])
                 deadline = time.monotonic() + 12
                 snapshot = initial
                 while time.monotonic() < deadline:
@@ -77,7 +122,8 @@ timeout.unref();
                     if len(rows) == len(tasks) and all(rows.get(identifier, {}).get('status') == 'idle'
                                                      and rows[identifier]['agentType'] == agent
                                                      and rows[identifier]['prompt'] == identifier
-                                                     for identifier, agent in tasks):
+                                                     and rows[identifier]['nativeTaskId'] == native_task
+                                                     for identifier, agent, native_task in tasks):
                         break
                     time.sleep(.05)
                 else:
@@ -97,8 +143,10 @@ timeout.unref();
                 subprocess.run(['defaults', 'delete', suite], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return {'sentEvents': len(messages), 'verifiedSessions': len(tasks), 'finalStatus': 'idle',
             'binarySHA256': hashlib.sha256(binary.read_bytes()).hexdigest(),
+            'bridgeSHA256': hashlib.sha256(bridge_binary.read_bytes()).hexdigest(),
+            'strictPeerAuthentication': True, 'directNodeRejected': True,
             'transportSHA256': hashlib.sha256((extension / 'src/transport.ts').read_bytes()).hexdigest(),
-            'scope': 'Compiled companion transport -> isolated app SocketServer -> SessionManager -> diagnostics',
+            'scope': 'Compiled companion transport -> native di-bridge -> strict-peer isolated app SocketServer -> SessionManager -> diagnostics',
             'realClientVerified': False, 'vendorClientLaunched': False}
 
 

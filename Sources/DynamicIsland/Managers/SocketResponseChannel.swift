@@ -90,15 +90,6 @@ final class SocketResponseChannel: @unchecked Sendable {
     }
 
     deinit {
-        let fd = lock.withLock { state -> Int32 in
-            guard !state.isClosed else { return -1 }
-            state.isClosed = true
-            state.idleWorkItem?.cancel()
-            let fd = state.fd
-            state.fd = -1
-            return fd
-        }
-        if fd >= 0 { close(fd) }
-        onRelease?()
+        closeConnection()
     }
 }

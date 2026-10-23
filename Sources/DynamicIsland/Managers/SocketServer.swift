@@ -9,7 +9,7 @@ final class SocketServer: @unchecked Sendable {
     static let maxMessageBytes = 16 * 1024 * 1024
     /// 同时处理的连接上限；超出后立即关闭新连接，避免文件描述符与 GCD 线程被耗尽。
     static let maxConcurrentConnections = 32
-    /// 单条消息的读取超时（秒）。防止只连接不发送数据的对端永久占用线程。
+    /// 整条消息的读取时限（秒），分片到达不能重新获得完整等待时间。
     static let receiveTimeoutSeconds: Int = 10
     /// 交互式请求（权限 / 问答 / 计划评审）等待用户决策的最长时间（秒）。
     /// 超时后关闭连接释放 fd，避免无人处理的请求无限期占用资源。
@@ -205,11 +205,14 @@ final class SocketServer: @unchecked Sendable {
         return String(cString: buffer)
     }
 
-    /// 判断是否处于隔离的测试运行模式。
+    /// 隔离测试默认放宽进程路径检查；兼容性验收可显式启用完整生产策略。
     ///
-    /// 测试模式下 socket 位于临时目录、进程由测试脚本直接启动，此时不做生产级身份校验。
+    /// 强制认证只收紧检查，不改变测试的 socket、数据库和偏好隔离。
     static var isTestMode: Bool {
-        ProcessInfo.processInfo.arguments.contains("--ui-test-mode")
+        guard ProcessInfo.processInfo.environment["X_ISLAND_TEST_ENFORCE_PEER_AUTH"] != "1" else {
+            return false
+        }
+        return ProcessInfo.processInfo.arguments.contains("--ui-test-mode")
             || ProcessInfo.processInfo.environment["X_ISLAND_TEST_MODE"] == "1"
     }
 
@@ -288,10 +291,6 @@ final class SocketServer: @unchecked Sendable {
             releaseConnection()
             return
         }
-
-        var receiveTimeout = timeval(tv_sec: Self.receiveTimeoutSeconds, tv_usec: 0)
-        _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &receiveTimeout,
-                       socklen_t(MemoryLayout<timeval>.size))
 
         guard let data = Self.readMessage(from: fd), !data.isEmpty else {
             logger.debug("No data from client")
@@ -378,24 +377,37 @@ final class SocketServer: @unchecked Sendable {
         }
     }
 
-    static func readMessage(from fd: Int32) -> Data? {
+    static func readMessage(from fd: Int32, timeout: TimeInterval = TimeInterval(receiveTimeoutSeconds)) -> Data? {
+        guard timeout > 0, timeout.isFinite else { return nil }
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
         var data = Data()
         let bufSize = 65536
         let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: bufSize)
         defer { buf.deallocate() }
 
         while true {
-            let n = recv(fd, buf, bufSize, 0)
+            let remaining = deadline - ProcessInfo.processInfo.systemUptime
+            guard remaining > 0 else { return nil }
+            var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&descriptor, 1, Int32(min(remaining * 1000 + 1, Double(Int32.max))))
+            if ready < 0 && errno == EINTR { continue }
+            guard ready > 0, ProcessInfo.processInfo.systemUptime < deadline else { return nil }
+
+            // 仅此读操作非阻塞，保留半关闭请求的写端供后续审批响应使用。
+            let n = recv(fd, buf, bufSize, MSG_DONTWAIT)
+            if n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) { continue }
             if n > 0 {
                 data.append(buf, count: n)
                 if data.count > maxMessageBytes { return nil }
                 if let newline = data.firstIndex(of: 0x0A) {
                     return Data(data.prefix(through: newline))
                 }
+            } else if n == 0 {
+                // 兼容以 EOF 结束的旧客户端；超时与错误不能当作完整帧。
+                return data.isEmpty ? nil : data
             } else {
-                break
+                return nil
             }
         }
-        return data.isEmpty ? nil : data
     }
 }

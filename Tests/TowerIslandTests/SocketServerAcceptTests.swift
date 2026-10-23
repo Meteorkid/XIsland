@@ -11,6 +11,77 @@ final class SocketServerAcceptTests: XCTestCase {
         XCTAssertEqual(SocketServer.acceptFailureBackoffMicroseconds, 50_000)
     }
 
+    func testSilentPeerCannotOutliveTotalReadDeadline() throws {
+        let fds = try makeSocketPair()
+        defer { close(fds.0); close(fds.1) }
+        let finished = expectation(description: "silent peer closed")
+        DispatchQueue.global().async {
+            usleep(300_000)
+            shutdown(fds.0, SHUT_WR)
+            finished.fulfill()
+        }
+        let started = ProcessInfo.processInfo.systemUptime
+        XCTAssertNil(SocketServer.readMessage(from: fds.1, timeout: 0.05))
+        XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - started, 0.2)
+        wait(for: [finished], timeout: 1)
+    }
+
+    func testTimeoutDoesNotAcceptPartialFrameEvenWhenItIsValidJSON() throws {
+        let fds = try makeSocketPair()
+        defer { close(fds.0); close(fds.1) }
+        XCTAssertTrue(SocketServer.sendAll(fd: fds.0, data: Data("{}".utf8)))
+        var socketTimeout = timeval(tv_sec: 0, tv_usec: 30_000)
+        XCTAssertEqual(setsockopt(fds.1, SOL_SOCKET, SO_RCVTIMEO, &socketTimeout,
+                                 socklen_t(MemoryLayout<timeval>.size)), 0)
+        XCTAssertNil(SocketServer.readMessage(from: fds.1, timeout: 0.05),
+                     "无换行且未半关闭的超时输入不能冒充完整帧")
+    }
+
+    func testSlowDripCannotRenewTotalReadDeadline() throws {
+        let fds = try makeSocketPair()
+        defer { close(fds.0); close(fds.1) }
+        let finished = expectation(description: "drip finished")
+        DispatchQueue.global().async {
+            for _ in 0..<10 {
+                _ = SocketServer.sendAll(fd: fds.0, data: Data([0x20]))
+                usleep(30_000)
+            }
+            shutdown(fds.0, SHUT_WR)
+            finished.fulfill()
+        }
+        let started = ProcessInfo.processInfo.systemUptime
+        XCTAssertNil(SocketServer.readMessage(from: fds.1, timeout: 0.06))
+        XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - started, 0.2)
+        wait(for: [finished], timeout: 1)
+    }
+
+    func testRealEOFStillAcceptsNonemptyFrameWithoutNewline() throws {
+        let fds = try makeSocketPair()
+        defer { close(fds.0); close(fds.1) }
+        let payload = Data("{}".utf8)
+        XCTAssertTrue(SocketServer.sendAll(fd: fds.0, data: payload))
+        shutdown(fds.0, SHUT_WR)
+        XCTAssertEqual(SocketServer.readMessage(from: fds.1, timeout: 0.1), payload)
+        XCTAssertTrue(SocketServer.sendAll(fd: fds.1, data: Data("response\n".utf8)),
+                      "读取半关闭请求后仍能写回应答")
+    }
+
+    func testNewlineCompletesFrameWithoutWaitingForPeerExit() throws {
+        let fds = try makeSocketPair()
+        defer { close(fds.0); close(fds.1) }
+        XCTAssertTrue(SocketServer.sendAll(fd: fds.0, data: Data("{}\nignored".utf8)))
+        XCTAssertEqual(SocketServer.readMessage(from: fds.1, timeout: 0.1), Data("{}\n".utf8))
+    }
+
+    func testInvalidReadDeadlinesRejectInput() throws {
+        for timeout in [0.0, -1, .nan, .infinity] {
+            let fds = try makeSocketPair()
+            defer { close(fds.0); close(fds.1) }
+            XCTAssertTrue(SocketServer.sendAll(fd: fds.0, data: Data("{}\n".utf8)))
+            XCTAssertNil(SocketServer.readMessage(from: fds.1, timeout: timeout))
+        }
+    }
+
     func testReadMessageKeepsLargePayloadUntilFrameNewline() throws {
         let fds = try makeSocketPair()
         defer {

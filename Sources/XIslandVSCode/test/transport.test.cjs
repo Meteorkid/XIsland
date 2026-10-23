@@ -2,13 +2,15 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const net = require('node:net');
 const fs = require('node:fs');
+const { createBridge } = require('./bridge-fixture.cjs');
 const { ObservationTransport } = require('../out/transport');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(predicate) { const end = Date.now() + 3000; while (!predicate()) { assert(Date.now() < end, 'timed out'); await pause(10); } }
 const message = (id, fields = {}) => ({ type: 'status_update', sessionId: id, agentType: 'roo_code', timestamp: '2026-09-24T00:00:00Z', ...fields });
 async function fixture(body, receive = (_, socket) => socket.end(), now) {
     const root = fs.mkdtempSync('/tmp/xi-vsc-'), path = root + '/di.sock', packets = [], clients = new Set(), connections = [];
-    const states = [], transport = new ObservationTransport(path, state => states.push(state), 20, now);
+    const bridgePath = createBridge(root);
+    const states = [], transport = new ObservationTransport(path, state => states.push(state), 20, now, bridgePath);
     const server = net.createServer({ allowHalfOpen: true }, socket => {
         const connection = { socket, raw: '' }; connections.push(connection);
         clients.add(socket); socket.on('close', () => clients.delete(socket)); socket.setEncoding('utf8');
@@ -27,9 +29,41 @@ async function fixture(body, receive = (_, socket) => socket.end(), now) {
             receive(packet, socket, connections.length);
         });
     });
-    try { await body({ transport, packets, states, server, clients, connections, listen: () => new Promise(resolve => server.listen(path, resolve)) }); }
+    try { await body({ transport, packets, states, server, clients, connections, bridgePath, root, path, listen: () => new Promise(resolve => server.listen(path, resolve)) }); }
     finally { transport.dispose(); for (const client of clients) client.destroy(); if (server.listening) await new Promise(resolve => server.close(resolve)); fs.rmSync(root, { recursive: true, force: true }); }
 }
+
+test('uses the native bridge with fixed arguments and a literal executable path', async () => fixture(async f => {
+    await f.listen();
+    f.transport.send(message('via-native'));
+    await until(() => f.packets.length === 1 && f.clients.size === 0);
+    assert.equal(fs.readFileSync(f.path + '.spawned', 'utf8'), '1');
+    assert.equal(f.packets[0].sessionId, 'via-native');
+}));
+
+test('an unavailable native executable retains unwritten events for retry', async () => fixture(async f => {
+    fs.unlinkSync(f.bridgePath);
+    f.transport.send(message('first')); f.transport.send(message('second'));
+    await until(() => f.states.some(s => s.includes('暂未连接')));
+    createBridge(f.root); await f.listen();
+    await until(() => f.packets.length === 2 && f.clients.size === 0);
+    assert.deepEqual(f.packets.map(p => p.sessionId), ['first', 'second']);
+}));
+
+test('a native process failure after taking stdin never replays either frame', async () => fixture(async f => {
+    fs.writeFileSync(f.bridgePath, `#!${process.execPath}
+const fs = require('node:fs');
+process.stdout.write('ready\\n');
+let frame = '';
+process.stdin.on('data', chunk => frame += chunk);
+process.stdin.on('end', () => { fs.appendFileSync(process.env.DI_SOCKET_PATH + '.attempted', frame); process.exit(74); });
+`);
+    f.transport.send(message('uncertain')); f.transport.send(message('next'));
+    const attempts = () => fs.existsSync(f.path + '.attempted') ? fs.readFileSync(f.path + '.attempted', 'utf8').trim().split('\n') : [];
+    await until(() => attempts().length === 2);
+    await pause(100);
+    assert.deepEqual(attempts().map(line => JSON.parse(line).sessionId), ['uncertain', 'next']);
+}));
 
 test('queues the first messages until connection is ready and retains event ordering', async () => fixture(async f => {
     f.transport.send(message('one', { type: 'session_start' }));
