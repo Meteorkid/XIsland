@@ -1079,6 +1079,170 @@ enum L10n {
             en: "High")
     }
 
+    // MARK: - 触觉反馈
+
+    static var sectionHaptics: String {
+        localized("sectionHaptics",
+            zh: "触觉反馈", ko: "햅틱 피드백", ja: "触覚フィードバック", fr: "Retour haptique",
+            en: "Haptic feedback")
+    }
+
+    static var hapticIntensity: String {
+        localized("hapticIntensity",
+            zh: "反馈强度", ko: "피드백 강도", ja: "フィードバック強度", fr: "Intensité du retour",
+            en: "Feedback level")
+    }
+
+    static var hapticIntensityDesc: String {
+        localized("hapticIntensityDesc",
+            zh: "控制哪些操作会触发触控板振动。档位越高，纳入反馈的事件越多。",
+            ko: "어떤 동작이 촉각 피드백을 트리거할지 제어합니다. 단계가 높을수록 더 많은 이벤트가 포함됩니다.",
+            ja: "どの操作で触覚フィードバックを返すかを制御します。段階が高いほど対象イベントが増えます。",
+            fr: "Contrôle les actions déclenchant un retour haptique. Plus le niveau est élevé, plus d'événements sont inclus.",
+            en: "Controls which actions trigger trackpad feedback. Higher levels include more events.")
+    }
+
+    static var hapticIntensityOff: String {
+        localized("hapticIntensityOff",
+            zh: "关闭", ko: "끔", ja: "オフ", fr: "Désactivé",
+            en: "Off")
+    }
+
+    static var hapticIntensityMinimal: String {
+        localized("hapticIntensityMinimal",
+            zh: "极简", ko: "최소", ja: "最小", fr: "Minimal",
+            en: "Minimal")
+    }
+
+    static var hapticIntensityStandard: String {
+        localized("hapticIntensityStandard",
+            zh: "标准", ko: "표준", ja: "標準", fr: "Standard",
+            en: "Standard")
+    }
+
+    static var hapticIntensityFull: String {
+        localized("hapticIntensityFull",
+            zh: "完整", ko: "전체", ja: "フル", fr: "Complet",
+            en: "Full")
+    }
+
+    static var hapticIntensityOffDesc: String {
+        localized("hapticIntensityOffDesc",
+            zh: "不产生任何触觉反馈。",
+            ko: "촉각 피드백을 전혀 발생시키지 않습니다.",
+            ja: "触覚フィードバックを一切発生させません。",
+            fr: "Aucun retour haptique.",
+            en: "No haptic feedback at all.")
+    }
+
+    static var hapticIntensityMinimalDesc: String {
+        localized("hapticIntensityMinimalDesc",
+            zh: "仅权限审批与失败时反馈，干扰最小。",
+            ko: "권한 승인과 실패 시에만 피드백합니다.",
+            ja: "権限承認と失敗時のみフィードバックします。",
+            fr: "Retour uniquement pour les approbations et échecs.",
+            en: "Feedback only for approvals and failures.")
+    }
+
+    static var hapticIntensityStandardDesc: String {
+        localized("hapticIntensityStandardDesc",
+            zh: "在极简基础上加入等待输入与面板展开/收起。",
+            ko: "최소에 더해 입력 대기와 패널 열기/닫기를 포함합니다.",
+            ja: "最小に加え、入力待ちとパネルの開閉を含みます。",
+            fr: "Inclut aussi les saisies en attente et l'ouverture/fermeture du panneau.",
+            en: "Adds input prompts and panel expand/collapse.")
+    }
+
+    static var hapticIntensityFullDesc: String {
+        localized("hapticIntensityFullDesc",
+            zh: "所有事件均反馈，包含会话切换与工具完成。",
+            ko: "모든 이벤트에 피드백하며 세션 전환과 도구 완료를 포함합니다.",
+            ja: "全イベントにフィードバックし、セッション切替とツール完了を含みます。",
+            fr: "Tous les événements, y compris le changement de session et la fin d'outil.",
+            en: "All events, including session switch and tool completion.")
+    }
+
+    static var hapticEventPermission: String {
+        localized("hapticEventPermission", zh: "权限审批", ko: "권한 승인", ja: "権限承認", fr: "Approbation", en: "Approval request")
+    }
+
+    static var hapticEventInput: String {
+        localized("hapticEventInput", zh: "等待输入", ko: "입력 대기", ja: "入力待ち", fr: "Saisie requise", en: "Input required")
+    }
+
+    static var hapticEventExpand: String {
+        localized("hapticEventExpand", zh: "面板展开", ko: "패널 열기", ja: "パネル展開", fr: "Ouverture du panneau", en: "Panel expand")
+    }
+
+    static var hapticEventCollapse: String {
+        localized("hapticEventCollapse", zh: "面板收起", ko: "패널 닫기", ja: "パネル収納", fr: "Fermeture du panneau", en: "Panel collapse")
+    }
+
+    static var hapticEventSwitch: String {
+        localized("hapticEventSwitch", zh: "会话切换", ko: "세션 전환", ja: "セッション切替", fr: "Changement de session", en: "Session switch")
+    }
+
+    static var hapticEventToolDone: String {
+        localized("hapticEventToolDone", zh: "工具完成", ko: "도구 완료", ja: "ツール完了", fr: "Fin d'outil", en: "Tool completion")
+    }
+
+    static var hapticEventFailure: String {
+        localized("hapticEventFailure", zh: "失败 / 拒绝", ko: "실패/거부", ja: "失敗・拒否", fr: "Échec / refus", en: "Failure / denial")
+    }
+
+    // MARK: - 图标与卡片动效
+
+    static var sectionMicroMotion: String {
+        localized("sectionMicroMotion",
+            zh: "微动效", ko: "마이크로 모션", ja: "マイクロモーション", fr: "Micro-animations",
+            en: "Micro-animations")
+    }
+
+    static var symbolEffectsEnabled: String {
+        localized("symbolEffectsEnabled",
+            zh: "图标动效", ko: "아이콘 효과", ja: "アイコンエフェクト", fr: "Effets d'icône",
+            en: "Icon effects")
+    }
+
+    static var symbolEffectsEnabledDesc: String {
+        localized("symbolEffectsEnabledDesc",
+            zh: "状态图标在等待输入时脉动、运行中分层变色、工具完成时弹跳。",
+            ko: "대기 중 아이콘은 맥동하고, 실행 중에는 레이어별로 색이 변하며, 완료 시 튕깁니다.",
+            ja: "待機中のアイコンは脈動し、実行中は層ごとに色が変わり、完了時は弾みます。",
+            fr: "Les icônes pulsent en attente, changent de couleur en cours et rebondissent à la fin.",
+            en: "Icons pulse when waiting, shift color while running, and bounce on completion.")
+    }
+
+    static var cascadeEntranceEnabled: String {
+        localized("cascadeEntranceEnabled",
+            zh: "列表入场级联", ko: "목록 순차 등장", ja: "リストの順次表示", fr: "Apparition en cascade",
+            en: "Cascading list entrance")
+    }
+
+    static var cascadeEntranceEnabledDesc: String {
+        localized("cascadeEntranceEnabledDesc",
+            zh: "打开面板时，会话卡片依次上浮落定，而非整体闪现。",
+            ko: "패널을 열 때 카드가 하나씩 떠오르며 나타납니다.",
+            ja: "パネルを開くとカードが順に浮かび上がります。",
+            fr: "À l'ouverture, les cartes apparaissent une à une.",
+            en: "Cards rise into place one by one when the panel opens.")
+    }
+
+    static var proximityLiftEnabled: String {
+        localized("proximityLiftEnabled",
+            zh: "指针距离感应", ko: "포인터 근접 반응", ja: "ポインタ近接反応", fr: "Réaction de proximité",
+            en: "Pointer proximity lift")
+    }
+
+    static var proximityLiftEnabledDesc: String {
+        localized("proximityLiftEnabledDesc",
+            zh: "指针靠近时，附近卡片连续隆起（类似 macOS Dock）。可能增加少量 CPU 占用。",
+            ko: "포인터가 가까워지면 주변 카드가 연속적으로 솟아오릅니다(Dock과 유사). CPU 사용량이 약간 증가할 수 있습니다.",
+            ja: "ポインタが近づくと周辺カードが連続的に浮き上がります（Dock と同様）。CPU 使用量がわずかに増える場合があります。",
+            fr: "Les cartes proches se soulèvent en continu (comme le Dock). Peut augmenter légèrement l'usage CPU.",
+            en: "Nearby cards lift continuously as the pointer approaches (like the Dock). May slightly increase CPU usage.")
+    }
+
     static var counterpartInstalled: String {
         localized("counterpartInstalled",
             zh: "应用安装状态", ko: "앱 설치 상태", ja: "アプリのインストール状態", fr: "Installation de l'app",

@@ -26,8 +26,8 @@ struct ToolCompletionEffect: ViewModifier {
             }
             .task(id: showFlash) {
                 guard showFlash else { return }
-                try? await Task.sleep(for: .milliseconds(500))
-                withAnimation(.easeOut(duration: 0.3)) {
+                try? await Task.sleep(for: .milliseconds(Int(IslandMotionTokens.Duration.toolFlashHold * 1000)))
+                withAnimation(IslandMotionTokens.flashDecay) {
                     showFlash = false
                 }
             }
@@ -76,14 +76,14 @@ struct ActivityLogGlowTrail: ViewModifier {
                     entryScale = 1.0
                     return
                 }
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                withAnimation(IslandMotionTokens.logEntry) {
                     entryScale = 1.0
                 }
                 guard isActive else { return }
-                withAnimation(.easeInOut(duration: 0.7)) {
+                withAnimation(IslandMotionTokens.logSweep) {
                     sweepProgress = 1.0
                 }
-                try? await Task.sleep(for: .milliseconds(700))
+                try? await Task.sleep(for: .milliseconds(Int(IslandMotionTokens.Duration.logSweepTotal * 1000)))
                 sweepProgress = 0
             }
     }
@@ -151,7 +151,7 @@ struct StatusChangeSweep: ViewModifier {
             .onChange(of: trigger) { _, _ in
                 guard !reduceMotion else { return }
                 sweepOffset = -1.0
-                withAnimation(.easeInOut(duration: 0.6)) {
+                withAnimation(IslandMotionTokens.statusSweep) {
                     sweepOffset = 1.5
                 }
             }

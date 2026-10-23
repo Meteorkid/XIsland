@@ -87,6 +87,10 @@ struct PreferencesView: View {
     @AppStorage("showCollapsedQuota") private var showCollapsedQuota = true
     @AppStorage("showActivityTicker") private var showActivityTicker = true
     @AppStorage("tickerContentMode") private var tickerContentMode = CollapsedTickerContentMode.defaultValue.rawValue
+    @AppStorage("hapticIntensity") private var hapticIntensity = IslandHapticIntensity.defaultValue.rawValue
+    @AppStorage("symbolEffectsEnabled") private var symbolEffectsEnabled = true
+    @AppStorage("cascadeEntranceEnabled") private var cascadeEntranceEnabled = true
+    @AppStorage("proximityLiftEnabled") private var proximityLiftEnabled = false
     @AppStorage("quietHoursEnabled") private var quietHoursEnabled = false
     @AppStorage("quietHoursStart") private var quietHoursStart = "22:00"
     @AppStorage("quietHoursEnd") private var quietHoursEnd = "07:00"
@@ -526,7 +530,43 @@ struct PreferencesView: View {
                     }
                 }
             }
+
+            section(L10n.sectionMicroMotion) {
+                card {
+                    settingRow(L10n.symbolEffectsEnabled, id: "symbolEffectsEnabled", description: L10n.symbolEffectsEnabledDesc) {
+                        Toggle("", isOn: $symbolEffectsEnabled).labelsHidden()
+                    }
+                    dividerLine
+                    settingRow(L10n.cascadeEntranceEnabled, id: "cascadeEntranceEnabled", description: L10n.cascadeEntranceEnabledDesc) {
+                        Toggle("", isOn: $cascadeEntranceEnabled).labelsHidden()
+                    }
+                    dividerLine
+                    settingRow(L10n.proximityLiftEnabled, id: "proximityLiftEnabled", description: L10n.proximityLiftEnabledDesc) {
+                        Toggle("", isOn: $proximityLiftEnabled).labelsHidden()
+                    }
+                }
+            }
+
+            section(L10n.sectionHaptics) {
+                card {
+                    settingRow(L10n.hapticIntensity, id: "hapticIntensity", description: hapticIntensityDescription) {
+                        Picker("", selection: $hapticIntensity) {
+                            ForEach(IslandHapticIntensity.allCases, id: \.rawValue) { level in
+                                Text(level.localizedTitle).tag(level.rawValue)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 160)
+                    }
+                }
+            }
         }
+    }
+
+    /// 触觉强度说明：同时给出当前档位的具体覆盖面，因为「强度」在本实现里
+    /// 控制的是**事件覆盖范围**而非振动幅度（公开 API 无幅度控制能力）。
+    private var hapticIntensityDescription: String {
+        IslandHapticIntensity.resolve(rawValue: hapticIntensity).localizedDescription
     }
 
     // MARK: - Integration

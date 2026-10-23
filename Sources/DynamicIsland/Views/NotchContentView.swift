@@ -62,6 +62,7 @@ struct NotchContentView: View {
     @AppStorage("panelWidth") private var panelWidth = 380.0
     @AppStorage("panelMaxHeight") private var panelMaxHeight = 620.0
     @AppStorage("showActivityTicker") private var showActivityTicker = true
+    @AppStorage("symbolEffectsEnabled") private var symbolEffectsEnabled = true
     @AppStorage("tickerContentMode") private var tickerContentMode = CollapsedTickerContentMode.defaultValue.rawValue
     @AppStorage("tickerSpeed") private var tickerSpeed = 25.0
     var onSizeChange: ((CGFloat, CGFloat, Bool) -> Void)?
@@ -251,36 +252,15 @@ struct NotchContentView: View {
     }
 
     private static func expandSpring(for intensity: IslandAnimationIntensity) -> Animation {
-        switch intensity {
-        case .low:
-            return .spring(response: 0.28, dampingFraction: 0.92)
-        case .medium:
-            return .spring(response: 0.4, dampingFraction: 0.82)
-        case .high:
-            return .spring(response: 0.5, dampingFraction: 0.74)
-        }
+        IslandMotionTokens.expandSpring(for: intensity)
     }
 
     private static func collapseSpring(for intensity: IslandAnimationIntensity) -> Animation {
-        switch intensity {
-        case .low:
-            return .spring(response: 0.24, dampingFraction: 0.9)
-        case .medium:
-            return .spring(response: 0.35, dampingFraction: 0.8)
-        case .high:
-            return .spring(response: 0.44, dampingFraction: 0.72)
-        }
+        IslandMotionTokens.collapseSpring(for: intensity)
     }
 
     private static func contentFade(for intensity: IslandAnimationIntensity) -> Animation {
-        switch intensity {
-        case .low:
-            return .easeInOut(duration: 0.14)
-        case .medium:
-            return .easeInOut(duration: 0.2)
-        case .high:
-            return .easeInOut(duration: 0.28)
-        }
+        IslandMotionTokens.contentFade(for: intensity)
     }
 
     static func initialAutoExpandedState(for manager: SessionManager) -> IslandState? {
@@ -658,6 +638,7 @@ struct NotchContentView: View {
         if newState != .collapsed {
             cachedExpandedShapeHeight = max(collapsedShapeHeight + 1, target.height)
         }
+        IslandHapticEngine.fire(.panelExpand)
         onSizeChange?(target.width, target.height, true)
         let runExpansion = {
             if disableAnimations {
@@ -692,6 +673,7 @@ struct NotchContentView: View {
         lastCollapseAt = Date()
         collapseAnimating = true
         clearHoverJellyState(animated: false)
+        IslandHapticEngine.fire(.panelCollapse)
         if disableAnimations {
             showContent = false
             state = .collapsed
@@ -724,6 +706,7 @@ struct NotchContentView: View {
                 finishCollapse()
             }
         }
+
     }
 
     private func reportSize() {
@@ -1136,12 +1119,12 @@ struct NotchContentView: View {
                 jellySettled = false
                 jellyGeneration += 1
                 let generation = jellyGeneration
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.3)) {
+                withAnimation(IslandMotionTokens.hoverJellyPop) {
                     jellyTrigger = true
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [self] in
                     guard generation == self.jellyGeneration else { return }
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.4)) {
+                    withAnimation(IslandMotionTokens.hoverJellySettle) {
                         self.jellySettled = true
                     }
                 }
@@ -1163,11 +1146,11 @@ struct NotchContentView: View {
                 collapseAnimating: collapseAnimating
             )
             if abs(targetMagneticOffset.width - magneticOffset.width) > 0.5 {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(IslandMotionTokens.magneticFollow) {
                     magneticOffset = targetMagneticOffset
                 }
             } else if targetMagneticOffset == .zero && magneticOffset != .zero {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) {
+                withAnimation(IslandMotionTokens.magneticRelease) {
                     magneticOffset = .zero
                 }
             }
@@ -1287,7 +1270,12 @@ struct NotchContentView: View {
                                 Image(systemName: failed ? "xmark.circle.fill" : item.event.wasCancelled ? "minus.circle" : uncertain ? "questionmark.circle" : item.event.isComplete ? "checkmark.circle.fill" : "circle.dashed")
                                     .font(.system(size: 8))
                                     .foregroundStyle(failed ? .red.opacity(0.7) : item.event.wasCancelled || uncertain ? .orange.opacity(0.7) : item.event.isComplete ? .green.opacity(0.5) : IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
-                                    .symbolEffect(.bounce, value: item.event.isComplete && !failed && !item.event.wasCancelled && !uncertain)
+                                    .modifier(ToolCompletionSymbolEffect(
+                                        isComplete: item.event.isComplete && !failed && !item.event.wasCancelled && !uncertain,
+                                        isFailed: failed,
+                                        reduceMotion: reduceMotion,
+                                        isEnabled: symbolEffectsEnabled
+                                    ))
                                 Text(item.session.agentType.shortName)
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundStyle(item.session.agentType.color.opacity(0.7))
