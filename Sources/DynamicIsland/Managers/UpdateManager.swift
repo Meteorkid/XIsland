@@ -37,10 +37,24 @@ final class UpdateManager {
             UpdateManager.normalize(version: tagName)
         }
 
+        /// 下载资产的允许来源主机。
+        ///
+        /// `browserDownloadURL` 来自 GitHub API 的应答内容，不经验证就直接下载会让应答
+        /// 把更新载荷指向任意主机。这里收窄到 GitHub 自有的两个发布域。
+        static let allowedDownloadHosts: Set<String> = [
+            "github.com",
+            "objects.githubusercontent.com"
+        ]
+
         var dmgURL: URL? {
             let expectedName = AppUpdater.dmgFilename(for: normalizedVersion)
-            return assets.first(where: { $0.name.compare(expectedName, options: .caseInsensitive) == .orderedSame })?.browserDownloadURL
+            let candidate = assets.first(where: { $0.name.compare(expectedName, options: .caseInsensitive) == .orderedSame })?.browserDownloadURL
                 ?? assets.first(where: { $0.name.localizedCaseInsensitiveContains(".dmg") })?.browserDownloadURL
+            guard let candidate, let host = candidate.host?.lowercased(),
+                  Self.allowedDownloadHosts.contains(host) else {
+                return nil
+            }
+            return candidate
         }
 
         private enum CodingKeys: String, CodingKey {

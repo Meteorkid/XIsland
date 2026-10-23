@@ -6,6 +6,17 @@ struct PendingTaskCardView: View {
     @Environment(SessionManager.self) private var manager
     @Environment(ThemeManager.self) private var themeManager
     @FocusState private var feedbackFocused: Bool
+    @AppStorage("reduceMotion") private var appReduceMotion = false
+    @AppStorage("disableAnimations") private var disableAnimations = false
+    @AppStorage("symbolEffectsEnabled") private var symbolEffectsEnabled = true
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+
+    /// 待处理卡片本身就在「等待用户处理」，因此图标脉动恒定生效——
+    /// 与 `StatusSymbolEffect` 的 `isWaiting` 语义一致。
+    private var reduceMotion: Bool {
+        !IslandMotionPolicy(reduceMotion: appReduceMotion, systemReduceMotion: systemReduceMotion,
+                            disableAnimations: disableAnimations).allowsContinuousAnimation
+    }
 
     private var scheme: ColorScheme { themeManager.resolvedScheme }
 
@@ -35,6 +46,11 @@ struct PendingTaskCardView: View {
                     Image(systemName: "arrow.up.forward.app")
                         .font(.system(size: 12))
                         .frame(width: 30, height: 30)
+                        .modifier(AttentionPulseModifier(
+                            isActive: true,
+                            reduceMotion: reduceMotion,
+                            isEnabled: symbolEffectsEnabled
+                        ))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(L10n.interactionOpenAgent)

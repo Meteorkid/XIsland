@@ -191,4 +191,53 @@ final class AppUpdaterTests: XCTestCase {
             XCTAssertEqual(error.errorDescription, description)
         }
     }
+
+    // MARK: - 签名身份校验
+
+    func testParsesTeamIdentifierFromCodesignOutput() {
+        XCTAssertEqual(
+            AppUpdater.parseTeamIdentifier(from: "Executable=/tmp/X Island.app\nTeamIdentifier=ABC123DEF\n"),
+            "ABC123DEF"
+        )
+        // ad-hoc 签名没有身份信息，必须返回 nil 而不是空串
+        XCTAssertNil(AppUpdater.parseTeamIdentifier(from: "TeamIdentifier=not set\n"))
+        XCTAssertNil(AppUpdater.parseTeamIdentifier(from: "Executable=/tmp/x\nIdentifier=dev.xisland.app\n"))
+    }
+
+    /// 未配置期望 Team ID 时只验证签名自洽，不应阻断当前 ad-hoc 发布包。
+    func testSignatureAcceptedWithoutExpectedTeamIdentifier() {
+        let updater = AppUpdater(runCommand: { _, _ in "" })
+        if case .accepted(let team) = updater.verifySignature(at: "/tmp/X Island.app") {
+            XCTAssertNil(team)
+        } else {
+            XCTFail("未配置期望 Team ID 时应接受仅通过自洽校验的包")
+        }
+    }
+
+    /// 未配置期望 Team ID 时，脚本虽含身份校验代码，但守卫为空 —— 运行时不执行，
+    /// 因此当前 ad-hoc 发布流程不受影响。
+    func testInstallerScriptOmitsTeamCheckWhenNoTeamConfigured() {
+        let script = AppUpdater.makeInstallerScript(
+            currentPID: 4242,
+            mountedAppPath: "/Volumes/X/X Island.app",
+            appPath: "/Applications/X Island.app",
+            mountDirectory: "/Volumes/X",
+            tempDirectory: "/tmp/xi"
+        )
+        XCTAssertTrue(script.contains(#"EXPECTED_TEAM=''"#), "未配置时应生成空的 EXPECTED_TEAM 守卫")
+        XCTAssertFalse(script.contains("EXPECTED_TEAM='ABC"), "不应携带任何 Team ID 值")
+    }
+
+    func testInstallerScriptIncludesTeamCheckWhenTeamConfigured() {
+        let script = AppUpdater.makeInstallerScript(
+            currentPID: 4242,
+            mountedAppPath: "/Volumes/X/X Island.app",
+            appPath: "/Applications/X Island.app",
+            mountDirectory: "/Volumes/X",
+            tempDirectory: "/tmp/xi",
+            expectedTeamIdentifier: "ABC123DEF"
+        )
+        XCTAssertTrue(script.contains(#"EXPECTED_TEAM='ABC123DEF'"#))
+        XCTAssertTrue(script.contains("TeamIdentifier mismatch"), "应包含 Team ID 不匹配时的拒绝分支")
+    }
 }

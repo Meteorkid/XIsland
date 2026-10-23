@@ -97,12 +97,12 @@ final class AppDiagnosticsSnapshotTests: XCTestCase {
         let updateManager = UpdateManager()
         let release = UpdateManager.ReleaseInfo(
             tagName: "v1.2.9",
-            htmlURL: URL(string: "https://example.com/release")!,
+            htmlURL: URL(string: "https://github.com/release")!,
             publishedAt: ISO8601DateFormatter().date(from: "2026-04-15T08:00:00Z")!,
             assets: [
                 .init(
                     name: "XIsland-1.2.9.dmg",
-                    browserDownloadURL: URL(string: "https://example.com/XIsland-1.2.9.dmg")!
+                    browserDownloadURL: URL(string: "https://github.com/XIsland-1.2.9.dmg")!
                 )
             ]
         )
@@ -117,7 +117,7 @@ final class AppDiagnosticsSnapshotTests: XCTestCase {
 
         XCTAssertEqual(snapshot.update.state, "updateAvailable")
         XCTAssertEqual(snapshot.update.version, "1.2.9")
-        XCTAssertEqual(snapshot.update.dmgURL, "https://example.com/XIsland-1.2.9.dmg")
+        XCTAssertEqual(snapshot.update.dmgURL, "https://github.com/XIsland-1.2.9.dmg")
         XCTAssertEqual(snapshot.visibleAccessibilityIdentifiers, [
             TestAccessibility.collapsedPill,
         ])
@@ -128,12 +128,12 @@ final class AppDiagnosticsSnapshotTests: XCTestCase {
         let updateManager = UpdateManager()
         let release = UpdateManager.ReleaseInfo(
             tagName: "v1.2.9",
-            htmlURL: URL(string: "https://example.com/release")!,
+            htmlURL: URL(string: "https://github.com/release")!,
             publishedAt: ISO8601DateFormatter().date(from: "2026-04-15T08:00:00Z")!,
             assets: [
                 .init(
                     name: "XIsland-1.2.9.dmg",
-                    browserDownloadURL: URL(string: "https://example.com/XIsland-1.2.9.dmg")!
+                    browserDownloadURL: URL(string: "https://github.com/XIsland-1.2.9.dmg")!
                 )
             ]
         )

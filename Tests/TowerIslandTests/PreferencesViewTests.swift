@@ -46,12 +46,12 @@ final class PreferencesViewTests: XCTestCase {
     private func release(version: String) -> UpdateManager.ReleaseInfo {
         UpdateManager.ReleaseInfo(
             tagName: "v\(version)",
-            htmlURL: URL(string: "https://example.com/release")!,
+            htmlURL: URL(string: "https://github.com/release")!,
             publishedAt: ISO8601DateFormatter().date(from: "2026-04-15T00:00:00Z")!,
             assets: [
                 .init(
                     name: "XIsland-\(version).dmg",
-                    browserDownloadURL: URL(string: "https://example.com/XIsland-\(version).dmg")!
+                    browserDownloadURL: URL(string: "https://github.com/XIsland-\(version).dmg")!
                 )
             ]
         )

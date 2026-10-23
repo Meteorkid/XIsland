@@ -29,6 +29,8 @@ struct NotchContentView: View {
     @State private var expandPending = false
     @State private var collapseAnimating = false
     @State private var collapseGeneration = 0
+    /// 收起看门狗的兜底任务，见 `scheduleCollapseWatchdog`。
+    @State private var collapseWatchdogWorkItem: DispatchWorkItem?
     @State private var previousMouseY: CGFloat = 0
     @State private var previousMouseLocation: CGPoint?
     @State private var lastMouseMovementAt: Date = .distantPast
@@ -62,6 +64,7 @@ struct NotchContentView: View {
     @AppStorage("panelWidth") private var panelWidth = 380.0
     @AppStorage("panelMaxHeight") private var panelMaxHeight = 620.0
     @AppStorage("showActivityTicker") private var showActivityTicker = true
+    @AppStorage("symbolEffectsEnabled") private var symbolEffectsEnabled = true
     @AppStorage("tickerContentMode") private var tickerContentMode = CollapsedTickerContentMode.defaultValue.rawValue
     @AppStorage("tickerSpeed") private var tickerSpeed = 25.0
     var onSizeChange: ((CGFloat, CGFloat, Bool) -> Void)?
@@ -203,6 +206,19 @@ struct NotchContentView: View {
         isPointerInside && !isExpanded && !collapseAnimating && previousMouseY < currentMouseY
     }
 
+    /// 收起看门狗是否应当介入。
+    ///
+    /// 抽成静态函数以便单测：看门狗的唯一职责是「收拾没收尾的收起」，
+    /// 判定必须严格——世代不符（已有更新的收起/展开）或动画已正常结束，都不应介入，
+    /// 否则会与正常路径重复复位窗口。
+    static func shouldWatchdogForceSettle(
+        watchdogGeneration: Int,
+        currentGeneration: Int,
+        collapseAnimating: Bool
+    ) -> Bool {
+        watchdogGeneration == currentGeneration && collapseAnimating
+    }
+
     static func magneticOffset(
         mouseLocation: CGPoint,
         windowFrame: CGRect,
@@ -251,36 +267,15 @@ struct NotchContentView: View {
     }
 
     private static func expandSpring(for intensity: IslandAnimationIntensity) -> Animation {
-        switch intensity {
-        case .low:
-            return .spring(response: 0.28, dampingFraction: 0.92)
-        case .medium:
-            return .spring(response: 0.4, dampingFraction: 0.82)
-        case .high:
-            return .spring(response: 0.5, dampingFraction: 0.74)
-        }
+        IslandMotionTokens.expandSpring(for: intensity)
     }
 
     private static func collapseSpring(for intensity: IslandAnimationIntensity) -> Animation {
-        switch intensity {
-        case .low:
-            return .spring(response: 0.24, dampingFraction: 0.9)
-        case .medium:
-            return .spring(response: 0.35, dampingFraction: 0.8)
-        case .high:
-            return .spring(response: 0.44, dampingFraction: 0.72)
-        }
+        IslandMotionTokens.collapseSpring(for: intensity)
     }
 
     private static func contentFade(for intensity: IslandAnimationIntensity) -> Animation {
-        switch intensity {
-        case .low:
-            return .easeInOut(duration: 0.14)
-        case .medium:
-            return .easeInOut(duration: 0.2)
-        case .high:
-            return .easeInOut(duration: 0.28)
-        }
+        IslandMotionTokens.contentFade(for: intensity)
     }
 
     static func initialAutoExpandedState(for manager: SessionManager) -> IslandState? {
@@ -566,6 +561,7 @@ struct NotchContentView: View {
         .onDisappear {
             stopHoverPolling()
             cancelExpandedAutoHide()
+            cancelCollapseWatchdog()
             for token in notificationTokens {
                 NotificationCenter.default.removeObserver(token)
             }
@@ -645,6 +641,8 @@ struct NotchContentView: View {
         guard !expandPending else { return }
         collapseGeneration += 1
         collapseAnimating = false
+        // 世代已递增，残留的看门狗即使触发也会因世代不符而退出；显式取消更省一次调度。
+        cancelCollapseWatchdog()
         expandPending = true
         clearHoverJellyState(animated: false)
 
@@ -658,6 +656,7 @@ struct NotchContentView: View {
         if newState != .collapsed {
             cachedExpandedShapeHeight = max(collapsedShapeHeight + 1, target.height)
         }
+        IslandHapticEngine.fire(.panelExpand)
         onSizeChange?(target.width, target.height, true)
         let runExpansion = {
             if disableAnimations {
@@ -692,6 +691,7 @@ struct NotchContentView: View {
         lastCollapseAt = Date()
         collapseAnimating = true
         clearHoverJellyState(animated: false)
+        IslandHapticEngine.fire(.panelCollapse)
         if disableAnimations {
             showContent = false
             state = .collapsed
@@ -714,6 +714,7 @@ struct NotchContentView: View {
                     window.islandState = self.state
                 }
                 self.collapseAnimating = false
+                self.cancelCollapseWatchdog()
             }
         }
 
@@ -724,6 +725,45 @@ struct NotchContentView: View {
                 finishCollapse()
             }
         }
+
+        // 兜底：正常收尾路径（`finishCollapse`）带 `state == .collapsed` 守卫，
+        // 一旦该守卫不成立或回调因异常丢失（窗口重建、runloop 被占满），
+        // `collapseAnimating` 会一直为真 —— 而 `reportSize()` 首行即 return，
+        // 面板尺寸从此不再上报，表现为「卡住、无法交互」。
+        scheduleCollapseWatchdog(generation: generation, normalCompletionDelay: timing.collapseCompletionDelay)
+    }
+
+    /// 安排收起看门狗。
+    ///
+    /// 超时 = 正常收尾时刻 + 弹簧收敛时长。前者是 `finishCollapse` 应当执行的时刻，
+    /// 后者给出「弹簧肯定已停」的余量；两者都由参数推导，因此调整动效强度时兜底时机自动跟随。
+    private func scheduleCollapseWatchdog(generation: Int, normalCompletionDelay: TimeInterval) {
+        cancelCollapseWatchdog()
+        let timeout = normalCompletionDelay
+            + IslandMotionTokens.settleDuration(for: resolvedAnimationIntensity)
+        let workItem = DispatchWorkItem { [self] in
+            // 仅当本次收起仍是当前世代、且确实卡在动画中时才介入。
+            guard Self.shouldWatchdogForceSettle(
+                watchdogGeneration: generation,
+                currentGeneration: collapseGeneration,
+                collapseAnimating: collapseAnimating
+            ) else { return }
+            collapseWatchdogWorkItem = nil
+            let w = pillWidth
+            let h = collapsedOuterHeight
+            if let window = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow {
+                window.resizeToFitCollapse(contentWidth: w, contentHeight: h)
+                window.islandState = state
+            }
+            collapseAnimating = false
+        }
+        collapseWatchdogWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: workItem)
+    }
+
+    private func cancelCollapseWatchdog() {
+        collapseWatchdogWorkItem?.cancel()
+        collapseWatchdogWorkItem = nil
     }
 
     private func reportSize() {
@@ -1136,12 +1176,12 @@ struct NotchContentView: View {
                 jellySettled = false
                 jellyGeneration += 1
                 let generation = jellyGeneration
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.3)) {
+                withAnimation(IslandMotionTokens.hoverJellyPop) {
                     jellyTrigger = true
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [self] in
                     guard generation == self.jellyGeneration else { return }
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.4)) {
+                    withAnimation(IslandMotionTokens.hoverJellySettle) {
                         self.jellySettled = true
                     }
                 }
@@ -1163,11 +1203,11 @@ struct NotchContentView: View {
                 collapseAnimating: collapseAnimating
             )
             if abs(targetMagneticOffset.width - magneticOffset.width) > 0.5 {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(IslandMotionTokens.magneticFollow) {
                     magneticOffset = targetMagneticOffset
                 }
             } else if targetMagneticOffset == .zero && magneticOffset != .zero {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) {
+                withAnimation(IslandMotionTokens.magneticRelease) {
                     magneticOffset = .zero
                 }
             }
@@ -1287,7 +1327,12 @@ struct NotchContentView: View {
                                 Image(systemName: failed ? "xmark.circle.fill" : item.event.wasCancelled ? "minus.circle" : uncertain ? "questionmark.circle" : item.event.isComplete ? "checkmark.circle.fill" : "circle.dashed")
                                     .font(.system(size: 8))
                                     .foregroundStyle(failed ? .red.opacity(0.7) : item.event.wasCancelled || uncertain ? .orange.opacity(0.7) : item.event.isComplete ? .green.opacity(0.5) : IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
-                                    .symbolEffect(.bounce, value: item.event.isComplete && !failed && !item.event.wasCancelled && !uncertain)
+                                    .modifier(ToolCompletionSymbolEffect(
+                                        isComplete: item.event.isComplete && !failed && !item.event.wasCancelled && !uncertain,
+                                        isFailed: failed,
+                                        reduceMotion: reduceMotion,
+                                        isEnabled: symbolEffectsEnabled
+                                    ))
                                 Text(item.session.agentType.shortName)
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundStyle(item.session.agentType.color.opacity(0.7))

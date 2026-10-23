@@ -7,6 +7,10 @@ struct SessionListView: View {
     @State private var showFilterBar = false
     @AppStorage("reduceMotion") private var appReduceMotion = false
     @AppStorage("disableAnimations") private var disableAnimations = false
+    @AppStorage("cascadeEntranceEnabled") private var cascadeEntranceEnabled = true
+    @AppStorage("proximityLiftEnabled") private var proximityLiftEnabled = false
+    /// 指针在列表坐标系中的 y。仅当距离感应开启时才更新，避免无谓的状态写入。
+    @State private var pointerY: CGFloat?
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     private var reduceMotion: Bool {
         !IslandMotionPolicy(reduceMotion: appReduceMotion, systemReduceMotion: systemReduceMotion,
@@ -18,13 +22,16 @@ struct SessionListView: View {
         removal: .move(edge: .leading).combined(with: .opacity)
     )
 
+    /// 列表内卡片的估算宽度，用于推导距离感应的作用半径。
+    private static let estimatedCardWidth: CGFloat = 340
+
     var body: some View {
         VStack(spacing: 0) {
             // 过滤栏头部
             HStack {
                 Spacer()
                 Button {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                    withAnimation(reduceMotion ? nil : IslandMotionTokens.elementTransition) {
                         showFilterBar.toggle()
                     }
                 } label: {
@@ -48,14 +55,31 @@ struct SessionListView: View {
             ScrollView {
                 LazyVStack(spacing: 10) {
                     // 待处理任务置顶区域
-                    ForEach(manager.pendingInteractionSessions) { session in
+                    ForEach(Array(manager.pendingInteractionSessions.enumerated()), id: \.element.id) { index, session in
                         PendingTaskCardView(session: session)
+                            .modifier(CardEntranceCascade(
+                                index: index,
+                                reduceMotion: reduceMotion,
+                                isEnabled: cascadeEntranceEnabled
+                            ))
                             .transition(reduceMotion ? .identity : .move(edge: .top).combined(with: .opacity))
                     }
 
                     if manager.grouping == .none {
-                        ForEach(Self.regularSessions(in: manager.filteredSessions)) { session in
+                        ForEach(Array(Self.regularSessions(in: manager.filteredSessions).enumerated()), id: \.element.id) { index, session in
                             SessionCardView(session: session, onJump: onJump)
+                                .modifier(CardEntranceCascade(
+                                    index: index + manager.pendingInteractionSessions.count,
+                                    reduceMotion: reduceMotion,
+                                    isEnabled: cascadeEntranceEnabled
+                                ))
+                                .modifier(ProximityLiftModifier(
+                                    pointerY: pointerY,
+                                    itemMidY: cardMidY(forIndex: index + manager.pendingInteractionSessions.count),
+                                    itemWidth: Self.estimatedCardWidth,
+                                    isEnabled: proximityLiftEnabled,
+                                    reduceMotion: reduceMotion
+                                ))
                                 .transition(reduceMotion ? .identity : cardTransition)
                         }
                     } else {
@@ -70,8 +94,13 @@ struct SessionListView: View {
                                         .padding(.horizontal, 14)
                                         .padding(.top, 8)
                                 ) {
-                                    ForEach(sessions) { session in
+                                    ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
                                         SessionCardView(session: session, onJump: onJump)
+                                            .modifier(CardEntranceCascade(
+                                                index: index,
+                                                reduceMotion: reduceMotion,
+                                                isEnabled: cascadeEntranceEnabled
+                                            ))
                                             .transition(reduceMotion ? .identity : cardTransition)
                                     }
                                 }
@@ -83,15 +112,37 @@ struct SessionListView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 12)
             }
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: manager.filteredSessions.count)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: manager.grouping)
+            .animation(reduceMotion ? nil : IslandMotionTokens.elementTransition, value: manager.filteredSessions.count)
+            .animation(reduceMotion ? nil : IslandMotionTokens.elementTransition, value: manager.grouping)
+            .onContinuousHover { phase in
+                guard proximityLiftEnabled, !reduceMotion else {
+                    if pointerY != nil { pointerY = nil }
+                    return
+                }
+                switch phase {
+                case .active(let location):
+                    // 只在位移超过 1pt 时写入状态，过滤亚像素抖动。
+                    if let current = pointerY, abs(current - location.y) < 1 { return }
+                    pointerY = location.y
+                case .ended:
+                    pointerY = nil
+                }
+            }
         }
         .accessibilityIdentifier(TestAccessibility.sessionList)
         .onReceive(NotificationCenter.default.publisher(for: .xislandToggleSearch)) { _ in
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            withAnimation(reduceMotion ? nil : IslandMotionTokens.elementTransition) {
                 showFilterBar.toggle()
             }
         }
+    }
+
+    /// 估算第 index 张卡片的中心 y。用于距离感应——卡片高度不一，
+    /// 这里用平均高度近似，精度足够（隆起半径远大于高度误差）。
+    private func cardMidY(forIndex index: Int) -> CGFloat {
+        let averageCardHeight: CGFloat = 96
+        let spacing: CGFloat = 10
+        return CGFloat(index) * (averageCardHeight + spacing) + averageCardHeight / 2
     }
 
     static func regularSessions(in sessions: [AgentSession]) -> [AgentSession] {
@@ -114,6 +165,7 @@ struct SessionCardView: View {
     @AppStorage("displayTimestamp") private var displayTimestamp = true
     @AppStorage("reduceMotion") private var appReduceMotion = false
     @AppStorage("disableAnimations") private var disableAnimations = false
+    @AppStorage("symbolEffectsEnabled") private var symbolEffectsEnabled = true
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     private var reduceMotion: Bool {
         !IslandMotionPolicy(reduceMotion: appReduceMotion, systemReduceMotion: systemReduceMotion,
@@ -245,7 +297,7 @@ struct SessionCardView: View {
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityIdentifier(TestAccessibility.sessionCard(id: session.id))
         .onHover { hovering in
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) {
+            withAnimation(reduceMotion ? nil : IslandMotionTokens.hoverTransition) {
                 isHovered = hovering
             }
         }
@@ -279,6 +331,28 @@ struct SessionCardView: View {
             }
             previousStatus = newStatus
             statusChangeTrigger += 1
+            fireHaptic(for: newStatus)
+        }
+    }
+
+    /// 会话状态迁移时的触觉反馈。
+    ///
+    /// 只在**迁移进入**需要关注的状态时触发，避免每次重绘都振动：
+    /// - 进入权限等待 → `permissionRequest`（最关键，需穿透注意力）
+    /// - 进入问答/计划评审等待 → `inputRequired`
+    /// - 进入错误 → `failure`
+    ///
+    /// 映射为纯函数 `IslandHapticPolicy` 的一部分逻辑，便于单测覆盖。
+    private func fireHaptic(for status: SessionStatus) {
+        switch status {
+        case .waitingPermission:
+            IslandHapticEngine.fire(.permissionRequest)
+        case .waitingAnswer, .waitingPlanReview:
+            IslandHapticEngine.fire(.inputRequired)
+        case .error:
+            IslandHapticEngine.fire(.failure)
+        default:
+            break
         }
     }
 
@@ -355,6 +429,12 @@ struct SessionCardView: View {
                     Image(systemName: failed ? "xmark.square.fill" : event.wasCancelled ? "minus.square" : uncertain ? "questionmark.square" : event.isComplete ? "checkmark.square.fill" : "square")
                         .font(.system(size: 9))
                         .foregroundStyle(failed ? .red.opacity(0.7) : event.wasCancelled || uncertain ? .orange.opacity(0.7) : event.isComplete ? .green.opacity(0.5) : IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                        .modifier(ToolCompletionSymbolEffect(
+                            isComplete: event.isComplete && !failed && !event.wasCancelled && !uncertain,
+                            isFailed: failed,
+                            reduceMotion: reduceMotion,
+                            isEnabled: symbolEffectsEnabled
+                        ))
 
                     Text("\(event.displayName)")
                         .font(.system(size: 10, weight: .medium))

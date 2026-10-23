@@ -509,8 +509,9 @@ enum ZeroConfigManager {
     static func syncCommandLineTools() {
         guard !Task.isCancelled else { return }
         let binDir = "\(home)/.xisland/bin"
-        ensureDir(binDir)
-        ensureDir("\(binDir)/lib")
+        ensureDir("\(home)/.xisland", permissions: 0o700)
+        ensureDir(binDir, permissions: 0o700)
+        ensureDir("\(binDir)/lib", permissions: 0o700)
 
         syncBundledFileIfNeeded(
             bundled: Bundle.main.bundlePath + "/Contents/MacOS/di-bridge",
@@ -531,17 +532,17 @@ enum ZeroConfigManager {
         let fm = FileManager.default
         guard fm.fileExists(atPath: bundled) else { return }
 
-        ensureDir((stable as NSString).deletingLastPathComponent)
+        ensureDir((stable as NSString).deletingLastPathComponent, permissions: 0o700)
 
+        // 以内容哈希而不是修改时间判断是否需要替换。
+        // mtime 比对无法发现 stable 被外部篡改的情况 —— 篡改后的 mtime 反而更新，
+        // 会让被替换的桥接程序永久残留；而该文件已被注入所有 agent 的全局 hook 配置。
+        let bundledHash = AppUpdater.computeSHA256(of: URL(fileURLWithPath: bundled))
         let shouldCopy: Bool
-        if fm.fileExists(atPath: stable),
-           let stableAttr = try? fm.attributesOfItem(atPath: stable),
-           let bundledAttr = try? fm.attributesOfItem(atPath: bundled),
-           let stableMod = stableAttr[.modificationDate] as? Date,
-           let bundledMod = bundledAttr[.modificationDate] as? Date {
-            shouldCopy = bundledMod > stableMod
+        if let bundledHash, fm.fileExists(atPath: stable) {
+            shouldCopy = AppUpdater.computeSHA256(of: URL(fileURLWithPath: stable)) != bundledHash
         } else {
-            shouldCopy = true
+            shouldCopy = bundledHash != nil
         }
 
         guard shouldCopy, !Task.isCancelled else { return }
@@ -1025,9 +1026,19 @@ enum ZeroConfigManager {
 
     // MARK: - Helpers
 
-    private static func ensureDir(_ path: String) {
+    /// 创建目录。指定 `permissions` 时，对已存在的目录同样收紧权限 ——
+    /// `createDirectory` 的 attributes 只在新建时生效。
+    private static func ensureDir(_ path: String, permissions: Int? = nil) {
         guard !Task.isCancelled else { return }
-        try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        let fm = FileManager.default
+        if let permissions {
+            try? fm.createDirectory(atPath: path, withIntermediateDirectories: true,
+                                    attributes: [.posixPermissions: permissions])
+            guard fm.fileExists(atPath: path) else { return }
+            try? fm.setAttributes([.posixPermissions: permissions], ofItemAtPath: path)
+            return
+        }
+        try? fm.createDirectory(atPath: path, withIntermediateDirectories: true)
     }
 
     private static func readJSON(_ path: String) -> [String: Any]? {
