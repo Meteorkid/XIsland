@@ -224,6 +224,35 @@ final class NotchContentViewTests: XCTestCase {
         )
     }
 
+    func testHoverHitFrameContainsExpandedPanelAndPillAtScreenTop() {
+        let frame = NotchContentView.hoverHitFrame(
+            windowFrame: CGRect(x: 300, y: 600, width: 400, height: 206),
+            screenFrame: CGRect(x: 0, y: 0, width: 1_000, height: 800)
+        )
+
+        XCTAssertTrue(frame.contains(CGPoint(x: 500, y: 620)))
+        XCTAssertTrue(frame.contains(CGPoint(x: 500, y: 799)))
+        XCTAssertTrue(frame.contains(CGPoint(x: 500, y: 800)))
+        XCTAssertFalse(frame.contains(CGPoint(x: 500, y: 599)))
+        XCTAssertFalse(frame.contains(CGPoint(x: 299, y: 700)))
+        XCTAssertFalse(frame.contains(CGPoint(x: 701, y: 700)))
+    }
+
+    func testHoverHitFramePreservesTopEdgeOnOffsetScreen() {
+        let frame = NotchContentView.hoverHitFrame(
+            windowFrame: CGRect(x: -900, y: 1_160, width: 220, height: 40),
+            screenFrame: CGRect(x: -1_920, y: 200, width: 1_920, height: 1_000)
+        )
+
+        XCTAssertTrue(frame.contains(CGPoint(x: -800, y: 1_200)))
+        XCTAssertFalse(frame.contains(CGPoint(x: -800, y: 1_159)))
+    }
+
+    func testHoverHitFrameWithoutScreenUsesActualWindow() {
+        let window = CGRect(x: 100, y: 200, width: 380, height: 250)
+        XCTAssertEqual(NotchContentView.hoverHitFrame(windowFrame: window, screenFrame: nil), window)
+    }
+
     func testMagneticOffsetClampsTowardMouseWithinRange() {
         let offset = NotchContentView.magneticOffset(
             mouseLocation: CGPoint(x: 248, y: 110),

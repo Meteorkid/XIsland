@@ -155,6 +155,7 @@ struct SessionCardView: View {
     @Environment(ThemeManager.self) private var themeManager
     let session: AgentSession
     var onJump: (() -> Void)?
+    @State private var jumpState = SessionJumpState()
     @State private var isHovered = false
     @State private var recapExpanded = false
     @State private var childrenExpanded = false
@@ -176,11 +177,7 @@ struct SessionCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             // 可跳转的卡片内容
             Button {
-                print("[UI] Card clicked: session=\(session.id) agent=\(session.agentType.rawValue)")
-                fflush(stdout)
-                manager.markCompletionReviewed(sessionID: session.id)
-                TerminalJumpManager.jump(to: session)
-                onJump?()
+                jumpState.request(session, manager: manager, onAccepted: { onJump?() })
             } label: {
                 VStack(alignment: .leading, spacing: 0) {
                     cardHeader
@@ -297,6 +294,7 @@ struct SessionCardView: View {
         )
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityIdentifier(TestAccessibility.sessionCard(id: session.id))
+        .modifier(SessionJumpFeedback(state: jumpState))
         .onHover { hovering in
             withAnimation(reduceMotion ? nil : IslandMotionTokens.hoverTransition) {
                 isHovered = hovering

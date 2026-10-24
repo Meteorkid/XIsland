@@ -1529,6 +1529,9 @@ final class SessionManager {
 
     // MARK: - Private
 
+    /// 导航读取已有会话索引，子任务使用父会话的完整来源信息。
+    func sessionForNavigation(_ sessionID: String) -> AgentSession? { sessionById(sessionID) }
+
     private func startSession(_ message: DIMessage) {
         let session = sessionById(message.sessionId)
             ?? sessionMatchingMirror(of: message)

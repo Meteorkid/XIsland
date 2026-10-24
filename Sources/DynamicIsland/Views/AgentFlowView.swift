@@ -250,6 +250,8 @@ struct AgentFlowProjectCard: View {
 
 /// 阻塞会话行：Agent 类型 + 会话标题 + 阻塞原因 + 相对状态 + 前往处理按钮。
 struct AgentFlowBlockerRow: View {
+    @State private var jumpState = SessionJumpState()
+    @Environment(SessionManager.self) private var manager
     let blocker: AgentFlowBlocker
     var onJump: () -> Void
 
@@ -298,8 +300,7 @@ struct AgentFlowBlockerRow: View {
             Spacer()
 
             Button {
-                TerminalJumpManager.jump(to: session)
-                onJump()
+                jumpState.request(session, manager: manager, onAccepted: onJump)
             } label: {
                 HStack(spacing: 3) {
                     Image(systemName: "arrow.up.right.square")
@@ -321,6 +322,7 @@ struct AgentFlowBlockerRow: View {
         .background(IslandStyle.insetFill(for: scheme).opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .accessibilityIdentifier(TestAccessibility.agentFlowBlockerRow(id: session.id))
+        .modifier(SessionJumpFeedback(state: jumpState))
     }
 
     private var badgeColor: Color {

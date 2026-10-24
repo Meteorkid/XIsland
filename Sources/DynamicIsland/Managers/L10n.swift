@@ -1471,28 +1471,28 @@ enum L10n {
 
     static var autoCollapseDesc: String {
         localized("autoCollapseDesc",
-            zh: "任务完成后面板保持展开的时长", ko: "작업 완료 후 패널이 열려 있는 시간",
-            ja: "タスク完了後にパネルが開いたままになる時間",
-            fr: "Durée pendant laquelle le panneau reste ouvert après une tâche",
-            en: "How long the panel stays open after a task completes")
+            zh: "任务完成且鼠标离开面板和岛后，等待多久收起", ko: "작업 완료 후 포인터가 패널과 아일랜드를 벗어나면 시작하는 대기 시간",
+            ja: "タスク完了後、ポインターがパネルとアイランドから離れてからの待ち時間",
+            fr: "Délai après la fin de la tâche et la sortie du pointeur du panneau et de l’îlot",
+            en: "Delay after task completion and the pointer leaves both the panel and island")
     }
 
     static var expandedInactivityAutoHide: String {
         localized("expandedInactivityAutoHide",
-            zh: "展开后无操作收起",
-            ko: "펼침 후 유휴 시 접기",
-            ja: "展開後の無操作で折りたたむ",
-            fr: "Réduire si inactif",
-            en: "Collapse when idle while expanded")
+            zh: "移出面板后收起",
+            ko: "포인터가 패널을 벗어나면 접기",
+            ja: "ポインターがパネルから離れたら折りたたむ",
+            fr: "Réduire après sortie du panneau",
+            en: "Collapse after leaving the panel")
     }
 
     static var expandedInactivityAutoHideDesc: String {
         localized("expandedInactivityAutoHideDesc",
-            zh: "展开状态下无任何操作后自动收起的等待时间；选「永不」则关闭",
-            ko: "펼친 뒤 상호작용이 없을 때 접히기까지의 시간입니다. 「안 함」이면 비활성화됩니다.",
-            ja: "展開中に操作がないとき、自動で折りたたむまでの時間。「なし」で無効化。",
-            fr: "Délai sans interaction avant réduction ; « Jamais » désactive.",
-            en: "Delay with no activity before the expanded panel collapses; “Never” turns this off.")
+            zh: "鼠标在面板或岛内时不收起；离开后开始计时，重新进入会取消。选「永不」关闭此项；多项同时适用时采用最短延时。",
+            ko: "포인터가 패널과 아일랜드를 벗어나면 대기하며, 다시 들어오면 취소합니다. 「안 함」은 이 규칙을 끕니다. 적용 가능한 가장 짧은 지연을 사용합니다.",
+            ja: "パネルとアイランドから離れると計時を開始し、戻ると解除します。「なし」でこの規則を無効化。適用可能な最短の待ち時間を使用します。",
+            fr: "Le délai commence après la sortie du panneau et de l’îlot ; le retour l’annule. « Jamais » désactive cette règle. Le délai applicable le plus court est utilisé.",
+            en: "Wait after the pointer leaves both the panel and island. Re-entry cancels the countdown. “Never” disables this rule; the shortest applicable delay wins.")
     }
 
     static var hoverExitCollapse: String {
@@ -1506,11 +1506,11 @@ enum L10n {
 
     static var hoverExitCollapseDesc: String {
         localized("hoverExitCollapseDesc",
-            zh: "悬停展开或无会话时，指针离开岛区域后过多久收起",
-            ko: "호버로 펼쳤거나 세션이 없을 때, 포인터가 영역을 벗어난 뒤 접히기까지의 지연",
-            ja: "ホバー展開、またはセッションがないとき、ポインターが離れてから折りたたむまでの遅延",
-            fr: "Délai après la sortie du pointeur (ouverture au survol ou panneau vide).",
-            en: "After hover-expand or with no sessions, how long to wait once the pointer leaves before collapsing.")
+            zh: "悬停展开或无会话时，从指针离开面板和岛时开始计时；重新进入后取消",
+            ko: "호버로 펼쳤거나 세션이 없을 때, 패널과 아일랜드를 벗어나면 대기하며 다시 들어오면 취소합니다.",
+            ja: "ホバー展開または会話がない場合、パネルとアイランドから離れてから計時し、戻ると解除します。",
+            fr: "Après ouverture au survol ou sans session, comptez depuis la sortie du panneau et de l’îlot ; le retour annule le délai.",
+            en: "After hover-expand or with no sessions, count from leaving both the panel and island; re-entry cancels the countdown.")
     }
 
     static var neverOption: String {
@@ -2238,4 +2238,25 @@ enum L10n {
             zh: "切换主题", ko: "테마 전환", ja: "テーマ切替", fr: "Changer de thème",
             en: "Toggle Theme")
     }
+}
+
+
+extension L10n {
+    static func sessionJumpMessage(_ result: SessionJumpResult) -> String {
+        switch result {
+        case .conversationRequested, .terminalFocused: return ""
+        case .missingIdentity:
+            return localized("jumpMissingIdentity", zh: "缺少对应聊天或终端标签的定位标识，请从原客户端重新运行一次任务。", ko: "정확한 세션 식별자가 없습니다. 클라이언트에서 작업을 다시 실행하세요.", ja: "会話やタブの識別子がありません。元のクライアントでタスクを再実行してください。", fr: "Identifiant de conversation ou d’onglet manquant. Relancez une tâche dans le client.", en: "The conversation or terminal tab identifier is missing. Run a task again in the original client.")
+        case .unavailable:
+            return localized("jumpUnavailable", zh: "此客户端尚无可用的精确会话跳转，请在原客户端打开该聊天。", ko: "이 클라이언트의 정확한 대화 이동은 아직 지원되지 않습니다.", ja: "このクライアントでは正確な会話への移動がまだ利用できません。", fr: "La navigation précise n’est pas encore disponible pour ce client.", en: "Precise conversation navigation is not available for this client. Open the chat in the original client.")
+        case .applicationUnavailable:
+            return localized("jumpApplicationUnavailable", zh: "无法打开对应客户端，未切换到其他软件或窗口。", ko: "대상 클라이언트를 열 수 없습니다.", ja: "対象のクライアントを開けませんでした。", fr: "Impossible d’ouvrir le client demandé.", en: "The target client could not be opened. No other app or window was selected.")
+        case .automationDenied:
+            return localized("jumpAutomationDenied", zh: "请在系统设置的“隐私与安全性 → 自动化”中允许 X Island 控制对应终端。", ko: "시스템 설정의 개인정보 보호 및 보안 → 자동화에서 터미널 제어를 허용하세요.", ja: "システム設定のプライバシーとセキュリティ → オートメーションで対象ターミナルの制御を許可してください。", fr: "Autorisez le contrôle du terminal dans Réglages système → Confidentialité et sécurité → Automatisation.", en: "Allow X Island to control this terminal in System Settings → Privacy & Security → Automation.")
+        case .targetNotFound:
+            return localized("jumpTargetNotFound", zh: "对应终端标签页已关闭，或无法唯一定位；未打开其他会话。", ko: "터미널 탭을 찾지 못했거나 일치 항목이 여러 개입니다.", ja: "対象のターミナルタブが閉じているか、一意に特定できませんでした。", fr: "L’onglet est fermé ou ne peut pas être identifié de façon unique.", en: "The terminal tab is closed or could not be uniquely identified. No other session was selected.")
+        case .commandFailed:
+            return localized("jumpCommandFailed", zh: "未能定位该终端会话，请确认标签页仍打开且客户端的远程控制可用。", ko: "터미널 세션을 찾지 못했습니다. 탭과 원격 제어를 확인하세요.", ja: "ターミナルセッションを移動できませんでした。タブとリモート制御を確認してください。", fr: "Session introuvable. Vérifiez l’onglet et le contrôle à distance du terminal.", en: "The terminal session could not be focused. Check that its tab is open and remote control is available.")
+        }
+        }
 }

@@ -20,7 +20,6 @@ struct NotchContentView: View {
     @State private var jellyTrigger = false
     @State private var jellySettled = false
     @State private var expandedByHover = false
-    @State private var expandedAt: Date = .distantPast
     @State private var showContent = false
     @State private var jumpMouseLocation: CGPoint?
     @State private var hoverPolling = HoverPollingController()
@@ -37,8 +36,8 @@ struct NotchContentView: View {
     @State private var jellyGeneration: UInt = 0
     @State private var magneticOffset: CGSize = .zero
     @State private var lastScrollExpandAt: Date = .distantPast
-    @State private var expandedAutoHideWorkItem: DispatchWorkItem?
-    @State private var lastExpandedInteractionAt: Date = .distantPast
+    @State private var autoCollapseCountdown = ExpandedAutoCollapseCountdown()
+    @State private var interactionCompleted = false
     @State private var lastExpandedInteractionMarkAt: Date = .distantPast
     /// Last known expanded `shapeHeight` (black panel), used to interpolate notch corner radii with `shapeHeight` during spring (avoids boolean snap).
     @State private var cachedExpandedShapeHeight: CGFloat = 220
@@ -54,7 +53,7 @@ struct NotchContentView: View {
     @AppStorage("animationIntensity") private var animationIntensity = IslandAnimationIntensity.defaultValue.rawValue
     @AppStorage("jellyIntensity") private var jellyIntensity = IslandJellyIntensity.defaultValue.rawValue
     @AppStorage("autoCollapseDelay") private var autoCollapseDelay = 3.0
-    /// Seconds after last interaction while expanded before auto-collapsing; 0 disables.
+    /// Seconds continuously outside the expanded panel and pill before auto-collapsing; 0 disables.
     @AppStorage("expandedInactivityAutoHideDelay") private var expandedInactivityAutoHideDelay = 10.0
     /// Seconds pointer must stay outside before collapse (hover-expand or empty panel).
     @AppStorage("hoverExitCollapseDelay") private var hoverExitCollapseDelay = 0.5
@@ -489,17 +488,17 @@ struct NotchContentView: View {
             }
         }
         .onChange(of: state) { _, newState in
-            if newState == .collapsed {
-                cancelExpandedAutoHide()
-            } else {
-                markExpandedInteraction()
-            }
+            cancelAutoCollapse()
             Self.handleIslandStateChange(newState, manager: manager)
         }
         .onChange(of: expandedInactivityAutoHideDelay) { _, _ in
-            if isExpanded {
-                markExpandedInteraction()
-            }
+            cancelAutoCollapse()
+        }
+        .onChange(of: hoverExitCollapseDelay) { _, _ in
+            cancelAutoCollapse()
+        }
+        .onChange(of: autoCollapseDelay) { _, _ in
+            cancelAutoCollapse()
         }
         .onChange(of: manager.activeSessions.count) { _, _ in
             reportSize()
@@ -560,7 +559,6 @@ struct NotchContentView: View {
         }
         .onDisappear {
             stopHoverPolling()
-            cancelExpandedAutoHide()
             cancelCollapseWatchdog()
             for token in notificationTokens {
                 NotificationCenter.default.removeObserver(token)
@@ -587,6 +585,8 @@ struct NotchContentView: View {
         }
         .onChange(of: manager.hasInteraction) { _, hasInteraction in
             if hasInteraction {
+                interactionCompleted = false
+                cancelAutoCollapse()
                 if collapseAnimating {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                         guard manager.hasInteraction else { return }
@@ -595,9 +595,9 @@ struct NotchContentView: View {
                 } else {
                     autoExpandForInteraction()
                 }
-                cancelExpandedAutoHide()
             } else {
-                collapseAfterDelay()
+                interactionCompleted = isExpanded
+                cancelAutoCollapse()
             }
         }
     }
@@ -639,6 +639,8 @@ struct NotchContentView: View {
 
     private func expand(to newState: IslandState) {
         guard !expandPending else { return }
+        cancelAutoCollapse()
+        interactionCompleted = false
         collapseGeneration += 1
         collapseAnimating = false
         // 世代已递增，残留的看门狗即使触发也会因世代不符而退出；显式取消更省一次调度。
@@ -685,6 +687,9 @@ struct NotchContentView: View {
     }
 
     private func collapse() {
+        cancelAutoCollapse()
+        interactionCompleted = false
+        expandedByHover = false
         collapseGeneration += 1
         let generation = collapseGeneration
         let timing = transitionTiming
@@ -1042,9 +1047,9 @@ struct NotchContentView: View {
         expand(to: targetState)
     }
 
-    private func cancelExpandedAutoHide() {
-        expandedAutoHideWorkItem?.cancel()
-        expandedAutoHideWorkItem = nil
+    private func cancelAutoCollapse() {
+        guard autoCollapseCountdown.pointerExitedAt != nil else { return }
+        autoCollapseCountdown.reset()
     }
 
     private func markExpandedInteraction(throttled: Bool = false) {
@@ -1055,37 +1060,46 @@ struct NotchContentView: View {
             return
         }
         lastExpandedInteractionMarkAt = now
-        lastExpandedInteractionAt = now
-        scheduleExpandedAutoHide()
+        cancelAutoCollapse()
     }
 
-    private func scheduleExpandedAutoHide() {
-        cancelExpandedAutoHide()
-        guard isExpanded else { return }
-        let delay = expandedInactivityAutoHideDelay
-        guard delay > 0, !manager.protectsInteraction else { return }
-
-        let workItem = DispatchWorkItem {
-            guard self.isExpanded, !self.manager.protectsInteraction else { return }
-            let elapsed = Date().timeIntervalSince(self.lastExpandedInteractionAt)
-            guard elapsed >= delay else {
-                self.scheduleExpandedAutoHide()
-                return
-            }
-            self.expandedByHover = false
-            self.collapse()
+    private func shouldAutoCollapse(isPointerInside: Bool, now: Date) -> Bool {
+        let delay = ExpandedAutoCollapsePolicy.delay(
+            state: state,
+            protectsInteraction: manager.protectsInteraction || expandPending || collapseAnimating,
+            expandedByHover: expandedByHover,
+            visibleSessionCount: manager.visibleSessions.count,
+            hoverExitDelay: hoverExitCollapseDelay,
+            inactivityDelay: expandedInactivityAutoHideDelay,
+            interactionCompleted: interactionCompleted,
+            interactionCompletionDelay: autoCollapseDelay
+        )
+        var countdown = autoCollapseCountdown
+        let shouldCollapse = countdown.update(isPointerInside: isPointerInside, delay: delay, now: now)
+        if countdown != autoCollapseCountdown {
+            autoCollapseCountdown = countdown
         }
-        expandedAutoHideWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+        return shouldCollapse
+    }
+
+    static func hoverHitFrame(windowFrame: CGRect, screenFrame: CGRect?) -> CGRect {
+        var hitFrame = windowFrame
+        // 实际窗口已包含面板与药丸；屏幕顶端也须可命中，不能用不含菜单栏的 visibleFrame 裁剪。
+        if let screenFrame {
+            hitFrame.size.height += max(0, screenFrame.maxY - hitFrame.maxY) + 1
+        }
+        return hitFrame
     }
 
     private func startHoverPolling() {
+        cancelAutoCollapse()
         isHoverPollingActive = true
         previousMouseY = NSEvent.mouseLocation.y
         pollMousePosition()
     }
 
     private func stopHoverPolling() {
+        cancelAutoCollapse()
         isHoverPollingActive = false
         hoverPolling.stop()
         clearHoverJellyState(animated: false)
@@ -1101,6 +1115,7 @@ struct NotchContentView: View {
                 applicationHidden: NSApp.isHidden,
                 hiddenByIslandSwitch: window.isHiddenByIslandSwitch
               ) else {
+            cancelAutoCollapse()
             hoverPolling.stop()
             clearHoverJellyState(animated: false)
             isHovering = false
@@ -1109,6 +1124,7 @@ struct NotchContentView: View {
             return
         }
         guard !window.isDragging else {
+            cancelAutoCollapse()
             hoverPolling.update(cadence: .idle) { pollMousePosition() }
             return
         }
@@ -1126,29 +1142,7 @@ struct NotchContentView: View {
             previousMouseY = mouse.y
         }
         previousMouseLocation = mouse
-        var hitFrame = window.frame
-        // 展开时用更大的命中区域覆盖整个面板+药丸区域，防止鼠标在面板与药丸之间移动时误触发收起
-        if isExpanded {
-            // 从展开面板底部向下扩展 20px（给鼠标移出时留余量），向上覆盖到药丸区域。
-            // 不使用 visibleFrame 裁剪高度——药丸在菜单栏区域内（origin.y > visibleFrame.maxY），
-            // visibleFrame 裁剪会把 hitFrame 压缩到 ~1px，与收起状态的问题相同。
-            hitFrame.origin.y -= 20
-            hitFrame.size.height = expandedHeight + 40
-            // 仅裁剪左右（不裁剪顶部/底部），确保命中区域覆盖药丸
-            if let screen = window.screen?.visibleFrame {
-                hitFrame.origin.x = max(hitFrame.origin.x, screen.minX)
-                hitFrame.size.width = min(hitFrame.maxX, screen.maxX) - hitFrame.origin.x
-            }
-        } else {
-            // 收起状态下 hit frame 垂直扩展到屏幕顶部，覆盖药丸区域。
-            // 药丸面板绘制在菜单栏内，鼠标移到药丸上都应能触发展开。
-            // 不使用 visibleFrame——它不含菜单栏，裁剪会将 hitFrame 压缩到 ~1px。
-            // +1 补偿 NSRect.contains 上界排他（y < maxY）：鼠标恰好在 screenTop 时不被排除。
-            if let screen = window.screen?.frame {
-                let screenTop = screen.maxY
-                hitFrame.size.height += max(0, screenTop - hitFrame.maxY) + 1
-            }
-        }
+        let hitFrame = Self.hoverHitFrame(windowFrame: window.frame, screenFrame: window.screen?.frame)
         let cadence = HoverPollingPolicy.cadence(
             isVisible: true,
             isDragging: false,
@@ -1163,6 +1157,11 @@ struct NotchContentView: View {
         // collapse 动画期间（state 已是 collapsed 但 window.frame 尚未缩回），
         // 强制 inside = false，确保 isHovering 能被及时清除，避免 0.75s 状态不一致。
         if collapseAnimating { inside = false }
+
+        if shouldAutoCollapse(isPointerInside: inside, now: Date()) {
+            collapse()
+            return
+        }
 
         if Self.shouldTriggerHoverJelly(
             isPointerInside: inside,
@@ -1225,7 +1224,6 @@ struct NotchContentView: View {
                 if !hoverToExpandPanel { return }
                 if smartSuppression && isAgentTerminalFocused() { return }
                 expandedByHover = true
-                expandedAt = Date()
                 expand(to: .expanded)
             } else if !isHovering {
                 if disableAnimations {
@@ -1240,16 +1238,6 @@ struct NotchContentView: View {
             } else {
                 withAnimation(.easeInOut(duration: 0.2)) { isHovering = false }
             }
-        } else if !manager.protectsInteraction && ExpandedAutoCollapsePolicy.shouldCollapseOnMouseExit(
-            isPointerInside: inside,
-            state: state,
-            expandedByHover: expandedByHover,
-            visibleSessionCount: manager.visibleSessions.count,
-            hoverExitDelay: hoverExitCollapseDelay,
-            elapsedSinceExpand: Date().timeIntervalSince(expandedAt)
-        ) {
-            collapse()
-            expandedByHover = false
         }
     }
 
@@ -1270,16 +1258,6 @@ struct NotchContentView: View {
             jellyTrigger = false
             jellySettled = false
             magneticOffset = .zero
-        }
-    }
-
-    private func collapseAfterDelay() {
-        guard autoCollapseDelay > 0 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + autoCollapseDelay) {
-            if !manager.hasInteraction {
-                expandedByHover = false
-                collapse()
-            }
         }
     }
 

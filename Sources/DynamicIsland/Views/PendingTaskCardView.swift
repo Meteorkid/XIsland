@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 每项请求独立保存展开与反馈状态，避免同会话多待办互相遮挡或串稿。
 struct PendingTaskCardView: View {
+    @State private var jumpState = SessionJumpState()
     let session: AgentSession
     @Environment(SessionManager.self) private var manager
     @Environment(ThemeManager.self) private var themeManager
@@ -41,7 +42,7 @@ struct PendingTaskCardView: View {
                     let kind: InteractionKind = session.pendingPermission != nil ? .permission
                         : (session.pendingQuestion != nil ? .question : .plan)
                     manager.focusInteraction(session: session, kind: kind)
-                    TerminalJumpManager.jump(to: session)
+                    jumpState.request(session, manager: manager)
                 } label: {
                     Image(systemName: "arrow.up.forward.app")
                         .font(.system(size: 12))
@@ -70,6 +71,7 @@ struct PendingTaskCardView: View {
                     .id(plan.id)
             }
         }
+        .modifier(SessionJumpFeedback(state: jumpState))
         .padding(12)
         .background(IslandStyle.cardRest(for: scheme))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -379,7 +381,7 @@ struct PendingTaskCardView: View {
     private func jumpButton(kind: InteractionKind, requestID: UUID) -> some View {
         Button {
             manager.focusInteraction(session: session, kind: kind)
-            TerminalJumpManager.jump(to: session)
+            jumpState.request(session, manager: manager)
         } label: {
             Label(L10n.interactionOpenAgent, systemImage: "arrow.up.forward.app")
                 .font(.system(size: 11, weight: .medium))

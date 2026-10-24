@@ -333,10 +333,54 @@ struct DIBridge {
     // MARK: - 会话标识
 
     static var currentTermSessionId: String {
-        if let id = ProcessInfo.processInfo.environment["ITERM_SESSION_ID"], !id.isEmpty { return "iterm:\(id)" }
-        if let id = ProcessInfo.processInfo.environment["TERM_SESSION_ID"], !id.isEmpty { return "ts:\(id)" }
+        var currentTTY: String?
         for fd: Int32 in [2, 1, 0] {
-            if isatty(fd) != 0, let tty = ttyname(fd) { return "tty:\(String(cString: tty))" }
+            if isatty(fd) != 0, let tty = ttyname(fd) {
+                currentTTY = String(cString: tty)
+                break
+            }
+        }
+        return resolveTermSessionId(environment: ProcessInfo.processInfo.environment, tty: currentTTY)
+    }
+
+    static func resolveTermSessionId(environment: [String: String], tty: String?) -> String {
+        func isPaneNumber(_ value: String) -> Bool {
+            !value.isEmpty && value.utf8.allSatisfy({ (48...57).contains($0) }) && Int(value) != nil
+        }
+        func isToken(_ value: String) -> Bool {
+            // 为最长的 iterm: 前缀预留 6 字节，对齐导航层的 512 字节上限。
+            !value.isEmpty && value.utf8.count <= 506 && !value.unicodeScalars.contains {
+                CharacterSet.controlCharacters.contains($0) || CharacterSet.whitespacesAndNewlines.contains($0)
+            }
+        }
+        func isTTY(_ value: String) -> Bool {
+            guard value.hasPrefix("/dev/tty"), value.utf8.count <= 128 else { return false }
+            let suffix = value.dropFirst(8)
+            return !suffix.isEmpty && suffix.utf8.allSatisfy {
+                (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0)
+            }
+        }
+
+        // 内层 pane 身份不能退回外层终端；即便格式错误，也不能因此聚焦错误标签页。
+        if let id = environment["TMUX_PANE"], !id.isEmpty {
+            guard id.hasPrefix("%"), isPaneNumber(String(id.dropFirst())) else { return "" }
+            return "tmux:\(id)"
+        }
+        for (key, prefix) in [("WEZTERM_PANE", "wezterm"), ("KITTY_WINDOW_ID", "kitty")] {
+            if let id = environment[key], !id.isEmpty {
+                guard isPaneNumber(id) else { return "" }
+                return "\(prefix):\(id)"
+            }
+        }
+        if let id = environment["ITERM_SESSION_ID"], !id.isEmpty {
+            guard isToken(id) else { return "" }
+            return "iterm:\(id)"
+        }
+        for value in [environment["TTY"], tty].compactMap({ $0 }) {
+            if isTTY(value) { return "tty:\(value)" }
+        }
+        if let id = environment["TERM_SESSION_ID"], isToken(id) {
+            return "ts:\(id)"
         }
         return ""
     }

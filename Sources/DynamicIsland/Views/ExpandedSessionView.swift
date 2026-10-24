@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 展开态会话详情：标题、用户提示词、以及最近的活动事件流。
 struct ExpandedSessionView: View {
+    @State private var jumpState = SessionJumpState()
     let session: AgentSession
     var onDismiss: (() -> Void)?
 
@@ -19,6 +20,7 @@ struct ExpandedSessionView: View {
             activityFeed
         }
         .onAppear { manager.markCompletionReviewed(sessionID: session.id) }
+        .modifier(SessionJumpFeedback(state: jumpState))
     }
 
     private var separator: some View {
@@ -65,9 +67,7 @@ struct ExpandedSessionView: View {
 
     private var jumpButton: some View {
         Button {
-            manager.markCompletionReviewed(sessionID: session.id)
-            TerminalJumpManager.jump(to: session)
-            onDismiss?()
+            jumpState.request(session, manager: manager, onAccepted: { onDismiss?() })
         } label: {
             HStack(spacing: 3) {
                 Image(systemName: "arrow.up.right.square")
@@ -82,6 +82,7 @@ struct ExpandedSessionView: View {
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .disabled(jumpState.isRunning)
     }
 
     // MARK: - 提示词
