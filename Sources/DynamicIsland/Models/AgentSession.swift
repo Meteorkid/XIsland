@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import DIShared
 
 enum SessionStatus: String, Codable, Sendable {
     case active
@@ -251,8 +252,9 @@ final class AgentSession: Identifiable {
     }
 
     var displayTitle: String {
-        if !prompt.isEmpty {
-            let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let titlePrompt = agentType == .codex ? CodexPromptText.normalized(prompt) : prompt
+        if !titlePrompt.isEmpty {
+            let trimmed = titlePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
             let firstLine = trimmed.components(separatedBy: .newlines).first ?? trimmed
             if firstLine.count > 40 {
                 return String(firstLine.prefix(38)) + "..."
@@ -263,7 +265,8 @@ final class AgentSession: Identifiable {
     }
 
     var hasPromptTitle: Bool {
-        !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let titlePrompt = agentType == .codex ? CodexPromptText.normalized(prompt) : prompt
+        return !titlePrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var duration: TimeInterval { (completedAt ?? observationEndedAt ?? Date()).timeIntervalSince(startTime) }

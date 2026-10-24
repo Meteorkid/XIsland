@@ -628,6 +628,11 @@ final class SessionManager {
         if !message.hasObservationMetadata, message.type == .subagentStart || message.type == .subagentEnd,
            let parent = message.parentSessionId, sessionById(parent)?.sourceInstanceId != nil { return }
         let sourceAgent = resolvedAgentType(for: message)
+        var message = message
+        if sourceAgent == .codex, message.type == .sessionStart, let prompt = message.prompt {
+            // 兼容仍发送原始包装的旧桥接；在创建会话、追加历史和保存之前处理。
+            message.prompt = CodexPromptText.normalized(prompt)
+        }
         if sourceAgent == .amazonQ, message.sessionId.hasPrefix("amazonq-wrapper-") {
             if closedAmazonQWrapperIDs.contains(message.sessionId) { return }
             if message.nativeEvent == "amazonq_wrapper_end" { closedAmazonQWrapperIDs.insert(message.sessionId) }

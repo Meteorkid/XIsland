@@ -252,6 +252,17 @@ def verify(repository: Path, app: Path, report: dict[str, Any]) -> None:
             send('manual', 'UserPromptSubmit', {'turn_id': 'turn-1', 'prompt': first_prompt})
             prompts[manual].append(first_prompt)
             checkpoint('manual-first-user-prompt')
+            answers = ['设置已打开，可以继续', '请先检查任务标题']
+            reply = '<send_user_message_question_reply>\n' + json.dumps([
+                {'questionItemId': f'synthetic-{index}', 'question': '合成标题检查', 'answer': answer}
+                for index, answer in enumerate(answers)
+            ], ensure_ascii=False) + '\n</send_user_message_question_reply>'
+            send('manual', 'UserPromptSubmit', {'turn_id': 'turn-title-reply', 'prompt': reply})
+            prompts[manual].append('\n'.join(answers))
+            checkpoint('structured-question-reply-normalized-before-persistence')
+            send('manual', 'UserPromptSubmit', {'turn_id': 'turn-title-invalid',
+                 'prompt': '<send_user_message_question_reply>broken'})
+            checkpoint('malformed-question-reply-preserves-previous-prompt')
             # 合同没有保证压缩前必有同 ID 的用户提示；验证独立 turn_id 的输入边界。
             compact_turn = 'manual-compact-turn'
             send('manual', 'PreCompact', {'turn_id': compact_turn, 'trigger': 'manual'})

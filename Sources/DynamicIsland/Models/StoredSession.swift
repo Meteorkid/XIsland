@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import DIShared
 
 @Model
 final class StoredSession {
@@ -52,8 +53,10 @@ final class StoredSession {
     }
 
     var displayTitle: String {
-        if !prompt.isEmpty {
-            let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 旧记录只修正标题投影，保留历史原文，不触发数据库迁移或批量重写。
+        let titlePrompt = agentType == .codex ? CodexPromptText.normalized(prompt) : prompt
+        if !titlePrompt.isEmpty {
+            let trimmed = titlePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
             let firstLine = trimmed.components(separatedBy: .newlines).first ?? trimmed
             if firstLine.count > 40 {
                 return String(firstLine.prefix(38)) + "..."

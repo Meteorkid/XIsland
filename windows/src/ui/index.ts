@@ -1,6 +1,7 @@
 import { t, locale, setLanguage } from './i18n';
 import { isArchivedSession, type Decision, type PendingInteraction, type Session, type SessionStore, type StoreSnapshot, type ToolEvent } from '../core/index';
 import { aggregateHistoryUsage, compareHistorySessions, historyDate } from '../core/history-summary';
+import { sessionPromptTitle } from '../core/session-title';
 import { GLM_MODEL_FILTER, isGLMModel, matchesSessionFilters, buildFilteredSessionTree, type SessionTreeNode } from '../core/session-filter';
 import { agentColor, agentName, badge, button, el, icon, markdown, mascot, statusColor, statusLabel } from './components';
 import { DEFAULT_SETTINGS, IslandSound, isQuiet, loadSettings, normalizeSettings, saveSettings } from './settings';
@@ -38,7 +39,7 @@ function displayedEvents(session: Session): ToolEvent[] {
 }
 
 function title(session: Session): string {
-  return session.prompt.split('\n').find(line => line.trim())?.trim() || workspace(session) || agentName(session.agentType);
+  return sessionPromptTitle(session) || workspace(session) || agentName(session.agentType);
 }
 function workspace(session: Session): string { return session.workingDirectory.split(/[\\/]/).filter(Boolean).at(-1) ?? ''; }
 function duration(session: Session): string {

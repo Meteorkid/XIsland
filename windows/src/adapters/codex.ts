@@ -1,4 +1,5 @@
 import { isRecord, parseDIMessage, utf8Length, type DIMessage, type DIResponse } from '../core/protocol';
+import { normalizeCodexPrompt } from '../core/codex-prompt';
 
 /** 当前 NativeHookProfile.swift 的 Codex 注册事件；未知事件不走名称猜测。 */
 export const CODEX_HOOK_EVENTS = [
@@ -77,13 +78,13 @@ function copyUsage(payload: Record<string, unknown>, message: DIMessage): void {
 function userPrompt(value: unknown): string {
   if (typeof value !== 'string') return '';
   const trimmed = value.trim();
-  if (!['You are a', 'You will be', 'System:'].some(prefix => trimmed.startsWith(prefix))) return value;
+  if (!['You are a', 'You will be', 'System:'].some(prefix => trimmed.startsWith(prefix))) return normalizeCodexPrompt(value);
   for (const separator of ['\n\nUser:', '\nUser:', '\n\n> ', '\n---\n']) {
     const index = trimmed.lastIndexOf(separator);
-    if (index >= 0) { const result = trimmed.slice(index + separator.length).trim(); if (result) return result; }
+    if (index >= 0) { const result = trimmed.slice(index + separator.length).trim(); if (result) return normalizeCodexPrompt(result); }
   }
   const last = trimmed.split('\n').filter(Boolean).at(-1);
-  return last && [...last].length < 500 ? last : '';
+  return last && [...last].length < 500 ? normalizeCodexPrompt(last) : '';
 }
 
 /** 仅移植 DIBridge 的 Codex 原生分支，不读环境、猜会话或注册配置。 */

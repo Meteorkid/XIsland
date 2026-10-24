@@ -1,5 +1,6 @@
 import { hasObservationMetadata, isRecord, parseDIMessage, ProtocolError, utf8Length, type DIMessage, type DIResponse } from './protocol';
 import { ObservationLedger, type ObservationSource } from './observation';
+import { normalizeCodexPrompt } from './codex-prompt';
 import { assertSessionBoundary, boundedTransportError, capacityError, freezeSnapshot, messageReservation,
   SESSION_BUDGET, SessionCapacityError, type SessionBudgetUsage } from './session-budget';
 import { foldKimiCodeObservation, isKimiCodeMessage, isValidKimiTask, KimiCodeObservationLedger,
@@ -325,14 +326,15 @@ export class SessionStore {
       session.pendingInteractions.push(request); this.usedTransports.add(transport!.requestId);
       this.resume(session); this.updateWaiting(session); this.selectedSessionId = session.id;
     } else if (message.type === 'session_start') {
+      const prompt = session.agentType === 'codex' ? normalizeCodexPrompt(message.prompt ?? '') : message.prompt;
       const chatId = this.chatId(message, 'user');
       const duplicate = chatId !== undefined && session.chatHistory.some(chat => chat.id === chatId);
       if (!message.nativeMessageReplay && !duplicate) {
         this.cancel(session, () => true, cancelled); this.resume(session); session.statusText = message.status ?? '';
-        if (message.prompt) session.agentResponse = '';
+        if (prompt) session.agentResponse = '';
         this.selectedSessionId = session.id;
       }
-      if (message.prompt) { session.prompt = message.prompt; this.upsertChat(session, message, 'user', message.prompt); }
+      if (prompt) { session.prompt = prompt; this.upsertChat(session, message, 'user', prompt); }
     } else if (message.type === 'session_end') {
       this.cancel(session, () => true, cancelled);
       if (message.status) { session.statusText = message.status;

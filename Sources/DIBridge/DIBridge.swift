@@ -696,7 +696,8 @@ struct DIBridge {
         msg.workingDir = (cwdFromData?.isEmpty == false ? cwdFromData : nil)
             ?? ProcessInfo.processInfo.environment["PROJECT_DIR"]
 
-        msg.prompt = extractUserPrompt(data)
+        let prompt = extractUserPrompt(data)
+        msg.prompt = agentType == "codex" ? CodexPromptText.normalized(prompt) : prompt
         extractTokens(data, into: &msg)
         return msg
     }
