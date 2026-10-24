@@ -1,0 +1,79 @@
+{
+  "version": "2.0.9",
+  "preparedAt": "2026-10-24T06:42:04.475757+00:00",
+  "sourceCommit": "eb6a31f550e3702edba59bd322de6b68e59a8f2f",
+  "previousRelease": "v2.0.8",
+  "platform": "macOS",
+  "architecture": "arm64",
+  "minimumOS": "14.0",
+  "companionVersion": "1.0.1",
+  "companionChanged": false,
+  "scope": "Codex question reply title normalization; new input and legacy title presentation, without schema changes",
+  "swiftTests": {
+    "newRegressionTests": 14,
+    "total": 1570,
+    "passed": 1553,
+    "skipped": 17,
+    "failed": 0,
+    "redTests": 12,
+    "redFailureAssertions": 28
+  },
+  "windowsChecks": {
+    "newRegressionTests": 12,
+    "total": 615,
+    "failed": 0,
+    "checkPassed": true,
+    "buildPassed": true,
+    "realWindowsVerified": false
+  },
+  "runtimeSourcesMatchTestedSnapshot": true,
+  "package": {
+    "status": "passed",
+    "version": "2.0.9",
+    "readOnlyMounted": true,
+    "architecture": "arm64",
+    "minimumOS": "14.0",
+    "signatureVerified": true,
+    "signature": "ad-hoc",
+    "notarized": false,
+    "binariesMatchTestedBundle": true,
+    "dmgSHA256": "1a5edba802b5390ff763d2e732f6e125ac59d5ec98c402e9bd15c7decb7032af",
+    "dmgBytes": 6166922,
+    "binarySHA256": {
+      "XIsland": "1e418de7deaabde26b75580870a5641582c70cd6aadfece3ae4e8ed6b9917950",
+      "di-bridge": "0fe1ded5cec59a4a16b0f31bfc5823f5bae3a54abda457996e3e381920b197b7"
+    },
+    "cliMatchesSource": true,
+    "appIconPresent": true,
+    "vsixSHA256": "6be6a45c660c600f1e2d5d236f911b560d8ddc435d5e767269cbbc5d0337cd07",
+    "vsixCRCVerified": true
+  },
+  "packagedCodexApp": {
+    "passed": true,
+    "hookCount": 23,
+    "checkpointCount": 25,
+    "appSHA256": "1e418de7deaabde26b75580870a5641582c70cd6aadfece3ae4e8ed6b9917950",
+    "bridgeSHA256": "0fe1ded5cec59a4a16b0f31bfc5823f5bae3a54abda457996e3e381920b197b7",
+    "scope": "Synthetic vendor payloads -> bundled di-bridge -> isolated XIsland -> diagnostics and read-only SQLite",
+    "realClientVerified": false,
+    "nativeCodexVerified": false,
+    "userTrustChanged": false,
+    "cleanup": {
+      "appProcessesExited": true,
+      "bridgeProcessesExited": true,
+      "runtimeRetainedForAudit": true
+    }
+  },
+  "dataCompatibility": {
+    "schemaChangedFrom208": false,
+    "legacyRawPromptAndChatContentPreserved": true,
+    "legacyTitleProjectionNormalized": true
+  },
+  "notVerified": [
+    "Production installation of final public 2.0.9 DMG (planned after publication)",
+    "Real vendor client task coverage",
+    "Windows native runtime",
+    "VoiceOver speech, continuous native FPS and external multi-display",
+    "Developer ID signing and notarization"
+  ]
+}
