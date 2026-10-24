@@ -1,0 +1,89 @@
+{
+  "version": "2.0.8",
+  "preparedAt": "2026-10-24T05:40:32.658823+00:00",
+  "sourceCommit": "0fca7400c75d536acd366edf0352fbfb1668efc8",
+  "previousRelease": "v2.0.7",
+  "platform": "macOS",
+  "architecture": "arm64",
+  "minimumOS": "14.0",
+  "companionVersion": "1.0.1",
+  "companionChanged": false,
+  "swiftTests": {
+    "total": 1556,
+    "passed": 1543,
+    "skipped": 13,
+    "failed": 0,
+    "fullSuiteExitCode": 0,
+    "finalVisualFocusedPassed": 3,
+    "releaseBuildPassed": true,
+    "runtimeSourcesMatchTestedSnapshot": true
+  },
+  "feature": {
+    "supportedClients": 31,
+    "reservedClients": 1,
+    "taskIdentityMeaning": "chat/task tab, not OS window",
+    "paletteColors": 12,
+    "persistentTaskOrdinals": true,
+    "identityMappingsNeverEvicted": true,
+    "completionReviewVersionGuard": true,
+    "oldNullableFieldDoesNotClaimViewed": true,
+    "deepAndLightRenderReviewed": true
+  },
+  "package": {
+    "status": "passed",
+    "version": "2.0.8",
+    "readOnlyMounted": true,
+    "architecture": "arm64",
+    "minimumOS": "14.0",
+    "signatureVerified": true,
+    "signature": "ad-hoc",
+    "notarized": false,
+    "binariesMatchTestedBundle": true,
+    "dmgSHA256": "43ff357435920ae923b4492a3fd633c34e6ae40a0d94033038fa6b3d910283c6",
+    "dmgBytes": 6175097,
+    "binarySHA256": {
+      "XIsland": "7813b3a9e81a3663b548edf85470c7cce38122a688b76062ba992ac7b1f34a1e",
+      "di-bridge": "c4c4ca1682615556c35decf5d05161b9e096302010d46f35a5ca38d95b8572ea"
+    },
+    "cliMatchesSource": true,
+    "appIconPresent": true,
+    "vsixSHA256": "6be6a45c660c600f1e2d5d236f911b560d8ddc435d5e767269cbbc5d0337cd07",
+    "vsixCRCVerified": true
+  },
+  "packagedChecks": {
+    "bridgeScenariosPassed": 127,
+    "workbuddyEventsPassed": 11,
+    "strictVscodeApp": {
+      "sentEvents": 48,
+      "verifiedSessions": 16,
+      "finalStatus": "idle",
+      "binarySHA256": "7813b3a9e81a3663b548edf85470c7cce38122a688b76062ba992ac7b1f34a1e",
+      "bridgeSHA256": "c4c4ca1682615556c35decf5d05161b9e096302010d46f35a5ca38d95b8572ea",
+      "strictPeerAuthentication": true,
+      "directNodeRejected": true,
+      "transportSHA256": "a24e715c6f859f993d5e6d558aef827c64486ae87584bdca754461305cb36bd5",
+      "scope": "Compiled companion transport -> native di-bridge -> strict-peer isolated app SocketServer -> SessionManager -> diagnostics",
+      "realClientVerified": false,
+      "vendorClientLaunched": false
+    }
+  },
+  "migrationPreflight": {
+    "passed": true,
+    "appSHA256": "7813b3a9e81a3663b548edf85470c7cce38122a688b76062ba992ac7b1f34a1e",
+    "schemaColumnAdded": true,
+    "allRowIDsPreserved": true,
+    "oldRecordsRemainUnrecorded": true,
+    "v6BackupCreated": true,
+    "v6BackupStandaloneIntegrity": "ok",
+    "v6BackupContainsAllOriginalRows": true
+  },
+  "migrationPreflightScope": "Release candidate tested with a private copy of the pre-update SQLite backup; no production data modified.",
+  "notVerified": [
+    "Production installation of final public 2.0.8 DMG (planned after publication)",
+    "Real vendor editor/model-task end-to-end coverage",
+    "VoiceOver actual speech",
+    "Continuous native FPS",
+    "External multi-display",
+    "Developer ID signing/notarization and strong mutual authentication"
+  ]
+}
