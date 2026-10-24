@@ -52,6 +52,25 @@ enum L10n {
 
     // MARK: - UI strings
 
+    static func mascotTask(_ number: Int) -> String {
+        String(format: localized("mascotTask", zh: "任务 %d", ko: "작업 %d", ja: "タスク %d", fr: "Tâche %d", en: "Task %d"), number)
+    }
+    static var completedNeedsReview: String {
+        localized("completedNeedsReview", zh: "已完成 · 未查看", ko: "완료 · 읽지 않음", ja: "完了 · 未確認", fr: "Terminé · Non consulté", en: "Completed · Unviewed")
+    }
+    static var markCompletionReviewed: String {
+        localized("markCompletionReviewed", zh: "标为已查看", ko: "확인함으로 표시", ja: "確認済みにする", fr: "Marquer comme consulté", en: "Mark as viewed")
+    }
+    static var mascotGuideTitle: String {
+        localized("mascotGuideTitle", zh: "吉祥物识别图例", ko: "마스코트 안내", ja: "マスコットの凡例", fr: "Légende des mascottes", en: "Mascot legend")
+    }
+    static var mascotGuideSummary: String {
+        localized("mascotGuideSummary", zh: "造型认软件，颜色与编号认任务，表情认状态。", ko: "모양은 앱, 색상과 번호는 작업, 표정은 상태를 나타냅니다.", ja: "形はアプリ、色と番号はタスク、表情は状態を示します。", fr: "La forme identifie l’app, la couleur et le numéro la tâche, l’expression son état.", en: "Shape identifies the app, color and number identify the task, expression shows its state.")
+    }
+    static var mascotTaskGuide: String {
+        localized("mascotTaskGuide", zh: "同一聊天／任务保留配色和编号。颜色循环时仍以编号区分；打开详情或主动跳转后确认已查看。", ko: "같은 작업은 색상과 번호를 유지합니다. 색상이 반복되면 번호로 구분합니다. 세부정보 또는 이동 시 확인됩니다.", ja: "同じタスクは色と番号を保持します。色が循環しても番号で区別できます。詳細表示または移動で確認済みになります。", fr: "Une tâche garde sa couleur et son numéro. Les numéros distinguent les couleurs répétées. Ouvrir les détails ou accéder à la tâche la marque consultée.", en: "A task keeps its color and number. Numbers distinguish repeated colors. Opening details or jumping to a task marks its completion viewed.")
+    }
+
     static var historySaveFailed: String {
         localized("historySaveFailed", zh: "历史暂未保存，相关会话将保留供重试。",
                   ko: "기록이 저장되지 않았습니다. 재시도를 위해 세션을 유지합니다.",

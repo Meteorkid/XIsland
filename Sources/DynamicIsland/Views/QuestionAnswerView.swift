@@ -50,7 +50,7 @@ struct QuestionAnswerView: View {
 
     private var titleBar: some View {
         HStack(spacing: 8) {
-            AgentIcon(agentType: resolvedAgent, size: 20)
+            AgentIcon(session: session, size: 20, agentType: resolvedAgent, status: .waitingAnswer)
             Text(resolvedAgent.shortName)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(IslandStyle.primaryText)

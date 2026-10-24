@@ -622,6 +622,8 @@ final class SessionManager {
     }
 
     private func handleMessageImmediately(_ message: DIMessage) {
+        // 历史结束事件不能关闭新一轮活动或重新制造待查看完成。
+        if message.type == .sessionEnd, message.nativeMessageReplay == true { return }
         if !message.hasObservationMetadata, sessionById(message.sessionId)?.sourceInstanceId != nil { return }
         if !message.hasObservationMetadata, message.type == .subagentStart || message.type == .subagentEnd,
            let parent = message.parentSessionId, sessionById(parent)?.sourceInstanceId != nil { return }
@@ -911,6 +913,7 @@ final class SessionManager {
                 if isArchivedEnd {
                     existing.kimiCodeApprovalObservation?.endSession()
                     synchronizeKimiCodeBackgroundTasks(existing)
+                    if existing.status != .completed { existing.completionNeedsReview = true }
                     existing.status = .completed
                     existing.completedAt = existing.completedAt ?? Date()
                     persistSession(existing)
@@ -1504,6 +1507,21 @@ final class SessionManager {
         }
     }
 
+    @MainActor
+    func markCompletionReviewed(sessionID: String) {
+        guard let session = sessionById(sessionID), session.status == .completed,
+              !session.hasPendingInteraction, session.completionNeedsReview else { return }
+        let completedAt = session.completedAt
+        performPersistedOperation { [self, session] in
+            // 排队期间可能开始并完成另一轮，旧详情的查看动作不能确认新结果。
+            guard sessionById(sessionID) === session, session.status == .completed,
+                  session.completedAt == completedAt, !session.hasPendingInteraction,
+                  session.completionNeedsReview else { return }
+            session.completionNeedsReview = false
+            persistSession(session)
+        }
+    }
+
     // MARK: - Private
 
     private func startSession(_ message: DIMessage) {
@@ -1617,9 +1635,12 @@ final class SessionManager {
     private func markCompleted(_ session: AgentSession) {
         // 进程结束后旧连接不能继续审批，也不能阻止面板收起。
         cancelPendingInteractions(session)
+        if session.status != .completed {
+            session.completionNeedsReview = true
+            session.completedAt = Date()
+        }
         session.status = .completed
         session.currentTool = nil
-        session.completedAt = Date()
         persistSession(session)
         selectNextInteraction()
         scheduleLingerCleanup()
@@ -1628,8 +1649,9 @@ final class SessionManager {
     /// 仅在接受新的活动后调用；历史重放、迟到结果和查找会话不能清除结束时间。
     private func resumeSession(_ session: AgentSession, as status: SessionStatus = .active) -> Bool {
         let refreshCheckpoint = session.completedAt != nil || session.observationEndedAt != nil
-            || session.status == .completionUnconfirmed
+            || session.status == .completionUnconfirmed || session.completionNeedsReview
         session.completedAt = nil
+        session.completionNeedsReview = false
         session.observationEndedAt = nil
         session.status = status
         return refreshCheckpoint

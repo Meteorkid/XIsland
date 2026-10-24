@@ -178,6 +178,7 @@ struct SessionCardView: View {
             Button {
                 print("[UI] Card clicked: session=\(session.id) agent=\(session.agentType.rawValue)")
                 fflush(stdout)
+                manager.markCompletionReviewed(sessionID: session.id)
                 TerminalJumpManager.jump(to: session)
                 onJump?()
             } label: {
@@ -302,6 +303,9 @@ struct SessionCardView: View {
             }
         }
         .contextMenu {
+            if session.status == .completed && session.completionNeedsReview {
+                Button(L10n.markCompletionReviewed) { manager.markCompletionReviewed(sessionID: session.id) }
+            }
             Button {
                 showExportSheet = true
             } label: {
@@ -358,7 +362,7 @@ struct SessionCardView: View {
 
     private var cardHeader: some View {
         HStack(spacing: 8) {
-            AgentIcon(agentType: session.agentType, size: 24, status: session.status)
+            AgentIcon(session: session, size: 24)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(session.displayTitle)
@@ -370,6 +374,11 @@ struct SessionCardView: View {
                     Text(session.workspaceName)
                         .font(.system(size: 10))
                         .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                        .lineLimit(1)
+                }
+                if session.status == .completed && session.completionNeedsReview {
+                    Label(L10n.completedNeedsReview, systemImage: "sparkle")
+                        .font(.system(size: 9, weight: .medium)).foregroundStyle(.orange)
                         .lineLimit(1)
                 }
                 if !session.tokenUsage.model.isEmpty {
@@ -384,7 +393,9 @@ struct SessionCardView: View {
             Spacer()
 
             HStack(spacing: 5) {
-                TagBadge(text: session.agentType.shortName, color: session.agentType.color)
+                let identity = MascotTaskIdentityRegistry.shared.identity(for: session)
+                TagBadge(text: "\(session.agentType.shortName) · \(identity.shortLabel)", color: identity.color)
+                    .fixedSize(horizontal: true, vertical: false)
                 TagBadge(text: sourceBadgeText, color: IslandStyle.secondaryText)
 
                 if displayTimestamp {
@@ -551,6 +562,7 @@ struct SessionCardView: View {
                 }
                 .onTapGesture {
                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                        if !recapExpanded { manager.markCompletionReviewed(sessionID: session.id) }
                         recapExpanded.toggle()
                     }
                 }

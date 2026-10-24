@@ -115,10 +115,21 @@ enum HistoryArchiveExporter {
 }
 
 private struct SessionRecord: Encodable {
+    /// 显式保留 null，避免把升级前未知的查看状态转换为 false。
+    struct CompletionReviewValue: Encodable {
+        let value: Bool?
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            try container.encode(value)
+        }
+    }
+
     let sessionId: String
     let agentTypeRaw: String
     let startTime: Date
     let completedAt: Date?
+    let completionNeedsReview: CompletionReviewValue
     let sourceNamespace: String?
     let sourceInstanceId: String?
     let nativeTaskId: String?
@@ -143,6 +154,7 @@ private struct SessionRecord: Encodable {
         agentTypeRaw = session.agentTypeRaw
         startTime = session.startTime
         completedAt = session.completedAt
+        completionNeedsReview = CompletionReviewValue(value: session.completionNeedsReview)
         sourceNamespace = session.sourceNamespace
         sourceInstanceId = session.sourceInstanceId
         nativeTaskId = session.nativeTaskId

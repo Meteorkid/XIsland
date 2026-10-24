@@ -221,6 +221,7 @@ final class AgentSession: Identifiable {
     var recapText: String?
 
     var completedAt: Date?
+    var completionNeedsReview: Bool = false
     var sourceNamespace: String?
     var sourceInstanceId: String?
     var nativeTaskId: String?

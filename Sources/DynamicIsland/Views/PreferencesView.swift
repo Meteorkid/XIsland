@@ -47,6 +47,7 @@ struct PreferencesView: View {
     @Environment(UpdateManager.self) private var updateManager
     @Environment(SessionPersistenceManager.self) private var persistenceManager
     @State private var sshManager = SSHRemoteManager()
+    @State private var showMascotGuide = false
     @State private var selection: PreferencesPane = .general
     @State private var historyBrowser = HistoryBrowserState()
     @State private var historyQuery = ""
@@ -480,6 +481,12 @@ struct PreferencesView: View {
                 card {
                     settingRow(L10n.showCollapsedAgentIcon, id: "showCollapsedAgentIcon", description: L10n.showCollapsedAgentIconDesc) {
                         Toggle("", isOn: $showCollapsedAgentIcon).labelsHidden()
+                    }
+                    dividerLine
+                    settingRow(L10n.mascotGuideTitle, id: "mascotGuide", description: L10n.mascotGuideSummary) {
+                        Button(L10n.mascotGuideTitle) { showMascotGuide = true }
+                            .accessibilityIdentifier("preferences.mascot-guide-button")
+                            .sheet(isPresented: $showMascotGuide) { MascotGuideView() }
                     }
                     dividerLine
                     settingRow(L10n.collapsedRecentTaskLimit, id: "collapsedRecentTaskLimit",
@@ -1020,6 +1027,10 @@ struct PreferencesView: View {
                                         Text(session.agentType.shortName)
                                             .font(.system(size: 11))
                                             .foregroundStyle(.secondary)
+                                        if session.completionNeedsReview {
+                                            Label(L10n.completedNeedsReview, systemImage: "sparkle")
+                                                .font(.system(size: 11)).foregroundStyle(.orange)
+                                        }
                                         Text(session.formattedDuration)
                                             .font(.system(size: 11))
                                             .foregroundStyle(.secondary)
@@ -1036,6 +1047,23 @@ struct PreferencesView: View {
                                     }
                                 }
                                 Spacer()
+                                if session.completionNeedsReview {
+                                    Button(L10n.markCompletionReviewed) {
+                                        if let visible = sessionManager.sessions.first(where: { $0.id == session.sessionId }),
+                                           visible.completedAt == session.completedAt {
+                                            sessionManager.markCompletionReviewed(sessionID: session.sessionId)
+                                        }
+                                        startHistoryTask {
+                                            do {
+                                                try await persistenceManager.markHistoryCompletionReviewedAsync(
+                                                    sessionID: session.sessionId, completedAt: session.completedAt)
+                                                historyOperationError = nil
+                                                await historyBrowser.reloadAsync(from: persistenceManager)
+                                            } catch { if !Task.isCancelled { historyOperationError = error.localizedDescription } }
+                                        }
+                                    }
+                                    .font(.system(size: 10))
+                                }
                                 Button {
                                     startHistoryTask {
                                         do {

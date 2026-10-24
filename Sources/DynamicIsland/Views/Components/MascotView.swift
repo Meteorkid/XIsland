@@ -4,11 +4,14 @@ import SwiftUI
 ///
 /// 设计原则：
 /// - 24px 下表情清晰可辨，线条粗壮
-/// - 每种状态有独特的颜色方案 + 表情形状 + 动画
-/// - 所有动画尊重 reduceMotion
+/// - 生产图标的颜色由聊天身份传入，五官形状表达状态
+/// - 所有动画尊重 reduceMotion；状态标记由 AgentIcon 持续展示
 struct MascotView: View {
     let status: SessionStatus
     var size: CGFloat = 24
+    var tint: Color? = nil
+    var completionNeedsReview = false
+    var showsDecorations = true
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @AppStorage("reduceMotion") private var appReduceMotion = false
     @AppStorage("disableAnimations") private var disableAnimations = false
@@ -33,7 +36,7 @@ struct MascotView: View {
                             .offset(y: -size * 0.07)
                         mouthView(tick: tick)
                             .offset(y: size * 0.19)
-                        extrasView(tick: tick)
+                        if showsDecorations { extrasView(tick: tick) }
                     }
                 }
             }
@@ -49,6 +52,7 @@ struct MascotView: View {
                 .offset(y: -size * 0.07)
             mouthView(tick: 0)
                 .offset(y: size * 0.19)
+            if showsDecorations { extrasContent(tick: 0) }
         }
     }
 
@@ -157,7 +161,15 @@ struct MascotView: View {
                 }
             }
 
-        case .waitingPermission, .waitingAnswer, .waitingPlanReview:
+        case .waitingPermission:
+            HStack(spacing: eyeSpacing) {
+                ForEach(0..<2, id: \.self) { _ in
+                    Capsule().fill(statusColor)
+                        .frame(width: eyeSize * 1.2, height: eyeSize * 0.38)
+                }
+            }
+
+        case .waitingAnswer, .waitingPlanReview:
             // 圆睁大眼 — 惊讶/等待
             let shake = shakeOffset(tick: tick)
             HStack(spacing: eyeSpacing) {
@@ -249,7 +261,11 @@ struct MascotView: View {
             }
 
         case .completed:
-            // 大笑嘴 — 张开的弧形
+            if !completionNeedsReview {
+                MouthShape(smile: true).stroke(statusColor, lineWidth: size * 0.05)
+                    .frame(width: mouthW * 0.8, height: mouthW * 0.3)
+            } else {
+            // 未查看结果采用张开的笑嘴，已查看/旧记录保留平静微笑。
             ZStack {
                 MouthShape(smile: true)
                     .fill(statusColor.opacity(0.8))
@@ -258,6 +274,7 @@ struct MascotView: View {
                     .fill(.black)
                     .frame(width: mouthW * 0.8, height: mouthW * 0.3)
                     .offset(y: -mouthW * 0.03)
+            }
             }
 
         case .error:
@@ -272,7 +289,10 @@ struct MascotView: View {
                     .offset(y: mouthW * 0.02)
             }
 
-        case .waitingPermission, .waitingAnswer, .waitingPlanReview:
+        case .waitingPermission:
+            Capsule().fill(statusColor).frame(width: mouthW * 0.75, height: size * 0.045)
+
+        case .waitingAnswer, .waitingPlanReview:
             // O 形嘴
             Circle()
                 .stroke(statusColor, lineWidth: size * 0.05)
@@ -359,7 +379,7 @@ struct MascotView: View {
     // MARK: - 动画辅助
 
     private var statusColor: Color {
-        status.uiColor
+        tint ?? status.uiColor
     }
 
     private func lookDirection(tick: Int) -> CGFloat {

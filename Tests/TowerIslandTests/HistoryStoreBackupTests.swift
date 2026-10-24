@@ -33,7 +33,7 @@ final class HistoryStoreBackupTests: XCTestCase {
 
         let backupURL = try XCTUnwrap(HistoryStoreBackup.prepareBackupIfNeeded(storeURL: storeURL))
 
-        XCTAssertEqual(backupURL.lastPathComponent, "history.store.pre-tool-completion-status-v5.sqlite")
+        XCTAssertEqual(backupURL.lastPathComponent, "history.store.pre-completion-review-v6.sqlite")
         XCTAssertEqual(try Data(contentsOf: storeURL), sourceData)
         XCTAssertEqual(try Data(contentsOf: walURL), walData)
         XCTAssertEqual(try scalar("SELECT content FROM history", at: backupURL), "committed in WAL")
@@ -55,7 +55,7 @@ final class HistoryStoreBackupTests: XCTestCase {
         XCTAssertEqual(try scalar("SELECT COUNT(*) FROM history", at: backupURL), "1")
     }
 
-    func testEventFinalityMigrationKeepsPreviousRecoveryPoints() throws {
+    func testCompletionReviewMigrationKeepsPreviousRecoveryPoints() throws {
         let storeURL = directory.appendingPathComponent("history.store")
         let source = try open(storeURL)
         defer { sqlite3_close(source) }
@@ -70,6 +70,8 @@ final class HistoryStoreBackupTests: XCTestCase {
         try FileManager.default.copyItem(at: previous, to: finalityBackup)
         let approvalBackup = current.deletingLastPathComponent().appendingPathComponent("history.store.pre-kimi-approval-observation-v4.sqlite")
         try FileManager.default.copyItem(at: previous, to: approvalBackup)
+        let toolCompletionBackup = current.deletingLastPathComponent().appendingPathComponent("history.store.pre-tool-completion-status-v5.sqlite")
+        try FileManager.default.copyItem(at: previous, to: toolCompletionBackup)
         try execute("INSERT INTO history VALUES ('before observation migration');", on: source)
         let next = try XCTUnwrap(HistoryStoreBackup.prepareBackupIfNeeded(storeURL: storeURL))
         XCTAssertNotEqual(next, previous)
@@ -77,6 +79,7 @@ final class HistoryStoreBackupTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: observationBackup), previousBytes)
         XCTAssertEqual(try Data(contentsOf: finalityBackup), previousBytes)
         XCTAssertEqual(try Data(contentsOf: approvalBackup), previousBytes)
+        XCTAssertEqual(try Data(contentsOf: toolCompletionBackup), previousBytes)
         XCTAssertEqual(try scalar("SELECT COUNT(*) FROM history", at: next), "2")
         XCTAssertEqual(try scalar("SELECT COUNT(*) FROM history", at: previous), "1")
     }

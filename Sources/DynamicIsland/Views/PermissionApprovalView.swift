@@ -37,7 +37,7 @@ struct PermissionApprovalView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            AgentIcon(agentType: displayAgent, size: 20)
+            AgentIcon(session: session, size: 20, agentType: displayAgent, status: .waitingPermission)
             Text(displayAgent.shortName)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(IslandStyle.primaryText)

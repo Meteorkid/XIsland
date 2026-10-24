@@ -134,6 +134,25 @@ final class HistoryArchiveExporterTests: XCTestCase {
         try assertNoTemporaryFiles(in: directory)
     }
 
+    func testCompletionReviewExportPreservesTrueFalseAndUnknownRawValues() throws {
+        let directory = try makeDirectory()
+        let destination = directory.appendingPathComponent("review-states.json")
+        let states: [Bool?] = [true, false, nil]
+        let sessions = states.enumerated().map { index, state in
+            let session = makeSession(id: "review-\(index)")
+            session.statusRaw = SessionStatus.active.rawValue
+            session.completionNeedsReview = state
+            return session
+        }
+        XCTAssertEqual(try HistoryArchiveExporter.export(to: destination, forEachBatch: { try $0(sessions) }), 3)
+
+        let records = try XCTUnwrap(try archive(at: destination)["sessions"] as? [[String: Any]])
+        XCTAssertEqual(records[0]["completionNeedsReview"] as? Bool, true)
+        XCTAssertEqual(records[1]["completionNeedsReview"] as? Bool, false)
+        XCTAssertTrue(records[2]["completionNeedsReview"] is NSNull)
+        XCTAssertTrue(records.allSatisfy { $0["statusRaw"] as? String == SessionStatus.active.rawValue })
+    }
+
     func testSourceFailureLeavesExistingFileAndRemovesTemporaryFile() throws {
         let directory = try makeDirectory()
         let destination = directory.appendingPathComponent("history.json")

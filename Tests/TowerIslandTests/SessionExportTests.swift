@@ -61,6 +61,21 @@ final class SessionExportTests: XCTestCase {
         XCTAssertNotNil(parsed?["toolEvents"])
     }
 
+    func testJSONExportPreservesCompletionReviewFlagAndDecodesLegacyMissingField() throws {
+        let session = makeSession()
+        for flag in [true, false] {
+            session.completionNeedsReview = flag
+            let data = try ExportView.exportJSON(session: session)
+            var record = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertEqual(record["completionNeedsReview"] as? Bool, flag)
+            XCTAssertEqual(try JSONDecoder().decode(SessionExportData.self, from: data).completionNeedsReview, flag)
+
+            record.removeValue(forKey: "completionNeedsReview")
+            let legacy = try JSONSerialization.data(withJSONObject: record)
+            XCTAssertNil(try JSONDecoder().decode(SessionExportData.self, from: legacy).completionNeedsReview)
+        }
+    }
+
     func testJSONExportContainsChatHistory() throws {
         let msg1 = ChatMessage(timestamp: Date(), role: .user, content: "Fix the bug")
         let msg2 = ChatMessage(timestamp: Date(), role: .assistant, content: "I found the issue")

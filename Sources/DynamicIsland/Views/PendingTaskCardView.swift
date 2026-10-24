@@ -23,7 +23,7 @@ struct PendingTaskCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 8) {
-                AgentIcon(agentType: session.agentType, size: 20, status: session.status)
+                AgentIcon(session: session, size: 20)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(session.displayTitle)
                         .font(.system(size: 12, weight: .semibold))

@@ -165,10 +165,12 @@ final class SessionPersistenceManager {
         while childSnapshotOrder.count > 32 { childSnapshots.removeValue(forKey: childSnapshotOrder.removeFirst()) }
         session.markChildrenPersisted(ifUnchangedSince: snapshot.childRevision)
         if session.status == snapshot.status, session.statusText == snapshot.statusText,
+           session.completionNeedsReview == snapshot.completionNeedsReview,
            session.kimiCodeApprovalObservation == snapshot.kimiCodeApprovalObservation,
            session.hasPendingInteraction == snapshot.hasPendingInteraction {
             session.kimiCodeApprovalObservation = result.mergedApprovalObservation
             session.status = result.storedStatus
+            session.completionNeedsReview = result.completionNeedsReview
             if let text = result.projectedStatusText { session.statusText = text }
         } else if let orphan = result.mergedOrphanObservation {
             // 已消费的孤儿事实不能丢；只合并身份事实，不覆盖更新后的基础状态。
@@ -281,6 +283,7 @@ final class SessionPersistenceManager {
                 prompt: stored.prompt, startTime: stored.startTime)
             session.status = stored.status
             session.completedAt = stored.completedAt
+            session.completionNeedsReview = stored.completionNeedsReview ?? false
             session.observationEndedAt = stored.observationEndedAt
             session.sourceNamespace = stored.sourceNamespace
             session.sourceInstanceId = stored.sourceInstanceId
@@ -612,6 +615,22 @@ final class SessionPersistenceManager {
                 invalidateHistoryJobs()
                 let changed = try await runHistoryJob(validateReadResult: false, writesHistory: true) { store, token in
                     try await store.cleanup(olderThanDays: days, token: token)
+                }
+                if changed, generation == containerGeneration { didModifyHistoryInBackground() }
+            }
+        } catch is CancellationError { throw CancellationError() }
+        catch HistoryReadError.historyChanged { throw HistoryReadError.historyChanged }
+        catch { lastSaveError = error.localizedDescription; throw error }
+    }
+
+    func markHistoryCompletionReviewedAsync(sessionID: String, completedAt: Date?) async throws {
+        let generation = containerGeneration
+        do {
+            try await enqueueMutation(cancelable: true) { [self] in
+                guard generation == containerGeneration else { throw HistoryReadError.historyChanged }
+                invalidateHistoryJobs()
+                let changed = try await runHistoryJob(validateReadResult: false, writesHistory: true) { store, token in
+                    try await store.markCompletionReviewed(sessionID: sessionID, completedAt: completedAt, token: token)
                 }
                 if changed, generation == containerGeneration { didModifyHistoryInBackground() }
             }

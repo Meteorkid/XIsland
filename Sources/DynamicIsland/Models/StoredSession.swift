@@ -7,6 +7,8 @@ final class StoredSession {
     var agentTypeRaw: String
     var startTime: Date
     var completedAt: Date?
+    /// nil 表示旧记录没有查看状态，不据此推断用户已经查看。
+    var completionNeedsReview: Bool? = nil
     var sourceNamespace: String?
     var sourceInstanceId: String?
     var nativeTaskId: String?
@@ -75,6 +77,7 @@ final class StoredSession {
         self.agentTypeRaw = session.agentType.rawValue
         self.startTime = session.startTime
         self.completedAt = session.completedAt
+        self.completionNeedsReview = session.completionNeedsReview
         self.sourceNamespace = session.sourceNamespace
         self.sourceInstanceId = session.sourceInstanceId
         self.nativeTaskId = session.nativeTaskId

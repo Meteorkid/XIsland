@@ -3,7 +3,7 @@ import Foundation
 import SQLite3
 
 enum HistoryStoreBackup {
-    private static let migrationIdentifier = "tool-completion-status-v5"
+    private static let migrationIdentifier = "completion-review-v6"
 
     static func backupURL(for storeURL: URL) -> URL {
         storeURL.deletingLastPathComponent()

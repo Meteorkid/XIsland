@@ -193,6 +193,8 @@ final class SessionPersistenceTests: XCTestCase {
             XCTAssertEqual(stored.sessionId, "legacy")
             XCTAssertNil(stored.recapText)
             XCTAssertNil(stored.completedAt)
+            XCTAssertNil(stored.completionNeedsReview)
+            XCTAssertFalse(try XCTUnwrap(manager.restoreSession(sessionId: stored.sessionId)).completionNeedsReview)
             XCTAssertNil(stored.sourceNamespace)
             XCTAssertNil(stored.sourceInstanceId)
             XCTAssertNil(stored.nativeTaskId)

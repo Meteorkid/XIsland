@@ -7,6 +7,7 @@ struct HistorySessionRow: Identifiable, Sendable {
     let agentType: AgentType
     let startTime: Date
     let completedAt: Date?
+    let completionNeedsReview: Bool
     let observationEndedAt: Date?
     let prompt: String
     let workingDirectory: String
@@ -18,6 +19,7 @@ struct HistorySessionRow: Identifiable, Sendable {
         agentType = session.agentType
         startTime = session.startTime
         completedAt = session.completedAt
+        completionNeedsReview = session.statusRaw == SessionStatus.completed.rawValue && session.completionNeedsReview == true
         observationEndedAt = session.observationEndedAt
         prompt = session.prompt
         workingDirectory = session.workingDirectory

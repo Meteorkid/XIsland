@@ -5,6 +5,7 @@ struct ExpandedSessionView: View {
     let session: AgentSession
     var onDismiss: (() -> Void)?
 
+    @Environment(SessionManager.self) private var manager
     @Environment(ThemeManager.self) private var themeManager
 
     private var scheme: ColorScheme { themeManager.resolvedScheme }
@@ -17,6 +18,7 @@ struct ExpandedSessionView: View {
             separator
             activityFeed
         }
+        .onAppear { manager.markCompletionReviewed(sessionID: session.id) }
     }
 
     private var separator: some View {
@@ -28,7 +30,7 @@ struct ExpandedSessionView: View {
 
     private var headerBar: some View {
         HStack(spacing: 10) {
-            AgentIcon(agentType: session.agentType, size: 28, status: session.status)
+            AgentIcon(session: session, size: 28)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.agentType.displayName)
@@ -63,6 +65,7 @@ struct ExpandedSessionView: View {
 
     private var jumpButton: some View {
         Button {
+            manager.markCompletionReviewed(sessionID: session.id)
             TerminalJumpManager.jump(to: session)
             onDismiss?()
         } label: {

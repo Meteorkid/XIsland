@@ -120,6 +120,8 @@ final class HistoryBackgroundStoreTests: XCTestCase {
         catch { assertHistoryChanged(error) }
         do { _ = try await store.delete(sessionID: "keep", token: token); XCTFail() }
         catch { assertHistoryChanged(error) }
+        do { _ = try await store.markCompletionReviewed(sessionID: "keep", completedAt: nil, token: token); XCTFail() }
+        catch { assertHistoryChanged(error) }
         XCTAssertEqual(try Data(contentsOf: destination), original)
         XCTAssertEqual(try ModelContext(container).fetchCount(FetchDescriptor<StoredSession>()), 1)
     }

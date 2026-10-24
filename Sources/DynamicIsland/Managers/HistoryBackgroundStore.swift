@@ -197,6 +197,27 @@ actor HistoryBackgroundStore {
         })
     }
 
+    func markCompletionReviewed(sessionID: String, completedAt: Date?, token: HistoryJobToken) throws -> Bool {
+        try token.check()
+        let context = makeContext()
+        do {
+            var descriptor = FetchDescriptor<StoredSession>(predicate: #Predicate { $0.sessionId == sessionID })
+            descriptor.fetchLimit = 1
+            let stored = try context.fetch(descriptor).first
+            try token.check()
+            guard let stored,
+                  stored.statusRaw == SessionStatus.completed.rawValue,
+                  stored.completedAt == completedAt, stored.completionNeedsReview == true else { return false }
+            // 只确认行快照对应的完成版本；不读取或重写工具、聊天关系。
+            stored.completionNeedsReview = false
+            try token.withCommit { try context.save() }
+            return true
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+
     func delete(sessionID: String, token: HistoryJobToken) throws -> Bool {
         try token.check()
         let context = makeContext()

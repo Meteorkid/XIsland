@@ -107,7 +107,7 @@ struct CollapsedPillView: View {
                     let overflow = visible.count - shown.count
                     HStack(spacing: 6) {
                         ForEach(shown) { session in
-                            AgentIcon(agentType: session.agentType, size: 22, status: session.status)
+                            AgentIcon(session: session, size: 22)
                         }
                         if overflow > 0 {
                             Text("+\(overflow)")
@@ -148,16 +148,8 @@ struct CollapsedPillView: View {
     }
 
     private func sessionIcon(for session: AgentSession) -> some View {
-        ZStack(alignment: .topTrailing) {
-            AgentIcon(agentType: session.agentType, size: 20, status: session.status)
-            if sessionNeedsAttention(session) {
-                Circle()
-                    .fill(Color.orange)
-                    .frame(width: 6, height: 6)
-                    .offset(x: 4, y: -2)
-            }
-        }
-        .accessibilityLabel("Session: \(session.displayTitle)")
+        let icon = AgentIcon(session: session, size: 20)
+        return icon.accessibilityLabel("\(icon.accessibilityDescription)")
     }
 
     private var appIconFallback: some View {
@@ -413,17 +405,7 @@ private struct RotatingSessionIcon: View {
     }
 
     private func sessionIcon(for session: AgentSession) -> some View {
-        ZStack(alignment: .topTrailing) {
-            AgentIcon(agentType: session.agentType, size: 20, status: session.status)
-            if session.status == .waitingPermission
-                || session.status == .waitingAnswer
-                || session.status == .waitingPlanReview {
-                Circle()
-                    .fill(Color.orange)
-                    .frame(width: 6, height: 6)
-                    .offset(x: 4, y: -2)
-            }
-        }
-        .accessibilityLabel("Session: \(session.displayTitle)")
+        let icon = AgentIcon(session: session, size: 20)
+        return icon.accessibilityLabel("\(icon.accessibilityDescription)")
     }
 }

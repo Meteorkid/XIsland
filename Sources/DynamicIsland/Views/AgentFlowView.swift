@@ -260,7 +260,7 @@ struct AgentFlowBlockerRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            AgentIcon(agentType: session.agentType, size: 18, status: session.status)
+            AgentIcon(session: session, size: 18)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {

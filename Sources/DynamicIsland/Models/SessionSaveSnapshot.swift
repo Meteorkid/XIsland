@@ -21,6 +21,7 @@ struct SessionSaveSnapshot: Sendable {
     let agentType: AgentType
     let startTime: Date
     let completedAt: Date?
+    let completionNeedsReview: Bool
     let sourceNamespace: String?
     let sourceInstanceId: String?
     let nativeTaskId: String?
@@ -45,6 +46,7 @@ struct SessionSaveSnapshot: Sendable {
         agentType = session.agentType
         startTime = session.startTime
         completedAt = session.completedAt
+        completionNeedsReview = session.completionNeedsReview
         sourceNamespace = session.sourceNamespace
         sourceInstanceId = session.sourceInstanceId
         nativeTaskId = session.nativeTaskId

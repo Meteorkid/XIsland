@@ -10,6 +10,7 @@ enum SessionSaveWorker {
         /// 已在同一事务中消费的孤儿事实，供主执行器合并到保存期间更新的会话。
         let mergedOrphanObservation: KimiCodeApprovalObservation?
         let storedStatus: SessionStatus
+        let completionNeedsReview: Bool
         let projectedStatusText: String?
         let committedChildren: SessionChildSnapshot
     }
@@ -50,6 +51,13 @@ enum SessionSaveWorker {
             let approvalData = try approvalObservation.map { try JSONEncoder().encode($0) }
             let canProjectApproval = !snapshot.hasPendingInteraction && snapshot.status != .completed && snapshot.status != .observationUnavailable
             let storedStatus = canProjectApproval ? approvalObservation?.displayedStatus ?? approvalObservation?.baseStatus ?? snapshot.status : snapshot.status
+            let completionNeedsReview: Bool
+            if storedStatus == .completed, snapshot.status != .completed {
+                // 已持久化的孤儿结束事实也可能在保存时首次关闭会话。
+                completionNeedsReview = existing?.status == .completed ? existing?.completionNeedsReview ?? false : true
+            } else {
+                completionNeedsReview = snapshot.completionNeedsReview
+            }
             let childWriteCount: Int
             if let existing {
                 func update<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<StoredSession, Value>, to value: Value) {
@@ -59,6 +67,7 @@ enum SessionSaveWorker {
                 update(\.agentTypeRaw, to: snapshot.agentType.rawValue)
                 update(\.startTime, to: observed ? min(existing.startTime, snapshot.startTime) : snapshot.startTime)
                 update(\.completedAt, to: snapshot.completedAt)
+                update(\.completionNeedsReview, to: completionNeedsReview)
                 update(\.sourceNamespace, to: snapshot.sourceNamespace)
                 update(\.sourceInstanceId, to: snapshot.sourceInstanceId)
                 update(\.nativeTaskId, to: snapshot.nativeTaskId)
@@ -84,6 +93,7 @@ enum SessionSaveWorker {
                     inputTokens: snapshot.tokenUsage.inputTokens, outputTokens: snapshot.tokenUsage.outputTokens,
                     totalTokens: snapshot.tokenUsage.totalTokens, estimatedCostUSD: snapshot.tokenUsage.estimatedCostUSD,
                     model: snapshot.tokenUsage.model)
+                stored.completionNeedsReview = completionNeedsReview
                 stored.sourceNamespace = snapshot.sourceNamespace
                 stored.sourceInstanceId = snapshot.sourceInstanceId
                 stored.nativeTaskId = snapshot.nativeTaskId
@@ -107,7 +117,7 @@ enum SessionSaveWorker {
             }
             return Result(changed: changed, childWriteCount: childWriteCount,
                 mergedApprovalObservation: approvalObservation, mergedOrphanObservation: orphanObservation,
-                storedStatus: storedStatus,
+                storedStatus: storedStatus, completionNeedsReview: completionNeedsReview,
                 projectedStatusText: canProjectApproval ? approvalObservation.map { $0.displayedText ?? $0.baseStatusText } : nil,
                 committedChildren: snapshot.committedChildren(previous: previousChildren))
         } catch {

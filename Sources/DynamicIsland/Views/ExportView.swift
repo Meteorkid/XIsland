@@ -40,6 +40,7 @@ struct SessionExportData: Codable {
     let agentType: String
     let startTime: String
     let completedAt: String?
+    let completionNeedsReview: Bool?
     let observationEndedAt: String?
     let sourceNamespace: String?
     let sourceInstanceId: String?
@@ -216,6 +217,7 @@ struct ExportView: View {
             agentType: session.agentType.rawValue,
             startTime: ISO8601DateFormatter().string(from: session.startTime),
             completedAt: session.completedAt.map { ISO8601DateFormatter().string(from: $0) },
+            completionNeedsReview: session.completionNeedsReview,
             observationEndedAt: session.observationEndedAt.map { ISO8601DateFormatter().string(from: $0) },
             sourceNamespace: session.sourceNamespace,
             sourceInstanceId: session.sourceInstanceId,
