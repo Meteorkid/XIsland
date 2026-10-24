@@ -1,0 +1,88 @@
+{
+  "version": "2.0.10",
+  "preparedAtUTC": "2026-10-24T12:05:35.387823+00:00",
+  "implementationCommit": "80ae0ba75e9d1bc1235a5c805c9f62d03cc44802",
+  "previousRelease": "v2.0.9",
+  "platform": "macOS",
+  "architecture": "arm64",
+  "minimumOS": "14.0",
+  "companionVersion": "1.0.1",
+  "companionChanged": false,
+  "windowsSourceChanged": false,
+  "swiftTests": {
+    "total": 1619,
+    "passed": 1602,
+    "skipped": 17,
+    "failed": 0
+  },
+  "finalTargetedTests": {
+    "total": 91,
+    "passed": 90,
+    "skipped": 1,
+    "failed": 0
+  },
+  "runtimeSourcesMatchTestedSnapshot": true,
+  "package": {
+    "status": "passed",
+    "version": "2.0.10",
+    "readOnlyMounted": true,
+    "architecture": "arm64",
+    "minimumOS": "14.0",
+    "signatureVerified": true,
+    "signature": "ad-hoc",
+    "notarized": false,
+    "mountedAppMatchesBuiltBundle": true,
+    "dmgSHA256": "4941b1a39f4c9adfb2b308e66cc8a81e4880b878407ff015c0ef6f73ceec37a0",
+    "dmgBytes": 6186658,
+    "binarySHA256": {
+      "XIsland": "7ec7a973d83935d956876affc5d0933426d87c5e1a33083df73479ead3fd4738",
+      "di-bridge": "bb049f774133c8062963e6540e46871a0e665eae065a1c8d04f8be043c1f3aed"
+    },
+    "cliMatchesSource": true,
+    "appIconPresent": true,
+    "vsixSHA256": "6be6a45c660c600f1e2d5d236f911b560d8ddc435d5e767269cbbc5d0337cd07",
+    "vsixCRCVerified": true
+  },
+  "sourceInputs": {
+    "manifest": "source-hashes-2.0.10.json",
+    "sha256": "f41991060165588628da1f99d9244fc0375ecc12beed0f223d779023d8d321a0",
+    "count": 484
+  },
+  "nativeAcceptance": {
+    "manualPhysicalHoverConfirmedByUser": true,
+    "insideAtLeastSeconds": 5,
+    "outsideConfiguredDelaySeconds": 3,
+    "missingIdentityFeedbackVerified": true,
+    "codexClientPageVerified": false,
+    "codexControlToolRestricted": true,
+    "otherClientsMultiSessionRuntimeVerified": false
+  },
+  "ci": {
+    "requiredBeforePublication": [
+      "Tests",
+      "Windows checks"
+    ],
+    "requiresExactReleaseCommit": true,
+    "runtimeWindowsAcceptance": false
+  },
+  "releaseVerificationEvidence": ".build/release-2.0.10/evidence/public-validation.json",
+  "dataCompatibility": {
+    "schemaChanged": false,
+    "databaseRewritten": false,
+    "existingPreferencesPreserved": true
+  },
+  "environment": {
+    "productionAppUntouched": true,
+    "installedBridgeUntouched": true,
+    "shellConfigurationUntouched": true,
+    "localInstallationPerformed": false
+  },
+  "notVerified": [
+    "Real target chat/tab focus for every vendor client",
+    "Clients without a verified native route including tmux",
+    "Windows native runtime",
+    "External multi-display and sleep/wake",
+    "Developer ID signing and notarization",
+    "Local installation of this final release"
+  ]
+}
