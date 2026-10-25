@@ -1,0 +1,90 @@
+{
+  "version": "2.0.11",
+  "verificationStage": "pre-publication-package",
+  "preparedAtUTC": "2026-10-25T06:30:55.946416+00:00",
+  "implementationCommit": "ab36662661d1baefe3f677819bc785c5ff8a6cbe",
+  "previousRelease": "v2.0.10",
+  "platform": "macOS",
+  "architecture": "arm64",
+  "minimumOS": "14.0",
+  "companionVersion": "1.0.1",
+  "companionChanged": false,
+  "companionSourceRelease": "v2.0.10",
+  "windowsSourceChanged": false,
+  "finalTargetedTests": {
+    "total": 22,
+    "passed": 22,
+    "failed": 0,
+    "skipped": 0
+  },
+  "testedChangedFileHashesMatch": true,
+  "testedChangedFileCount": 4,
+  "package": {
+    "status": "passed",
+    "version": "2.0.11",
+    "readOnlyMounted": true,
+    "architecture": "arm64",
+    "minimumOS": "14.0",
+    "signatureVerified": true,
+    "signature": "ad-hoc",
+    "notarized": false,
+    "mountedAppMatchesBuiltBundle": true,
+    "comparedBundleFiles": 8,
+    "dmgSHA256": "5bc861db159cdafd2dc436b5a79dab92c7999e6f08da8c41d2fd2704174ed906",
+    "dmgBytes": 6182319,
+    "binarySHA256": {
+      "XIsland": "2a83b3b576f6082d0ffdc7d9c8acc3154682ba25fe3bf18f02fa0c6d56991d77",
+      "di-bridge": "bb049f774133c8062963e6540e46871a0e665eae065a1c8d04f8be043c1f3aed"
+    },
+    "cliMatchesSource": true,
+    "appIconPresent": true,
+    "vsixSHA256": "6be6a45c660c600f1e2d5d236f911b560d8ddc435d5e767269cbbc5d0337cd07",
+    "vsixCRCVerified": true,
+    "checksumsSHA256": "00c75ecbe703377900a1bd039ccaa4aec89618a36eeb6484be882bc297d3e106"
+  },
+  "sourceInputs": {
+    "manifest": "source-hashes-2.0.11.json",
+    "sha256": "899729e0ff5121a88e73f35cf4dbede60f24f3c1a6fa857b5310da8147ac77c9",
+    "count": 517,
+    "matchesBuildSnapshot": true
+  },
+  "renderAcceptance": {
+    "staticNativeRendering": true,
+    "darkAndLightMascots": true,
+    "recentTaskLimits": [
+      1,
+      3,
+      5
+    ],
+    "notchAndUnobscuredLayouts": true,
+    "realWindowAcceptance": false
+  },
+  "ci": {
+    "requiredBeforePublication": [
+      "Tests",
+      "Windows checks"
+    ],
+    "requiresExactReleaseCommit": true,
+    "runtimeWindowsAcceptance": false
+  },
+  "releaseVerificationEvidence": ".build/release-2.0.11/evidence/package-validation.json",
+  "targetedTestEvidence": ".build/hide-mascot-numbers-20261025/validation.json",
+  "dataCompatibility": {
+    "schemaChanged": false,
+    "databaseRewritten": false,
+    "existingPreferencesPreserved": true
+  },
+  "environment": {
+    "productionAppUntouched": true,
+    "installedBridgeUntouched": true,
+    "shellConfigurationUntouched": true,
+    "protectedFileCount": 16,
+    "localInstallationPerformed": false
+  },
+  "notVerified": [
+    "Installed-app runtime for this release",
+    "Windows native runtime",
+    "External multi-display and sleep/wake",
+    "Developer ID signing and notarization"
+  ]
+}
