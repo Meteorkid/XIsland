@@ -104,15 +104,9 @@ struct CollapsedPillView: View {
                     appIconFallback
                 } else {
                     let shown = displayedSessions
-                    let overflow = visible.count - shown.count
                     HStack(spacing: 6) {
                         ForEach(shown) { session in
                             AgentIcon(session: session, size: 22)
-                        }
-                        if overflow > 0 {
-                            Text("+\(overflow)")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                .foregroundStyle(IslandStyle.secondaryText)
                         }
                     }
                 }

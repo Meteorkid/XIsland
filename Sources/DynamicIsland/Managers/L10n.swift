@@ -65,10 +65,10 @@ enum L10n {
         localized("mascotGuideTitle", zh: "吉祥物识别图例", ko: "마스코트 안내", ja: "マスコットの凡例", fr: "Légende des mascottes", en: "Mascot legend")
     }
     static var mascotGuideSummary: String {
-        localized("mascotGuideSummary", zh: "造型认软件，颜色与编号认任务，表情认状态。", ko: "모양은 앱, 색상과 번호는 작업, 표정은 상태를 나타냅니다.", ja: "形はアプリ、色と番号はタスク、表情は状態を示します。", fr: "La forme identifie l’app, la couleur et le numéro la tâche, l’expression son état.", en: "Shape identifies the app, color and number identify the task, expression shows its state.")
+        localized("mascotGuideSummary", zh: "造型认软件，配色区分聊天，表情和角标认状态。", ko: "모양은 앱, 색상은 대화, 표정과 배지는 상태를 나타냅니다.", ja: "形はアプリ、色は会話、表情とバッジは状態を示します。", fr: "La forme identifie l’app, la couleur distingue les conversations, l’expression et le badge indiquent l’état.", en: "Shape identifies the app, color distinguishes conversations, and expressions and badges show state.")
     }
     static var mascotTaskGuide: String {
-        localized("mascotTaskGuide", zh: "同一聊天／任务保留配色和编号。颜色循环时仍以编号区分；打开详情或主动跳转后确认已查看。", ko: "같은 작업은 색상과 번호를 유지합니다. 색상이 반복되면 번호로 구분합니다. 세부정보 또는 이동 시 확인됩니다.", ja: "同じタスクは色と番号を保持します。色が循環しても番号で区別できます。詳細表示または移動で確認済みになります。", fr: "Une tâche garde sa couleur et son numéro. Les numéros distinguent les couleurs répétées. Ouvrir les détails ou accéder à la tâche la marque consultée.", en: "A task keeps its color and number. Numbers distinguish repeated colors. Opening details or jumping to a task marks its completion viewed.")
+        localized("mascotTaskGuide", zh: "同一聊天／任务保留配色。更多任务可在展开列表中查看；打开详情或主动跳转后确认已查看。", ko: "같은 대화와 작업은 색상을 유지합니다. 펼친 목록에서 다른 작업을 확인할 수 있습니다. 세부정보를 열거나 작업으로 이동하면 완료 결과를 확인한 것으로 표시합니다.", ja: "同じ会話・タスクは配色を保持します。ほかのタスクは展開した一覧で確認できます。詳細表示またはタスクへの移動で完了結果を確認済みにします。", fr: "Une conversation ou tâche conserve sa couleur. Consultez les autres tâches dans la liste dépliée. Ouvrir les détails ou accéder à la tâche marque son résultat comme consulté.", en: "A conversation or task keeps its color. View more tasks in the expanded list. Opening details or jumping to a task marks its completion viewed.")
     }
 
     static var historySaveFailed: String {

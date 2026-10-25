@@ -94,17 +94,6 @@ struct AgentIcon: View {
                     .accessibilityHidden(true)
             }
         }
-        .overlay(alignment: .bottomTrailing) {
-            if let taskIdentity {
-                Text(taskIdentity.shortLabel)
-                    .font(.system(size: max(6, size * 0.27), weight: .bold, design: .rounded))
-                    .foregroundStyle(colorScheme == .light ? Color.primary : tint)
-                    .padding(.horizontal, 1.5)
-                    .background(colorScheme == .dark ? Color.black : Color.white, in: Capsule())
-                    .offset(x: 2, y: 2)
-                    .accessibilityHidden(true)
-            }
-        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription)
         .accessibilityAddTraits(.isImage)

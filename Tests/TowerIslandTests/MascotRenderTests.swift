@@ -89,7 +89,7 @@ final class MascotRenderTests: XCTestCase {
                 }
             }
             Divider()
-            Text("同一 Codex 系列：颜色和编号区分聊天 / 任务").font(.system(size: 14, weight: .semibold))
+            Text("同一 Codex 系列：不同聊天 / 任务使用固定配色").font(.system(size: 14, weight: .semibold))
             HStack(spacing: 22) {
                 ForEach(0..<12, id: \.self) { index in
                     AgentIcon(agentType: .codex, size: 30, status: .active,
