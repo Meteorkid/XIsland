@@ -30,6 +30,10 @@ enum AppPreferences {
     static var isIsolated: Bool {
         processConfiguration.isEnabled
     }
+
+    static var persistentDomainName: String {
+        processConfiguration.defaultsSuiteName ?? Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName
+    }
 }
 
 struct AppTestConfiguration: Equatable {
@@ -149,7 +153,8 @@ struct AppTestConfiguration: Equatable {
         defaults.set(disableAnimations, forKey: "disableAnimations")
         defaults.set(false, forKey: "smartSuppression")
         defaults.set(false, forKey: "autoHideWhenNoActiveSessions")
-        defaults.set(0.15, forKey: "autoCollapseDelay")
+        defaults.set(true, forKey: AutoCollapseSettings.enabledKey)
+        defaults.set(0.15, forKey: AutoCollapseSettings.delayKey)
     }
 
     private static func argumentValue(for flag: String, in arguments: [String]) -> String? {

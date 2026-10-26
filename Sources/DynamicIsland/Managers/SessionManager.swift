@@ -69,6 +69,9 @@ final class SessionManager {
     var audioEngine: AudioEngine?
     var persistenceManager: SessionPersistenceManager?
     @ObservationIgnored var onIntegrationActivity: ((AgentType) -> Void)?
+    @ObservationIgnored var onTaskAttention: ((TaskAttentionEvent) -> Void)?
+    @ObservationIgnored private var taskAttentionEvents: [String: [TaskAttentionEvent.Kind: TaskAttentionEvent]] = [:]
+    @ObservationIgnored private var planAttentionNativeIDs: [String: (requestID: UUID, nativeID: String)] = [:]
     private(set) var unsavedSessionIDs: Set<String> = []
     @ObservationIgnored private var unsavedKimiBackgroundTasks: [String: [String: DINativeBackgroundTask]] = [:]
     /// 诊断回执计数；包含被忽略的消息，只在处理和真实持久化完成后递增。
@@ -179,7 +182,6 @@ final class SessionManager {
         set { AppPreferences.defaults.set(newValue, forKey: "bypassMode") }
     }
 
-    private var approvalInterruption = ApprovalInterruptionState()
     private var kimiCodeOrphanObservations: [String: KimiCodeApprovalObservation] = [:]
     private var kimiCodeProjectionTransactions: [String: KimiCodeApprovalObservation] = [:]
     /// 与可见会话对象分离，隐藏再恢复不会丢失本次 App 已知的回合顺序。
@@ -526,7 +528,12 @@ final class SessionManager {
         return activityCache
     }
 
-    var protectsInteraction: Bool { hasInteraction }
+    var protectsInteraction: Bool {
+        // 只读接入的等待也需要留在屏幕上；这不代表可以在岛内执行原端审批。
+        sessions.contains {
+            $0.hasPendingInteraction || [.waitingPermission, .waitingAnswer, .waitingPlanReview].contains($0.status)
+        }
+    }
 
     var prioritizedInteractionSession: AgentSession? {
         if let focus = focusedInteraction,
@@ -942,6 +949,10 @@ final class SessionManager {
                     let acceptedResult = isResult && previous.pending[request.id] == request
                         && observation.resolved[request.id] == request
                     if acceptedRequest || acceptedResult { reportIntegrationActivity(message, session: existing) }
+                    if acceptedRequest, existing.status == .waitingPermission, !existing.hasPendingInteraction {
+                        recordTaskAttention(TaskAttentionEvent(sessionID: existing.id, kind: .permission,
+                            nativeRequestID: request.id))
+                    }
                 }
                 return true
             }
@@ -968,6 +979,10 @@ final class SessionManager {
             persistSession(session)
             if let request = kimiCodeRequest(message), observation.pending[request.id] == request {
                 reportIntegrationActivity(message, session: session)
+                if session.status == .waitingPermission, !session.hasPendingInteraction {
+                    recordTaskAttention(TaskAttentionEvent(sessionID: session.id, kind: .permission,
+                        nativeRequestID: request.id))
+                }
             }
         } catch {
             // 历史/ledger 读取失败时保留磁盘事实，不能退回空状态继续处理。
@@ -1227,6 +1242,12 @@ final class SessionManager {
 
         let session = findOrCreateSessionForInteraction(message)
         rememberCodexTurn(message, session: session)
+        let duplicateReminder = session.pendingPermission.map { previous in
+            Self.sameNativeRequest(previous.nativeRequestId, message.nativeRequestId)
+                && previous.requestingAgent == realAgent && previous.tool == (message.tool ?? "unknown")
+                && previous.description == (message.permDescription ?? "") && previous.diff == message.diff
+                && previous.filePath == message.filePath && previous.toolInput == message.toolInput
+        } ?? false
         let refreshCheckpoint = resumeSession(session, as: .waitingPermission)
         session.pendingPermission?.cancel?()
         session.pendingPermission = PendingPermission(
@@ -1246,8 +1267,10 @@ final class SessionManager {
         audioEngine?.play(.permissionRequest, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
 
-        // 有审批时强制置顶显示
-        forceToShowForApproval()
+        if !duplicateReminder {
+            recordTaskAttention(TaskAttentionEvent(sessionID: session.id, kind: .permission,
+                requestID: session.pendingPermission?.id, nativeRequestID: message.nativeRequestId))
+        }
         if message.type == .permissionRequest,
            [message.tool, message.permDescription, message.nativeRequestId].compactMap({ $0 })
             .contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
@@ -1283,6 +1306,12 @@ final class SessionManager {
         let realAgent = resolvedAgentType(for: message)
         let session = findOrCreateSessionForInteraction(message)
 
+        let duplicateReminder = session.pendingQuestion.map { previous in
+            Self.sameNativeRequest(previous.nativeRequestId, message.nativeRequestId)
+                && previous.requestingAgent == realAgent && previous.text == text && previous.options == options
+                && previous.allowsCustomAnswer == (message.allowsCustomAnswer == true)
+                && previous.allowsMultipleAnswers == (message.allowsMultipleAnswers == true)
+        } ?? false
         // 相同文本不能证明是同一原生请求；缺少请求身份时也必须等待新的用户回答。
         // Close the previous question's fd when superseded by a newer event.
         session.pendingQuestion?.cancel?()
@@ -1303,8 +1332,10 @@ final class SessionManager {
         audioEngine?.play(.question, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
 
-        // 有交互时强制置顶显示
-        forceToShowForApproval()
+        if !duplicateReminder {
+            recordTaskAttention(TaskAttentionEvent(sessionID: session.id, kind: .question,
+                requestID: session.pendingQuestion?.id, nativeRequestID: message.nativeRequestId))
+        }
         if message.type == .question { reportIntegrationActivity(message, session: session) }
     }
 
@@ -1325,6 +1356,12 @@ final class SessionManager {
 
         let realAgent = resolvedAgentType(for: message)
         let session = findOrCreateSessionForInteraction(message)
+        let previousNativeID = planAttentionNativeIDs[session.id]
+        let duplicateReminder = session.pendingPlanReview.map { previous in
+            previousNativeID?.requestID == previous.id
+                && Self.sameNativeRequest(previousNativeID?.nativeID, message.nativeRequestId)
+                && previous.requestingAgent == realAgent && previous.markdown == (message.planMarkdown ?? "")
+        } ?? false
         let refreshCheckpoint = resumeSession(session, as: .waitingPlanReview)
         session.pendingPlanReview?.cancel?()
         session.pendingPlanReview = PendingPlanReview(
@@ -1339,8 +1376,16 @@ final class SessionManager {
         audioEngine?.play(.planReview, session: session)
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
 
-        // 有审批时强制置顶显示
-        forceToShowForApproval()
+        if let nativeID = message.nativeRequestId, !nativeID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let requestID = session.pendingPlanReview?.id {
+            planAttentionNativeIDs[session.id] = (requestID, nativeID)
+        } else {
+            planAttentionNativeIDs.removeValue(forKey: session.id)
+        }
+        if !duplicateReminder {
+            recordTaskAttention(TaskAttentionEvent(sessionID: session.id, kind: .planReview,
+                requestID: session.pendingPlanReview?.id, nativeRequestID: message.nativeRequestId))
+        }
         if message.type == .planReview,
            !(message.planMarkdown ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             reportIntegrationActivity(message, session: session)
@@ -1377,7 +1422,6 @@ final class SessionManager {
             }
         }
         // 原端已处理的请求不再占用显示权，也不触发本地审批后的窗口切换。
-        approvalInterruption.cancelIfFinished(hasPendingInteractions: hasInteraction)
         reportIntegrationActivity(message, session: session)
     }
 
@@ -1481,7 +1525,6 @@ final class SessionManager {
             self.audioEngine?.play(sound, session: session)
             self.selectNextInteraction()
             AppDelegate.shared?.refreshDiagnostics(islandState: self.diagnosticsIslandState)
-            if !self.hasInteraction { self.restoreToXnookIfNeeded() }
         }
         if let delivery {
             inFlightInteractionDeliveries += 1
@@ -1506,6 +1549,8 @@ final class SessionManager {
                 sessions.removeAll { $0.id == session.id }
                 rebuildSessionIndex()
                 lastAssistantReplySoundAt.removeValue(forKey: session.id)
+                taskAttentionEvents.removeValue(forKey: session.id)
+                planAttentionNativeIDs.removeValue(forKey: session.id)
                 if selectedSessionId == session.id { selectedSessionId = activeSessions.first?.id }
                 AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
             }
@@ -1637,13 +1682,13 @@ final class SessionManager {
         session.pendingQuestion = nil
         session.pendingPlanReview = nil
         if focusedInteraction?.sessionID == session.id { focusedInteraction = nil }
-        approvalInterruption.cancelIfFinished(hasPendingInteractions: hasInteraction)
     }
 
     private func markCompleted(_ session: AgentSession) {
         // 进程结束后旧连接不能继续审批，也不能阻止面板收起。
         cancelPendingInteractions(session)
-        if session.status != .completed {
+        let newlyCompleted = session.status != .completed
+        if newlyCompleted {
             session.completionNeedsReview = true
             session.completedAt = Date()
         }
@@ -1652,6 +1697,10 @@ final class SessionManager {
         persistSession(session)
         selectNextInteraction()
         scheduleLingerCleanup()
+        if newlyCompleted, sessionById(session.id) === session {
+            recordTaskAttention(TaskAttentionEvent(sessionID: session.id, kind: .completion,
+                completedAt: session.completedAt))
+        }
     }
 
     /// 仅在接受新的活动后调用；历史重放、迟到结果和查找会话不能清除结束时间。
@@ -1783,6 +1832,8 @@ final class SessionManager {
     private func purgeOrphanedCacheEntries() {
         let activeIds = Set(sessions.map(\.id))
         lastAssistantReplySoundAt = lastAssistantReplySoundAt.filter { activeIds.contains($0.key) }
+        taskAttentionEvents = taskAttentionEvents.filter { activeIds.contains($0.key) }
+        planAttentionNativeIDs = planAttentionNativeIDs.filter { activeIds.contains($0.key) }
     }
 
     private func handleToolStart(_ message: DIMessage) {
@@ -1951,6 +2002,10 @@ final class SessionManager {
             }
             updateTokenUsage(session: session, message: message)
             if refreshCheckpoint || previousStatus == .completionUnconfirmed { persistSession(session) }
+            if previousStatus != observed, !session.hasPendingInteraction,
+               let kind = Self.attentionKind(for: observed) {
+                recordTaskAttention(TaskAttentionEvent(sessionID: session.id, kind: kind))
+            }
             return
         }
 
@@ -2143,10 +2198,8 @@ final class SessionManager {
                 : session.pendingQuestion != nil ? .waitingAnswer : .waitingPlanReview
         }
 
-        // 最后一个交互被外部清除时取消恢复；其他待办仍保留本轮显示权。
         if clearedInteraction {
             selectNextInteraction()
-            approvalInterruption.cancelIfFinished(hasPendingInteractions: hasInteraction)
         }
     }
 
@@ -2335,31 +2388,62 @@ final class SessionManager {
         return session
     }
 
-    // MARK: - 审批置顶与恢复
+    // MARK: - 任务提醒
 
-    /// 有审批时强制置顶显示灵动岛（即使 xnook 在前台）
-    private func forceToShowForApproval() {
-        guard allowsExternalApplicationAccess else { return }
-        // 精确检查 xnook 是否正在运行（而非任意其他灵动岛应用）
-        if AppSwitcher.shared.isIslandRunning(named: "xnook") {
-            approvalInterruption.markInterrupted()
-        }
+    private static func sameNativeRequest(_ lhs: String?, _ rhs: String?) -> Bool {
+        guard let lhs, !lhs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return lhs == rhs
+    }
 
-        // 强制显示灵动岛窗口（重新定位到当前主界面所在屏幕，避免多桌面/多显示器时展开到错误位置）
-        if let window = AppDelegate.shared?.notchWindow {
-            window.showAtActiveScreen()
+    private static func attentionKind(for status: SessionStatus) -> TaskAttentionEvent.Kind? {
+        switch status {
+        case .waitingPermission: return .permission
+        case .waitingAnswer: return .question
+        case .waitingPlanReview: return .planReview
+        default: return nil
         }
     }
 
-    /// 审批完成后恢复到 xnook（如果之前是从 xnook 被中断的）
-    private func restoreToXnookIfNeeded() {
-        guard allowsExternalApplicationAccess else { return }
-        guard approvalInterruption.takeRestorationIfReady(hasPendingInteractions: hasInteraction) else { return }
+    private func recordTaskAttention(_ event: TaskAttentionEvent) {
+        // 关闭期间仍更新代次，重新开启不能让旧排队提醒认领新请求。
+        taskAttentionEvents[event.sessionID, default: [:]][event.kind] = event
+        guard TaskAttentionSettings.isEnabled() else { return }
+        onTaskAttention?(event)
+    }
 
-        // 精确检查 xnook 是否仍然运行
-        guard AppSwitcher.shared.isIslandRunning(named: "xnook") else { return }
-
-        // 切换回 xnook
-        AppSwitcher.shared.switchToIsland(named: "xnook")
+    /// 展示可能要等待滑动完成；旧完成结果或已处理请求不能在等待后抢回显示权。
+    func isCurrentTaskAttention(_ event: TaskAttentionEvent) -> Bool {
+        guard TaskAttentionSettings.isEnabled(),
+              taskAttentionEvents[event.sessionID]?[event.kind]?.id == event.id,
+              let session = sessionById(event.sessionID) else { return false }
+        switch event.kind {
+        case .completion:
+            return session.status == .completed && session.completionNeedsReview
+                && session.completedAt == event.completedAt && !session.hasPendingInteraction
+        case .permission:
+            if event.requestID != nil, let pending = session.pendingPermission {
+                return Self.sameNativeRequest(event.nativeRequestID, pending.nativeRequestId)
+                    || event.requestID == pending.id
+            }
+            guard event.requestID == nil, !session.hasPendingInteraction,
+                  session.status == .waitingPermission else { return false }
+            if let nativeID = event.nativeRequestID {
+                return session.kimiCodeApprovalObservation?.pending[nativeID] != nil
+            }
+            return true
+        case .question:
+            if event.requestID != nil, let pending = session.pendingQuestion {
+                return Self.sameNativeRequest(event.nativeRequestID, pending.nativeRequestId)
+                    || event.requestID == pending.id
+            }
+            return event.requestID == nil && !session.hasPendingInteraction && session.status == .waitingAnswer
+        case .planReview:
+            if event.requestID != nil, let pending = session.pendingPlanReview {
+                let native = planAttentionNativeIDs[session.id]
+                return event.requestID == pending.id || (native?.requestID == pending.id
+                    && Self.sameNativeRequest(event.nativeRequestID, native?.nativeID))
+            }
+            return event.requestID == nil && !session.hasPendingInteraction && session.status == .waitingPlanReview
+        }
     }
 }

@@ -75,6 +75,8 @@ struct PreferencesView: View {
     @AppStorage("hideInFullscreen") private var hideInFullscreen = false
     @AppStorage("autoHideWhenNoActiveSessions") private var autoHideWhenNoActiveSessions = false
     @AppStorage("smartSuppression") private var smartSuppression = true
+    @AppStorage("taskAttentionEnabled") private var taskAttentionEnabled = true
+    @AppStorage("autoCollapseEnabled") private var autoCollapseEnabled = true
     @AppStorage("compactBadgesInExpandedView") private var compactBadgesInExpandedView = true
     @AppStorage("displayTimestamp") private var displayTimestamp = true
     @AppStorage("reduceMotion") private var reduceMotion = false
@@ -291,6 +293,10 @@ struct PreferencesView: View {
 
             section(L10n.sectionBehavior) {
                 card {
+                    settingRow(L10n.taskAttention, id: "taskAttentionEnabled", description: L10n.taskAttentionDescription) {
+                        Toggle("", isOn: $taskAttentionEnabled).labelsHidden()
+                    }
+                    dividerLine
                     settingRow(L10n.bypassMode, id: "bypassMode", description: L10n.bypassDesc) {
                         Toggle("", isOn: Binding(
                             get: { sessionManager.bypassMode },
@@ -299,16 +305,22 @@ struct PreferencesView: View {
                     }
                     dividerLine
                     settingRow(L10n.autoCollapse, id: "autoCollapse", description: L10n.autoCollapseDesc) {
-                        AppStorageSlider(key: "autoCollapseDelay", range: 0...15, format: "%.2fs")
+                        Toggle("", isOn: $autoCollapseEnabled)
+                            .labelsHidden()
+                            .accessibilityLabel(L10n.autoCollapse)
+                            .accessibilityIdentifier("preferences.autoCollapseEnabled")
                     }
                     dividerLine
-                    settingRow(L10n.expandedInactivityAutoHide, id: "expandedInactivity", description: L10n.expandedInactivityAutoHideDesc) {
-                        AppStorageSlider(key: "expandedInactivityAutoHideDelay", range: 0...600, format: "%.2fs")
+                    settingRow(L10n.pointerExitCollapseDelay, id: "pointerExitCollapseDelay", description: L10n.pointerExitCollapseDelayDesc) {
+                        AppStorageSlider(key: "pointerExitCollapseDelay", range: 0...600, format: "%.2fs")
+                            .disabled(!autoCollapseEnabled)
+                            .accessibilityIdentifier("preferences.pointerExitCollapseDelay")
                     }
-                    dividerLine
-                    settingRow(L10n.hoverExitCollapse, id: "hoverExit", description: L10n.hoverExitCollapseDesc) {
-                        AppStorageSlider(key: "hoverExitCollapseDelay", range: 0.1...3.0, format: "%.2fs")
-                    }
+                    Text(L10n.pointerExitCollapseDelayHint)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 6)
                     dividerLine
                     settingRow(L10n.hideInFullscreen, id: "hideInFullscreen", description: L10n.hideInFullscreenDesc) {
                         Toggle("", isOn: $hideInFullscreen).labelsHidden()
@@ -636,7 +648,7 @@ struct PreferencesView: View {
                     dividerLine
                     settingRow(L10n.testSwitch, id: "testSwitch", description: L10n.testSwitchDesc) {
                         Button(L10n.testSwitchButton) {
-                            AppSwitcher.shared.switchToIsland(named: counterpart.rawValue)
+                            AppSwitcher.shared.switchToIslandWithPreview(named: counterpart.rawValue, direction: .left)
                         }
                         .controlSize(.small)
                         .disabled(!status.isInstalled || !status.isProtocolConfigured)

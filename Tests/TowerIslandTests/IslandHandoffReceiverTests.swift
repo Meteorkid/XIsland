@@ -32,8 +32,39 @@ final class IslandHandoffReceiverTests: XCTestCase {
         delegate.application(NSApp, open: [URL(string: "xisland://xisland/show")!])
         delegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
         defer { delegate.notchWindow?.orderOut(nil) }
-        XCTAssertTrue(delegate.notchWindow?.isVisible == true)
-        XCTAssertFalse(delegate.notchWindow?.isHiddenByIslandSwitch ?? true)
+        let window = try! XCTUnwrap(delegate.notchWindow)
+        XCTAssertFalse(window.isVisible, "等待收起布局准备后才能显示")
+        XCTAssertNotNil(window.handoffState.pendingPreparation)
+        window.installHandoffPreparationHandler { [weak window] generation in
+            _ = window?.completeInboundHandoffPreparation(generation: generation)
+        }
+        XCTAssertTrue(window.isVisible)
+        XCTAssertFalse(window.isHiddenByIslandSwitch)
+    }
+
+    func testDirectionalColdShowWaitsForPreparationAndRejectsDuplicateMotion() throws {
+        _ = NSApplication.shared
+        let delegate = AppDelegate(
+            testConfiguration: AppTestConfiguration(isEnabled: true, fixtureName: nil, fixturePath: nil,
+                                                   diagnosticsPath: nil, disableAnimations: true),
+            launchHooks: .init(performInitialStartup: { $0.notchWindow = NotchWindow() },
+                              performProductionGlobalStartup: { _ in XCTFail("隔离测试不能触碰生产环境") }))
+        let motion = IslandSwitchMotion(direction: .left, reduceMotion: true)
+        let url = try XCTUnwrap(motion.adding(to: URL(string: "xisland://xisland/show")!))
+        delegate.application(NSApp, open: [url])
+        delegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
+        let window = try XCTUnwrap(delegate.notchWindow)
+        defer { window.close() }
+        XCTAssertEqual(window.inboundSwitchMotion, motion)
+        XCTAssertFalse(window.isVisible)
+        window.installHandoffPreparationHandler { [weak window] generation in
+            _ = window?.completeInboundHandoffPreparation(generation: generation)
+        }
+        XCTAssertTrue(window.isVisible)
+        let generation = window.handoffState.generation
+        delegate.application(NSApp, open: [url])
+        XCTAssertEqual(window.handoffState.generation, generation)
+        XCTAssertFalse(window.isSwitchingApps)
     }
 
     func testOldInboundTimerCannotClearNewOutboundSwitchProtection() {

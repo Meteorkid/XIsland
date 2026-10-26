@@ -13,6 +13,40 @@ final class ExpandedAutoCollapseCountdownTests: XCTestCase {
         }
     }
 
+    func testZeroDelayTriggersOnFirstOutsideSample() {
+        var countdown = ExpandedAutoCollapseCountdown()
+        XCTAssertTrue(countdown.update(isPointerInside: false, delay: 0, now: start))
+        XCTAssertEqual(countdown.pointerExitedAt, start)
+    }
+
+    func testZeroDelayStillProtectsPointerInsideAndCancelsAnEarlierCountdown() {
+        var countdown = ExpandedAutoCollapseCountdown()
+        XCTAssertFalse(countdown.update(isPointerInside: false, delay: 3, now: start))
+        for elapsed in [0.0, 3, 10, 600] {
+            XCTAssertFalse(countdown.update(isPointerInside: true, delay: 0,
+                                             now: start.addingTimeInterval(elapsed)))
+            XCTAssertNil(countdown.pointerExitedAt)
+        }
+        XCTAssertTrue(countdown.update(isPointerInside: false, delay: 0,
+                                       now: start.addingTimeInterval(601)))
+    }
+
+    func testChangingPositiveDelayToZeroTriggersWithoutAnotherWaitingPeriod() {
+        var countdown = ExpandedAutoCollapseCountdown()
+        XCTAssertFalse(countdown.update(isPointerInside: false, delay: 10, now: start))
+        let change = start.addingTimeInterval(1)
+        XCTAssertTrue(countdown.update(isPointerInside: false, delay: 0, now: change))
+        XCTAssertEqual(countdown.pointerExitedAt, change)
+    }
+
+    func testProtectionStillPreventsImmediateCollapseUntilReleased() {
+        var countdown = ExpandedAutoCollapseCountdown()
+        XCTAssertFalse(countdown.update(isPointerInside: false, delay: nil, now: start))
+        XCTAssertNil(countdown.pointerExitedAt)
+        XCTAssertTrue(countdown.update(isPointerInside: false, delay: 0,
+                                       now: start.addingTimeInterval(1)))
+    }
+
     func testLongHoverStillRequiresFullDelayAfterExit() {
         var countdown = ExpandedAutoCollapseCountdown()
         XCTAssertFalse(countdown.update(isPointerInside: true, delay: 0.5, now: start))
@@ -80,7 +114,7 @@ final class ExpandedAutoCollapseCountdownTests: XCTestCase {
     }
 
     func testDisabledOrInvalidDelayCancelsPendingCountdown() {
-        for disabledDelay: TimeInterval? in [nil, 0, -1, .nan, .infinity] {
+        for disabledDelay: TimeInterval? in [nil, -1, .nan, .infinity, -.infinity] {
             var countdown = ExpandedAutoCollapseCountdown()
             XCTAssertFalse(countdown.update(isPointerInside: false, delay: 3, now: start))
             XCTAssertFalse(countdown.update(isPointerInside: false, delay: disabledDelay,

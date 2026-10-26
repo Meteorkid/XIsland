@@ -30,6 +30,34 @@ final class IslandWindowOwnershipTests: XCTestCase {
         XCTAssertTrue(window.isFrontmostIslandWindow())
     }
 
+    func testLinkedCanvasIsIgnoredWhilePeerWindowStillOwnsSwipe() {
+        let bounds = CGRect(x: 100, y: 0, width: 240, height: 50)
+        let snapshots = [
+            IslandWindowSnapshot(number: 99, ownerPID: 100, bounds: bounds, alpha: 1,
+                                 level: NSWindow.Level.statusBar.rawValue + 4),
+            IslandWindowSnapshot(number: 20, ownerPID: 200, bounds: bounds, alpha: 1,
+                                 level: NSWindow.Level.statusBar.rawValue + 2),
+            IslandWindowSnapshot(number: 10, ownerPID: 100, bounds: bounds, alpha: 1,
+                                 level: NSWindow.Level.statusBar.rawValue + 1),
+        ]
+        XCTAssertEqual(IslandWindowOwnership.frontmostWindowNumber(
+            overlapping: bounds, snapshots: snapshots, islandPIDs: [100, 200]), 20)
+    }
+
+    func testOrdinaryWindowAboveIslandIsNotIgnoredWithLinkedCanvas() {
+        let bounds = CGRect(x: 100, y: 0, width: 240, height: 50)
+        let canvas = IslandWindowSnapshot(number: 99, ownerPID: 100, bounds: bounds, alpha: 1,
+                                         level: NSWindow.Level.statusBar.rawValue + 4)
+        let overlay = IslandWindowSnapshot(number: 30, ownerPID: 100, bounds: bounds, alpha: 1,
+                                          level: NSWindow.Level.statusBar.rawValue + 3)
+        let island = IslandWindowSnapshot(number: 10, ownerPID: 100, bounds: bounds, alpha: 1,
+                                         level: NSWindow.Level.statusBar.rawValue + 1)
+        XCTAssertEqual(IslandWindowOwnership.frontmostWindowNumber(
+            overlapping: bounds, snapshots: [canvas, overlay, island], islandPIDs: [100]), 30)
+        XCTAssertNil(IslandWindowOwnership.frontmostWindowNumber(
+            overlapping: bounds, snapshots: [canvas], islandPIDs: [100]))
+    }
+
     func testGlobalSwipeRequiresVisibleCollapsedIslandUnderPointer() {
         let frame = CGRect(x: 100, y: 100, width: 240, height: 50)
 

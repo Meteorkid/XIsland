@@ -19,9 +19,11 @@ struct CollapsedPillView: View {
     @AppStorage("collapsedRecentTaskLimit") private var collapsedRecentTaskLimit = CollapsedTaskSelection.defaultLimit
     @AppStorage("showCollapsedSessionCount") private var showCollapsedSessionCount = true
     @AppStorage("showCollapsedQuota") private var showCollapsedQuota = true
+    @AppStorage("taskAttentionEnabled") private var taskAttentionEnabled = true
 
     private var displayedSessions: [AgentSession] {
-        CollapsedTaskSelection.select(from: visible, limit: collapsedRecentTaskLimit)
+        CollapsedTaskSelection.select(from: visible, limit: collapsedRecentTaskLimit,
+                                      remindersEnabled: taskAttentionEnabled)
     }
 
     private var reduceMotion: Bool {

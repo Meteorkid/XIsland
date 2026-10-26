@@ -6,7 +6,7 @@ struct ExpandedAutoCollapseCountdown: Equatable {
     private var activeDelay: TimeInterval?
 
     mutating func update(isPointerInside: Bool, delay: TimeInterval?, now: Date) -> Bool {
-        guard !isPointerInside, let delay, delay.isFinite, delay > 0 else {
+        guard !isPointerInside, let delay, delay.isFinite, delay >= 0 else {
             reset()
             return false
         }

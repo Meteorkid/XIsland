@@ -52,6 +52,28 @@ enum L10n {
 
     // MARK: - UI strings
 
+    static var taskAttention: String {
+        localized("taskAttention", zh: "任务提醒", ko: "작업 알림", ja: "タスク通知",
+                  fr: "Alertes de tâche", en: "Task alerts")
+    }
+
+    static var taskAttentionOn: String {
+        localized("taskAttentionOn", zh: "已开启", ko: "켜짐", ja: "オン", fr: "Activé", en: "On")
+    }
+
+    static var taskAttentionOff: String {
+        localized("taskAttentionOff", zh: "已关闭", ko: "꺼짐", ja: "オフ", fr: "Désactivé", en: "Off")
+    }
+
+    static var taskAttentionDescription: String {
+        localized("taskAttentionDescription",
+                  zh: "任务完成时自动切回 X Island，吉祥物轻跳提醒验收；审批或提问时自动展开。打开详情或跳转会话后标为已查看。关闭后不再自动切换。",
+                  ko: "작업이 완료되면 X Island로 돌아가 마스코트가 가볍게 뛰며 확인을 알립니다. 승인이나 질문은 자동으로 펼칩니다. 세부정보를 열거나 대화로 이동하면 확인한 것으로 표시합니다. 끄면 자동 전환하지 않습니다.",
+                  ja: "タスク完了時に X Island へ戻り、マスコットの小さなジャンプで確認を促します。承認や質問は自動で展開します。詳細表示や会話への移動で確認済みになります。オフにすると自動切り替えしません。",
+                  fr: "À la fin d’une tâche, revenir à X Island et faire sautiller la mascotte pour inviter à vérifier. Déplier les demandes d’approbation et les questions. Consulter les détails ou ouvrir la conversation marque le résultat comme lu. Désactiver arrête le changement automatique.",
+                  en: "Return to X Island when a task finishes, with a gentle mascot bounce to request review. Expand approvals and questions automatically. Opening details or jumping to the chat marks the result viewed. Turn off to stop automatic switching.")
+    }
+
     static func mascotTask(_ number: Int) -> String {
         String(format: localized("mascotTask", zh: "任务 %d", ko: "작업 %d", ja: "タスク %d", fr: "Tâche %d", en: "Task %d"), number)
     }
@@ -592,8 +614,8 @@ enum L10n {
 
     static var autoCollapse: String {
         localized("autoCollapse",
-            zh: "自动收起延迟", ko: "자동 접기 지연", ja: "自動折りたたみ遅延", fr: "Délai de réduction",
-            en: "Auto-collapse delay")
+            zh: "自动收起", ko: "자동 접기", ja: "自動で折りたたむ", fr: "Réduction automatique",
+            en: "Auto-collapse")
     }
 
     static var completedDisplay: String {
@@ -1471,46 +1493,35 @@ enum L10n {
 
     static var autoCollapseDesc: String {
         localized("autoCollapseDesc",
-            zh: "任务完成且鼠标离开面板和岛后，等待多久收起", ko: "작업 완료 후 포인터가 패널과 아일랜드를 벗어나면 시작하는 대기 시간",
-            ja: "タスク完了後、ポインターがパネルとアイランドから離れてからの待ち時間",
-            fr: "Délai après la fin de la tâche et la sortie du pointeur du panneau et de l’îlot",
-            en: "Delay after task completion and the pointer leaves both the panel and island")
+            zh: "鼠标离开面板和岛后自动收起；待审批或待回答时保持展开。关闭后仅手动收起。",
+            ko: "포인터가 패널과 아일랜드를 벗어나면 자동으로 접습니다. 승인이나 답변을 기다리는 동안은 펼친 상태를 유지합니다. 끄면 수동으로만 접습니다.",
+            ja: "ポインターがパネルとアイランドの外に出ると自動で折りたたみます。承認や回答待ちの間は開いたままにします。オフの場合は手動でのみ折りたたみます。",
+            fr: "Réduire lorsque le pointeur quitte le panneau et l’îlot. Rester ouvert pendant une demande d’approbation ou de réponse. Désactiver pour réduire uniquement à la main.",
+            en: "Collapse after the pointer leaves both the panel and island. Stay open while awaiting approval or an answer. Turn off to collapse manually only.")
     }
 
-    static var expandedInactivityAutoHide: String {
-        localized("expandedInactivityAutoHide",
-            zh: "移出面板后收起",
-            ko: "포인터가 패널을 벗어나면 접기",
-            ja: "ポインターがパネルから離れたら折りたたむ",
-            fr: "Réduire après sortie du panneau",
-            en: "Collapse after leaving the panel")
+    static var pointerExitCollapseDelay: String {
+        localized("pointerExitCollapseDelay",
+            zh: "离开后的延迟", ko: "포인터가 벗어난 뒤 지연", ja: "ポインターが離れた後の待ち時間",
+            fr: "Délai après sortie du pointeur", en: "Delay after pointer leaves")
     }
 
-    static var expandedInactivityAutoHideDesc: String {
-        localized("expandedInactivityAutoHideDesc",
-            zh: "鼠标在面板或岛内时不收起；离开后开始计时，重新进入会取消。选「永不」关闭此项；多项同时适用时采用最短延时。",
-            ko: "포인터가 패널과 아일랜드를 벗어나면 대기하며, 다시 들어오면 취소합니다. 「안 함」은 이 규칙을 끕니다. 적용 가능한 가장 짧은 지연을 사용합니다.",
-            ja: "パネルとアイランドから離れると計時を開始し、戻ると解除します。「なし」でこの規則を無効化。適用可能な最短の待ち時間を使用します。",
-            fr: "Le délai commence après la sortie du panneau et de l’îlot ; le retour l’annule. « Jamais » désactive cette règle. Le délai applicable le plus court est utilisé.",
-            en: "Wait after the pointer leaves both the panel and island. Re-entry cancels the countdown. “Never” disables this rule; the shortest applicable delay wins.")
+    static var pointerExitCollapseDelayDesc: String {
+        localized("pointerExitCollapseDelayDesc",
+            zh: "所有展开方式共用此延迟。鼠标在面板或岛内时不计时；离开后开始，重新进入会取消。0秒表示立即开始收起动画，不会关闭自动收起。",
+            ko: "모든 펼치기 방식에 같은 지연을 적용합니다. 패널과 아일랜드를 벗어나면 시간을 재고, 다시 들어오면 취소합니다. 0초는 자동 접기를 끄는 대신 접기 애니메이션을 즉시 시작합니다.",
+            ja: "すべての開き方で同じ待ち時間を使います。パネルとアイランドの外に出ると計時し、戻ると解除します。0秒では自動折りたたみを無効にせず、すぐにアニメーションを開始します。",
+            fr: "Le même délai s’applique à toutes les ouvertures. Le décompte commence en quittant le panneau et l’îlot ; le retour l’annule. 0 seconde démarre immédiatement l’animation au lieu de désactiver la réduction automatique.",
+            en: "Use the same delay however the panel was opened. Count only after leaving both the panel and island; re-entry cancels it. 0 seconds starts the collapse animation immediately instead of disabling auto-collapse.")
     }
 
-    static var hoverExitCollapse: String {
-        localized("hoverExitCollapse",
-            zh: "鼠标离开后收起",
-            ko: "포인터가 벗어난 뒤 접기",
-            ja: "ポインター退避後に折りたたむ",
-            fr: "Réduire après sortie du pointeur",
-            en: "Collapse after pointer leaves")
-    }
-
-    static var hoverExitCollapseDesc: String {
-        localized("hoverExitCollapseDesc",
-            zh: "悬停展开或无会话时，从指针离开面板和岛时开始计时；重新进入后取消",
-            ko: "호버로 펼쳤거나 세션이 없을 때, 패널과 아일랜드를 벗어나면 대기하며 다시 들어오면 취소합니다.",
-            ja: "ホバー展開または会話がない場合、パネルとアイランドから離れてから計時し、戻ると解除します。",
-            fr: "Après ouverture au survol ou sans session, comptez depuis la sortie du panneau et de l’îlot ; le retour annule le délai.",
-            en: "After hover-expand or with no sessions, count from leaving both the panel and island; re-entry cancels the countdown.")
+    static var pointerExitCollapseDelayHint: String {
+        localized("pointerExitCollapseDelayHint",
+            zh: "0 秒：离开后立即开始收起动画。",
+            ko: "0초: 포인터가 벗어나면 접기 애니메이션을 즉시 시작합니다.",
+            ja: "0秒：ポインターが離れるとすぐに折りたたみアニメーションを開始します。",
+            fr: "0 seconde : commencer l’animation dès la sortie du pointeur.",
+            en: "0 seconds: start the collapse animation as soon as the pointer leaves.")
     }
 
     static var neverOption: String {
@@ -1737,11 +1748,11 @@ enum L10n {
 
     static var enableSwipeSwitchDesc: String {
         localized("enableSwipeSwitchDesc",
-            zh: "仅在灵动岛收起时响应双指左右滑动，用来切换到另一个灵动岛应用",
-            ko: "아일랜드가 접힌 상태일 때만 두 손가락 좌우 스와이프로 다른 아일랜드 앱으로 전환합니다.",
-            ja: "島が折りたたまれているときだけ、二本指の横スワイプで別の島アプリへ切り替えます。",
-            fr: "Quand l'île est réduite, utilisez un glissement horizontal à deux doigts pour basculer vers l'autre app île.",
-            en: "When the island is collapsed, switch to the other island app with a two-finger horizontal swipe.")
+            zh: "在收起的岛上双指横滑，预览并排连接的两款岛；松手切换，短滑回弹。对方未运行或暂不能预览时，松手后再显示。",
+            ko: "접힌 아일랜드를 두 손가락으로 옆으로 밀면 다른 아일랜드가 나란히 보입니다. 손을 떼면 전환되고, 짧게 밀면 돌아옵니다. 미리 보기를 사용할 수 없으면 손을 뗀 뒤 다른 앱을 엽니다.",
+            ja: "折りたたまれた島を二本指で横に動かすと、隣の島をプレビューできます。指を離すと切り替わり、短い移動なら元に戻ります。プレビューできない場合は、指を離した後に相手のアプリを開きます。",
+            fr: "Faites glisser l’île réduite à deux doigts pour voir l’autre île à côté. Relâchez pour basculer ; un geste court revient au départ. Si l’aperçu est indisponible, l’autre app s’ouvre au relâchement.",
+            en: "Swipe with two fingers on the collapsed island to reveal the other island alongside it. Release to switch, or release a short swipe to return. If a preview is unavailable, the other app opens after release.")
     }
 
     static var switchSensitivityDesc: String {

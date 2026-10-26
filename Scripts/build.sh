@@ -86,6 +86,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
     <true/>
     <key>LSUIElement</key>
     <true/>
+    <key>IslandPreviewProtocolVersion</key>
+    <integer>1</integer>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSSupportsAutomaticTermination</key>

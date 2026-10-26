@@ -4,6 +4,48 @@ import XCTest
 
 @MainActor
 final class NotchWindowVisibilityTests: XCTestCase {
+    func testTaskAttentionRejectsFullscreenCheckAndExplicitHideReleasesProtection() throws {
+        let fixture = try makeFixture(probe: { XCTFail("提醒期间不应检查隐藏"); return true })
+        defer { fixture.close() }
+        fixture.window.protectsTaskAttention = true
+        XCTAssertNil(fixture.window.refreshFullscreenVisibility())
+        fixture.window.orderOut(nil)
+        XCTAssertFalse(fixture.window.protectsTaskAttention)
+    }
+
+    func testTaskAttentionInvalidatesAlreadyRunningFullscreenResult() async throws {
+        let started = expectation(description: "全屏检查先开始")
+        let probe = FullscreenProbe(started: [started])
+        let fixture = try makeFixture(probe: { await probe.result() })
+        defer { fixture.close() }
+        fixture.window.showWindow()
+        let check = try XCTUnwrap(fixture.window.refreshFullscreenVisibility())
+        await fulfillment(of: [started], timeout: 1)
+        fixture.window.protectsTaskAttention = true
+        await probe.complete(0, fullscreen: true)
+        await check.value
+        XCTAssertTrue(fixture.window.isVisible)
+        XCTAssertTrue(fixture.window.protectsTaskAttention)
+    }
+
+    func testReleasingAttentionRestoresFullscreenPreferenceWithoutRevivingHiddenIsland() async throws {
+        let started = expectation(description: "提醒解除后恢复全屏检查")
+        let probe = FullscreenProbe(started: [started])
+        let fixture = try makeFixture(probe: { await probe.result() })
+        defer { fixture.close() }
+        fixture.window.showWindow()
+        fixture.window.protectsTaskAttention = true
+        let check = try XCTUnwrap(fixture.window.releaseTaskAttentionProtection())
+        await fulfillment(of: [started], timeout: 1)
+        await probe.complete(0, fullscreen: true)
+        await check.value
+        XCTAssertFalse(fixture.window.isVisible)
+        XCTAssertFalse(fixture.window.protectsTaskAttention)
+        fixture.window.protectsTaskAttention = true
+        XCTAssertNil(fixture.window.releaseTaskAttentionProtection())
+        XCTAssertFalse(fixture.window.isVisible)
+    }
+
     func testEachExplicitShowRecordsTimeAndCancelsPendingSwitch() throws {
         var cancellations = 0
         var visibleMarks = 0

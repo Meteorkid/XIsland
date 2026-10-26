@@ -19,7 +19,6 @@ struct NotchContentView: View {
     @State private var isHoveringPill = false
     @State private var jellyTrigger = false
     @State private var jellySettled = false
-    @State private var expandedByHover = false
     @State private var showContent = false
     @State private var jumpMouseLocation: CGPoint?
     @State private var hoverPolling = HoverPollingController()
@@ -37,12 +36,16 @@ struct NotchContentView: View {
     @State private var magneticOffset: CGSize = .zero
     @State private var lastScrollExpandAt: Date = .distantPast
     @State private var autoCollapseCountdown = ExpandedAutoCollapseCountdown()
-    @State private var interactionCompleted = false
     @State private var lastExpandedInteractionMarkAt: Date = .distantPast
     /// Last known expanded `shapeHeight` (black panel), used to interpolate notch corner radii with `shapeHeight` during spring (avoids boolean snap).
     @State private var cachedExpandedShapeHeight: CGFloat = 220
     @State var activityLogExpanded = false
     @State private var notificationTokens: [NSObjectProtocol] = []
+    @State private var preparedHandoffGeneration: UInt64?
+    @State private var handoffContentVisible = true
+    @State private var handoffResizePending = false
+    @State private var interactionExpansionAfterHandoff = false
+    @State private var taskAttentionPresented = false
     @AppStorage("disableAnimations") private var disableAnimations = false
     @AppStorage("reduceMotion") private var appReduceMotion = false
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
@@ -52,13 +55,12 @@ struct NotchContentView: View {
     }
     @AppStorage("animationIntensity") private var animationIntensity = IslandAnimationIntensity.defaultValue.rawValue
     @AppStorage("jellyIntensity") private var jellyIntensity = IslandJellyIntensity.defaultValue.rawValue
-    @AppStorage("autoCollapseDelay") private var autoCollapseDelay = 3.0
-    /// Seconds continuously outside the expanded panel and pill before auto-collapsing; 0 disables.
-    @AppStorage("expandedInactivityAutoHideDelay") private var expandedInactivityAutoHideDelay = 10.0
-    /// Seconds pointer must stay outside before collapse (hover-expand or empty panel).
-    @AppStorage("hoverExitCollapseDelay") private var hoverExitCollapseDelay = 0.5
+    @AppStorage("autoCollapseEnabled") private var autoCollapseEnabled = true
+    /// 指针连续离开面板与岛后的等待时间；0立即开始收起，关闭由独立开关控制。
+    @AppStorage("pointerExitCollapseDelay") private var pointerExitCollapseDelay = AutoCollapseSettings.defaultDelay
     @AppStorage("hoverToExpandPanel") private var hoverToExpandPanel = false
     @AppStorage("smartSuppression") private var smartSuppression = true
+    @AppStorage("taskAttentionEnabled") private var taskAttentionEnabled = true
     @AppStorage("autoHideWhenNoActiveSessions") private var autoHideWhenNoActiveSessions = false
     @AppStorage("panelWidth") private var panelWidth = 380.0
     @AppStorage("panelMaxHeight") private var panelMaxHeight = 620.0
@@ -67,6 +69,11 @@ struct NotchContentView: View {
     @AppStorage("tickerContentMode") private var tickerContentMode = CollapsedTickerContentMode.defaultValue.rawValue
     @AppStorage("tickerSpeed") private var tickerSpeed = 25.0
     var onSizeChange: ((CGFloat, CGFloat, Bool) -> Void)?
+    var windowProvider: () -> NotchWindow? = {
+        NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow
+    }
+
+    private var notchWindow: NotchWindow? { windowProvider() }
 
     // MARK: - IslandSizeCalculator delegates
 
@@ -78,6 +85,29 @@ struct NotchContentView: View {
     private var showCollapsedTicker: Bool { showActivityTicker && !isExpanded }
     private var collapsedOuterHeight: CGFloat {
         collapsedShapeHeight + (showCollapsedTicker ? tickerLineHeight + 4 : 0)
+    }
+
+    private var isReadyForLinkedPreview: Bool {
+        state == .collapsed && !expandPending && !collapseAnimating
+    }
+
+    private var hasUnreviewedTaskAttention: Bool {
+        manager.sessions.contains {
+            $0.hasPendingInteraction || ($0.status == .completed && $0.completionNeedsReview)
+                || [.waitingPermission, .waitingAnswer, .waitingPlanReview].contains($0.status)
+        }
+    }
+
+    private func updateTaskAttentionPresentation() {
+        let visible = notchWindow.map {
+            $0.isVisible && !NSApp.isHidden && !$0.isHiddenByIslandSwitch
+                && !$0.isInteractiveSwitchPreviewActive && !$0.isSwitchingApps
+        } ?? false
+        if taskAttentionPresented != visible { taskAttentionPresented = visible }
+    }
+
+    private func updateLinkedPreviewReadiness() {
+        notchWindow?.isCollapsedPreviewReady = isReadyForLinkedPreview
     }
 
     private var isExpanded: Bool { state != .collapsed }
@@ -200,9 +230,20 @@ struct NotchContentView: View {
         isExpanded: Bool,
         collapseAnimating: Bool,
         previousMouseY: CGFloat,
-        currentMouseY: CGFloat
+        currentMouseY: CGFloat,
+        isHandoffSuppressed: Bool = false,
+        isSwitchingApps: Bool = false
     ) -> Bool {
         isPointerInside && !isExpanded && !collapseAnimating && previousMouseY < currentMouseY
+            && !isHandoffSuppressed && !isSwitchingApps
+    }
+
+    static func shouldAllowHoverExpansion(
+        isPointerInside: Bool, isExpanded: Bool, collapseAnimating: Bool,
+        isHandoffSuppressed: Bool, isSwitchingApps: Bool
+    ) -> Bool {
+        isPointerInside && !isExpanded && !collapseAnimating
+            && !isHandoffSuppressed && !isSwitchingApps
     }
 
     /// 收起看门狗是否应当介入。
@@ -223,9 +264,11 @@ struct NotchContentView: View {
         windowFrame: CGRect,
         collapsedShapeHeight: CGFloat,
         isExpanded: Bool,
-        collapseAnimating: Bool
+        collapseAnimating: Bool,
+        isHandoffSuppressed: Bool = false,
+        isSwitchingApps: Bool = false
     ) -> CGSize {
-        guard !isExpanded, !collapseAnimating else { return .zero }
+        guard !isExpanded, !collapseAnimating, !isHandoffSuppressed, !isSwitchingApps else { return .zero }
 
         let pillCenterX = windowFrame.midX
         let pillCenterY = windowFrame.minY + collapsedShapeHeight / 2
@@ -391,34 +434,41 @@ struct NotchContentView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            UnevenRoundedRectangle(
-                topLeadingRadius: notchTopCornerRadius,
-                bottomLeadingRadius: notchBottomCornerRadius,
-                bottomTrailingRadius: notchBottomCornerRadius,
-                topTrailingRadius: notchTopCornerRadius,
-                style: .continuous
-            )
-            .fill(pillFillColor)
-            .shadow(
-                color: IslandStyle.shadowColor(for: themeManager.resolvedScheme)
-                    .opacity(IslandStyle.shadowOpacity(for: themeManager.resolvedScheme) + 0.02 * notchShapeOpenProgress),
-                radius: 10 + 10 * notchShapeOpenProgress,
-                y: 3 + notchShapeOpenProgress
-            )
-            .overlay {
+            IslandSwitchBackground(topRadius: notchTopCornerRadius, bottomRadius: notchBottomCornerRadius,
+                fillColor: NSColor(pillFillColor),
+                shadowOpacity: IslandStyle.shadowOpacity(for: themeManager.resolvedScheme) + 0.02 * notchShapeOpenProgress,
+                shadowRadius: 10 + 10 * notchShapeOpenProgress, shadowOffsetY: 3 + notchShapeOpenProgress,
+                strokeOpacity: pillStrokeOpacity + (isHoveringPill ? 0.15 : 0)) { style in
                 UnevenRoundedRectangle(
-                    topLeadingRadius: notchTopCornerRadius,
-                    bottomLeadingRadius: notchBottomCornerRadius,
-                    bottomTrailingRadius: notchBottomCornerRadius,
-                    topTrailingRadius: notchTopCornerRadius,
+                    topLeadingRadius: style.topRadius,
+                    bottomLeadingRadius: style.bottomRadius,
+                    bottomTrailingRadius: style.bottomRadius,
+                    topTrailingRadius: style.topRadius,
                     style: .continuous
                 )
-                .strokeBorder(
-                    IslandStyle.strokeColor(for: themeManager.resolvedScheme)
-                        .opacity(pillStrokeOpacity + (isHoveringPill ? 0.15 : 0)),
-                    lineWidth: 0.5
+                .fill(pillFillColor)
+                .shadow(
+                    color: IslandStyle.shadowColor(for: themeManager.resolvedScheme)
+                        .opacity(style.shadowOpacity),
+                    radius: style.shadowRadius,
+                    y: style.shadowOffsetY
                 )
+                .overlay {
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: style.topRadius,
+                        bottomLeadingRadius: style.bottomRadius,
+                        bottomTrailingRadius: style.bottomRadius,
+                        topTrailingRadius: style.topRadius,
+                        style: .continuous
+                    )
+                    .strokeBorder(
+                        IslandStyle.strokeColor(for: themeManager.resolvedScheme)
+                            .opacity(style.strokeOpacity),
+                        lineWidth: 0.5
+                    )
+                }
             }
+            // 弹簧在外层 SwiftUI 插值，避免跨原生宿主更新时直接跳到终值。
             .scaleEffect(
                 x: jellyTrigger ? (jellySettled ? hoverJellyScale.xSettle : hoverJellyScale.xPop) : 1.0,
                 y: jellyTrigger ? (jellySettled ? hoverJellyScale.ySettle : hoverJellyScale.yPop) : 1.0
@@ -446,7 +496,7 @@ struct NotchContentView: View {
             }
             .frame(width: shapeWidth, height: collapsedOuterHeight)
             .offset(magneticOffset)
-            .opacity(showContent ? 0 : 1)
+            .opacity(showContent || !handoffContentVisible ? 0 : 1)
             .allowsHitTesting(!showContent)
             .accessibilityHidden(showContent)
             .zIndex(0)
@@ -462,6 +512,8 @@ struct NotchContentView: View {
                 Label(audio.isMuted ? L10n.unmute : L10n.soundMute,
                       systemImage: audio.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
             }
+            Divider()
+            Toggle(L10n.taskAttention, isOn: $taskAttentionEnabled)
             Divider()
             Button(L10n.prefsEllipsis) {
                 openSettingsWindow()
@@ -480,7 +532,17 @@ struct NotchContentView: View {
             }
         }
         .accessibilityIdentifier(TestAccessibility.islandRoot)
+        .environment(\.taskAttentionPresented, taskAttentionPresented)
         .preferredColorScheme(themeManager.resolvedScheme)
+        .onChange(of: hasUnreviewedTaskAttention) { _, hasAttention in
+            if !hasAttention { notchWindow?.releaseTaskAttentionProtection() }
+        }
+        .onChange(of: taskAttentionEnabled) { _, enabled in
+            if !enabled { notchWindow?.releaseTaskAttentionProtection() }
+        }
+        .onChange(of: isReadyForLinkedPreview, initial: true) { _, _ in
+            updateLinkedPreviewReadiness()
+        }
         .onChange(of: expandedHeight) { _, _ in
             if isExpanded {
                 cachedExpandedShapeHeight = max(collapsedShapeHeight + 1, expandedHeight)
@@ -491,13 +553,10 @@ struct NotchContentView: View {
             cancelAutoCollapse()
             Self.handleIslandStateChange(newState, manager: manager)
         }
-        .onChange(of: expandedInactivityAutoHideDelay) { _, _ in
+        .onChange(of: autoCollapseEnabled) { _, _ in
             cancelAutoCollapse()
         }
-        .onChange(of: hoverExitCollapseDelay) { _, _ in
-            cancelAutoCollapse()
-        }
-        .onChange(of: autoCollapseDelay) { _, _ in
+        .onChange(of: pointerExitCollapseDelay) { _, _ in
             cancelAutoCollapse()
         }
         .onChange(of: manager.activeSessions.count) { _, _ in
@@ -506,34 +565,47 @@ struct NotchContentView: View {
         .onChange(of: showActivityTicker) { _, _ in
             reportSize()
         }
+        .onChange(of: pillWidth) { _, _ in
+            if !isExpanded { reportSize() }
+        }
+        .onChange(of: collapsedShapeHeight) { _, _ in
+            if !isExpanded { reportSize() }
+        }
         .onChange(of: manager.visibleSessions.count) { oldCount, newCount in
             reportSize()
             if autoHideWhenNoActiveSessions {
                 if newCount == 0 && oldCount > 0 {
+                    let generation = collapseGeneration
+                    let windowGeneration = notchWindow?.handoffState.generation
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        if manager.visibleSessions.isEmpty {
-                            NSApp.windows.first(where: { $0 is NotchWindow })?.orderOut(nil)
+                        if manager.visibleSessions.isEmpty, generation == collapseGeneration,
+                           let window = notchWindow, windowGeneration == window.handoffState.generation,
+                           !window.isSwitchingApps, window.handoffState.pendingPreparation == nil {
+                            window.orderOut(nil)
                         }
                     }
                 } else if newCount > 0 && oldCount == 0 {
-                    if let window = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow,
-                       !window.isHiddenByIslandSwitch {
+                    if let window = notchWindow,
+                       !window.isHiddenByIslandSwitch, !window.isSwitchingApps,
+                       window.handoffState.pendingPreparation == nil {
                         window.orderFrontRegardless()
                     }
                 }
             }
         }
         .onAppear {
-            if let w = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow {
+            if let w = notchWindow {
                 islandObscuredByNotch = w.isObscuredByPhysicalNotch()
             }
-            let initialState = Self.initialIslandState(for: manager)
+            let initialState = notchWindow?.handoffState.pendingPreparation == nil
+                ? Self.initialIslandState(for: manager) : .collapsed
             state = initialState
             Self.handleIslandStateChange(initialState, manager: manager)
             if initialState != .collapsed {
                 showContent = true
                 cachedExpandedShapeHeight = max(collapsedShapeHeight + 1, expandedHeight)
             }
+            if let window = notchWindow { installHandoffHandler(on: window) }
             reportSize()
             startHoverPolling()
             let collapseToken = NotificationCenter.default.addObserver(forName: .xislandCollapse, object: nil, queue: .main) { _ in
@@ -543,6 +615,28 @@ struct NotchContentView: View {
                 toggleActivityLog()
             }
             notificationTokens = [collapseToken, toggleToken]
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xislandDidFinishInteractivePreview)) { notification in
+            guard let window = notchWindow, notification.object as AnyObject? === window else { return }
+            updateTaskAttentionPresentation()
+            flushHandoffWindowResize()
+            resumeDeferredInteractionExpansion()
+            startHoverPolling()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xislandTaskAttention)) { notification in
+            guard let window = notchWindow, notification.object as AnyObject? === window,
+                  taskAttentionEnabled,
+                  let event = notification.userInfo?["event"] as? TaskAttentionEvent,
+                  manager.isCurrentTaskAttention(event) else { return }
+            // 完成提醒不打开详情；并行审批到达时仍优先保留真实交互面板。
+            guard event.kind != .completion || manager.hasInteraction else { return }
+            cancelAutoCollapse()
+            if manager.hasInteraction {
+                autoExpandForInteraction()
+            } else {
+                // 仅能观察等待状态的客户端回到总览，通过原有跳转入口处理。
+                expand(to: .expanded)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .xislandScrollDown)) { _ in
             let now = Date()
@@ -558,6 +652,9 @@ struct NotchContentView: View {
             expand(to: .expanded)
         }
         .onDisappear {
+            taskAttentionPresented = false
+            notchWindow?.removeHandoffPreparationHandler()
+            collapseGeneration += 1
             stopHoverPolling()
             cancelCollapseWatchdog()
             for token in notificationTokens {
@@ -566,13 +663,31 @@ struct NotchContentView: View {
             notificationTokens = []
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { notification in
-            guard notification.object is NotchWindow else { return }
+            guard let window = notchWindow, notification.object as? NotchWindow === window else { return }
+            restoreHandoffContentAfterExplicitShow()
             pollMousePosition()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xislandDidPresentWindow)) { notification in
+            guard let window = notchWindow, notification.object as? NotchWindow === window else { return }
+            updateTaskAttentionPresentation()
+            flushHandoffWindowResize()
+            restoreHandoffContentAfterExplicitShow(didPresentWindow: true)
+            startHoverPolling()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xislandHandoffLayoutDidUnlock)) { notification in
+            guard let window = notchWindow, notification.object as? NotchWindow === window else { return }
+            flushHandoffWindowResize()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xislandDidFinishHandoff)) { notification in
+            guard let window = notchWindow, notification.object as? NotchWindow === window else { return }
+            updateTaskAttentionPresentation()
+            resumeDeferredInteractionExpansion()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didHideNotification)) { _ in
             pollMousePosition()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didUnhideNotification)) { _ in
+            restoreHandoffContentAfterExplicitShow()
             pollMousePosition()
         }
         .onChange(of: reduceMotion) { _, reduced in
@@ -585,21 +700,88 @@ struct NotchContentView: View {
         }
         .onChange(of: manager.hasInteraction) { _, hasInteraction in
             if hasInteraction {
-                interactionCompleted = false
                 cancelAutoCollapse()
                 if collapseAnimating {
+                    let generation = collapseGeneration
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                        guard manager.hasInteraction else { return }
+                        guard manager.hasInteraction, generation == collapseGeneration else { return }
                         autoExpandForInteraction()
                     }
                 } else {
                     autoExpandForInteraction()
                 }
             } else {
-                interactionCompleted = isExpanded
                 cancelAutoCollapse()
             }
         }
+    }
+
+    private func installHandoffHandler(on window: NotchWindow) {
+        window.installHandoffPreparationHandler { [weak window] generation in
+            guard let window else { return }
+            prepareCollapsedForHandoff(window: window, generation: generation)
+        }
+    }
+
+    private func prepareCollapsedForHandoff(window: NotchWindow, generation: UInt64) {
+        guard window.handoffState.pendingPreparation == generation,
+              preparedHandoffGeneration != generation else { return }
+        preparedHandoffGeneration = generation
+        handoffResizePending = false
+        cancelAutoCollapse()
+        cancelCollapseWatchdog()
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            collapseGeneration += 1
+            expandPending = false
+            collapseAnimating = false
+            interactionExpansionAfterHandoff = false
+            showContent = false
+            state = .collapsed
+            lastCollapseAt = Date()
+            isHovering = false
+            clearHoverJellyState(animated: false)
+            previousMouseY = NSEvent.mouseLocation.y
+            jumpMouseLocation = nil
+            handoffContentVisible = reduceMotion || window.inboundSwitchMotion != nil
+            window.islandState = .collapsed
+            Self.handleIslandStateChange(.collapsed, manager: manager)
+            // 交接只复位展示，保留任务与审批草稿，并包含活动 ticker 的折叠高度。
+            window.resizeToFitCollapse(contentWidth: pillWidth, contentHeight: collapsedOuterHeight)
+        }
+        DispatchQueue.main.async {
+            guard preparedHandoffGeneration == generation else { return }
+            let usesSlideMotion = window.inboundSwitchMotion != nil
+            guard window.completeInboundHandoffPreparation(generation: generation) else {
+                restoreHandoffContentAfterExplicitShow()
+                return
+            }
+            let duration = IslandHandoffState.inboundContentDuration(
+                reduceMotion: reduceMotion || usesSlideMotion
+            )
+            if duration == 0 {
+                handoffContentVisible = true
+            } else {
+                withAnimation(.easeOut(duration: duration)) { handoffContentVisible = true }
+            }
+            resumeDeferredInteractionExpansion()
+        }
+    }
+
+    private func resumeDeferredInteractionExpansion() {
+        guard interactionExpansionAfterHandoff, notchWindow?.isSwitchingApps != true else { return }
+        interactionExpansionAfterHandoff = false
+        autoExpandForInteraction()
+    }
+
+    private func restoreHandoffContentAfterExplicitShow(didPresentWindow: Bool = false) {
+        guard let window = notchWindow, window.handoffState.shouldRestoreContent(
+            preparedGeneration: preparedHandoffGeneration, isWindowVisible: window.isVisible,
+            didPresentWindow: didPresentWindow, hiddenByIslandSwitch: window.isHiddenByIslandSwitch
+        ) else { return }
+        handoffContentVisible = true
+        resumeDeferredInteractionExpansion()
     }
 
     @ViewBuilder
@@ -638,10 +820,11 @@ struct NotchContentView: View {
     }
 
     private func expand(to newState: IslandState) {
-        guard !expandPending else { return }
+        guard !expandPending, notchWindow?.isSwitchingApps != true else { return }
+        notchWindow?.isCollapsedPreviewReady = false
         cancelAutoCollapse()
-        interactionCompleted = false
         collapseGeneration += 1
+        let generation = collapseGeneration
         collapseAnimating = false
         // 世代已递增，残留的看门狗即使触发也会因世代不符而退出；显式取消更省一次调度。
         cancelCollapseWatchdog()
@@ -649,7 +832,7 @@ struct NotchContentView: View {
         clearHoverJellyState(animated: false)
 
         // 同步状态到窗口层
-        if let window = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow {
+        if let window = notchWindow {
             window.islandState = newState
         }
 
@@ -661,6 +844,8 @@ struct NotchContentView: View {
         IslandHapticEngine.fire(.panelExpand)
         onSizeChange?(target.width, target.height, true)
         let runExpansion = {
+            guard generation == self.collapseGeneration else { return }
+            self.handoffContentVisible = true
             if disableAnimations {
                 self.isHovering = false
                 self.state = newState
@@ -687,9 +872,12 @@ struct NotchContentView: View {
     }
 
     private func collapse() {
+        if notchWindow?.isInteractiveSwitchPreviewActive == true {
+            notchWindow?.cancelIslandSwitchPreview()
+            return
+        }
+        notchWindow?.isCollapsedPreviewReady = false
         cancelAutoCollapse()
-        interactionCompleted = false
-        expandedByHover = false
         collapseGeneration += 1
         let generation = collapseGeneration
         let timing = transitionTiming
@@ -714,7 +902,7 @@ struct NotchContentView: View {
             let h = self.collapsedOuterHeight
             DispatchQueue.main.async {
                 guard generation == self.collapseGeneration, self.state == .collapsed else { return }
-                if let window = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow {
+                if let window = notchWindow {
                     window.resizeToFitCollapse(contentWidth: w, contentHeight: h)
                     window.islandState = self.state
                 }
@@ -756,7 +944,7 @@ struct NotchContentView: View {
             collapseWatchdogWorkItem = nil
             let w = pillWidth
             let h = collapsedOuterHeight
-            if let window = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow {
+            if let window = notchWindow {
                 window.resizeToFitCollapse(contentWidth: w, contentHeight: h)
                 window.islandState = state
             }
@@ -772,8 +960,24 @@ struct NotchContentView: View {
     }
 
     private func reportSize() {
-        guard !collapseAnimating else { return }
+        updateLinkedPreviewReadiness()
+        guard !collapseAnimating, notchWindow?.handoffState.pendingPreparation == nil else { return }
+        if notchWindow?.isHandoffLayoutLocked == true {
+            handoffResizePending = true
+            return
+        }
+        if state == .collapsed, let window = notchWindow {
+            window.resizeToFitCollapse(contentWidth: pillWidth, contentHeight: collapsedOuterHeight)
+            return
+        }
         onSizeChange?(contentWidth, contentHeight, true)
+    }
+
+    private func flushHandoffWindowResize() {
+        guard handoffResizePending, !collapseAnimating, notchWindow?.isHandoffLayoutLocked != true,
+              notchWindow?.handoffState.pendingPreparation == nil else { return }
+        handoffResizePending = false
+        reportSize()
     }
 
     private func targetSize(for state: IslandState) -> (width: CGFloat, height: CGFloat) {
@@ -934,6 +1138,22 @@ struct NotchContentView: View {
 
             Button {
                 markExpandedInteraction()
+                taskAttentionEnabled.toggle()
+            } label: {
+                Image(systemName: taskAttentionEnabled ? "bell.badge.fill" : "bell.slash")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(taskAttentionEnabled ? Color.orange : IslandStyle.secondaryText)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.taskAttention)
+            .accessibilityValue(taskAttentionEnabled ? L10n.taskAttentionOn : L10n.taskAttentionOff)
+            .accessibilityIdentifier("island.taskAttentionToggle")
+            .help(L10n.taskAttentionDescription)
+
+            Button {
+                markExpandedInteraction()
                 openSettingsWindow()
             } label: {
                     Image(systemName: "gearshape.fill")
@@ -992,7 +1212,6 @@ struct NotchContentView: View {
 
             Button {
                 markExpandedInteraction()
-                expandedByHover = false
                 collapse()
             } label: {
                 Image(systemName: "xmark.circle.fill")
@@ -1034,12 +1253,18 @@ struct NotchContentView: View {
 
     private func autoExpandForInteraction() {
         guard let targetState = Self.initialAutoExpandedState(for: manager) else { return }
+        if notchWindow?.isSwitchingApps == true {
+            interactionExpansionAfterHandoff = true
+            return
+        }
 
         if !isExpanded {
             expand(to: .expanded)
+            let generation = collapseGeneration
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                guard manager.hasInteraction else { return }
-                expand(to: targetState)
+                guard generation == collapseGeneration,
+                      let currentTarget = Self.initialAutoExpandedState(for: manager) else { return }
+                expand(to: currentTarget)
             }
             return
         }
@@ -1067,12 +1292,8 @@ struct NotchContentView: View {
         let delay = ExpandedAutoCollapsePolicy.delay(
             state: state,
             protectsInteraction: manager.protectsInteraction || expandPending || collapseAnimating,
-            expandedByHover: expandedByHover,
-            visibleSessionCount: manager.visibleSessions.count,
-            hoverExitDelay: hoverExitCollapseDelay,
-            inactivityDelay: expandedInactivityAutoHideDelay,
-            interactionCompleted: interactionCompleted,
-            interactionCompletionDelay: autoCollapseDelay
+            isEnabled: autoCollapseEnabled,
+            configuredDelay: pointerExitCollapseDelay
         )
         var countdown = autoCollapseCountdown
         let shouldCollapse = countdown.update(isPointerInside: isPointerInside, delay: delay, now: now)
@@ -1107,14 +1328,20 @@ struct NotchContentView: View {
     }
 
     private func pollMousePosition() {
+        updateTaskAttentionPresentation()
         guard isHoverPollingActive else { return }
-        guard let window = NSApp.windows.first(where: { $0 is NotchWindow }) as? NotchWindow,
+        if notchWindow?.isInteractiveSwitchPreviewActive == true {
+            cancelAutoCollapse()
+            return
+        }
+        guard let window = notchWindow,
               HoverPollingPolicy.canSample(
                 windowVisible: window.isVisible,
                 windowOccluded: !window.occlusionState.contains(.visible),
                 applicationHidden: NSApp.isHidden,
                 hiddenByIslandSwitch: window.isHiddenByIslandSwitch
               ) else {
+            notchWindow?.cancelIslandSwitchPreview(animated: false)
             cancelAutoCollapse()
             hoverPolling.stop()
             clearHoverJellyState(animated: false)
@@ -1152,13 +1379,16 @@ struct NotchContentView: View {
             recentPointerMovement: Date().timeIntervalSince(lastMouseMovementAt) < 0.25
         )
         hoverPolling.update(cadence: cadence) { pollMousePosition() }
-        var inside = hitFrame.contains(mouse)
+        let physicallyInside = hitFrame.contains(mouse)
+        let handoffSuppressed = window.observeHandoffPointer(isInside: physicallyInside)
+        let switching = window.isSwitchingApps || window.swipeRecognizer.consumesHorizontalScroll
+        var inside = physicallyInside
 
         // collapse 动画期间（state 已是 collapsed 但 window.frame 尚未缩回），
         // 强制 inside = false，确保 isHovering 能被及时清除，避免 0.75s 状态不一致。
         if collapseAnimating { inside = false }
 
-        if shouldAutoCollapse(isPointerInside: inside, now: Date()) {
+        if !handoffSuppressed, !switching, shouldAutoCollapse(isPointerInside: inside, now: Date()) {
             collapse()
             return
         }
@@ -1168,7 +1398,9 @@ struct NotchContentView: View {
             isExpanded: isExpanded,
             collapseAnimating: collapseAnimating,
             previousMouseY: previousMouseY,
-            currentMouseY: mouse.y
+            currentMouseY: mouse.y,
+            isHandoffSuppressed: handoffSuppressed,
+            isSwitchingApps: switching
         ) {
             if !isHoveringPill, !reduceMotion {
                 isHoveringPill = true
@@ -1185,13 +1417,13 @@ struct NotchContentView: View {
                     }
                 }
             }
-        } else if !inside || isExpanded || collapseAnimating {
+        } else if !inside || isExpanded || collapseAnimating || handoffSuppressed || switching {
             clearHoverJellyState()
         }
 
         previousMouseY = mouse.y
 
-        if reduceMotion {
+        if reduceMotion || handoffSuppressed || switching {
             if magneticOffset != .zero { magneticOffset = .zero }
         } else {
             let targetMagneticOffset = Self.magneticOffset(
@@ -1199,7 +1431,9 @@ struct NotchContentView: View {
                 windowFrame: window.frame,
                 collapsedShapeHeight: collapsedShapeHeight,
                 isExpanded: isExpanded,
-                collapseAnimating: collapseAnimating
+                collapseAnimating: collapseAnimating,
+                isHandoffSuppressed: handoffSuppressed,
+                isSwitchingApps: switching
             )
             if abs(targetMagneticOffset.width - magneticOffset.width) > 0.5 {
                 withAnimation(IslandMotionTokens.magneticFollow) {
@@ -1212,7 +1446,10 @@ struct NotchContentView: View {
             }
         }
 
-        if inside && !isExpanded {
+        if Self.shouldAllowHoverExpansion(
+            isPointerInside: inside, isExpanded: isExpanded, collapseAnimating: collapseAnimating,
+            isHandoffSuppressed: handoffSuppressed, isSwitchingApps: switching
+        ) {
             guard Date().timeIntervalSince(lastCollapseAt) > 0.65 else { return }
             if let savedPos = jumpMouseLocation {
                 let dx = mouse.x - savedPos.x
@@ -1223,7 +1460,6 @@ struct NotchContentView: View {
             if !manager.visibleSessions.isEmpty {
                 if !hoverToExpandPanel { return }
                 if smartSuppression && isAgentTerminalFocused() { return }
-                expandedByHover = true
                 expand(to: .expanded)
             } else if !isHovering {
                 if disableAnimations {

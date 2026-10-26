@@ -251,7 +251,7 @@ final class AppTestConfigurationTests: XCTestCase {
         defaults.set(false, forKey: "reduceMotion")
         defaults.set(true, forKey: "smartSuppression")
         defaults.set(true, forKey: "autoHideWhenNoActiveSessions")
-        defaults.set(3.0, forKey: "autoCollapseDelay")
+        defaults.set(3.0, forKey: AutoCollapseSettings.delayKey)
 
         AppTestConfiguration(
             isEnabled: true,
@@ -266,7 +266,7 @@ final class AppTestConfigurationTests: XCTestCase {
         XCTAssertFalse(defaults.bool(forKey: "smartSuppression"))
         XCTAssertFalse(defaults.bool(forKey: "autoHideWhenNoActiveSessions"))
         XCTAssertFalse(defaults.bool(forKey: "disableAnimations"))
-        XCTAssertEqual(defaults.double(forKey: "autoCollapseDelay"), 0.15, accuracy: 0.0001)
+        XCTAssertEqual(defaults.double(forKey: AutoCollapseSettings.delayKey), 0.15, accuracy: 0.0001)
     }
 
     func testApplyDefaultsPropagatesDisableAnimationsFlagInTestMode() {
@@ -298,7 +298,7 @@ final class AppTestConfigurationTests: XCTestCase {
         defaults.set(false, forKey: "reduceMotion")
         defaults.set(true, forKey: "smartSuppression")
         defaults.set(true, forKey: "autoHideWhenNoActiveSessions")
-        defaults.set(3.0, forKey: "autoCollapseDelay")
+        defaults.set(3.0, forKey: AutoCollapseSettings.delayKey)
 
         AppTestConfiguration(
             isEnabled: false,
@@ -313,7 +313,7 @@ final class AppTestConfigurationTests: XCTestCase {
         XCTAssertTrue(defaults.bool(forKey: "smartSuppression"))
         XCTAssertTrue(defaults.bool(forKey: "autoHideWhenNoActiveSessions"))
         XCTAssertFalse(defaults.bool(forKey: "disableAnimations"))
-        XCTAssertEqual(defaults.double(forKey: "autoCollapseDelay"), 3.0, accuracy: 0.0001)
+        XCTAssertEqual(defaults.double(forKey: AutoCollapseSettings.delayKey), 3.0, accuracy: 0.0001)
     }
 }
 

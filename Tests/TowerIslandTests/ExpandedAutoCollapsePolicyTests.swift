@@ -5,67 +5,72 @@ final class ExpandedAutoCollapsePolicyTests: XCTestCase {
     private func delay(
         state: IslandState = .expanded,
         protectsInteraction: Bool = false,
-        expandedByHover: Bool = false,
-        visibleSessionCount: Int = 2,
-        hoverExitDelay: TimeInterval = 0.5,
-        inactivityDelay: TimeInterval = 10,
-        interactionCompleted: Bool = false,
-        interactionCompletionDelay: TimeInterval = 3
+        isEnabled: Bool = true,
+        configuredDelay: TimeInterval = 3
     ) -> TimeInterval? {
         ExpandedAutoCollapsePolicy.delay(
             state: state,
             protectsInteraction: protectsInteraction,
-            expandedByHover: expandedByHover,
-            visibleSessionCount: visibleSessionCount,
-            hoverExitDelay: hoverExitDelay,
-            inactivityDelay: inactivityDelay,
-            interactionCompleted: interactionCompleted,
-            interactionCompletionDelay: interactionCompletionDelay
+            isEnabled: isEnabled,
+            configuredDelay: configuredDelay
         )
     }
 
-    func testHoverExpandedPanelUsesHoverExitDelay() {
-        XCTAssertEqual(delay(expandedByHover: true), 0.5)
+    func testEveryExpandedStateUsesTheSameConfiguredDelay() {
+        let states: [IslandState] = [.expanded, .permission("s"), .question("s"), .planReview("s")]
+        for state in states {
+            XCTAssertEqual(delay(state: state, configuredDelay: 0.15), 0.15)
+            XCTAssertEqual(delay(state: state, configuredDelay: 5), 5)
+        }
     }
 
-    func testManuallyExpandedEmptyPanelUsesHoverExitDelay() {
-        XCTAssertEqual(delay(visibleSessionCount: 0), 0.5)
+    func testZeroMeansImmediateInsteadOfDisabled() {
+        let states: [IslandState] = [.expanded, .permission("s"), .question("s"), .planReview("s")]
+        for state in states {
+            XCTAssertEqual(delay(state: state, configuredDelay: 0), 0)
+        }
+        var countdown = ExpandedAutoCollapseCountdown()
+        XCTAssertTrue(countdown.update(isPointerInside: false, delay: delay(configuredDelay: 0),
+                                       now: Date(timeIntervalSince1970: 1_000)))
     }
 
-    func testManuallyExpandedPanelWithSessionsUsesInactivityDelay() {
-        XCTAssertEqual(delay(), 10)
-    }
-
-    func testCompletedInteractionUsesItsConfiguredDelay() {
-        XCTAssertEqual(delay(state: .permission("session"), interactionCompleted: true), 3)
-    }
-
-    func testUsesShortestApplicablePositiveDelay() {
-        XCTAssertEqual(delay(expandedByHover: true, inactivityDelay: 0.2, interactionCompleted: true), 0.2)
-        XCTAssertEqual(delay(expandedByHover: true, hoverExitDelay: 0, interactionCompleted: true), 3)
-        XCTAssertEqual(delay(inactivityDelay: 0, interactionCompleted: true, interactionCompletionDelay: 4), 4)
-    }
-
-    func testZeroDisablesEachPath() {
-        XCTAssertNil(delay(expandedByHover: true, hoverExitDelay: 0, inactivityDelay: 0,
-                           interactionCompleted: true, interactionCompletionDelay: 0))
-        XCTAssertNil(delay(inactivityDelay: 0))
+    func testIndependentSwitchDisablesZeroAndPositiveDelays() {
+        for configuredDelay in [0.0, 0.15, 5, 600] {
+            XCTAssertNil(delay(isEnabled: false, configuredDelay: configuredDelay))
+        }
     }
 
     func testIgnoresInvalidConfiguredDelays() {
-        XCTAssertNil(delay(expandedByHover: true, hoverExitDelay: .nan, inactivityDelay: -.infinity,
-                           interactionCompleted: true, interactionCompletionDelay: -1))
+        for invalidDelay: TimeInterval in [-1, .nan, .infinity, -.infinity] {
+            XCTAssertNil(delay(configuredDelay: invalidDelay))
+        }
     }
 
     func testCollapsedPanelCannotAutoCollapseAgain() {
-        XCTAssertNil(delay(state: .collapsed, expandedByHover: true, interactionCompleted: true))
+        XCTAssertNil(delay(state: .collapsed, configuredDelay: 0))
+        XCTAssertNil(delay(state: .collapsed, configuredDelay: 5))
     }
 
     func testWaitingInteractionProtectsEveryExpandedState() {
         let states: [IslandState] = [.expanded, .permission("s"), .question("s"), .planReview("s")]
         for state in states {
-            XCTAssertNil(delay(state: state, protectsInteraction: true,
-                               expandedByHover: true, interactionCompleted: true))
+            XCTAssertNil(delay(state: state, protectsInteraction: true, configuredDelay: 0))
+            XCTAssertNil(delay(state: state, protectsInteraction: true, configuredDelay: 5))
         }
+    }
+
+    func testReenablingStartsANewCountdownRatherThanReusingTimeWhileDisabled() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var countdown = ExpandedAutoCollapseCountdown()
+        XCTAssertFalse(countdown.update(isPointerInside: false, delay: delay(), now: start))
+        XCTAssertFalse(countdown.update(isPointerInside: false, delay: delay(isEnabled: false),
+                                         now: start.addingTimeInterval(2)))
+        XCTAssertNil(countdown.pointerExitedAt)
+        let enabledAgain = start.addingTimeInterval(30)
+        XCTAssertFalse(countdown.update(isPointerInside: false, delay: delay(), now: enabledAgain))
+        XCTAssertFalse(countdown.update(isPointerInside: false, delay: delay(),
+                                         now: enabledAgain.addingTimeInterval(2.9)))
+        XCTAssertTrue(countdown.update(isPointerInside: false, delay: delay(),
+                                        now: enabledAgain.addingTimeInterval(3)))
     }
 }

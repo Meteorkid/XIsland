@@ -1,43 +1,38 @@
 import AppKit
 
-/// 横滑切换手势方向
-enum SwipeDirection {
+/// 横滑切换方向沿用 AppKit 已应用自然滚动设置后的横向增量。
+enum SwipeDirection: String, Equatable, Sendable {
     case left
     case right
+
+    var sign: CGFloat { self == .left ? -1 : 1 }
 }
 
-/// 横滑切换手势识别结果
-enum SwipeResult {
+/// 只有手指结束滚动后才提交；进度为有符号的累计位移（pt）。
+enum SwipeResult: Equatable {
     case inProgress
+    case progress(CGFloat)
+    case cancelled
     case triggered(SwipeDirection)
 }
 
-/// 触控板横滑切换手势识别器
-/// 用于在 XNook 和 X Island 之间切换
 final class SwipeGestureRecognizer {
-    // MARK: - 配置
-
-    /// 横向累计位移触发阈值（pt）
-    private var threshold: CGFloat {
-        IslandIntegrationSettings.swipeSensitivity.threshold
+    private enum Axis {
+        case undecided
+        case horizontal
+        case vertical
     }
-    /// 手势冷却时间（秒），防止连续触发
+
+    private let axisLockDistance: CGFloat = 6
     private let cooldown: TimeInterval = 0.5
-    /// 横向与纵向位移的最小比例（横向必须明显大于纵向）
-    private var axisRatio: CGFloat {
-        IslandIntegrationSettings.swipeSensitivity.axisRatio
-    }
-
-    // MARK: - 状态
-
+    private var axis: Axis?
     private var accumulatedX: CGFloat = 0
     private var accumulatedY: CGFloat = 0
-    private var gestureStartTime: Date?
-    private var hasTriggered = false
+    private var threshold: CGFloat = 0
+    private var axisRatio: CGFloat = 0
     private var lastTriggerTime: Date = .distantPast
     private var suppressedUntil: Date = .distantPast
 
-    /// 处理滚动事件，返回识别结果
     func handleScroll(event: NSEvent) -> SwipeResult {
         handleScroll(
             deltaX: event.scrollingDeltaX,
@@ -57,86 +52,88 @@ final class SwipeGestureRecognizer {
         momentumPhase: NSEvent.Phase,
         now: Date
     ) -> SwipeResult {
-        guard momentumPhase.isEmpty else {
-            reset()
-            return .inProgress
+        guard deltaX.isFinite, deltaY.isFinite, now.timeIntervalSinceReferenceDate.isFinite,
+              isPrecise, momentumPhase.isEmpty,
+              now >= suppressedUntil else {
+            return cancelActiveGesture()
         }
 
-        guard now >= suppressedUntil else {
-            reset()
-            return .inProgress
+        if phase.contains(.cancelled) || phase.contains(.mayBegin) {
+            return cancelActiveGesture()
         }
 
-        // 冷却期内忽略
-        guard now.timeIntervalSince(lastTriggerTime) > cooldown else {
-            return .inProgress
-        }
+        // 没有 phase 的精确滚轮没有可靠的松手边界，不参与切换。
+        guard !phase.isEmpty else { return cancelActiveGesture() }
 
-        // 仅处理触控板精确滚动
-        guard isPrecise else {
-            reset()
-            return .inProgress
-        }
-
-        // 手势结束或取消时清理累计状态
-        if phase.contains(.ended) || phase.contains(.cancelled) || phase.contains(.mayBegin) {
-            reset()
-            return .inProgress
-        }
-
+        let replacesPreview = phase.contains(.began) && axis == .horizontal
         if phase.contains(.began) {
             reset()
+            guard now.timeIntervalSince(lastTriggerTime) > cooldown else { return .inProgress }
+            let sensitivity = IslandIntegrationSettings.swipeSensitivity
+            threshold = sensitivity.threshold
+            axisRatio = sensitivity.axisRatio
+            axis = .undecided
         }
 
-        // 新手势开始时重置
-        if gestureStartTime == nil {
-            gestureStartTime = now
+        // 不接管半途进入命中区域的 changed，也不消费已结束手势的尾部。
+        guard axis != nil else { return .inProgress }
+        let nextX = accumulatedX + deltaX
+        let nextY = accumulatedY + deltaY
+        guard nextX.isFinite, nextY.isFinite else { return cancelActiveGesture() }
+        accumulatedX = nextX
+        accumulatedY = nextY
+
+        if axis == .undecided,
+           max(abs(accumulatedX), abs(accumulatedY)) >= axisLockDistance {
+            axis = abs(accumulatedX) > abs(accumulatedY) * axisRatio ? .horizontal : .vertical
         }
 
-        // 方向判断：横向必须明显大于纵向
-        guard abs(deltaX) > abs(deltaY) * axisRatio else {
-            // 纵向为主，重置横向累计
-            accumulatedX = 0
-            return .inProgress
+        if phase.contains(.ended) {
+            let shouldCommit = axis == .horizontal && abs(accumulatedX) >= threshold
+            let direction: SwipeDirection = accumulatedX > 0 ? .right : .left
+            let result: SwipeResult = shouldCommit ? .triggered(direction)
+                : (axis == .horizontal ? .cancelled : .inProgress)
+            reset()
+            if shouldCommit { lastTriggerTime = now }
+            return result
         }
 
-        accumulatedX += deltaX
-        accumulatedY += deltaY
-
-        // 累计阈值检查
-        guard abs(accumulatedX) >= threshold else {
-            return .inProgress
-        }
-
-        // 触发切换
-        hasTriggered = true
-        let direction: SwipeDirection = accumulatedX > 0 ? .right : .left
-        lastTriggerTime = now
-
-        // 延迟重置，允许手势完成后清理
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.reset()
-        }
-
-        return .triggered(direction)
+        if axis == .horizontal { return .progress(accumulatedX) }
+        return replacesPreview ? .progress(0) : .inProgress
     }
 
-    /// 目标岛刚显示时，暂时忽略来源手势的剩余事件。
-    func suppress(for duration: TimeInterval, now: Date = Date()) {
-        suppressedUntil = max(suppressedUntil, now.addingTimeInterval(duration))
+    /// 目标接管后丢弃来源手势的尾部；只有新的 began 可以重新开始。
+    func suppressUntilNextGesture() {
         reset()
     }
 
-    /// 重置手势状态
-    func reset() {
-        accumulatedX = 0
-        accumulatedY = 0
-        gestureStartTime = nil
-        hasTriggered = false
+    /// 保留时间抑制接口；抑制到期也必须等到新的 began。
+    func suppress(for duration: TimeInterval, now: Date = Date()) {
+        reset()
+        guard duration.isFinite, now.timeIntervalSinceReferenceDate.isFinite else { return }
+        let deadline = now.addingTimeInterval(max(0, duration))
+        guard deadline.timeIntervalSinceReferenceDate.isFinite else { return }
+        suppressedUntil = max(suppressedUntil, deadline)
     }
 
-    /// 是否正在活跃手势中
-    var isActive: Bool {
-        gestureStartTime != nil && !hasTriggered
+    func reset() {
+        axis = nil
+        accumulatedX = 0
+        accumulatedY = 0
+    }
+
+    /// 包括尚未锁轴的开始阶段，供事件入口保留本次手势的所有权。
+    var isActive: Bool { axis != nil }
+    var hasLockedVerticalAxis: Bool { axis == .vertical }
+
+    /// 判轴前先保留横向意图，避免轻微纵向分量提前展开面板。
+    var consumesHorizontalScroll: Bool {
+        axis == .horizontal || (axis == .undecided && abs(accumulatedX) > abs(accumulatedY))
+    }
+
+    private func cancelActiveGesture() -> SwipeResult {
+        let result: SwipeResult = axis == .horizontal ? .cancelled : .inProgress
+        reset()
+        return result
     }
 }

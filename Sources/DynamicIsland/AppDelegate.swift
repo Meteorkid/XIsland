@@ -10,6 +10,7 @@ extension Notification.Name {
     static let xislandToggleActivityLog = Notification.Name("xislandToggleActivityLog")
     static let xislandExportSession = Notification.Name("xislandExportSession")
     static let xislandToggleSearch = Notification.Name("xislandToggleSearch")
+    static let xislandTaskAttention = Notification.Name("xislandTaskAttention")
 }
 
 /// 跨进程通知前缀：请求目标灵动岛隐藏自身
@@ -75,9 +76,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let launchHooks: LaunchHooks
     private var scrollMonitor: Any?
     private var islandHideObserver: NSObjectProtocol?
+    private var linkedIslandPreviewService: LinkedIslandPreviewService?
     private var clearSwitchingAppsWorkItem: DispatchWorkItem?
     private var pendingIslandShowURL: URL?
+    private var lastInboundMotionUptime: TimeInterval = -.infinity
     private var hasExplicitIslandVisibilityRequest = false
+    private lazy var taskAttentionPresenter = TaskAttentionPresenter(environment: .init(
+        isEnabled: { TaskAttentionSettings.isEnabled() },
+        isCurrent: { [weak self] in self?.sessionManager.isCurrentTaskAttention($0) == true },
+        schedule: { delay, action in
+            let work = DispatchWorkItem { MainActor.assumeIsolated { action() } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+            return { work.cancel() }
+        },
+        present: { [weak self] in self?.presentTaskAttention($0) }
+    ))
 
     override convenience init() {
         self.init(testConfiguration: AppTestConfiguration.current())
@@ -93,6 +106,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.quotaTracker = QuotaTracker(testConfiguration: testConfiguration)
         self.integrationSetupManager = IntegrationSetupManager(environment: testConfiguration.isEnabled ? .isolated : nil)
         super.init()
+        sessionManager.onTaskAttention = { [weak self] event in
+            self?.taskAttentionPresenter.enqueue(event)
+        }
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -118,11 +134,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.shared = self
         NSApp.setActivationPolicy(.accessory)
 
+        AutoCollapseSettings.migrate(AppPreferences.defaults, domainName: AppPreferences.persistentDomainName)
         AppPreferences.defaults.register(defaults: [
             "showOnAllSpaces": true,
-            "autoCollapseDelay": 3.0,
-            "expandedInactivityAutoHideDelay": 10.0,
-            "hoverExitCollapseDelay": 0.5,
+            AutoCollapseSettings.enabledKey: true,
+            AutoCollapseSettings.delayKey: AutoCollapseSettings.defaultDelay,
             "scrollDownToExpandPanel": true,
             "smartSuppression": true,
             "autoHideWhenNoActiveSessions": false,
@@ -138,6 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "tickerContentMode": CollapsedTickerContentMode.defaultValue.rawValue,
             "animationIntensity": IslandAnimationIntensity.defaultValue.rawValue,
             "jellyIntensity": IslandJellyIntensity.defaultValue.rawValue,
+            "taskAttentionEnabled": true,
         ])
         IslandIntegrationSettings.registerDefaults()
         testConfiguration.applyDefaults()
@@ -174,11 +191,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ) { [weak self] note in
                 let peer = note.userInfo?["source"] as? String
                 let shownAt = note.userInfo?["shownAt"] as? TimeInterval
+                let motion: IslandSwitchMotion?
+                do { motion = try IslandSwitchMotion.decode(userInfo: note.userInfo) }
+                catch { return }
                 Task { @MainActor [weak self] in
-                    self?.hideIslandForSwitch(from: peer, shownAt: shownAt)
+                    self?.hideIslandForSwitch(from: peer, shownAt: shownAt, motion: motion)
                 }
             }
         }
+
+        if !testConfiguration.isEnabled { setupLinkedIslandPreviewService() }
 
         let initialIslandState = NotchContentView.initialIslandState(for: sessionManager)
         sessionManager.currentIslandState = initialIslandState
@@ -265,6 +287,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        taskAttentionPresenter.cancel()
+        linkedIslandPreviewService?.stop()
+        linkedIslandPreviewService = nil
         isTerminating = true
         socketServer?.stop()
         hookRepairTimer?.invalidate()
@@ -292,52 +317,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleIslandCommand(_ url: URL) {
-        // 解析路径: island://xisland/show
-        // url.host 是目标应用名，检查是否是发给自己的
         guard let targetName = url.host,
               targetName == AppSwitcher.shared.currentAppName,
               url.path == "/show" else { return }
-        hasExplicitIslandVisibilityRequest = true
-        guard let window = notchWindow else {
-            pendingIslandShowURL = url
-            return
+        let motion: IslandSwitchMotion?
+        do { motion = try IslandSwitchMotion.decode(url: url) }
+        catch { return }
+        guard let attentionAdmission = IslandAttentionEpoch.admission(for: url, motion: motion) else { return }
+        if let motion {
+            guard motion.isTimely(at: ProcessInfo.processInfo.systemUptime),
+                  motion.issuedUptime > lastInboundMotionUptime else { return }
+            if notchWindow == nil, let pendingIslandShowURL,
+               let pending = try? IslandSwitchMotion.decode(url: pendingIslandShowURL),
+               pending.issuedUptime >= motion.issuedUptime { return }
         }
+        hasExplicitIslandVisibilityRequest = true
+        guard let window = notchWindow else { pendingIslandShowURL = url; return }
         pendingIslandShowURL = nil
+        if let motion { lastInboundMotionUptime = motion.issuedUptime }
         AppSwitcher.shared.cancelSwitch()
-
-        // 立即设置切换标志（同步），防止 activeSpaceDidChange 重新显示窗口
-        window.isHiddenByIslandSwitch = false
-        window.isSwitchingApps = true
-        window.swipeRecognizer.suppress(for: 0.8)
-        scheduleClearSwitchingApps(window: window, delay: 1.5)
-
-        // 先收起并显示自身，确认接管后再请求来源岛隐藏
-        NotificationCenter.default.post(name: .xislandCollapse, object: nil)
-        window.showAtMouseScreen()
-
-        // 发送跨进程通知让其他所有岛隐藏
-        for islandName in AppSwitcher.shared.otherIslandNames {
-            let hideNotification = "\(hideNotificationPrefix)\(islandName)"
-            postHideNotification(hideNotification)
+        clearSwitchingAppsWorkItem?.cancel()
+        window.beginInboundHandoff(motion: motion) { [weak self, weak window] generation in
+            guard let self, let window else { return }
+            guard IslandAttentionEpoch.isCurrent(attentionAdmission) else {
+                if window.isCurrentHandoff(generation) { window.hideWindowForIslandSwitch(animated: false) }
+                return
+            }
+            // 两进程使用同一系统 uptime 起点；内容准备完成后再发送已显示回执。
+            let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                || AppPreferences.defaults.bool(forKey: "reduceMotion") || AppPreferences.defaults.bool(forKey: "disableAnimations")
+            let readyMotion = motion?.arriving(at: window.switchGeometry)
+                .starting(at: ProcessInfo.processInfo.systemUptime + 0.05,
+                                              reduceMotion: reduceMotion)
+            window.showPreparedHandoff(generation: generation, motion: readyMotion)
+            self.scheduleClearSwitchingApps(window: window, delay: 1.5)
+            self.requestOtherIslandsToHide(motion: readyMotion)
         }
     }
 
     func hideIslandForSwitch(from peer: String? = nil, shownAt: TimeInterval? = nil,
-                             using switcher: AppSwitcher? = nil) {
+                             using switcher: AppSwitcher? = nil, motion: IslandSwitchMotion? = nil) {
+        let switcher = switcher ?? .shared
         guard let window = notchWindow,
-              (switcher ?? .shared).acceptPeerHideRequest(from: peer, shownAt: shownAt, after: window.lastExplicitShowTime)
-        else { return }
+              switcher.acceptPeerHideRequest(from: peer, shownAt: shownAt,
+                  after: window.lastExplicitShowTime, motion: motion) else { return }
         hasExplicitIslandVisibilityRequest = true
-        window.isHiddenByIslandSwitch = true
-        window.isSwitchingApps = true
-        window.orderOut(nil)
-        scheduleClearSwitchingApps(window: window, delay: 1.0)
+        clearSwitchingAppsWorkItem?.cancel()
+        window.hideWindowForIslandSwitch(motion: switcher.acceptedPeerMotion)
     }
 
     private func scheduleClearSwitchingApps(window: NotchWindow, delay: TimeInterval) {
         clearSwitchingAppsWorkItem?.cancel()
+        let handoffGeneration = window.handoffState.generation
         let work = DispatchWorkItem { [weak self, weak window] in
-            guard let window else { return }
+            guard let window, handoffGeneration == window.handoffState.generation else { return }
             self?.clearSwitchingProtection(window: window)
         }
         clearSwitchingAppsWorkItem = work
@@ -345,7 +378,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func clearSwitchingProtection(window: NotchWindow, using switcher: AppSwitcher? = nil) {
-        guard !(switcher ?? .shared).isSwitchInProgress else { return }
+        guard !(switcher ?? .shared).isSwitchInProgress,
+              window.handoffState.pendingPreparation == nil,
+              !window.handoffState.isPresentingInbound,
+              !window.handoffState.isFadingOut else { return }
         window.isSwitchingApps = false
     }
 
@@ -353,12 +389,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installApplicationMenuItems()
     }
 
+    private func setupLinkedIslandPreviewService() {
+        let service = LinkedIslandPreviewService(app: .xisland) { [weak self] in
+            self?.captureLinkedIslandPreview()
+        }
+        linkedIslandPreviewService = service
+        service.start()
+    }
+
+    private func captureLinkedIslandPreview() -> IslandPreviewSnapshot? {
+        guard let window = notchWindow, Self.canCaptureLinkedIslandPreview(window),
+              let content = window.contentView, content.window === window,
+              let background = IslandSlideAnimator.background(in: content), background.window === window,
+              window.switchGeometry != nil else { return nil }
+        content.layoutSubtreeIfNeeded()
+        guard Self.canCaptureLinkedIslandPreview(window), let outline = window.switchGeometry else { return nil }
+        do {
+            let snapshot = try LinkedIslandPreviewCanvas.capture(view: content, outline: outline)
+            guard Self.canCaptureLinkedIslandPreview(window), window.switchGeometry == outline else { return nil }
+            return snapshot
+        } catch is LinkedIslandPreviewCanvas.CaptureError {
+            // 当前视图不适合捕获，私有连接返回 unavailable，提交仍走原 /show。
+            return nil
+        } catch {
+            NSLog("Linked island preview capture failed (%@)", String(reflecting: type(of: error)))
+            return nil
+        }
+    }
+
+    private static func canCaptureLinkedIslandPreview(_ window: NotchWindow) -> Bool {
+        !window.isVisible && window.islandState == .collapsed && window.isCollapsedPreviewReady
+            && !window.isInteractiveSwitchPreviewActive && !window.isSwitchingApps
+            && !window.isHandoffLayoutLocked && !window.isPreviewingIslandSwitch && !window.isDragging
+            && !window.swipeRecognizer.isActive && window.handoffState.pendingPreparation == nil
+            && window.handoffState.pendingPresentation == nil
+    }
+
     private func setupNotchWindow() {
         let window = NotchWindow()
         let hostView = FirstMouseHostingView(
             rootView: NotchContentView(onSizeChange: { [weak window] w, h, display in
                 window?.resizeToFit(contentWidth: w, contentHeight: h, display: display)
-            })
+            }, windowProvider: { [weak window] in window })
             .environment(sessionManager)
             .environment(audioEngine)
             .environment(updateManager)
@@ -442,9 +514,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupScrollMonitor() {
         scrollMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            DispatchQueue.main.async {
-                self?.handleScrollEvent(event)
-            }
+            MainActor.assumeIsolated { self?.handleScrollEvent(event) }
         }
     }
 
@@ -452,26 +522,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let window = notchWindow else { return }
         let mouseLocation = NSEvent.mouseLocation
 
-        // 横滑切换手势（仅由鼠标下最上层的收起岛响应）
-        if IslandIntegrationSettings.isSwipeSwitchEnabled,
-           IslandWindowOwnership.canHandleGlobalSwipe(
-            isVisible: window.isVisible,
-            isCollapsed: window.islandState == .collapsed,
-            windowFrame: window.frame,
-            mouseLocation: mouseLocation
-        ) {
-            let result = window.swipeRecognizer.handleScroll(event: event)
-            if case .triggered(_) = result {
-                guard window.isFrontmostIslandWindow() else {
-                    window.swipeRecognizer.reset()
-                    return
-                }
-                AppSwitcher.shared.switchToNextIsland()
-                return
-            }
-        } else {
-            window.swipeRecognizer.reset()
-        }
+        if window.handleIslandSwipe(event) { return }
+        guard !window.isSwitchingApps, event.momentumPhase.isEmpty else { return }
 
         guard NotchWindow.shouldTriggerScrollExpand(
             isEnabled: AppPreferences.defaults.bool(forKey: "scrollDownToExpandPanel"),
@@ -660,6 +712,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleNotch() {
         if let w = notchWindow {
             if w.isVisible {
+                AppSwitcher.shared.cancelSwitch()
                 w.orderOut(nil)
             } else {
                 showIsland(preferMouseScreen: false, hidePeers: true)
@@ -716,10 +769,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         requestOtherIslandsToHide()
     }
 
-    private func requestOtherIslandsToHide() {
+    /// 提醒只争取岛的显示权，不激活应用或替用户打开/确认任务详情。
+    func presentTaskAttention(_ event: TaskAttentionEvent) {
+        guard !isTerminating, TaskAttentionSettings.isEnabled(),
+              sessionManager.isCurrentTaskAttention(event), let window = notchWindow else { return }
+        hasExplicitIslandVisibilityRequest = true
+        pendingIslandShowURL = nil
+        clearSwitchingAppsWorkItem?.cancel()
+        IslandAttentionEpoch.advance()
+        AppSwitcher.shared.cancelSwitch()
+        window.protectsTaskAttention = true
+        if NSApp.isHidden, !testConfiguration.isEnabled { NSApp.unhideWithoutActivation() }
+        window.showAtActiveScreen(pinUntilCollapse: event.kind != .completion || sessionManager.hasInteraction)
+        requestOtherIslandsToHide()
+        NotificationCenter.default.post(name: .xislandTaskAttention, object: window,
+                                        userInfo: ["event": event])
+
+        // WindowServer 可见性可能滞后一帧；仅在仍拥有这次显示意图时重发让位通知。
+        let shownAt = window.lastExplicitShowTime
+        for delay in [0.1, 0.35] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak window] in
+                guard let self, let window, !self.isTerminating, window.isVisible,
+                      window.lastExplicitShowTime == shownAt, !window.isSwitchingApps,
+                      !AppSwitcher.shared.isSwitchInProgress else { return }
+                self.requestOtherIslandsToHide()
+            }
+        }
+    }
+
+    private func requestOtherIslandsToHide(motion: IslandSwitchMotion? = nil) {
         for otherIslandName in AppSwitcher.shared.otherIslandNames {
             let hideNotification = "\(hideNotificationPrefix)\(otherIslandName)"
-            postHideNotification(hideNotification)
+            postHideNotification(hideNotification, motion: motion)
         }
     }
 
@@ -1045,14 +1126,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    private func postHideNotification(_ name: String) {
+    private func postHideNotification(_ name: String, motion: IslandSwitchMotion? = nil) {
         guard !testConfiguration.isEnabled, !AppPreferences.isIsolated,
               notchWindow?.isVisible == true else { return }
+        var info: [String: Any] = ["source": AppSwitcher.shared.currentAppName ?? "",
+                                   "shownAt": notchWindow?.lastExplicitShowTime ?? 0]
+        motion?.userInfo.forEach { info[$0.key] = $0.value }
         DistributedNotificationCenter.default().postNotificationName(
             Notification.Name(name),
             object: nil,
-            userInfo: ["source": AppSwitcher.shared.currentAppName ?? "",
-                       "shownAt": notchWindow?.lastExplicitShowTime ?? 0],
+            userInfo: info,
             deliverImmediately: true
         )
     }

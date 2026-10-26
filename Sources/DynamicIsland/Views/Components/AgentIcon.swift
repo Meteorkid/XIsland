@@ -8,16 +8,20 @@ struct AgentIcon: View {
     var taskIdentity: MascotTaskIdentity?
     var completionNeedsReview = false
     var taskTitle: String? = nil
+    var attentionToken: String?
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.taskAttentionPresented) private var taskAttentionPresented
     @AppStorage("reduceMotion") private var appReduceMotion = false
     @AppStorage("disableAnimations") private var disableAnimations = false
+    @AppStorage("taskAttentionEnabled") private var taskAttentionEnabled = true
 
     init(agentType: AgentType, size: CGFloat = 24, status: SessionStatus = .active,
          showMascot: Bool = true, taskIdentity: MascotTaskIdentity? = nil, completionNeedsReview: Bool = false) {
         self.agentType = agentType; self.size = size; self.status = status
         self.showMascot = showMascot; self.taskIdentity = taskIdentity
         self.completionNeedsReview = completionNeedsReview
+        attentionToken = Self.attentionToken(status: status, completionNeedsReview: completionNeedsReview)
     }
 
     @MainActor
@@ -26,6 +30,28 @@ struct AgentIcon: View {
                   taskIdentity: MascotTaskIdentityRegistry.shared.identity(for: session, agentType: agentType),
                   completionNeedsReview: session.completionNeedsReview)
         taskTitle = session.displayTitle
+        if let permission = session.pendingPermission {
+            attentionToken = "permission-\(session.id)-\(permission.nativeRequestId ?? permission.id.uuidString)"
+        } else if let question = session.pendingQuestion {
+            attentionToken = "question-\(session.id)-\(question.nativeRequestId ?? question.id.uuidString)"
+        } else if let plan = session.pendingPlanReview {
+            attentionToken = "plan-\(plan.id)"
+        } else if session.status == .completed, session.completionNeedsReview {
+            attentionToken = "completion-\(session.id)-\(session.completedAt?.timeIntervalSince1970 ?? 0)"
+        } else {
+            attentionToken = Self.attentionToken(status: self.status, completionNeedsReview: false)
+                .map { "observed-\(session.id)-\($0)" }
+        }
+    }
+
+    static func attentionToken(status: SessionStatus, completionNeedsReview: Bool) -> String? {
+        switch status {
+        case .completed where completionNeedsReview: return "completion"
+        case .waitingPermission: return "permission"
+        case .waitingAnswer: return "question"
+        case .waitingPlanReview: return "plan"
+        default: return nil
+        }
     }
 
     private var reduceMotion: Bool {
@@ -94,6 +120,8 @@ struct AgentIcon: View {
                     .accessibilityHidden(true)
             }
         }
+        .modifier(TaskAttentionBounce(token: attentionToken, size: size,
+                                      enabled: showMascot && taskAttentionEnabled && taskAttentionPresented && !reduceMotion))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription)
         .accessibilityAddTraits(.isImage)

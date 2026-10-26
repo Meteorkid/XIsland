@@ -84,41 +84,25 @@ final class IslandIntegrationSettingsTests: XCTestCase {
         )
     }
 
-    func testSwipeSensitivityChangesTriggerThreshold() {
+    func testSwipeSensitivityChangesReleaseThreshold() {
         let defaults = IslandIntegrationSettings.sharedDefaults
-        defaults.set(
-            IslandSwitchSensitivity.high.rawValue,
-            forKey: IslandIntegrationSettings.Key.swipeSensitivity
-        )
-        let highSensitivityRecognizer = SwipeGestureRecognizer()
-        let highResult = highSensitivityRecognizer.handleScroll(
-            deltaX: 35,
-            deltaY: 0,
-            isPrecise: true,
-            phase: .changed,
-            momentumPhase: [],
-            now: Date()
-        )
-
-        defaults.set(
-            IslandSwitchSensitivity.low.rawValue,
-            forKey: IslandIntegrationSettings.Key.swipeSensitivity
-        )
-        let lowSensitivityRecognizer = SwipeGestureRecognizer()
-        let lowResult = lowSensitivityRecognizer.handleScroll(
-            deltaX: 35,
-            deltaY: 0,
-            isPrecise: true,
-            phase: .changed,
-            momentumPhase: [],
-            now: Date()
-        )
-
-        guard case .triggered = highResult else {
-            return XCTFail("高灵敏度应在较小位移下触发切换")
-        }
-        guard case .inProgress = lowResult else {
-            return XCTFail("低灵敏度不应在相同位移下提前触发")
+        let now = Date()
+        for (sensitivity, expected) in [
+            (IslandSwitchSensitivity.high, SwipeResult.triggered(.right)),
+            (IslandSwitchSensitivity.low, SwipeResult.cancelled),
+        ] {
+            defaults.set(sensitivity.rawValue, forKey: IslandIntegrationSettings.Key.swipeSensitivity)
+            let recognizer = SwipeGestureRecognizer()
+            let tracking = recognizer.handleScroll(
+                deltaX: 35, deltaY: 0, isPrecise: true,
+                phase: .began, momentumPhase: [], now: now
+            )
+            XCTAssertEqual(tracking, .progress(35), "达到阈值后仍应跟手，不能提前提交")
+            let released = recognizer.handleScroll(
+                deltaX: 0, deltaY: 0, isPrecise: true,
+                phase: .ended, momentumPhase: [], now: now.addingTimeInterval(0.1)
+            )
+            XCTAssertEqual(released, expected, "灵敏度决定松手时的提交阈值")
         }
     }
 }

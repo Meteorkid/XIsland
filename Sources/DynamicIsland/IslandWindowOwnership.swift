@@ -5,6 +5,7 @@ struct IslandWindowSnapshot {
     let ownerPID: pid_t
     let bounds: CGRect
     let alpha: CGFloat
+    var level: Int? = nil
 }
 
 enum IslandWindowOwnership {
@@ -24,6 +25,7 @@ enum IslandWindowOwnership {
     ) -> Int? {
         snapshots.first { snapshot in
             islandPIDs.contains(snapshot.ownerPID)
+                && snapshot.level != NSWindow.Level.statusBar.rawValue + 4
                 && snapshot.alpha > 0
                 && snapshot.bounds.intersects(currentBounds)
         }?.number
@@ -63,7 +65,8 @@ enum IslandWindowOwnership {
                 number: number,
                 ownerPID: ownerPID,
                 bounds: CGRect(x: x, y: y, width: width, height: height),
-                alpha: alpha
+                alpha: alpha,
+                level: info[kCGWindowLayer as String] as? Int
             )
         }
 

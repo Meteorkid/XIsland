@@ -40,11 +40,24 @@ final class AppSwitcher {
         var hideSource: () -> Void
         var restoreSource: () -> Void
         var schedule: (TimeInterval, @escaping @MainActor () -> Void) -> () -> Void
+        var hideSourceWithMotion: ((IslandSwitchMotion?) -> Void)? = nil
+        var cancelPreview: () -> Void = {}
+        var reduceMotion: () -> Bool = { false }
+        var uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+        var sourceGeometry: () -> IslandSwitchGeometry? = { nil }
+        var startInteractiveSwitch: ((SwipeDirection) -> Bool)? = nil
+        var captureAttentionEpoch: () -> IslandAttentionEpoch.Admission? = { nil }
+        var isAttentionEpochCurrent: (IslandAttentionEpoch.Admission) -> Bool = { _ in true }
     }
 
     private let environment: Environment
     private var requestID: UUID?
     private var targetName: String?
+    private var pendingMotion: IslandSwitchMotion?
+    private var pendingAttentionEpoch: IslandAttentionEpoch.Admission?
+    private var acknowledgedMotion: IslandSwitchMotion?
+    private var visiblePollsAwaitingMotion = 0
+    private(set) var acceptedPeerMotion: IslandSwitchMotion?
     private var cancelTimeout: (() -> Void)?
     private var cancelPoll: (() -> Void)?
     private(set) var lastSwitchFailed = false
@@ -80,17 +93,24 @@ final class AppSwitcher {
                 IslandHandoffVisibility.isPeerFrontmost(bundleIdentifier: bundleID, applicationURL: applicationURL(for: bundleID))
             },
             setSwitching: { AppDelegate.shared?.notchWindow?.isSwitchingApps = $0 },
-            hideSource: {
+            hideSource: { AppDelegate.shared?.notchWindow?.hideWindowForIslandSwitch() },
+            restoreSource: {
                 guard let window = AppDelegate.shared?.notchWindow else { return }
-                window.isHiddenByIslandSwitch = true
-                window.orderOut(nil)
+                if window.isVisible { window.cancelIslandSwitchPreview() }
+                else { window.showWindow() }
             },
-            restoreSource: { AppDelegate.shared?.notchWindow?.showWindow() },
             schedule: { delay, action in
                 let work = DispatchWorkItem { action() }
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
                 return { work.cancel() }
-            }
+            },
+            hideSourceWithMotion: { AppDelegate.shared?.notchWindow?.hideWindowForIslandSwitch(motion: $0) },
+            cancelPreview: { AppDelegate.shared?.notchWindow?.cancelIslandSwitchPreview() },
+            reduceMotion: { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || AppPreferences.defaults.bool(forKey: "reduceMotion") || AppPreferences.defaults.bool(forKey: "disableAnimations") },
+            sourceGeometry: { AppDelegate.shared?.notchWindow?.switchGeometry },
+            startInteractiveSwitch: { AppDelegate.shared?.notchWindow?.startLinkedIslandSwitch(direction: $0) ?? false },
+            captureAttentionEpoch: { IslandAttentionEpoch.capture() },
+            isAttentionEpochCurrent: { IslandAttentionEpoch.isCurrent($0) }
         )
     }
 
@@ -108,7 +128,9 @@ final class AppSwitcher {
     }
 
     /// 切换到下一个灵动岛（跳过未安装的应用）
-    func switchToNextIsland() {
+    var canSwitchToAnotherIsland: Bool { otherIslandNames.contains { isIslandInstalled(named: $0) } }
+
+    func switchToNextIsland(direction: SwipeDirection? = nil) {
         guard let currentName = currentAppName else { return }
         let allNames = Array(islandApps.keys).sorted()
 
@@ -116,32 +138,61 @@ final class AppSwitcher {
         guard let currentIndex = allNames.firstIndex(of: currentName) else { return }
         let count = allNames.count
         for i in 1...count {
-            let nextIndex = (currentIndex + i) % count
+            let increment = direction == .right ? -i : i
+            let nextIndex = (currentIndex + increment + count) % count
             let nextName = allNames[nextIndex]
             if isIslandInstalled(named: nextName) {
-                switchToIsland(named: nextName)
+                switchToIsland(named: nextName, direction: direction)
                 return
             }
         }
         // 没有其他已安装的应用，不做任何操作
     }
 
+    func switchToIslandWithPreview(named targetName: String, direction: SwipeDirection = .left) {
+        guard targetName != currentAppName, islandApps[targetName] != nil else { return }
+        if environment.startInteractiveSwitch?(direction) == true { return }
+        switchToIsland(named: targetName, direction: direction)
+    }
+
     /// 切换到指定的灵动岛
-    func switchToIsland(named targetName: String) {
-        guard targetName != currentAppName,
-              let bundleID = islandApps[targetName],
-              let url = switchURL(for: targetName) else { return }
+    func switchToIsland(named targetName: String, direction: SwipeDirection? = nil,
+                        animationAlreadyPresented: Bool = false) {
+        guard targetName != currentAppName, let bundleID = islandApps[targetName] else {
+            if animationAlreadyPresented { environment.setSwitching(false) }
+            environment.cancelPreview(); return
+        }
         guard let appURL = environment.applicationURL(bundleID) else {
+            // 画布阶段已阻止交互，但此时尚无requestID，clearSwitchState不会替它解除阻止。
+            if animationAlreadyPresented { environment.setSwitching(false) }
             cancelSwitch()
             lastSwitchFailed = true
             environment.restoreSource()
             return
         }
         guard self.targetName != targetName else { return }
-        cancelSwitch()
+        clearSwitchState()
         let id = UUID()
+        let motion = direction.map { IslandSwitchMotion(requestID: id, direction: $0,
+            reduceMotion: animationAlreadyPresented || environment.reduceMotion(), issuedUptime: environment.uptime(),
+            sourceGeometry: environment.sourceGeometry()) }
+        guard var url = switchURL(for: targetName, motion: motion) else {
+            if animationAlreadyPresented { environment.setSwitching(false) }
+            environment.cancelPreview(); return
+        }
+        let attentionEpoch = environment.captureAttentionEpoch()
+        if let attentionEpoch {
+            guard let protectedURL = IslandAttentionEpoch.adding(attentionEpoch, to: url) else {
+                if animationAlreadyPresented { environment.setSwitching(false) }
+                environment.cancelPreview(); return
+            }
+            url = protectedURL
+        }
         requestID = id
         self.targetName = targetName
+        pendingMotion = motion
+        pendingAttentionEpoch = attentionEpoch
+        visiblePollsAwaitingMotion = 0
         lastSwitchFailed = false
         environment.setSwitching(true)
         cancelTimeout = environment.schedule(8) { [weak self] in self?.failSwitch(id) }
@@ -153,28 +204,57 @@ final class AppSwitcher {
 
     private func checkTarget(_ id: UUID) {
         guard requestID == id, let targetName, let bundleID = islandApps[targetName] else { return }
-        // 打开请求成功不等于窗口已显示；继续保留来源，直到窗口服务器确认目标岛。
+        guard pendingAttentionIsCurrent else { cancelSwitch(); return }
         if environment.isVisible(bundleID) {
-            cancelSwitch()
-            environment.hideSource()
+            if let acknowledgedMotion, acknowledgedMotion.isTimely(at: environment.uptime()) {
+                let readyMotion = acknowledgedMotion.starting(at: acknowledgedMotion.startUptime!,
+                    reduceMotion: environment.reduceMotion() || pendingMotion?.reduceMotion == true)
+                clearSwitchState()
+                if let hide = environment.hideSourceWithMotion { hide(readyMotion) } else { environment.hideSource() }
+                return
+            }
+            // 新端优先使用带事务身份和统一起点的回执；旧端可见后安全退回淡出。
+            if pendingMotion != nil, visiblePollsAwaitingMotion < 3 {
+                visiblePollsAwaitingMotion += 1
+                cancelPoll = environment.schedule(0.05) { [weak self] in self?.checkTarget(id) }
+                return
+            }
+            clearSwitchState()
+            if let hide = environment.hideSourceWithMotion { hide(nil) } else { environment.hideSource() }
         } else {
+            visiblePollsAwaitingMotion = 0
             cancelPoll = environment.schedule(0.1) { [weak self] in self?.checkTarget(id) }
         }
     }
 
     private func failSwitch(_ id: UUID) {
         guard requestID == id else { return }
+        // 提醒已经夺回显示权时，旧超时/失败不能把来源岛再次显示出来。
+        guard pendingAttentionIsCurrent else { cancelSwitch(); return }
         cancelSwitch()
         lastSwitchFailed = true
         environment.restoreSource()
     }
 
+    private var pendingAttentionIsCurrent: Bool {
+        pendingAttentionEpoch.map(environment.isAttentionEpochCurrent) ?? true
+    }
+
     var isSwitchInProgress: Bool { requestID != nil }
 
     func cancelSwitch() {
+        clearSwitchState()
+        environment.cancelPreview()
+    }
+
+    private func clearSwitchState() {
         let wasSwitching = requestID != nil
         requestID = nil
         targetName = nil
+        pendingMotion = nil
+        pendingAttentionEpoch = nil
+        acknowledgedMotion = nil
+        visiblePollsAwaitingMotion = 0
         cancelTimeout?(); cancelTimeout = nil
         cancelPoll?(); cancelPoll = nil
         if wasSwitching { environment.setSwitching(false) }
@@ -182,7 +262,16 @@ final class AppSwitcher {
 
     /// 兼容旧版裸 hide 通知：无正在进行的切换时，只有置顶的目标岛可要求让位。
     func acceptPeerHideRequest(from peer: String? = nil, shownAt: TimeInterval? = nil,
-                               after lastExplicitShow: TimeInterval = 0) -> Bool {
+                               after lastExplicitShow: TimeInterval = 0,
+                               motion: IslandSwitchMotion? = nil) -> Bool {
+        acceptedPeerMotion = nil
+        if let motion {
+            guard requestID == motion.requestID, targetName == peer,
+                  let pendingMotion, pendingMotion.direction == motion.direction,
+                  pendingMotion.issuedUptime == motion.issuedUptime,
+                  pendingMotion.sourceGeometry == motion.sourceGeometry,
+                  motion.startUptime != nil, motion.isTimely(at: environment.uptime()) else { return false }
+        }
         let ready: Bool
         if peer != nil || shownAt != nil {
             guard let peer, let shownAt, shownAt.isFinite, shownAt > lastExplicitShow,
@@ -195,8 +284,14 @@ final class AppSwitcher {
                 islandApps[name].map(environment.isFrontmost) ?? false
             }
         }
+        // orderFront 和 CG 列表之间可能差一帧，保留唯一合法回执等待可见确认。
+        if let motion { acknowledgedMotion = motion }
         guard ready else { return false }
-        cancelSwitch()
+        if let motion {
+            acceptedPeerMotion = motion.starting(at: motion.startUptime!,
+                reduceMotion: environment.reduceMotion() || pendingMotion?.reduceMotion == true)
+        }
+        clearSwitchState()
         return true
     }
 
@@ -205,11 +300,12 @@ final class AppSwitcher {
         return environment.isVisible(bundleID)
     }
 
-    func switchURL(for targetName: String) -> URL? {
+    func switchURL(for targetName: String, motion: IslandSwitchMotion? = nil) -> URL? {
         guard islandApps[targetName] != nil,
               let scheme = islandSchemes[targetName] else { return nil }
         // URL 格式: {targetName}://{targetName}/show
-        return URL(string: "\(scheme)://\(targetName)/show")
+        guard let url = URL(string: "\(scheme)://\(targetName)/show") else { return nil }
+        return motion?.adding(to: url) ?? url
     }
 
     func isIslandInstalled(named islandName: String) -> Bool {
