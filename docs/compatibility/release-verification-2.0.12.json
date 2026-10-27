@@ -19,7 +19,7 @@
     "reusedVerifiedSource": false,
     "sourceIdenticalExceptVersion": false,
     "command": "X_ISLAND_RENDER_UNIFIED_COLLAPSE=1 swift test",
-    "log": "final-full-tests.log"
+    "log": "final-full-tests-r2.log"
   },
   "package": {
     "status": "passed",
@@ -44,9 +44,12 @@
   },
   "sourceInputs": {
     "manifest": "source-hashes-2.0.12.json",
-    "sha256": "2d6fe5fa93c50c051badc6e1e9227d6a4b0be211d9cef097e9d7c79af28263bd",
+    "sha256": "e7890b8d8d4a02ca95dc62efea0fa439fa29ba4f3968c32b953c3a91720a1b92",
     "count": 550,
-    "matchesBuildSnapshot": true
+    "productionMatchesBuildSnapshot": true,
+    "postBuildTestChanges": [
+      "Tests/TowerIslandTests/SocketServerAcceptTests.swift"
+    ]
   },
   "ci": {
     "requiredBeforePublication": [
@@ -76,6 +79,8 @@
     "authenticationFixtureObservationOnly": true,
     "productionAuthenticationUnchanged": true,
     "targetedCrossProcessRepeats": 3,
-    "targetedHelperScenarios": 15
+    "targetedHelperScenarios": 15,
+    "dripProducerOwnsWriteDescriptor": true,
+    "readDeadlineAssertionUnchanged": "60ms read timeout, less than 200ms; only producer cleanup wait adjusted"
   }
 }

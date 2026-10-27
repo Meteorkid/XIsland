@@ -39,20 +39,22 @@ final class SocketServerAcceptTests: XCTestCase {
 
     func testSlowDripCannotRenewTotalReadDeadline() throws {
         let fds = try makeSocketPair()
-        defer { close(fds.0); close(fds.1) }
+        defer { close(fds.1) }
         let finished = expectation(description: "drip finished")
         DispatchQueue.global().async {
+            // 写端由生产者持有，测试等待超时也不能提前close后误写复用的fd。
+            defer { close(fds.0); finished.fulfill() }
             for _ in 0..<10 {
-                _ = SocketServer.sendAll(fd: fds.0, data: Data([0x20]))
+                guard SocketServer.sendAll(fd: fds.0, data: Data([0x20])) else { break }
                 usleep(30_000)
             }
             shutdown(fds.0, SHUT_WR)
-            finished.fulfill()
         }
         let started = ProcessInfo.processInfo.systemUptime
         XCTAssertNil(SocketServer.readMessage(from: fds.1, timeout: 0.06))
         XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - started, 0.2)
-        wait(for: [finished], timeout: 1)
+        // CI调度与usleep可延后生产者收尾；上面的60ms截止与200ms上限仍严格验证。
+        wait(for: [finished], timeout: 5)
     }
 
     func testRealEOFStillAcceptsNonemptyFrameWithoutNewline() throws {
