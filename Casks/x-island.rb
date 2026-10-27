@@ -1,8 +1,8 @@
 # 注意：版本号应与 VERSION 文件保持一致
 # 更新步骤：1. 修改 VERSION 文件 2. 更新此文件的 version 和 sha256
 cask "x-island" do
-  version "2.0.11"
-  sha256 "5bc861db159cdafd2dc436b5a79dab92c7999e6f08da8c41d2fd2704174ed906"
+  version "2.0.12"
+  sha256 "7b2ffc62c6bad1f7a8781f095a946fa0e6a3155b3e420342f0619045ef4cb0e2"
 
   url "https://github.com/Meteorkid/XIsland/releases/download/v#{version}/XIsland-#{version}.dmg",
       verified: "github.com/Meteorkid/XIsland/"
