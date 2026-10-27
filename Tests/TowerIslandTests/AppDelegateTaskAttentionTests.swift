@@ -1,6 +1,7 @@
 import AppKit
 import DIShared
 import XCTest
+@testable import DIBridge
 @testable import XIsland
 
 @MainActor
@@ -72,6 +73,70 @@ final class AppDelegateTaskAttentionTests: XCTestCase {
         XCTAssertNotNil(fixture.delegate.sessionManager.sessions.first?.pendingPermission)
         XCTAssertTrue(fixture.delegate.sessionManager.hasInteraction)
         XCTAssertTrue(fixture.delegate.sessionManager.isCurrentTaskAttention(try XCTUnwrap(received.first)))
+    }
+
+    func testWorkBuddyCompletionUsesDefaultQueueCancelsOldHandoffAndDoesNotRepeat() async throws {
+        let fixture = try makeFixture()
+        defer { fixture.close() }
+        let receptionKey = "autoConfigure.workbuddy"
+        let previousReception = AppPreferences.defaults.object(forKey: receptionKey)
+        AppPreferences.defaults.set(true, forKey: receptionKey)
+        defer {
+            if let previousReception { AppPreferences.defaults.set(previousReception, forKey: receptionKey) }
+            else { AppPreferences.defaults.removeObject(forKey: receptionKey) }
+        }
+        let oldGeneration = fixture.window.beginInboundHandoff { _ in
+            XCTFail("WorkBuddy 完成提醒后旧交接不能再显示")
+        }
+        let delivered = expectation(description: "WorkBuddy 完成经默认提醒队列呈现")
+        let repeated = expectation(description: "重复 FinalStop 不能再次呈现")
+        repeated.isInverted = true
+        var received: [TaskAttentionEvent] = []
+        let observer = NotificationCenter.default.addObserver(forName: .xislandTaskAttention,
+            object: fixture.window, queue: .main) { note in
+                MainActor.assumeIsolated {
+                    if let event = note.userInfo?["event"] as? TaskAttentionEvent {
+                        received.append(event)
+                        if received.count == 1 { delivered.fulfill() }
+                        else { repeated.fulfill() }
+                    }
+                }
+            }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        func workBuddyMessage(_ event: String, fields: [String: Any]) throws -> DIMessage {
+            var input: [String: Any] = ["hook_event_name": event,
+                                       "session_id": "delegate-workbuddy-session", "cwd": "/tmp/project"]
+            input.merge(fields) { _, value in value }
+            return try WorkBuddyHookAdapter.normalize(hookType: event, stdinData: input)
+        }
+        let manager = fixture.delegate.sessionManager
+        manager.handleMessage(try workBuddyMessage("UserPromptSubmit", fields: ["prompt": "完成提醒回归"]))
+        manager.handleMessage(try workBuddyMessage("Stop", fields: ["last_assistant_message": "处理完成"]))
+        XCTAssertEqual(manager.sessions.first?.status, .completionUnconfirmed)
+        XCTAssertEqual(fixture.harness.orderFrontCount, 0)
+        let completed = try workBuddyMessage("FinalStop", fields: ["final_stop_reason": "completed"])
+        manager.handleMessage(completed)
+        XCTAssertEqual(fixture.harness.orderFrontCount, 0, "保留默认 80ms 队列，不能直接呈现")
+        await fulfillment(of: [delivered], timeout: 1)
+
+        let session = try XCTUnwrap(manager.sessions.first)
+        let event = try XCTUnwrap(received.first)
+        XCTAssertEqual(event.kind, .completion)
+        XCTAssertEqual(event.sessionID, session.id)
+        XCTAssertEqual(fixture.harness.orderFrontCount, 1)
+        XCTAssertEqual(fixture.harness.orderOutCount, 0)
+        XCTAssertFalse(fixture.window.isVisible, "呈现由注入计数器接收，不能显示真实窗口")
+        XCTAssertNil(fixture.window.handoffState.pendingPreparation)
+        XCTAssertFalse(fixture.window.isSwitchingApps)
+        XCTAssertFalse(fixture.window.completeInboundHandoffPreparation(generation: oldGeneration))
+        XCTAssertTrue(session.completionNeedsReview)
+        XCTAssertTrue(manager.isCurrentTaskAttention(event))
+
+        manager.handleMessage(completed)
+        await fulfillment(of: [repeated], timeout: 0.2)
+        XCTAssertEqual(received.count, 1)
+        XCTAssertEqual(fixture.harness.orderFrontCount, 1)
+        XCTAssertTrue(session.completionNeedsReview)
     }
 
     func testDisabledReviewedOrResolvedEventCannotPresentWindow() throws {

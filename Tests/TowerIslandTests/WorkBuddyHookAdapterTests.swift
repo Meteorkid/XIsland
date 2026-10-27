@@ -14,9 +14,19 @@ final class WorkBuddyHookAdapterTests: XCTestCase {
         XCTAssertEqual(stop.status, "回复")
         XCTAssertEqual(stop.statusIsAssistantReply, true)
         XCTAssertEqual(stop.observedState, "completionUnconfirmed")
-        XCTAssertEqual(try message("FinalStop", ["final_stop_reason": "completed"]).observedState, "idle")
+        let completed = try message("FinalStop", ["final_stop_reason": "completed", "agent_id": "main-store"])
+        XCTAssertEqual(completed.type, .sessionEnd)
+        XCTAssertEqual(completed.observedState, "completed")
+        XCTAssertEqual(completed.statusIsAssistantReply, false)
+        for reason in ["cancelled", "interrupted"] {
+            let interrupted = try message("FinalStop", ["final_stop_reason": reason])
+            XCTAssertEqual(interrupted.type, .statusUpdate)
+            XCTAssertEqual(interrupted.observedState, "idle")
+        }
         XCTAssertEqual(try message("FinalStop", ["final_stop_reason": "failed"]).observedState, "error")
         XCTAssertNil(try message("FinalStop", ["final_stop_reason": "future-value"]).observedState)
+        XCTAssertThrowsError(try message("FinalStop"))
+        XCTAssertThrowsError(try message("FinalStop", ["final_stop_reason": ""]))
     }
 
     func testChildAndSessionEndNotificationsNeverCloseParent() throws {
@@ -48,7 +58,7 @@ final class WorkBuddyHookAdapterTests: XCTestCase {
         XCTAssertEqual(value.terminal, "WorkBuddy")
         XCTAssertThrowsError(try DIBridge.makeMessage(agentType: "workbuddy", hookType: "SessionStart", sessionId: "fallback", stdinData: [:]))
         XCTAssertThrowsError(try message("PermissionRequest"))
-        for event in ["SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"] {
+        for event in ["SessionStart", "UserPromptSubmit", "Stop", "FinalStop", "SessionEnd"] {
             XCTAssertFalse(DIBridge.needsJsonOutput(event, agentType: "workbuddy"))
         }
     }

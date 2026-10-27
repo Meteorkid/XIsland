@@ -149,7 +149,7 @@ final class SessionStopFinalityTests: XCTestCase {
         }
     }
 
-    func testKnownFinalIdleUpdatesThePersistedPendingCheckpoint() throws {
+    func testKnownFinalCompletionUpdatesThePersistedPendingCheckpoint() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("xisland-final-idle-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -166,9 +166,10 @@ final class SessionStopFinalityTests: XCTestCase {
         manager.handleMessage(try workbuddy("Stop", fields: ["last_assistant_message": "Reply preview"]))
         XCTAssertEqual(persistence.fetchHistory().first?.status, .completionUnconfirmed)
         manager.handleMessage(try workbuddy("FinalStop", fields: ["final_stop_reason": "completed"]))
-        XCTAssertEqual(manager.sessions.first?.status, .idle)
-        XCTAssertEqual(persistence.fetchHistory().first?.status, .idle)
-        XCTAssertNil(persistence.fetchHistory().first?.completedAt)
+        XCTAssertEqual(manager.sessions.first?.status, .completed)
+        XCTAssertEqual(persistence.fetchHistory().first?.status, .completed)
+        XCTAssertNotNil(persistence.fetchHistory().first?.completedAt)
+        XCTAssertEqual(persistence.fetchHistory().first?.completionNeedsReview, true)
     }
 
     func testUncorrelatedChildNoticesDoNotReplaceImportantParentExplanations() throws {
