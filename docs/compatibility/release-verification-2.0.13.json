@@ -1,0 +1,79 @@
+{
+  "version": "2.0.13",
+  "verificationStage": "pre-publication-package",
+  "preparedAtUTC": "2026-10-27T04:28:44.770108+00:00",
+  "implementationCommit": "b78ae3c337e92aa50288ebf3f6070b40fd33fc53",
+  "mergedRemoteMain": "547b57934763c40f0b7682ac09b47c926bf52dec",
+  "buildBaseCommit": "729a1b26c1dcd0d0a8ad28e8dcf2c415a08471aa",
+  "previousPublishedReleaseAtPreparation": "v2.0.11",
+  "preservedPreparedVersion": "2.0.12",
+  "platform": "macOS",
+  "architecture": "arm64",
+  "minimumOS": "14.0",
+  "windowsSourceChanged": false,
+  "regression": {
+    "XIslandTests": {
+      "total": 1826,
+      "passed": 1807,
+      "skipped": 19,
+      "failed": 0
+    },
+    "MeteorLicenseCoreTests": {
+      "total": 17,
+      "passed": 17,
+      "skipped": 0,
+      "failed": 0
+    },
+    "crossLanguageSignatureFixture": true,
+    "fullLog": "full-tests.log",
+    "mergeTargetedLog": "merge-targeted-tests.log"
+  },
+  "package": {
+    "status": "passed",
+    "version": "2.0.13",
+    "readOnlyMounted": true,
+    "architecture": "arm64",
+    "signatureVerified": true,
+    "signature": "ad-hoc",
+    "notarized": false,
+    "mountedAppMatchesBuiltBundle": true,
+    "comparedBundleFiles": 8,
+    "dmgSHA256": "af414eb17413f0578fd131c7f2b34703391ecd09c3b0bb9dceeaf5254c2dc1b3",
+    "dmgBytes": 6544559,
+    "binarySHA256": {
+      "XIsland": "97f2dd83e0fd5953e813602c772e71b6f8f2d9e56e1f59d5934e9d08f186aac0",
+      "di-bridge": "5e795575556bbfeaf7e20648bde8a47c47739ee8b8dde514af0fc4029168b195"
+    },
+    "cliMatchesSource": true,
+    "checksumsSHA256": "2f963f110e0997a00c3d620ff976ca83ff8eec2ea24748c4f9fefc78da203f36"
+  },
+  "licensing": {
+    "publicKeyRawSHA256": "feea02bdbb70c8aad874eb326b3ba601f825a3ceaf039254aaa1091288ca424e",
+    "publicKeyMatchesProvidedProductionKey": true,
+    "apiBaseURL": "https://www.imagentx.top",
+    "testKeyUsed": false
+  },
+  "sourceInputs": {
+    "manifest": "source-hashes-2.0.13.json",
+    "sha256": "e359e4d419ccd8ad6cf8c40064b6d7b344ff986db8aca51187f1755ff9c2e9bc",
+    "count": 558,
+    "matchesBuildSnapshot": true
+  },
+  "ci": {
+    "requiredBeforePublication": [
+      "Tests",
+      "Windows checks"
+    ],
+    "requiresExactReleaseCommit": true
+  },
+  "notVerified": [
+    "Real production payment and automatic delivery",
+    "Live 3-device limit and transfer acceptance",
+    "Published release installation"
+  ],
+  "releaseBuildProductionAppUntouched": true,
+  "bridgeInstallationSkipped": true,
+  "pathConfigurationSkipped": true,
+  "installed": false,
+  "published": false
+}

@@ -1,6 +1,6 @@
 # XIsland 软件授权
 
-此实现使用 Meteor Store 的在线授权协议，与 XNook 共用 `MeteorLicenseCore`。当前源版本为 2.0.11；本次不修改正式版本号，也不安装或发布软件。
+自 2.0.13 起，XIsland 使用 Meteor Store 的在线授权协议，与 XNook 共用 `MeteorLicenseCore`。版本说明见 [2.0.13 更新说明](releases/2.0.13.md)。
 
 ## 用户行为
 
