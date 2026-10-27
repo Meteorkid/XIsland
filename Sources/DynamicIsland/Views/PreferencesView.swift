@@ -10,6 +10,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
     case sound
     case history
     case statistics
+    case license
     case about
 
     var id: String { rawValue }
@@ -23,6 +24,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
         case .sound: L10n.sectionSound
         case .history: L10n.sectionHistory
         case .statistics: L10n.paneStatistics
+        case .license: L10n.isChinese ? "软件授权" : "License"
         case .about: L10n.sectionAbout
         }
     }
@@ -36,12 +38,14 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
         case .sound: "speaker.wave.2.fill"
         case .history: "clock.arrow.circlepath"
         case .statistics: "chart.bar.fill"
+        case .license: "key.fill"
         case .about: "info.circle.fill"
         }
     }
 }
 
 struct PreferencesView: View {
+    @Environment(\.softwareLicenseController) private var softwareLicense
     @Environment(AudioEngine.self) private var audioEngine
     @Environment(SessionManager.self) private var sessionManager
     @Environment(UpdateManager.self) private var updateManager
@@ -162,9 +166,20 @@ struct PreferencesView: View {
         }
         .onAppear {
             applyPendingPaneSelectionIfNeeded()
+            if !licensedFeaturesAvailable, ![.license, .history, .about].contains(selection) { selection = .license }
+        }
+        .onChange(of: licensedFeaturesAvailable) { _, allowed in
+            if !allowed {
+                for task in configurationTasks.values { task.cancel() }
+                configurationTasks.removeAll()
+                selection = .license
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .xislandShowAboutPane)) { _ in
             applyPendingPaneSelectionIfNeeded(fallbackToAbout: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xislandShowLicensePane)) { _ in
+            applyPendingPaneSelectionIfNeeded()
         }
     }
 
@@ -201,6 +216,7 @@ struct PreferencesView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .disabled(!licensedFeaturesAvailable && ![.license, .history, .about].contains(pane))
             }
         }
         .padding(.horizontal, 16)
@@ -208,6 +224,10 @@ struct PreferencesView: View {
     }
 
     // MARK: - Pane content
+
+    private var licensedFeaturesAvailable: Bool {
+        softwareLicense?.allowsAccess ?? AppPreferences.allowsLicenseFixture
+    }
 
     @ViewBuilder
     private var paneContent: some View {
@@ -219,6 +239,7 @@ struct PreferencesView: View {
         case .sound: soundPane
         case .history: historyPane
         case .statistics: StatisticsView()
+        case .license: SoftwareLicenseView()
         case .about: aboutPane
         }
     }
@@ -1822,6 +1843,11 @@ struct PreferencesView: View {
     private func applyPendingPaneSelectionIfNeeded(fallbackToAbout: Bool = false) {
         let defaults = AppPreferences.defaults
         let pending = defaults.string(forKey: PreferencesRouting.pendingPaneSelectionKey)
+        if pending == PreferencesRouting.licensePaneValue {
+            selection = .license
+            defaults.removeObject(forKey: PreferencesRouting.pendingPaneSelectionKey)
+            return
+        }
         if pending == PreferencesRouting.aboutPaneValue {
             selection = .about
             defaults.removeObject(forKey: PreferencesRouting.pendingPaneSelectionKey)

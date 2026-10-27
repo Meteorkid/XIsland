@@ -10,14 +10,31 @@ final class QuotaTracker {
     nonisolated(unsafe) private var timer: Timer?
     private let updateInterval: TimeInterval = 60
     private let allowsLiveAccess: Bool
+    private var isSuspended = false
+    private var fetchTask: Task<Void, Never>?
     var isPolling: Bool { timer?.isValid == true }
 
-    init(testConfiguration: AppTestConfiguration = .current()) {
+    init(testConfiguration: AppTestConfiguration = .current(), startImmediately: Bool = true) {
         allowsLiveAccess = !testConfiguration.isEnabled && !AppPreferences.isIsolated
+        isSuspended = !startImmediately
+        guard allowsLiveAccess, startImmediately else { return }
+        resumePolling()
+    }
+
+    func resumePolling() {
         guard allowsLiveAccess else { return }
+        isSuspended = false
         Self.migrateKeychainAccessibility()
         fetchAll()
         startTimer()
+    }
+
+    func suspendPolling() {
+        isSuspended = true
+        timer?.invalidate()
+        timer = nil
+        fetchTask?.cancel()
+        fetchTask = nil
     }
 
     deinit {
@@ -49,15 +66,17 @@ final class QuotaTracker {
     }
 
     func fetchAll() {
-        guard allowsLiveAccess else { return }
+        guard allowsLiveAccess, !isSuspended else { return }
         let providers = Self.enabledProviders(in: AppPreferences.defaults)
         quotas.removeAll { info in
             !Self.providerSettings.contains { $0.name == info.provider && providers.contains($0.identifier) }
         }
         guard !providers.isEmpty else { return }
 
-        Task.detached(priority: .utility) { [weak self] in
+        fetchTask?.cancel()
+        fetchTask = Task.detached(priority: .utility) { [weak self] in
             let infos = await Self.collectQuotas(enabledProviders: providers, readers: Self.liveReaders)
+            guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
                 for info in infos { self?.updateQuota(info) }
             }
@@ -68,6 +87,7 @@ final class QuotaTracker {
     nonisolated static func collectQuotas(enabledProviders: [String], readers: Readers) async -> [QuotaInfo] {
         var infos: [QuotaInfo] = []
         for provider in providerSettings where enabledProviders.contains(provider.identifier) {
+            guard !Task.isCancelled else { break }
             if provider.identifier == "anthropic" {
                 // Rate-limit headers from inference are not a read-only quota API.
                 infos.append(QuotaInfo(provider: provider.name))
@@ -300,6 +320,7 @@ final class QuotaTracker {
     }
 
     private func updateQuota(_ info: QuotaInfo) {
+        guard !isSuspended else { return }
         // Ignore an in-flight response if tracking was disabled while the read was running.
         guard Self.providerSettings.contains(where: {
             $0.name == info.provider && AppPreferences.defaults.bool(forKey: $0.key)

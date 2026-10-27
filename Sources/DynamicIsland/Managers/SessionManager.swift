@@ -361,6 +361,7 @@ final class SessionManager {
     }
 
     func startCleanupTimer() {
+        cleanupTimer?.invalidate()
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.cleanupStaleSessions()
@@ -368,11 +369,29 @@ final class SessionManager {
             }
         }
         observeAppTermination()
+        startObservationTimerIfNeeded()
+    }
+
+    /// 授权失效时停止监控并取消未处理交互，保留历史与已接受的持久化写入。
+    func suspendForLicense() {
+        cleanupTimer?.invalidate()
+        cleanupTimer = nil
+        observationTimer?.invalidate()
+        observationTimer = nil
+        if let workspaceObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
+            self.workspaceObserver = nil
+        }
+        for session in sessions { cancelPendingInteractions(session) }
+        stopAcceptingPersistenceOperations()
     }
 
     // MARK: - Desktop App Termination
 
     private func observeAppTermination() {
+        if let workspaceObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
+        }
         workspaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didTerminateApplicationNotification,
             object: nil, queue: .main

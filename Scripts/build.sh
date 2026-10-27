@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-BUILD_DIR="$PROJECT_DIR/.build"
+BUILD_DIR="${X_ISLAND_BUILD_DIR:-$PROJECT_DIR/.build}"
 APP_NAME="X Island"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 UI_DRIVER_BIN="$BUILD_DIR/release/XIslandUITestDriver"
@@ -16,13 +16,32 @@ APP_CLI_DIR="$APP_BUNDLE/Contents/Resources/cli"
 # 从 VERSION 文件读取版本号（单一版本源）
 VERSION=$(cat "$PROJECT_DIR/VERSION" | tr -d '[:space:]')
 
+# 公钥不是秘密，但缺失时打出的安装包无法试用或激活，发布构建必须明确配置。
+SOFTWARE_LICENSE_API_BASE_URL="${SOFTWARE_LICENSE_API_BASE_URL:-https://www.imagentx.top}"
+export SOFTWARE_LICENSE_API_BASE_URL
+python3 - <<'PY'
+import base64
+import os
+from urllib.parse import urlparse
+
+try:
+    key = base64.b64decode(os.environ.get('SOFTWARE_LICENSE_PUBLIC_KEY', ''), validate=True)
+except ValueError:
+    raise SystemExit('SOFTWARE_LICENSE_PUBLIC_KEY must be a base64-encoded Ed25519 public key.')
+if len(key) != 32 or not any(key):
+    raise SystemExit('Set SOFTWARE_LICENSE_PUBLIC_KEY to the 32-byte Ed25519 public key before packaging.')
+url = urlparse(os.environ['SOFTWARE_LICENSE_API_BASE_URL'])
+if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('', '/'):
+    raise SystemExit('SOFTWARE_LICENSE_API_BASE_URL must be an HTTPS origin without credentials, query, or fragment.')
+PY
+
 cd "$PROJECT_DIR"
 
 # shellcheck source=/dev/null
 source "$CLI_LIB_DIR/xisland-cli.sh"
 
 echo "==> Building X Island..."
-swift build -c release
+swift build -c release --scratch-path "$BUILD_DIR"
 
 echo "==> Creating app bundle..."
 rm -rf "$APP_BUNDLE"
@@ -110,6 +129,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
 </dict>
 </plist>
 PLIST
+
+/usr/libexec/PlistBuddy -c "Add :SoftwareLicensePublicKey string $SOFTWARE_LICENSE_PUBLIC_KEY" "$APP_BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :SoftwareLicenseAPIBaseURL string $SOFTWARE_LICENSE_API_BASE_URL" "$APP_BUNDLE/Contents/Info.plist"
 
 if [[ -f "$APP_BUNDLE/Contents/Resources/AppIcon.icns" ]]; then
     /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$APP_BUNDLE/Contents/Info.plist"

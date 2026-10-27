@@ -6,7 +6,8 @@ let package = Package(
     platforms: [.macOS(.v14)],
     targets: [
         .target(name: "DIShared"),
-        .executableTarget(name: "XIsland", dependencies: ["DIShared"], path: "Sources/DynamicIsland"),
+        .target(name: "MeteorLicenseCore"),
+        .executableTarget(name: "XIsland", dependencies: ["DIShared", "MeteorLicenseCore"], path: "Sources/DynamicIsland"),
         .executableTarget(name: "DIBridge", dependencies: ["DIShared"]),
         .executableTarget(
             name: "XIslandUITestDriver",
@@ -14,5 +15,6 @@ let package = Package(
             path: "Sources/XIslandUITestDriver"
         ),
         .testTarget(name: "XIslandTests", dependencies: ["XIsland", "DIBridge", "XIslandUITestDriver"], path: "Tests/TowerIslandTests"),
+        .testTarget(name: "MeteorLicenseCoreTests", dependencies: ["MeteorLicenseCore"]),
     ]
 )

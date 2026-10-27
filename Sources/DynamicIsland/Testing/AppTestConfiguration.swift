@@ -31,6 +31,16 @@ enum AppPreferences {
         processConfiguration.isEnabled
     }
 
+    /// 正式安装包不能通过测试启动参数获得免授权的运行模式。
+    static var allowsLicenseFixture: Bool {
+        guard isIsolated else { return false }
+        #if DEBUG
+        return true
+        #else
+        return Bundle.allBundles.contains { $0.bundleURL.pathExtension == "xctest" }
+        #endif
+    }
+
     static var persistentDomainName: String {
         processConfiguration.defaultsSuiteName ?? Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName
     }

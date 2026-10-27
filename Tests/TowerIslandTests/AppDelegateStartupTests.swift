@@ -43,7 +43,7 @@ final class AppDelegateStartupTests: XCTestCase {
         XCTAssertTrue(AppDelegate.shared === appDelegate)
     }
 
-    func testApplicationDidFinishLaunchingRunsProductionGlobalStartupSideEffectsOutsideTestMode() {
+    func testProductionStartupWaitsForLicenseAndRunsOnceWhenAuthorized() {
         _ = NSApplication.shared
         let previousPolicy = NSApp.activationPolicy()
         defer {
@@ -72,8 +72,43 @@ final class AppDelegateStartupTests: XCTestCase {
         appDelegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
 
         XCTAssertEqual(startupObserver.initialStartupRuns, 1)
+        XCTAssertEqual(startupObserver.productionStartupRuns, 0)
+        XCTAssertFalse(appDelegate.licensedRuntimeRunning)
+        appDelegate.applyLicenseAccess(true)
+        appDelegate.applyLicenseAccess(true)
         XCTAssertEqual(startupObserver.productionStartupRuns, 1)
+        XCTAssertTrue(appDelegate.licensedRuntimeRunning)
         XCTAssertTrue(AppDelegate.shared === appDelegate)
+    }
+
+    func testLicenseExpiryStopsRuntimeOnceAndReactivationRestartsIt() {
+        _ = NSApplication.shared
+        let previousPolicy = NSApp.activationPolicy()
+        defer { NSApp.setActivationPolicy(previousPolicy) }
+        var starts = 0
+        var stops = 0
+        var productionStarts = 0
+        let appDelegate = AppDelegate(
+            testConfiguration: AppTestConfiguration(isEnabled: false, fixtureName: nil,
+                fixturePath: nil, diagnosticsPath: nil, disableAnimations: false),
+            launchHooks: AppDelegate.LaunchHooks(
+                performInitialStartup: { _ in },
+                performProductionGlobalStartup: { _ in productionStarts += 1 },
+                performLicensedStartup: { _ in starts += 1 },
+                performLicenseLockdown: { _ in stops += 1 }
+            )
+        )
+        appDelegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
+        appDelegate.applyLicenseAccess(true)
+        appDelegate.applyLicenseAccess(false)
+        appDelegate.applyLicenseAccess(false)
+        XCTAssertEqual(starts, 1)
+        XCTAssertEqual(stops, 1)
+        XCTAssertFalse(appDelegate.licensedRuntimeRunning)
+        appDelegate.applyLicenseAccess(true)
+        XCTAssertEqual(starts, 2)
+        XCTAssertEqual(productionStarts, 2)
+        XCTAssertTrue(appDelegate.licensedRuntimeRunning)
     }
 
     func testApplicationDidFinishLaunchingWritesCollapsedDiagnosticsForNonInteractiveFixture() throws {

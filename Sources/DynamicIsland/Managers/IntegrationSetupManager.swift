@@ -85,6 +85,7 @@ final class IntegrationSetupManager {
     private var checkingCodexRow: IntegrationSetupRow?
     private(set) var isPresented = false
     private var isShuttingDown = false
+    private var resumesCancelledLicenseScan = false
     @ObservationIgnored private var monitoringTask: Task<Void, Never>?
     @ObservationIgnored private var monitoringGeneration = 0
     @ObservationIgnored private var refreshGeneration = 0
@@ -146,9 +147,20 @@ final class IntegrationSetupManager {
         }
         isRefreshing = true
         defer {
+            // 授权恢复可能排在已取消的启动扫描后；用新任务承接，不能继承旧任务的取消状态。
+            let resumePending = refreshPending && !isShuttingDown && resumesCancelledLicenseScan
+            let resumePreparation = preparationPending
+            let resumeRetry = retryPreparationPending
             isRefreshing = false
             preparationPending = false
             retryPreparationPending = false
+            resumesCancelledLicenseScan = false
+            if resumePending {
+                refreshPending = false
+                Task { [weak self] in
+                    await self?.refresh(prepareAutomatically: resumePreparation, retryFailed: resumeRetry)
+                }
+            }
         }
         var prepare = prepareAutomatically
         var retry = retryFailed
@@ -343,8 +355,15 @@ final class IntegrationSetupManager {
 
     func shutdown() {
         isShuttingDown = true
+        resumesCancelledLicenseScan = false
         isPresented = false
         cancelPendingWork()
+    }
+
+    /// 授权恢复后允许重新检查接入，不重放暂停前已经取消的操作。
+    func resumeAfterLicenseActivation() {
+        resumesCancelledLicenseScan = isShuttingDown && isRefreshing
+        isShuttingDown = false
     }
 
     private func cancelPendingWork() {

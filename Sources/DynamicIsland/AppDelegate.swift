@@ -5,6 +5,7 @@ import SwiftUI
 
 extension Notification.Name {
     static let xislandShowAboutPane = Notification.Name("XIslandShowAboutPane")
+    static let xislandShowLicensePane = Notification.Name("XIslandShowLicensePane")
     static let xislandScrollDown = Notification.Name("xislandScrollDown")
     static let xislandCollapse = Notification.Name("xislandCollapse")
     static let xislandToggleActivityLog = Notification.Name("xislandToggleActivityLog")
@@ -20,6 +21,7 @@ private let hideNotificationPrefix = "island.switch.hide."
 enum PreferencesRouting {
     static let pendingPaneSelectionKey = "XIsland.Preferences.PendingPaneSelection"
     static let aboutPaneValue = "about"
+    static let licensePaneValue = "license"
 }
 
 @MainActor
@@ -29,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     struct LaunchHooks {
         let performInitialStartup: StartupAction
         let performProductionGlobalStartup: StartupAction
+        var performLicensedStartup: StartupAction = { _ in }
+        var performLicenseLockdown: StartupAction = { _ in }
 
         static let live = Self(
             performInitialStartup: { appDelegate in
@@ -36,6 +40,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             performProductionGlobalStartup: { appDelegate in
                 appDelegate.performProductionGlobalStartup()
+            },
+            performLicensedStartup: { appDelegate in
+                appDelegate.performLicensedStartup()
+            },
+            performLicenseLockdown: { appDelegate in
+                appDelegate.performLicenseLockdown()
             }
         )
     }
@@ -52,6 +62,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let persistenceManager = SessionPersistenceManager(usesBackgroundWrites: true)
     let themeManager = ThemeManager()
     let integrationSetupManager: IntegrationSetupManager
+    let softwareLicense: SoftwareLicenseController?
+    private(set) var licensedRuntimeRunning = false
+    private var allowsIsolatedLicenseFixture: Bool {
+        testConfiguration.isEnabled && softwareLicense == nil && AppPreferences.allowsLicenseFixture
+    }
+    private var allowsFeatureActions: Bool { licensedRuntimeRunning || allowsIsolatedLicenseFixture }
     private var socketServer: SocketServer?
     private var hookRepairTimer: Timer?
     private var historyRetentionMaintenance: HistoryRetentionMaintenance?
@@ -98,13 +114,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     init(
         testConfiguration: AppTestConfiguration = AppTestConfiguration.current(),
-        launchHooks: LaunchHooks = .live
+        launchHooks: LaunchHooks = .live,
+        softwareLicense: SoftwareLicenseController? = nil
     ) {
         self.testConfiguration = testConfiguration
         self.launchHooks = launchHooks
         self.sessionManager = SessionManager(testConfiguration: testConfiguration)
-        self.quotaTracker = QuotaTracker(testConfiguration: testConfiguration)
+        self.quotaTracker = QuotaTracker(testConfiguration: testConfiguration, startImmediately: false)
         self.integrationSetupManager = IntegrationSetupManager(environment: testConfiguration.isEnabled ? .isolated : nil)
+        self.softwareLicense = softwareLicense ?? (testConfiguration.isEnabled || AppPreferences.isIsolated
+            ? nil : SoftwareLicenseController.live())
         super.init()
         sessionManager.onTaskAttention = { [weak self] event in
             self?.taskAttentionPresenter.enqueue(event)
@@ -165,11 +184,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         launchHooks.performInitialStartup(self)
-        if let pendingIslandShowURL { handleIslandCommand(pendingIslandShowURL) }
-
-        if testConfiguration.runsProductionGlobalStartupSideEffects {
-            launchHooks.performProductionGlobalStartup(self)
-        }
+        softwareLicense?.onAccessChange = { [weak self] allowed in self?.applyLicenseAccess(allowed) }
+        applyLicenseAccess(softwareLicense?.allowsAccess ?? allowsIsolatedLicenseFixture)
+        softwareLicense?.start()
+        if !licensedRuntimeRunning, !AppPreferences.isIsolated { openSoftwareLicense() }
 
         NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
@@ -199,8 +217,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-
-        if !testConfiguration.isEnabled { setupLinkedIslandPreviewService() }
 
         let initialIslandState = NotchContentView.initialIslandState(for: sessionManager)
         sessionManager.currentIslandState = initialIslandState
@@ -282,11 +298,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func resumeAfterCancelledTermination() {
+        guard allowsFeatureActions else { return }
         sessionManager.resumeAcceptingPersistenceOperations()
         if !testConfiguration.isEnabled { startSocketServer(); historyRetentionMaintenance?.startInBackground() }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        softwareLicense?.stop()
+        quotaTracker.suspendPolling()
         taskAttentionPresenter.cancel()
         linkedIslandPreviewService?.stop()
         linkedIslandPreviewService = nil
@@ -332,6 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                pending.issuedUptime >= motion.issuedUptime { return }
         }
         hasExplicitIslandVisibilityRequest = true
+        guard allowsFeatureActions else { pendingIslandShowURL = url; return }
         guard let window = notchWindow else { pendingIslandShowURL = url; return }
         pendingIslandShowURL = nil
         if let motion { lastInboundMotionUptime = motion.issuedUptime }
@@ -387,6 +407,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         installApplicationMenuItems()
+        softwareLicense?.revalidate()
     }
 
     private func setupLinkedIslandPreviewService() {
@@ -552,6 +573,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Show Island", action: #selector(showNotch), keyEquivalent: "s"))
         menu.addItem(NSMenuItem(title: integrationSetupTitle, action: #selector(showIntegrationSetup as () -> Void), keyEquivalent: ""))
+        let licenseItem = NSMenuItem(title: L10n.isChinese ? "软件授权…" : "Software License…", action: #selector(openSoftwareLicense), keyEquivalent: "")
+        licenseItem.target = self
+        menu.addItem(licenseItem)
         menu.addItem(NSMenuItem.separator())
         let checkForUpdatesItem = NSMenuItem(
             title: "Check for Updates...",
@@ -578,6 +602,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startSocketServer() {
+        guard licensedRuntimeRunning else { return }
+        socketServer?.stop()
         socketServer = SocketServer(sessionManager: sessionManager)
         socketServer?.start()
     }
@@ -586,8 +612,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionManager.audioEngine = audioEngine
         persistenceManager.setupContainer(storeURL: testConfiguration.storageURL)
         sessionManager.persistenceManager = persistenceManager
-        setupNotchWindow()
         setupMenuBarItem()
+        DispatchQueue.main.async { [weak self] in self?.installApplicationMenuItems() }
+        observeUpdateState()
+        if !testConfiguration.isEnabled { updateManager.startAutoCheck() }
+    }
+
+    /// 菜单、授权与历史导出始终可用；监控服务只在有效租约期间启动。
+    func applyLicenseAccess(_ allowed: Bool) {
+        guard !isTerminating, allowed != licensedRuntimeRunning else { return }
+        licensedRuntimeRunning = allowed
+        if allowed {
+            sessionManager.resumeAcceptingPersistenceOperations()
+            integrationSetupManager.resumeAfterLicenseActivation()
+            launchHooks.performLicensedStartup(self)
+            if testConfiguration.runsProductionGlobalStartupSideEffects {
+                launchHooks.performProductionGlobalStartup(self)
+            }
+            if let pendingIslandShowURL { handleIslandCommand(pendingIslandShowURL) }
+        } else {
+            launchHooks.performLicenseLockdown(self)
+            if !AppPreferences.isIsolated { openSoftwareLicense() }
+        }
+    }
+
+    private func performLicensedStartup() {
+        if notchWindow == nil { setupNotchWindow() }
         if testConfiguration.isEnabled {
             // fixture窗口不监听全局输入、不隐藏其他岛体，也不访问真实Agent配置。
             audioEngine.isMuted = true
@@ -600,11 +650,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             setupScrollMonitor()
             scheduleInitialVisibilityResolution()
         }
-        DispatchQueue.main.async { [weak self] in
-            self?.installApplicationMenuItems()
-        }
-        observeUpdateState()
         if !testConfiguration.isEnabled {
+            quotaTracker.resumePolling()
+            setupLinkedIslandPreviewService()
             sessionManager.startCleanupTimer()
             // 生产启动和后续周期都执行保留期策略；隔离测试不访问用户历史。
             if !AppPreferences.isIsolated {
@@ -612,11 +660,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 historyRetentionMaintenance = maintenance
                 maintenance.startInBackground()
             }
-            updateManager.startAutoCheck()
         }
     }
 
+    private func performLicenseLockdown() {
+        taskAttentionPresenter.cancel()
+        clearSwitchingAppsWorkItem?.cancel()
+        pendingIslandShowURL = nil
+        hasExplicitIslandVisibilityRequest = false
+        socketServer?.stop()
+        socketServer = nil
+        sessionManager.suspendForLicense()
+        quotaTracker.suspendPolling()
+        historyRetentionMaintenance?.stop()
+        hookRepairTimer?.invalidate()
+        hookRepairTimer = nil
+        integrationRefreshTask?.cancel()
+        integrationRefreshTask = nil
+        integrationReminderTask?.cancel()
+        integrationReminderTask = nil
+        integrationSetupManager.shutdown()
+        integrationWindow?.close()
+        linkedIslandPreviewService?.stop()
+        linkedIslandPreviewService = nil
+        if let observer = integrationActivationObserver {
+            NotificationCenter.default.removeObserver(observer)
+            integrationActivationObserver = nil
+        }
+        if let monitor = scrollMonitor {
+            NSEvent.removeMonitor(monitor)
+            scrollMonitor = nil
+        }
+        AppSwitcher.shared.cancelSwitch()
+        notchWindow?.close()
+        notchWindow = nil
+    }
+
     private func performProductionGlobalStartup() {
+        guard licensedRuntimeRunning else { return }
         sessionManager.onIntegrationActivity = { [weak self] agent in
             self?.integrationSetupManager.recordActivity(from: agent)
         }
@@ -629,7 +710,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         hookRepairTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, !self.isTerminating else { return }
+                guard let self, !self.isTerminating, self.licensedRuntimeRunning else { return }
                 self.integrationRefreshTask = Task { [weak self] in
                     await self?.integrationSetupManager.refresh(prepareAutomatically: true)
                 }
@@ -639,7 +720,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forName: NSApplication.didBecomeActiveNotification, object: NSApp, queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, !self.isTerminating,
+                guard let self, !self.isTerminating, self.licensedRuntimeRunning,
                       self.recheckIntegrationOnActivation || self.integrationWindow?.isVisible == true else { return }
                 self.recheckIntegrationOnActivation = false
                 await self.integrationSetupManager.refresh()
@@ -710,6 +791,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleNotch() {
+        guard allowsFeatureActions else { openSoftwareLicense(); return }
         if let w = notchWindow {
             if w.isVisible {
                 AppSwitcher.shared.cancelSwitch()
@@ -755,6 +837,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showIsland(preferMouseScreen: Bool, hidePeers: Bool) {
+        guard allowsFeatureActions else { openSoftwareLicense(); return }
         guard let window = notchWindow else { return }
         hasExplicitIslandVisibilityRequest = true
         AppSwitcher.shared.cancelSwitch()
@@ -771,7 +854,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 提醒只争取岛的显示权，不激活应用或替用户打开/确认任务详情。
     func presentTaskAttention(_ event: TaskAttentionEvent) {
-        guard !isTerminating, TaskAttentionSettings.isEnabled(),
+        guard !isTerminating, allowsFeatureActions, TaskAttentionSettings.isEnabled(),
               sessionManager.isCurrentTaskAttention(event), let window = notchWindow else { return }
         hasExplicitIslandVisibilityRequest = true
         pendingIslandShowURL = nil
@@ -832,6 +915,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func showIntegrationSetup(focusing agent: AgentType?) {
+        guard allowsFeatureActions else { openSoftwareLicense(); return }
         let request = agent.map { IntegrationSetupFocusRequest(agent: $0) }
         if let window = integrationWindow, window.isVisible {
             if let request {
@@ -925,6 +1009,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 恢复旧系统窗口不应盖住首次接入引导；明确菜单操作直接走 openPreferences。
     func routeSettingsScene() {
+        guard allowsFeatureActions else { openSoftwareLicense(); return }
         guard !integrationSetupManager.rows.isEmpty, !integrationSetupManager.isRefreshing,
               !integrationSetupManager.hasUnpresentedReminder, integrationWindow?.isVisible != true else { return }
         openPreferences()
@@ -970,6 +1055,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .environment(quotaTracker)
                 .environment(persistenceManager)
                 .environment(themeManager)
+                .environment(\.softwareLicenseController, softwareLicense)
             .defaultAppStorage(AppPreferences.defaults)
         )
 
@@ -992,6 +1078,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+
+    @objc func openSoftwareLicense() {
+        AppPreferences.defaults.set(PreferencesRouting.licensePaneValue, forKey: PreferencesRouting.pendingPaneSelectionKey)
+        openPreferences()
+        NotificationCenter.default.post(name: .xislandShowLicensePane, object: nil)
     }
 
     /// Apply the resolved color scheme to the notch window.

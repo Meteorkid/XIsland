@@ -5,6 +5,35 @@ import XCTest
 
 @MainActor
 final class IntegrationSetupConcurrencyTests: XCTestCase {
+    func testLicenseReactivationDoesNotLoseRefreshBehindCancelledStartup() async throws {
+        let started = expectation(description: "old startup scan suspended")
+        var pendingScan: CheckedContinuation<[IntegrationSetupDiscoveryEntry], Never>?
+        var scans = 0
+        var environment = environment()
+        let latest = entry(.cursor, configured: true)
+        environment.scan = {
+            scans += 1
+            if scans == 1 { return await withCheckedContinuation { pendingScan = $0; started.fulfill() } }
+            return [latest]
+        }
+        let manager = IntegrationSetupManager(defaults: try defaults(), environment: environment)
+        let oldStartup = Task { await manager.refresh(prepareAutomatically: true) }
+        await fulfillment(of: [started], timeout: 2)
+        oldStartup.cancel()
+        manager.shutdown()
+        manager.resumeAfterLicenseActivation()
+        await manager.refresh()
+        pendingScan?.resume(returning: [entry(.claudeCode)])
+        await oldStartup.value
+        let deadline = ContinuousClock.now + .seconds(1)
+        while (scans < 2 || manager.isRefreshing), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(scans, 2)
+        XCTAssertEqual(manager.rows.first { $0.agent == .cursor }?.phase, .waitingForActivity)
+        XCTAssertFalse(manager.isRefreshing)
+    }
+
     func testClosingPanelDiscardsInFlightScanWithoutPreparingClients() async throws {
         let started = expectation(description: "scan suspended")
         var pendingScan: CheckedContinuation<[IntegrationSetupDiscoveryEntry], Never>?
