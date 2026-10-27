@@ -1,0 +1,95 @@
+{
+  "version": "2.0.15",
+  "verificationStage": "pre-publication-package",
+  "preparedAtUTC": "2026-10-27T12:46:01.442587+00:00",
+  "implementationCommit": "3b8800be4f08625610a48cdcaaa7998c0d41b300",
+  "integratedSourceCommit": "be2c7dda8cc358cc65827485cb31c5edf7e04145",
+  "previousPublishedRelease": "v2.0.14",
+  "preservesPublishedWorkBuddyFix": true,
+  "platform": "macOS",
+  "architecture": "arm64",
+  "minimumOS": "14.0",
+  "windowsSourceChanged": false,
+  "regression": {
+    "fullSuite": {
+      "total": 1873,
+      "passed": 1853,
+      "skipped": 20,
+      "failed": 0,
+      "log": "full-tests.log",
+      "runAfterWorkBuddyMerge": true
+    },
+    "XIslandTests": {
+      "total": 1842,
+      "passed": 1823,
+      "skipped": 19,
+      "failed": 0
+    },
+    "MeteorLicenseCoreTests": {
+      "total": 31,
+      "passed": 30,
+      "skipped": 1,
+      "failed": 0
+    },
+    "packagedWorkBuddyPlugin": {
+      "binarySHA256": "71a2776080b10688bad41fb92541e246325a88e861675df5eff19f27eeeceb14",
+      "hookEvents": 11,
+      "localMarketplaceManifestVerified": true,
+      "exportedFiles": 3,
+      "exportOverwriteRejected": true,
+      "stdoutNeutral": true,
+      "malformedObserverDidNotBlock": true,
+      "scope": "Exported commands, compiled bridge and isolated socket; synthetic vendor payloads",
+      "realClientVerified": false,
+      "installed": false
+    }
+  },
+  "package": {
+    "status": "passed",
+    "version": "2.0.15",
+    "readOnlyMounted": true,
+    "signatureVerified": true,
+    "signature": "ad-hoc",
+    "notarized": false,
+    "mountedAppMatchesBuiltBundle": true,
+    "comparedBundleFiles": 8,
+    "dmgSHA256": "860baa66321a225f272f7d87b41fa65b57e78cfb3764f524b45c0e065371d61d",
+    "dmgBytes": 6547327,
+    "binarySHA256": {
+      "XIsland": "eb3de13a67e62a1dee438364539328fcb22e56fe238d8e3e013442a7c33f51e9",
+      "di-bridge": "71a2776080b10688bad41fb92541e246325a88e861675df5eff19f27eeeceb14"
+    },
+    "cliMatchesSource": true,
+    "checksumsSHA256": "51cb7e620ff66efff2f9053b270afc930ac76cb9c73308218ed44f47073b174a"
+  },
+  "licensing": {
+    "publicKeyRawSHA256": "feea02bdbb70c8aad874eb326b3ba601f825a3ceaf039254aaa1091288ca424e",
+    "publicKeyMatchesProvidedProductionKey": true,
+    "apiBaseURL": "https://www.imagentx.top",
+    "testKeyUsed": false
+  },
+  "sourceInputs": {
+    "manifest": "source-hashes-2.0.15.json",
+    "sha256": "147c58b9486335e50d5bb52c09b11ddd6f724bca8d4c66e3c4f80a591efe16e3",
+    "count": 561,
+    "matchesBuildSnapshot": true
+  },
+  "ci": {
+    "requiredBeforePublication": [
+      "Tests",
+      "Windows checks"
+    ],
+    "requiresExactReleaseCommit": true
+  },
+  "notVerified": [
+    "Physical long sleep/wake",
+    "External client approval at the exact expiry instant",
+    "Published release local installation",
+    "Real WorkBuddy client rerun on this release package"
+  ],
+  "releaseBuildProductionAppUntouched": true,
+  "bridgeInstallationSkipped": true,
+  "pathConfigurationSkipped": true,
+  "installed": false,
+  "published": false
+}
