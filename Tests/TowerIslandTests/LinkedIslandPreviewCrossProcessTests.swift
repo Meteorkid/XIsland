@@ -1,4 +1,5 @@
 import CoreGraphics
+import CryptoKit
 import Darwin
 import Foundation
 import XCTest
@@ -35,12 +36,14 @@ final class LinkedIslandPreviewCrossProcessTests: XCTestCase {
         let captures: Int
         let finished: Bool
         let endpointValidated: Bool
+        let sourceAuthentication: String
     }
 
     private enum FixtureError: Error {
         case compilerFailed(String)
         case processTimedOut(String)
         case processPathUnavailable(Int32)
+        case authenticationProbeAnchorMismatch
     }
 
     private func exchange(with artifact: Artifact, scenario: Scenario) async throws {
@@ -100,6 +103,7 @@ final class LinkedIslandPreviewCrossProcessTests: XCTestCase {
             if scenario == .authenticated {
                 let snapshot = try result.get()
                 XCTAssertEqual(report.captures, 1)
+                XCTAssertEqual(report.sourceAuthentication, "accepted")
                 XCTAssertEqual(snapshot.image.width, 16)
                 XCTAssertEqual(snapshot.image.height, 12)
                 XCTAssertEqual(snapshot.frame, CGRect(x: 100, y: 200, width: 16, height: 12))
@@ -118,14 +122,16 @@ final class LinkedIslandPreviewCrossProcessTests: XCTestCase {
                 } else {
                     XCTAssertNotEqual(failure, .timeout, "无连接或无响应不能算作身份拒绝")
                     XCTAssertNotEqual(failure, .cancelled)
-                    // 目标保持存活；来源必须观察到连接早断开或真实 I/O 失败。
+                    // 单靠来源结果不能判断由哪端拒绝；目标必须实际执行生产认证并拒绝来源。
+                    XCTAssertEqual(report.sourceAuthentication, "peerRejected")
+                    // 目标关闭socket后即使进程仍存活，LOCAL_PEERPID也可能返回ENOTCONN。
                     switch failure {
-                    case .unavailable:
+                    case .unavailable, .peerRejected:
                         break
                     case .io(let code):
                         XCTAssertNotEqual(code, 0, "保留实际系统 I/O 错误，不把它改写成身份错误")
                     default:
-                        XCTFail("应收到目标关闭连接的结果，实际为 \(failure)")
+                        XCTFail("目标认证拒绝后应无数据并关闭连接，实际为 \(failure)")
                     }
                 }
             }
@@ -133,7 +139,7 @@ final class LinkedIslandPreviewCrossProcessTests: XCTestCase {
             let endpoint = URL(fileURLWithPath: pending.request.endpoint)
             XCTAssertFalse(FileManager.default.fileExists(atPath: endpoint.path))
             XCTAssertFalse(FileManager.default.fileExists(atPath: endpoint.deletingLastPathComponent().path))
-            print("Cross-process preview \(scenario.rawValue): parent=\(parent.pid), child=\(child.pid), captures=\(report.captures), outcome=\(outcome), endpointValidated=\(report.endpointValidated), exited=true, endpointRemoved=true")
+            print("Cross-process preview \(scenario.rawValue): parent=\(parent.pid), child=\(child.pid), captures=\(report.captures), outcome=\(outcome), targetAuth=\(report.sourceAuthentication), endpointValidated=\(report.endpointValidated), exited=true, endpointRemoved=true")
         } catch {
             await stopOwnedProcess(process)
             throw error
@@ -149,6 +155,21 @@ final class LinkedIslandPreviewCrossProcessTests: XCTestCase {
         let helper = directory.appendingPathComponent("Responder.swift")
         let stub = directory.appendingPathComponent("SwipeDirection.swift")
         let executable = directory.appendingPathComponent("preview-responder")
+        let transport = package.appendingPathComponent("Sources/DynamicIsland/LinkedIslandPreviewTransport.swift")
+        let transportData = try Data(contentsOf: transport)
+        let transportSource = try String(contentsOf: transport, encoding: .utf8)
+        let anchor = "                try authenticate(socket, expected: expectedSource)"
+        guard transportSource.components(separatedBy: anchor).count == 2 else {
+            try? FileManager.default.removeItem(at: directory)
+            throw FixtureError.authenticationProbeAnchorMismatch
+        }
+        // 仅helper编译副本加入观测：原认证调用及抛错完整保留，生产文件和父端均不修改。
+        let instrumentedTransport = directory.appendingPathComponent("InstrumentedPreviewTransport.swift")
+        try transportSource.replacingOccurrences(of: anchor, with:
+            "                try PreviewFixtureAuthentication.observe { try authenticate(socket, expected: expectedSource) }")
+            .write(to: instrumentedTransport, atomically: true, encoding: .utf8)
+        let digest = SHA256.hash(data: transportData).map { String(format: "%02x", $0) }.joined()
+        print("Cross-process preview authentication probe: productionSHA256=\(digest), insertions=1, originalThrowPreserved=true")
         try Self.helperSource.write(to: helper, atomically: true, encoding: .utf8)
         try "import CoreGraphics\nenum SwipeDirection: String, Equatable, Sendable { case left, right; var sign: CGFloat { self == .left ? -1 : 1 } }\n"
             .write(to: stub, atomically: true, encoding: .utf8)
@@ -159,7 +180,7 @@ final class LinkedIslandPreviewCrossProcessTests: XCTestCase {
         compiler.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
         compiler.arguments = ["swiftc", "-parse-as-library", "-swift-version", "5",
             "-module-cache-path", directory.appendingPathComponent("ModuleCache").path,
-            package.appendingPathComponent("Sources/DynamicIsland/LinkedIslandPreviewTransport.swift").path,
+            instrumentedTransport.path,
             package.appendingPathComponent("Sources/DynamicIsland/IslandSwitchMotion.swift").path,
             stub.path, helper.path, "-o", executable.path]
         compiler.environment = ["PATH": "/usr/bin:/bin", "TMPDIR": NSTemporaryDirectory()]
@@ -171,6 +192,9 @@ final class LinkedIslandPreviewCrossProcessTests: XCTestCase {
             guard compiler.terminationStatus == 0 else {
                 let output = String(data: try Data(contentsOf: logURL), encoding: .utf8) ?? ""
                 throw FixtureError.compilerFailed(output)
+            }
+            guard try Data(contentsOf: transport) == transportData else {
+                throw FixtureError.authenticationProbeAnchorMismatch
             }
             return Artifact(directory: directory, executable: executable)
         } catch {
@@ -252,6 +276,32 @@ final class LinkedIslandPreviewCrossProcessTests: XCTestCase {
         let captures: Int
         let finished: Bool
         let endpointValidated: Bool
+        let sourceAuthentication: String
+    }
+
+    enum PreviewFixtureAuthentication {
+        private static let lock = NSLock()
+        private static var outcome = "notReached"
+
+        static func observe(_ authenticate: () throws -> Void) throws {
+            do {
+                try authenticate()
+                record("accepted")
+            } catch {
+                record((error as? LinkedIslandPreviewTransport.PreviewError) == .peerRejected
+                    ? "peerRejected" : "unexpectedError")
+                throw error
+            }
+        }
+
+        static func result() -> String {
+            lock.lock(); defer { lock.unlock() }
+            return outcome
+        }
+
+        private static func record(_ value: String) {
+            lock.lock(); outcome = value; lock.unlock()
+        }
     }
 
     @main
@@ -278,7 +328,8 @@ final class LinkedIslandPreviewCrossProcessTests: XCTestCase {
                 let finished = response.isFinished
                 if !finished { response.cancel() }
                 let report = Report(pid: getpid(), uid: geteuid(), captures: captures,
-                                    finished: finished, endpointValidated: endpointValidated)
+                                    finished: finished, endpointValidated: endpointValidated,
+                                    sourceAuthentication: PreviewFixtureAuthentication.result())
                 try FileHandle.standardOutput.write(contentsOf: JSONEncoder().encode(report))
                 // 等父端结束本轮传输，再退出，避免执行路径查询与进程退出竞争。
                 guard readLine() == "exit" else { exit(4) }
