@@ -15,8 +15,8 @@ struct SoftwareLicenseView: View {
             Text(isChinese ? "XIsland 软件授权" : "XIsland Software License")
                 .font(.title2.bold())
             Text(isChinese
-                 ? "完整试用 14 天。可选月付、年付或永久激活，每份授权最多同时使用 3 台设备。"
-                 : "Try all features for 14 days. Choose a monthly, annual, or lifetime license for up to 3 devices.")
+                 ? "完整试用 14 天。可选一个月、一年或永久激活，每份授权最多同时使用 3 台设备。"
+                 : "Try all features for 14 days. Choose 1 month, 1 year, or Lifetime access for up to 3 devices.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -56,7 +56,7 @@ struct SoftwareLicenseView: View {
                             Task { await controller.requestTrial() }
                         }.disabled(controller.isBusy)
                     }
-                    if case .active = controller.state {
+                    if case .active(let payload) = controller.state, payload.kind != .trial {
                         Button(isChinese ? "解绑本机" : "Deactivate this device", role: .destructive) {
                             confirmsDeactivation = true
                         }.disabled(controller.isBusy)
@@ -106,8 +106,8 @@ struct SoftwareLicenseView: View {
         case .active(let payload):
             switch payload.kind {
             case .trial: return isChinese ? "14 天试用中" : "14-day trial active"
-            case .monthly: return isChinese ? "月度授权已激活" : "Monthly license active"
-            case .annual: return isChinese ? "年度授权已激活" : "Annual license active"
+            case .monthly: return isChinese ? "一个月授权已激活" : "1 month license active"
+            case .annual: return isChinese ? "一年授权已激活" : "1 year license active"
             case .lifetime: return isChinese ? "永久授权已激活" : "Lifetime license active"
             }
         }

@@ -16,6 +16,8 @@ final class SoftwareLicenseController {
     @ObservationIgnored private var deadlineTimer: Timer?
     @ObservationIgnored private var wakeObserver: NSObjectProtocol?
     @ObservationIgnored private var requestTask: Task<Void, Never>?
+    @ObservationIgnored private var requestGeneration: UInt64 = 0
+    @ObservationIgnored private var isStopped = false
     @ObservationIgnored private var lastOnlineCheck = Date.distantPast
     private let refreshInterval: TimeInterval = 15 * 60
 
@@ -26,7 +28,7 @@ final class SoftwareLicenseController {
         self.state = session.state
         self.lastError = session.lastError
         session.onStateChange = { [weak self] state in
-            guard let self else { return }
+            guard let self, !self.isStopped else { return }
             self.state = state
             self.lastError = self.session?.lastError
             self.scheduleDeadline()
@@ -67,6 +69,7 @@ final class SoftwareLicenseController {
 
     func start() {
         guard heartbeat == nil else { return }
+        isStopped = false
         let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.checkAccessAndRefreshIfNeeded() }
         }
@@ -82,12 +85,15 @@ final class SoftwareLicenseController {
     }
 
     func stop() {
+        isStopped = true
+        requestGeneration &+= 1
         heartbeat?.invalidate()
         heartbeat = nil
         deadlineTimer?.invalidate()
         deadlineTimer = nil
         requestTask?.cancel()
         requestTask = nil
+        isBusy = false
         if let wakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
             self.wakeObserver = nil
@@ -95,6 +101,7 @@ final class SoftwareLicenseController {
     }
 
     func checkAccess(now: Date = Date()) {
+        guard !isStopped else { return }
         session?.checkAccess(now: now)
         synchronizeState()
     }
@@ -105,13 +112,16 @@ final class SoftwareLicenseController {
     }
 
     func revalidate() {
+        guard !isStopped else { return }
         checkAccess()
         guard !isBusy, let session else { return }
         isBusy = true
+        requestGeneration &+= 1
+        let generation = requestGeneration
         lastOnlineCheck = Date()
         requestTask = Task { [weak self] in
             await session.start()
-            guard let self else { return }
+            guard let self, !self.isStopped, self.requestGeneration == generation else { return }
             self.isBusy = false
             self.synchronizeState()
             self.requestTask = nil
@@ -130,23 +140,28 @@ final class SoftwareLicenseController {
         await perform { session in try await session.deactivate() }
     }
 
-    private func perform(_ operation: (SoftwareLicenseSession) async throws -> Void) async {
-        guard !isBusy, let session else { return }
+    private func perform(_ operation: @escaping @MainActor (SoftwareLicenseSession) async throws -> Void) async {
+        guard !isStopped, !isBusy, let session else { return }
         isBusy = true
-        defer { isBusy = false }
-        do {
-            try await operation(session)
-            lastError = nil
-        } catch {
-            lastError = error.localizedDescription
+        requestGeneration &+= 1
+        let generation = requestGeneration
+        let task = Task { [weak self] in
+            var operationError: String?
+            do { try await operation(session) }
+            catch { operationError = error.localizedDescription }
+            guard let self, !self.isStopped, self.requestGeneration == generation else { return }
+            self.isBusy = false
+            self.requestTask = nil
+            self.synchronizeState(operationError: operationError)
         }
-        synchronizeState()
+        requestTask = task
+        await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
     }
 
-    private func synchronizeState() {
-        guard let session else { return }
+    private func synchronizeState(operationError: String? = nil) {
+        guard !isStopped, let session else { return }
         state = session.state
-        lastError = session.lastError ?? lastError
+        lastError = operationError ?? session.lastError
         scheduleDeadline()
         onAccessChange?(state.allowsAccess)
     }
@@ -154,7 +169,7 @@ final class SoftwareLicenseController {
     private func scheduleDeadline() {
         deadlineTimer?.invalidate()
         deadlineTimer = nil
-        guard let session, let deadline = session.nextDeadline else { return }
+        guard !isStopped, let session, let deadline = session.nextDeadline else { return }
         let interval = max(0.01, deadline.timeIntervalSince(session.effectiveNow()))
         let timer = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in self?.checkAccess() }

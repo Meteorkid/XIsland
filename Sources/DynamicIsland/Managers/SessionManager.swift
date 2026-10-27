@@ -90,6 +90,7 @@ final class SessionManager {
     @ObservationIgnored private var collectedPersistenceCommands: [PersistenceCommand]?
     @ObservationIgnored private var pendingCheckpointCounts: [String: Int] = [:]
     @ObservationIgnored private var acceptsPersistenceOperations = true
+    @ObservationIgnored private var isLicenseSuspended = false
     @ObservationIgnored private var inFlightInteractionDeliveries = 0
     @ObservationIgnored private var persistenceWaiters: [CheckedContinuation<Void, Never>] = []
 
@@ -144,6 +145,7 @@ final class SessionManager {
     }
 
     func resumeAcceptingPersistenceOperations() {
+        isLicenseSuspended = false
         acceptsPersistenceOperations = true
     }
 
@@ -361,6 +363,7 @@ final class SessionManager {
     }
 
     func startCleanupTimer() {
+        guard !isLicenseSuspended else { return }
         cleanupTimer?.invalidate()
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -374,6 +377,8 @@ final class SessionManager {
 
     /// 授权失效时停止监控并取消未处理交互，保留历史与已接受的持久化写入。
     func suspendForLicense() {
+        isLicenseSuspended = true
+        stopAcceptingPersistenceOperations()
         cleanupTimer?.invalidate()
         cleanupTimer = nil
         observationTimer?.invalidate()
@@ -383,7 +388,6 @@ final class SessionManager {
             self.workspaceObserver = nil
         }
         for session in sessions { cancelPendingInteractions(session) }
-        stopAcceptingPersistenceOperations()
     }
 
     // MARK: - Desktop App Termination
@@ -1110,7 +1114,7 @@ final class SessionManager {
     }
 
     private func startObservationTimerIfNeeded() {
-        guard observationTimer == nil, observationLeases.hasLiveSources else { return }
+        guard !isLicenseSuspended, observationTimer == nil, observationLeases.hasLiveSources else { return }
         observationTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.expireObservationSources() }
         }
@@ -1249,6 +1253,8 @@ final class SessionManager {
     }
 
     private func handlePermissionRequestImmediately(_ message: DIMessage, delivery: InteractionDelivery? = nil, cancel: (@Sendable () -> Void)? = nil, respond: @escaping @Sendable (Bool) -> Void) {
+        // 请求可能在锁定前已入队，但尚未完成先前的历史写入。
+        guard !isLicenseSuspended else { cancel?(); return }
         guard message.nativeMessageReplay != true, !message.hasObservationMetadata,
               sessionById(message.sessionId)?.sourceInstanceId == nil,
               restoreArchivedSessionIfNeeded(message, activate: !bypassMode) else { cancel?(); return }
@@ -1304,6 +1310,7 @@ final class SessionManager {
     }
 
     private func handleQuestionRequestImmediately(_ message: DIMessage, delivery: InteractionDelivery? = nil, respond: @escaping @Sendable (String) -> Void, cancel: (@Sendable () -> Void)? = nil) {
+        guard !isLicenseSuspended else { cancel?(); return }
         guard message.nativeMessageReplay != true, !message.hasObservationMetadata,
               sessionById(message.sessionId)?.sourceInstanceId == nil else { cancel?(); return }
         let text = message.questionText ?? ""
@@ -1365,6 +1372,7 @@ final class SessionManager {
     }
 
     private func handlePlanReviewImmediately(_ message: DIMessage, delivery: InteractionDelivery? = nil, cancel: (@Sendable () -> Void)? = nil, respond: @escaping @Sendable (Bool, String?) -> Void) {
+        guard !isLicenseSuspended else { cancel?(); return }
         guard message.nativeMessageReplay != true, !message.hasObservationMetadata,
               sessionById(message.sessionId)?.sourceInstanceId == nil,
               restoreArchivedSessionIfNeeded(message, activate: !bypassMode) else { cancel?(); return }

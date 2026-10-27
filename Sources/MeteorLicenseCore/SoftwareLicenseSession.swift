@@ -31,6 +31,7 @@ public final class SoftwareLicenseSession {
     private var anchorUptime: TimeInterval
     private var isBusy = false
     private var storageFailed = false
+    private var needsStorageReload = false
 
     public init(productId: String, deviceId: String, deviceName: String, publicKeyBase64: String?,
                 api: SoftwareLicenseAPI, store: any LicenseCredentialStore, now: Date = Date()) {
@@ -48,6 +49,7 @@ public final class SoftwareLicenseSession {
             anchorTime = max(anchorTime, record.lastSeen)
         } catch {
             storageFailed = true
+            needsStorageReload = true
             lastError = "无法读取已保存的授权，请检查钥匙串访问权限。"
         }
         checkAccess(now: now)
@@ -77,6 +79,10 @@ public final class SoftwareLicenseSession {
     }
 
     public func start() async {
+        if storageFailed {
+            do { try recoverStorageAccess() }
+            catch { failStorage(error); return }
+        }
         checkAccess()
         guard verifier != nil, !storageFailed else { return }
         do {
@@ -94,8 +100,14 @@ public final class SoftwareLicenseSession {
 
     public func activate(code: String) async throws {
         let code = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !code.uppercased().hasPrefix("XNK1") else { throw SoftwareLicenseError.legacyCode }
-        guard !code.isEmpty, code.count <= 512 else { throw SoftwareLicenseError.invalidLease }
+        guard !code.uppercased().hasPrefix("XNK1") else {
+            lastError = SoftwareLicenseError.legacyCode.localizedDescription
+            throw SoftwareLicenseError.legacyCode
+        }
+        guard !code.isEmpty, code.count <= 512 else {
+            lastError = SoftwareLicenseError.invalidLease.localizedDescription
+            throw SoftwareLicenseError.invalidLease
+        }
         try beginRequest()
         defer { isBusy = false }
         do { try accept(await api.activate(productId: productId, deviceId: deviceId, deviceName: deviceName, code: code)) }
@@ -108,14 +120,7 @@ public final class SoftwareLicenseSession {
         defer { isBusy = false }
         do { try accept(await api.refresh(productId: productId, deviceId: deviceId, deviceToken: token)) }
         catch {
-            lastError = error.localizedDescription
-            // 明确撤销/解绑后停止离线放行；暂时网络错误保留仍有效的租约。
-            if case SoftwareLicenseError.server(let status, _, _) = error,
-               [401, 403, 404, 410].contains(status) {
-                record.serverBlocked = true
-                do { try persist() } catch { failStorage(error) }
-            }
-            checkAccess()
+            handleCredentialFailure(error)
             throw error
         }
     }
@@ -129,17 +134,46 @@ public final class SoftwareLicenseSession {
             record.lease = nil
             record.deviceToken = nil
             record.serverBlocked = true
-            try persist()
-            lastError = nil
+            // 服务端已释放设备，安全存储暂时失败也不能继续放行旧租约。
             state = .needsConnection
-        } catch { lastError = error.localizedDescription; throw error }
+            do { try persist() }
+            catch { failStorage(error); throw error }
+            lastError = nil
+        } catch { handleCredentialFailure(error); throw error }
     }
 
     private func beginRequest() throws {
         guard verifier != nil else { throw SoftwareLicenseError.unconfigured }
         guard !isBusy else { throw SoftwareLicenseError.busy }
-        guard !storageFailed else { throw SoftwareLicenseError.storage(-1) }
+        try recoverStorageAccess()
         isBusy = true
+    }
+
+    private func recoverStorageAccess() throws {
+        guard storageFailed else { return }
+        if needsStorageReload {
+            // 初次读取失败时不能拿空记录覆盖原凭据；先完整重读并解码。
+            let effective = effectiveNow().timeIntervalSince1970
+            if let data = try store.load() { record = try JSONDecoder().decode(Record.self, from: data) }
+            record.lastSeen = max(record.lastSeen, effective)
+            anchorTime = record.lastSeen
+            anchorUptime = ProcessInfo.processInfo.systemUptime
+            needsStorageReload = false
+        }
+        // 写入失败时保留内存中的撤销/解绑状态，不能重读旧租约重新放行。
+        try persist()
+        storageFailed = false
+        lastError = nil
+    }
+
+    private func handleCredentialFailure(_ error: Error) {
+        lastError = error.localizedDescription
+        if case SoftwareLicenseError.server(let status, _, _) = error,
+           [401, 403, 404, 410].contains(status) {
+            record.serverBlocked = true
+            do { try persist() } catch { failStorage(error) }
+        }
+        checkAccess()
     }
 
     private func accept(_ response: SoftwareLicenseResponse) throws {

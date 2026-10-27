@@ -44,7 +44,7 @@ public enum SoftwareLicenseError: Error, LocalizedError, Equatable {
         case .unconfigured: return "此版本尚未配置授权公钥，请联系开发者获取正式版本。"
         case .invalidLease: return "授权凭证校验失败，请联网重新验证。"
         case .expired: return "授权或离线使用期限已到，请联网验证或续费。"
-        case .legacyCode: return "此邀请码属于旧版离线授权，请联系管理员迁移为新版授权。"
+        case .legacyCode: return "这是旧版离线激活码，请联系管理员迁移为新版激活码。"
         case .busy: return "正在处理授权请求，请稍后再试。"
         case .server(_, _, let message): return message
         case .storage: return "无法安全保存授权，请检查钥匙串访问权限后重试。"
