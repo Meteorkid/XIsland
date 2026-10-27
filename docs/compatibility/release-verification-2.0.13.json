@@ -3,7 +3,7 @@
   "verificationStage": "pre-publication-package",
   "preparedAtUTC": "2026-10-27T04:28:44.770108+00:00",
   "implementationCommit": "b78ae3c337e92aa50288ebf3f6070b40fd33fc53",
-  "mergedRemoteMain": "f10a1029c22e865101a18a2483ed103827ef5b1e",
+  "mergedRemoteMain": "3648c94915bd2baf58b4597fee1858f74c7a7ce5",
   "buildBaseCommit": "729a1b26c1dcd0d0a8ad28e8dcf2c415a08471aa",
   "previousPublishedReleaseAtPreparation": "v2.0.11",
   "preservedPreparedVersion": "2.0.12",
@@ -27,16 +27,28 @@
     "crossLanguageSignatureFixture": true,
     "fullLog": "full-tests.log",
     "mergeTargetedLog": "merge-targeted-tests.log",
-    "postBuildTestMerge": {
-      "commit": "f10a1029c22e865101a18a2483ed103827ef5b1e",
-      "command": "swift test --filter SocketServerAcceptTests",
-      "total": 13,
-      "passed": 13,
-      "skipped": 0,
-      "failed": 0,
-      "log": "post-merge-socket-tests.log",
-      "productSourceChanged": false
-    }
+    "postBuildTestMerges": [
+      {
+        "commit": "f10a1029c22e865101a18a2483ed103827ef5b1e",
+        "command": "swift test --filter SocketServerAcceptTests",
+        "total": 13,
+        "passed": 13,
+        "skipped": 0,
+        "failed": 0,
+        "log": "post-merge-socket-tests.log",
+        "productSourceChanged": false
+      },
+      {
+        "commit": "3648c94915bd2baf58b4597fee1858f74c7a7ce5",
+        "command": "swift test --filter IslandWindowOwnershipTests",
+        "total": 5,
+        "passed": 5,
+        "skipped": 0,
+        "failed": 0,
+        "log": "post-merge-window-tests.log",
+        "productSourceChanged": false
+      }
+    ]
   },
   "package": {
     "status": "passed",
@@ -65,10 +77,11 @@
   },
   "sourceInputs": {
     "manifest": "source-hashes-2.0.13.json",
-    "sha256": "b3efbd8cfecd07599cd2fe22949333ca61b3c7025bbbdaf0799896f60dd76533",
+    "sha256": "d805bf1fec9cb9f7ec7562e9f8c9fac752a632aa133427ca6212632580d0353f",
     "count": 558,
     "productionMatchesBuildSnapshot": true,
     "postBuildTestChanges": [
+      "Tests/TowerIslandTests/IslandWindowOwnershipTests.swift",
       "Tests/TowerIslandTests/SocketServerAcceptTests.swift"
     ],
     "buildSnapshotSHA256": "e359e4d419ccd8ad6cf8c40064b6d7b344ff986db8aca51187f1755ff9c2e9bc",
