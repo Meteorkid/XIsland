@@ -44,11 +44,12 @@
   },
   "sourceInputs": {
     "manifest": "source-hashes-2.0.12.json",
-    "sha256": "e7890b8d8d4a02ca95dc62efea0fa439fa29ba4f3968c32b953c3a91720a1b92",
+    "sha256": "e8f05c340b288b14006a0c2647e69febce5ccd84ccd43e4476bf553daa4b2924",
     "count": 550,
     "productionMatchesBuildSnapshot": true,
     "postBuildTestChanges": [
-      "Tests/TowerIslandTests/SocketServerAcceptTests.swift"
+      "Tests/TowerIslandTests/SocketServerAcceptTests.swift",
+      "Tests/TowerIslandTests/IslandWindowOwnershipTests.swift"
     ]
   },
   "ci": {
@@ -81,6 +82,14 @@
     "targetedCrossProcessRepeats": 3,
     "targetedHelperScenarios": 15,
     "dripProducerOwnsWriteDescriptor": true,
-    "readDeadlineAssertionUnchanged": "60ms read timeout, less than 200ms; only producer cleanup wait adjusted"
+    "readDeadlineAssertionUnchanged": "60ms read timeout, less than 200ms; only producer cleanup wait adjusted",
+    "windowOwnershipFixture": "Isolated preferences and drawable content; wait for WindowServer registration then assert frontmost once"
+  },
+  "windowFixtureFollowupTests": {
+    "total": 18,
+    "passed": 18,
+    "failed": 0,
+    "skipped": 0,
+    "log": "window-fixture-targeted.log"
   }
 }
