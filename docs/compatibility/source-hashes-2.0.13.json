@@ -527,7 +527,7 @@
   "Tests/TowerIslandTests/SessionStopFinalityTests.swift": "122eae35418c5cc3eae9a7336bf7c3a7d83adc77d4d2775261d85e726666ce64",
   "Tests/TowerIslandTests/SettingsRoutingTests.swift": "e9974d0f74652409e4e32651393ec5adf1fd227ffa2415e93e17da33cca03041",
   "Tests/TowerIslandTests/SocketResponseChannelTests.swift": "b341e615733dda3a131322f41992705d9db5ec13593c0b9cb86eef98d7a1bcc3",
-  "Tests/TowerIslandTests/SocketServerAcceptTests.swift": "3d9cdb1654def5d718e4ab13b901bf96ec5bc9ed1347d1c1977b5c8d0af20df3",
+  "Tests/TowerIslandTests/SocketServerAcceptTests.swift": "c84a1accfe9c7d1fb7223cc3c7c4fe204a62b0a84a3ac13d3420d0215d0e86e2",
   "Tests/TowerIslandTests/SoftwareLicenseControllerTests.swift": "e3d89cb82d2083c0c274532ba1eb7ad2b3d2eaa341883c1aba2020b0a6ad925d",
   "Tests/TowerIslandTests/StartupIsolationTests.swift": "5df8ac219129a97b87c1455311f5783adbf418c802719ac70842ef5ca7e422e1",
   "Tests/TowerIslandTests/StatisticsViewTests.swift": "638529d4b8517143eea7b36b3dcadbac366bc83077b7df39e239fe1e7e53a193",
