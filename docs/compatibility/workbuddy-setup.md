@@ -25,7 +25,7 @@ X Island 的“WorkBuddy 插件观察”开关只控制接收；导出命令不�
 观察 11 类事件：SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、PostToolUseFailure、Stop、FinalStop、SessionEnd、SubagentStart、SubagentStop、Notification。
 
 - PreToolUse 只表示准备调用；结果事件保留已有工具 ID，缺少 ID 时不伪造配对。
-- Stop 提供回复预览并保留“完成未确认”；FinalStop 仅按已核对的原因更新空闲或错误状态，后续回执继续更新历史。
+- Stop 提供回复预览并保留“完成未确认”；FinalStop 的 `completed` 标记本轮完成并进入待查看，提醒开启时自动显示 X Island。同一聊天继续提问会恢复活动，下一轮完成可再次提醒。`cancelled` / `interrupted` 保持空闲，`failed` 显示错误，未知原因不推断成功。
 - SessionEnd 与 SubagentStop 不自动关闭父会话，嵌套代理的归属和结束行为仍需真实客户端确认。
 - 当前没有注册 PermissionRequest，也不回传允许、拒绝或问答决定，原生权限与交互继续在 WorkBuddy 处理。
 
@@ -34,3 +34,5 @@ X Island 的“WorkBuddy 插件观察”开关只控制接收；导出命令不�
 `Scripts/test-workbuddy-plugin.py` 使用合成事件检查导出的三个文件、11 条观察命令、隔离 socket 往返、空 stdout、既有导出保护及无效载荷处理。部分合成事件也已进入隔离 X Island 验证界面和历史状态；这些测试执行的是桥接与 X Island，没有证明 WorkBuddy 已加载插件。
 
 本次发行构建的测试结果见[公开验证摘要](release-verification-2.0.0.json)。真实插件加载、任务触发、嵌套代理及完整客户端交互仍列入[验收缺口](acceptance-gaps.md)。
+
+2026-10-27 对 WorkBuddy 5.9.2 的主任务 FinalStop 调用链及完成提醒修复另有[专项验证记录](../verification/2026-10-27-workbuddy-completion.md)。该记录区分自动测试与真实客户端验收，不代表所有嵌套代理、压缩恢复和并发回合已验证。

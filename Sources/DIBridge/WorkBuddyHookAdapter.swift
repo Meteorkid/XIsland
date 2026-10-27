@@ -49,8 +49,13 @@ enum WorkBuddyHookAdapter {
         case "FinalStop":
             let reason = try text(data, "final_stop_reason")
             message.status = "WorkBuddy 本轮处理已结束"
-            if reason == "failed" { message.observedState = "error" }
-            else if ["completed", "cancelled", "interrupted"].contains(reason) { message.observedState = "idle" }
+            if reason == "completed" {
+                // 原生只在主任务最终停止、且 Stop hook 未要求继续时发出。
+                // 标记本轮结果待查看；同一聊天的新提示仍可恢复活动。
+                message.type = .sessionEnd
+                message.observedState = "completed"
+            } else if reason == "failed" { message.observedState = "error" }
+            else if ["cancelled", "interrupted"].contains(reason) { message.observedState = "idle" }
         case "SessionEnd":
             // JSON 的 session_id 可能已归并到父会话，不能据此删除父会话。
             message.status = "收到 WorkBuddy 会话结束通知"

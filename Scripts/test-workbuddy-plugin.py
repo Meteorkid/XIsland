@@ -58,7 +58,8 @@ def verify(binary: Path) -> dict:
                            'prompt': 'fixture', 'tool_name': 'Read', 'tool_input': {'path': 'fixture'},
                            'call_id': 'call-1', 'tool_use_id': 'call-1', 'tool_response': 'result', 'error': 'fixture failure',
                            'last_assistant_message': '中文 reply', 'final_stop_reason': 'completed',
-                           'agent_id': 'child', 'message': 'permission', 'notification_type': 'permission_prompt'}
+                           'agent_id': 'child' if event in ['SubagentStart', 'SubagentStop'] else 'main-store',
+                           'message': 'permission', 'notification_type': 'permission_prompt'}
                 result = subprocess.run(command, shell=True, executable='/bin/bash', input=json.dumps(payload).encode(),
                                         capture_output=True, timeout=5, env=env)
                 assert result.returncode == 0 and result.stdout == b'' and not result.stderr, (event, result)
@@ -69,9 +70,11 @@ def verify(binary: Path) -> dict:
             assert not errors, errors
             by_event = {m['nativeEvent'].split(':', 1)[1]: m for m in messages}
             assert all(m['agentType'] == 'workbuddy' and m['sessionId'].startswith('workbuddy-') for m in messages)
-            assert all(m['type'] not in ['permission_request', 'session_end'] for m in messages)
+            assert all(m['type'] != 'permission_request' for m in messages)
+            assert [m['nativeEvent'] for m in messages if m['type'] == 'session_end'] == ['workbuddy_5_7_6:FinalStop']
             assert by_event['Stop']['observedState'] == 'completionUnconfirmed' and by_event['Stop']['status'] == '中文 reply'
-            assert by_event['FinalStop']['observedState'] == 'idle'
+            assert by_event['FinalStop']['observedState'] == 'completed'
+            assert by_event['FinalStop']['statusIsAssistantReply'] is False
             assert 'observedState' not in by_event['SessionEnd'] and 'observedState' not in by_event['SubagentStop']
             assert by_event['PostToolUse']['toolCallId'] == 'call-1'
         finally:
