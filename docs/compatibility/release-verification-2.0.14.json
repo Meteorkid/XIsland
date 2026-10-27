@@ -1,0 +1,76 @@
+{
+  "version": "2.0.14",
+  "verificationStage": "pre-publication-package",
+  "preparedAt": "2026-10-27T20:08:28.039348+08:00",
+  "implementationCommit": "3e1b9573420aa8774ee2b26320d65d11dceae7f2",
+  "previousRelease": "v2.0.13",
+  "platform": "macOS",
+  "architecture": "arm64",
+  "minimumOS": "14.0",
+  "windowsSourceChanged": false,
+  "regression": {
+    "XIslandTests": {
+      "total": 1833,
+      "passed": 1813,
+      "skipped": 20,
+      "failed": 0
+    },
+    "MeteorLicenseCoreTests": {
+      "total": 17,
+      "passed": 16,
+      "skipped": 1,
+      "failed": 0
+    },
+    "sameSwiftSourcesAsFullTest": true,
+    "exportedHookEvents": 11
+  },
+  "package": {
+    "readOnlyMounted": true,
+    "mountedAppMatchesBuiltBundle": true,
+    "comparedBundleFiles": 8,
+    "signatureVerified": true,
+    "signature": "ad-hoc",
+    "notarized": false,
+    "dmgSHA256": "9a67fefa437b500147f7a672ce230cabc47bebbb347ee3151b92cba69d4660d7",
+    "dmgBytes": 6543896,
+    "binarySHA256": {
+      "XIsland": "df43eda3770dde7e08ff4671ccfd27be244d8d6a3602e4a139a0145fa36f8611",
+      "di-bridge": "3f358b68dfc97cfe06790f3ecdeb55045d4db2bbebe511ff086bfa9e4373e820"
+    },
+    "checksumsSHA256": "452f414f3873fc3c3d933d9a74e837f8d4f5ec2e60cd6ef2879b831078e30545"
+  },
+  "licensing": {
+    "apiBaseURL": "https://www.imagentx.top",
+    "publicKeyRawSHA256": "feea02bdbb70c8aad874eb326b3ba601f825a3ceaf039254aaa1091288ca424e",
+    "matchesInstalledOfficialConfiguration": true
+  },
+  "sourceInputs": {
+    "manifest": "source-hashes-2.0.14.json",
+    "sha256": "a8056cfa7740129f8def96aaa97d6678de21da030b895bb23c6b8ba681065ae4",
+    "count": 559
+  },
+  "ci": {
+    "requiredBeforePublication": [
+      "Tests",
+      "Windows checks"
+    ],
+    "requiresExactReleaseCommit": true
+  },
+  "candidateNativeAcceptance": {
+    "workBuddyVersion": "5.9.2",
+    "successfulTurns": 2,
+    "automaticReturnFromXNook": true,
+    "reviewAcknowledgementPersisted": true,
+    "sameConversationRemindedAgain": true
+  },
+  "notVerified": [
+    "Published release installation pending",
+    "Native compression/recovery and concurrent out-of-order turns",
+    "Nested subagent lifecycle",
+    "Physical animation frame rate"
+  ],
+  "bridgeInstallationSkipped": true,
+  "pathConfigurationSkipped": true,
+  "installed": false,
+  "published": false
+}

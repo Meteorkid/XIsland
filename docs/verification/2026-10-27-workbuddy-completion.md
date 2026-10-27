@@ -1,6 +1,6 @@
 # WorkBuddy 完成提醒与自动切回修复验收
 
-日期：2026-10-27（Asia/Shanghai）。基线：XIsland v2.0.13，`2ee08c0`。本轮为未发布的本机候选，不改变版本号或正式发行。
+日期：2026-10-27（Asia/Shanghai）。基线：XIsland v2.0.13，`2ee08c0`。以下记录修复阶段的本机候选验收；随后 2.0.14 正式发行的包校验和本机安装单独记录，不覆盖此候选证据。
 
 ## 原因与修复
 
@@ -41,7 +41,7 @@
 | WorkBuddy → 默认 AppDelegate 回调 → 80ms 提醒队列 | 显示请求一次、旧交接失效、未查看保留、重复不再呈现 |
 | 临时磁盘历史 | 后台事务、重新打开、查看确认持久化、归档重复事件不重建均通过 |
 
-复现命令：`swift test`；`python3 scripts/test-workbuddy-plugin.py --binary '.build/X Island.app/Contents/MacOS/di-bridge'`。测试只使用隔离偏好、临时历史和 socket。全量原始日志为 `.build/workbuddy-completion-20261027/full-tests.log`。
+复现命令：`swift test`；`python3 Scripts/test-workbuddy-plugin.py --binary '.build/X Island.app/Contents/MacOS/di-bridge'`。测试只使用隔离偏好、临时历史和 socket。全量原始日志为 `.build/workbuddy-completion-20261027/full-tests.log`。
 
 ## 本机真实验收
 
