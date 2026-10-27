@@ -433,6 +433,11 @@ struct NotchContentView: View {
     }
 
     var body: some View {
+        contentWithInteractionObservers
+    }
+
+    // 拆分泛型修饰链，避免较旧Swift编译器在整段body上类型推断超时。
+    private var islandSurface: some View {
         ZStack(alignment: .top) {
             IslandSwitchBackground(topRadius: notchTopCornerRadius, bottomRadius: notchBottomCornerRadius,
                 fillColor: NSColor(pillFillColor),
@@ -534,6 +539,10 @@ struct NotchContentView: View {
         .accessibilityIdentifier(TestAccessibility.islandRoot)
         .environment(\.taskAttentionPresented, taskAttentionPresented)
         .preferredColorScheme(themeManager.resolvedScheme)
+    }
+
+    private var contentWithLayoutObservers: some View {
+        islandSurface
         .onChange(of: hasUnreviewedTaskAttention) { _, hasAttention in
             if !hasAttention { notchWindow?.releaseTaskAttentionProtection() }
         }
@@ -593,6 +602,10 @@ struct NotchContentView: View {
                 }
             }
         }
+    }
+
+    private var contentWithLifecycleObservers: some View {
+        contentWithLayoutObservers
         .onAppear {
             if let w = notchWindow {
                 islandObscuredByNotch = w.isObscuredByPhysicalNotch()
@@ -662,6 +675,10 @@ struct NotchContentView: View {
             }
             notificationTokens = []
         }
+    }
+
+    private var contentWithInteractionObservers: some View {
+        contentWithLifecycleObservers
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { notification in
             guard let window = notchWindow, notification.object as? NotchWindow === window else { return }
             restoreHandoffContentAfterExplicitShow()

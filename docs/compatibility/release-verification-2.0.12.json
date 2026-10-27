@@ -1,0 +1,81 @@
+{
+  "version": "2.0.12",
+  "verificationStage": "pre-publication-package",
+  "preparedAtUTC": "2026-10-27T04:15:06.792704+00:00",
+  "implementationCommit": "788f958d6dfaf2c87f7d85250f7f385bcc14d3de",
+  "previousRelease": "v2.0.11",
+  "platform": "macOS",
+  "architecture": "arm64",
+  "minimumOS": "14.0",
+  "companionVersion": "1.0.1",
+  "companionChanged": false,
+  "companionSourceRelease": "v2.0.11",
+  "windowsSourceChanged": false,
+  "regression": {
+    "total": 1817,
+    "passed": 1799,
+    "skipped": 18,
+    "failed": 0,
+    "reusedVerifiedSource": false,
+    "sourceIdenticalExceptVersion": false,
+    "command": "X_ISLAND_RENDER_UNIFIED_COLLAPSE=1 swift test",
+    "log": "final-full-tests.log"
+  },
+  "package": {
+    "status": "passed",
+    "version": "2.0.12",
+    "readOnlyMounted": true,
+    "architecture": "arm64",
+    "signatureVerified": true,
+    "signature": "ad-hoc",
+    "notarized": false,
+    "mountedAppMatchesBuiltBundle": true,
+    "comparedBundleFiles": 8,
+    "dmgSHA256": "3d9855499cfbb7e9e98be1502955eae0afb5ab1881c3f3cc57feb3efb4c5d047",
+    "dmgBytes": 6407907,
+    "binarySHA256": {
+      "XIsland": "121f8b7e22d5c66718636b407a1cc3ddd444807bfc88a6d26fa2297d345cbe7b",
+      "di-bridge": "e5fe823e236c956e51993167ac482eb4fc265352a8f448d2ec37b2f744ab0805"
+    },
+    "cliMatchesSource": true,
+    "vsixSHA256": "6be6a45c660c600f1e2d5d236f911b560d8ddc435d5e767269cbbc5d0337cd07",
+    "vsixCRCVerified": true,
+    "checksumsSHA256": "1f48857aaf1a2036dd2428b5d35aff3b037514afa6a07c7b1e8efa967ac2354d"
+  },
+  "sourceInputs": {
+    "manifest": "source-hashes-2.0.12.json",
+    "sha256": "2d6fe5fa93c50c051badc6e1e9227d6a4b0be211d9cef097e9d7c79af28263bd",
+    "count": 550,
+    "matchesBuildSnapshot": true
+  },
+  "ci": {
+    "requiredBeforePublication": [
+      "Tests",
+      "Windows checks"
+    ],
+    "requiresExactReleaseCommit": true
+  },
+  "candidateNativeChecks": {
+    "toggleAndZeroMigration": true,
+    "reminderButton": true,
+    "bidirectionalSettingsSwitch": true,
+    "databaseIntegrity": true,
+    "protectedClientFilesUnchanged": true
+  },
+  "notVerified": [
+    "Physical pointer exit timing and gesture midpoint feel",
+    "Real completion/approval/question event reminder acceptance",
+    "Native displayed FPS",
+    "Published release local installation"
+  ],
+  "releaseBuildProductionAppUntouched": true,
+  "licensingChangesIncluded": false,
+  "otherChatLayoutMediaChangesIncluded": false,
+  "releaseHardening": {
+    "olderCompilerExpressionSplit": true,
+    "authenticationFixtureObservationOnly": true,
+    "productionAuthenticationUnchanged": true,
+    "targetedCrossProcessRepeats": 3,
+    "targetedHelperScenarios": 15
+  }
+}
