@@ -143,6 +143,8 @@ final class NotchWindow: NSPanel {
             if oldValue != isHiddenByIslandSwitch { visibilityGeneration &+= 1 }
         }
     }
+    /// 让位后的兜底定时器：对端没有真正接管时把岛拉回来。
+    private var peerHandoffWatchdog: DispatchWorkItem?
 
     init(
         defaults: UserDefaults = AppPreferences.defaults,
@@ -716,6 +718,8 @@ final class NotchWindow: NSPanel {
     }
 
     private func presentWindow() {
+        peerHandoffWatchdog?.cancel()
+        peerHandoffWatchdog = nil
         handoffEnvironment.orderFront(self)
         // 窗口一直可见时也必须恢复内容与轮询，不能依赖 AppKit 的可见性边沿。
         NotificationCenter.default.post(name: .xislandDidPresentWindow, object: self)
@@ -805,6 +809,26 @@ final class NotchWindow: NSPanel {
         slideAnimator.animateOutgoing(motion: motion, reduceMotion: !animated || handoffEnvironment.reduceMotion()) { [weak self] in
             self?.finishHandoffFade(generation: generation)
         }
+        schedulePeerHandoffWatchdog()
+    }
+
+    /// 让位后的兜底：3 秒内对端没有接管、且没有任何其他岛在运行，就把自己显示回来。
+    /// 覆盖所有隐藏路径，避免某条路径漏判后用户彻底找不到窗口。
+    private func schedulePeerHandoffWatchdog() {
+        // 测试隔离环境不调度：避免 3 秒后干扰后续用例。
+        guard !AppPreferences.isIsolated else { return }
+        peerHandoffWatchdog?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard IslandSwitchGate.shouldRestoreAfterHandoff(
+                isHiddenByIslandSwitch: self.isHiddenByIslandSwitch,
+                isVisible: self.isVisible,
+                isAnyPeerRunning: AppSwitcher.shared.isOtherAppRunning()) else { return }
+            NSLog("[XIsland] peer handoff watchdog: restoring island")
+            self.showWindow()
+        }
+        peerHandoffWatchdog = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
     }
 
     func previewIslandSwitch(translation: CGFloat) {

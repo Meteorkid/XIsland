@@ -295,4 +295,19 @@ bash Scripts/install-git-hooks.sh
 
 ## 许可证
 
-源码可用-非商业许可（Source-Available, Non-Commercial License）。原 MIT，2026-08 起调整。
+本项目**按内容类型分层授权**，不同部分适用不同条款：
+
+| 内容 | 许可 | 说明 |
+|---|---|---|
+| **源代码**<br>`Sources/`、`Scripts/`、`Tests/`、`Package.swift` | 源码可用 — 非商业 | 可阅读、本机运行、学习研究；禁止商用、复制、分叉与再分发。原 MIT，2026-08 起调整 |
+| **美术资产**<br>`Assets/`、应用图标、截图、演示视频 | 保留所有权利 | **不随源代码授权**。二次开发必须重绘全部视觉资产 |
+| **品牌标识**<br>X Island / XIsland 名称与图标 | 保留所有权利 | 衍生作品必须改名，禁止使用近似名称与近似图标 |
+| **音效** | 保留所有权利 | 由程序实时合成，不得单独提取为素材使用 |
+| **上游材料**<br>`Sources/TowerIsland/` | MIT | 版权归 Tower Island 原作者，本协议不覆盖 |
+
+**一句话：代码可以读，品牌和视觉不能带走。**
+
+完整条款：[`LICENSE`](LICENSE) ｜ 资产细则：[`Assets/LICENSE`](Assets/LICENSE) ｜ 品牌规则：[`TRADEMARK.md`](TRADEMARK.md)
+
+商业授权、定制开发、侵权举报：meteor@stu.gpnu.edu.cn
+

@@ -297,4 +297,19 @@ The upstream project was last updated on 2026-04-16; this repository has been ma
 
 ## License
 
-Source-Available, Non-Commercial License. Formerly MIT; adjusted as of 2026-08.
+This project is **licensed by content type** — different parts carry different terms:
+
+| Content | License | Notes |
+|---|---|---|
+| **Source code**<br>`Sources/`, `Scripts/`, `Tests/`, `Package.swift` | Source-Available, Non-Commercial | Read, run locally, study. Commercial use, copying, forking and redistribution prohibited. Formerly MIT; adjusted 2026-08 |
+| **Visual assets**<br>`Assets/`, app icons, screenshots, demo videos | All Rights Reserved | **Not licensed with the source code.** Derivative works must redraw every asset |
+| **Brand**<br>X Island / XIsland names and icons | All Rights Reserved | Derivatives must rename; similar names and icons prohibited |
+| **Audio** | All Rights Reserved | Synthesized at runtime; may not be extracted as sound material |
+| **Upstream**<br>`Sources/TowerIsland/` | MIT | Copyright the Tower Island authors; not covered by this license |
+
+**In one line: the code is readable, the brand and visuals are not transferable.**
+
+Full terms: [`LICENSE`](LICENSE) · Asset terms: [`Assets/LICENSE`](Assets/LICENSE) · Brand policy: [`TRADEMARK.md`](TRADEMARK.md)
+
+Commercial licensing, custom development, infringement reports: meteor@stu.gpnu.edu.cn
+

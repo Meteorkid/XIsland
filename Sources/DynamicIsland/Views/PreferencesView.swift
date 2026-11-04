@@ -8,6 +8,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
     case integration
     case agents
     case sound
+    case automation
     case history
     case statistics
     case license
@@ -22,6 +23,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
         case .integration: L10n.paneIntegration
         case .agents: L10n.paneAgents
         case .sound: L10n.sectionSound
+        case .automation: ASuiteL10n.paneTitle
         case .history: L10n.sectionHistory
         case .statistics: L10n.paneStatistics
         case .license: L10n.isChinese ? "软件授权" : "License"
@@ -36,6 +38,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
         case .integration: "rectangle.connected.to.line.below"
         case .agents: "terminal.fill"
         case .sound: "speaker.wave.2.fill"
+        case .automation: "bell.badge.fill"
         case .history: "clock.arrow.circlepath"
         case .statistics: "chart.bar.fill"
         case .license: "key.fill"
@@ -80,6 +83,8 @@ struct PreferencesView: View {
     @AppStorage("autoHideWhenNoActiveSessions") private var autoHideWhenNoActiveSessions = false
     @AppStorage("smartSuppression") private var smartSuppression = true
     @AppStorage("taskAttentionEnabled") private var taskAttentionEnabled = true
+    @AppStorage(CompanionSettings.enabledKey) private var companionBroadcastEnabled = false
+    @AppStorage(CompanionSettings.decisionsKey) private var companionRemoteDecisions = false
     @AppStorage("autoCollapseEnabled") private var autoCollapseEnabled = true
     @AppStorage("compactBadgesInExpandedView") private var compactBadgesInExpandedView = true
     @AppStorage("displayTimestamp") private var displayTimestamp = true
@@ -166,7 +171,7 @@ struct PreferencesView: View {
         }
         .onAppear {
             applyPendingPaneSelectionIfNeeded()
-            if !licensedFeaturesAvailable, ![.license, .history, .about].contains(selection) { selection = .license }
+            if !licensedFeaturesAvailable, ![.license, .history, .about, .automation].contains(selection) { selection = .license }
         }
         .onChange(of: licensedFeaturesAvailable) { _, allowed in
             if !allowed {
@@ -216,7 +221,7 @@ struct PreferencesView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .disabled(!licensedFeaturesAvailable && ![.license, .history, .about].contains(pane))
+                .disabled(!licensedFeaturesAvailable && ![.license, .history, .about, .automation].contains(pane))
             }
         }
         .padding(.horizontal, 16)
@@ -237,6 +242,7 @@ struct PreferencesView: View {
         case .integration: integrationPane
         case .agents: agentsPane
         case .sound: soundPane
+        case .automation: ASuiteSettingsView()
         case .history: historyPane
         case .statistics: StatisticsView()
         case .license: SoftwareLicenseView()
@@ -1328,6 +1334,29 @@ struct PreferencesView: View {
                     row("Total tracked") {
                         Text("\(sessionManager.sessions.count)")
                             .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            section("iPhone / Apple Watch") {
+                card {
+                    row("Broadcast to companion",
+                        subtitle: "把会话标题与项目名发送到同一 Wi-Fi 下的 iPhone。默认关闭。") {
+                        Toggle("", isOn: $companionBroadcastEnabled)
+                            .labelsHidden()
+                            .onChange(of: companionBroadcastEnabled) { _, _ in
+                                CompanionSettings.apply()
+                            }
+                    }
+                    dividerLine
+                    row("Allow remote approvals",
+                        subtitle: "允许在 iPhone 或手表上批准、拒绝与回答。关闭时只能查看。") {
+                        Toggle("", isOn: $companionRemoteDecisions)
+                            .labelsHidden()
+                            .disabled(!companionBroadcastEnabled)
+                            .onChange(of: companionRemoteDecisions) { _, _ in
+                                CompanionSettings.apply()
+                            }
                     }
                 }
             }

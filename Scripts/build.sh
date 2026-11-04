@@ -41,7 +41,11 @@ cd "$PROJECT_DIR"
 source "$CLI_LIB_DIR/xisland-cli.sh"
 
 echo "==> Building X Island..."
-swift build -c release --scratch-path "$BUILD_DIR"
+# 某些 Xcode/SDK 组合下 SwiftPM 的 manifest 沙箱会失败（sandbox-exec: Operation not permitted），
+# 可通过 SWIFT_BUILD_FLAGS=--disable-sandbox 显式关闭；默认行为不变。
+SWIFT_BUILD_FLAGS="${SWIFT_BUILD_FLAGS:-}"
+# shellcheck disable=SC2086
+swift build -c release --scratch-path "$BUILD_DIR" $SWIFT_BUILD_FLAGS
 
 echo "==> Creating app bundle..."
 rm -rf "$APP_BUNDLE"
@@ -125,6 +129,13 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
                 <string>xisland</string>
             </array>
         </dict>
+    </array>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>X Island needs local network access to discover iPhone and Apple Watch companions on the same Wi-Fi.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_xisland-buddy._tcp</string>
+        <string>_xisland-buddy._udp</string>
     </array>
 </dict>
 </plist>

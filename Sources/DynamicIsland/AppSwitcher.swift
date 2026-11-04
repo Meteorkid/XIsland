@@ -35,6 +35,10 @@ final class AppSwitcher {
         var applicationURL: (String) -> URL?
         var open: (URL, URL, @escaping @MainActor (Bool) -> Void) -> Void
         var isVisible: (String) -> Bool
+        /// 是否正在运行。默认查真实进程；测试可注入，避免依赖本机是否装了 XNook。
+        var isRunning: (String) -> Bool = { bundleID in
+            !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
+        }
         var isFrontmost: (String) -> Bool
         var setSwitching: (Bool) -> Void
         var hideSource: () -> Void
@@ -127,26 +131,31 @@ final class AppSwitcher {
         islandSchemes[appName]
     }
 
-    /// 切换到下一个灵动岛（跳过未安装的应用）
-    var canSwitchToAnotherIsland: Bool { otherIslandNames.contains { isIslandInstalled(named: $0) } }
+    /// 是否可切换到另一个灵动岛。
+    ///
+    /// 只把「正在运行」的对端算作可切换：仅安装但没运行的 XNook 无法接管显示，
+    /// 若仍允许切换，本岛让位后没有接管者，用户会彻底找不到岛。
+    var canSwitchToAnotherIsland: Bool {
+        IslandSwitchGate.canInitiateSwitch(isAnyPeerRunning: isOtherAppRunning())
+    }
 
     func switchToNextIsland(direction: SwipeDirection? = nil) {
         guard let currentName = currentAppName else { return }
         let allNames = Array(islandApps.keys).sorted()
 
-        // 找到下一个已安装的应用
+        // 找到下一个可接管的（运行中的）应用
         guard let currentIndex = allNames.firstIndex(of: currentName) else { return }
         let count = allNames.count
         for i in 1...count {
             let increment = direction == .right ? -i : i
             let nextIndex = (currentIndex + increment + count) % count
             let nextName = allNames[nextIndex]
-            if isIslandInstalled(named: nextName) {
+            if isIslandRunning(named: nextName) {
                 switchToIsland(named: nextName, direction: direction)
                 return
             }
         }
-        // 没有其他已安装的应用，不做任何操作
+        // 没有其他正在运行的应用：不切换、不隐藏，保持当前岛可见。
     }
 
     func switchToIslandWithPreview(named targetName: String, direction: SwipeDirection = .left) {
@@ -315,16 +324,14 @@ final class AppSwitcher {
 
     func isIslandRunning(named islandName: String) -> Bool {
         guard let bundleID = islandApps[islandName] else { return false }
-        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty == false
+        return environment.isRunning(bundleID)
     }
 
     /// 检查另一个应用是否在运行
     func isOtherAppRunning() -> Bool {
         guard let currentName = currentAppName else { return false }
         let otherApps = islandApps.filter { $0.key != currentName }
-        return otherApps.values.contains { bundleID in
-            NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).count > 0
-        }
+        return otherApps.values.contains { environment.isRunning($0) }
     }
 
     /// 获取其他灵动岛的名称

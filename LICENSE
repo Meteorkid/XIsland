@@ -1,16 +1,43 @@
-# 源码可用 — 非商业许可证（Source-Available, Non-Commercial License）
+# X Island 分层许可协议 / Layered License
 
 Copyright (c) 2026 Meteor Store
 Original Tower Island copyright © 2026 guyubin, leeekyrie, greatbean (https://github.com/g535879/TowerIsland)
 联系 / Contact: meteor@stu.gpnu.edu.cn
 
-## 中文版
+---
 
-本软件及其源代码（以下合称"软件"）保留所有权利。在遵守下列限制的前提下，你被允许查看这份软件，否则不得使用本软件。
+## 零、适用范围划分 / Scope of Application
+
+本仓库包含性质不同的内容，**按内容类型分别授权**。不同部分适用不同条款，任一许可的授予不延伸到其他部分。
+
+This repository contains content of different nature, **licensed separately by content type**. A grant under one part does not extend to any other part.
+
+| 路径 / Path | 内容 / Content | 适用部分 / Part |
+|---|---|---|
+| `Sources/`、`Scripts/`、`Tests/`、`Package.swift` | 源代码 / Source code | **第一部分 / Part 1** |
+| `Assets/`、`*.icns`、`*.iconset`、`*.png`、`demo.gif` | 美术资产 / Visual assets | **第二部分 / Part 2** |
+| 名称、标识、界面外观 / Names, marks, UI appearance | 品牌 / Brand | **第三部分 / Part 3** |
+| 程序化生成的音效 / Procedurally generated audio | 音频 / Audio | **第四部分 / Part 4** |
+| `Sources/TowerIsland/`、第三方依赖 | 上游与第三方材料 / Upstream & third-party | **第五部分 / Part 5** |
+
+如各目录内另有 `LICENSE` 或 `LICENSE.md`，以该文件为准。发生冲突时，条款更严格者优先。第一部分对 `Sources/` 的覆盖**不含** `Sources/TowerIsland/`，该目录见第五部分。
+
+Where a directory contains its own `LICENSE` or `LICENSE.md`, that file governs for that directory. In case of conflict, the stricter term prevails. Part 1's coverage of `Sources/` **excludes** `Sources/TowerIsland/`, which is governed by Part 5.
+
+---
+
+## 第一部分 源代码 / Part 1: Source Code
+
+**源码可用 — 非商业许可证（Source-Available, Non-Commercial License）**
+
+以下称"软件"，指上述路径下的源代码及其编译产物。
+
+The "Software" means the source code under the paths listed above and its compiled output.
 
 ### 允许（Permitted）
 - 出于个人学习、研究、安全评估或非商业测试目的，查看、阅读本软件源码，以及在本机运行本软件。
 - 就本软件的缺陷或改进建议联系作者。
+- 在评论、教学、学术研究或新闻报道中引用本软件的短小代码片段，并注明出处。
 
 ### 禁止（Prohibited）
 - 任何商业用途，包括但不限于：销售、出租、出借、许可、转售本软件或其副本，或将其作为任何收费产品、服务、订阅的一部分。
@@ -21,7 +48,7 @@ Original Tower Island copyright © 2026 guyubin, leeekyrie, greatbean (https://g
 ### 单独的商业授权
 如需将本软件用于商业用途、定制开发或集成，请通过 meteor@stu.gpnu.edu.cn 联系作者获取商业授权。
 
-## English
+## English (Part 1)
 
 All rights reserved. You may view this software under the following restrictions; otherwise you may not use it.
 
@@ -37,6 +64,87 @@ All rights reserved. You may view this software under the following restrictions
 
 ### Commercial license
 For commercial use, customization, or integration, contact the author at meteor@stu.gpnu.edu.cn.
+
+---
+
+## 第二部分 美术资产 / Part 2: Visual Assets
+
+**保留所有权利（All Rights Reserved）**
+
+本部分涵盖但不限于：应用图标（`app-icon*.png`、`*.icns`、`*.iconset`）、界面截图、演示动图与视频、宣传图形、角色形象与吉祥物设计、界面视觉方案（配色、发光形态、状态灯布局等可识别外观）。
+
+**美术资产不随第一部分源代码一并授权。** 即使你在第一部分获得源代码的某项权利，该权利也不包含对本部分任何资产的使用权。
+
+This Part covers, without limitation: app icons, UI screenshots, demo animations and videos, promotional graphics, character and mascot designs, and the visual design language of the interface (color scheme, glow treatment, status-light layout, and other recognizable appearance).
+
+**Visual assets are NOT licensed together with the source code in Part 1.** Any right obtained under Part 1 does not include any right to use any asset under this Part.
+
+详细条款见 [`Assets/LICENSE`](Assets/LICENSE)。See [`Assets/LICENSE`](Assets/LICENSE) for the full terms.
+
+---
+
+## 第三部分 品牌标识 / Part 3: Brand and Marks
+
+**保留所有权利（All Rights Reserved）**
+
+下列名称与标识（下称"标识"）为作者所有，**不随任何源代码许可一并授予**：
+
+The following names and marks (the "Marks") are owned by the author and are **not granted under any source code license**:
+
+- 名称：**X Island**、**XIsland**、**X Island Bridge**、**Tower Island**（仅指本仓库衍生的产品语境）
+- 应用图标、Dock 图标、菜单栏图标及其任何变体
+- 界面中可识别的标志性视觉元素与产品包装
+
+### 允许 / Permitted
+
+- 以事实性、描述性方式提及本软件（如"基于 X Island"、"与 X Island 对比"）。
+- 传播未修改的官方下载链接与官方仓库链接。
+
+### 禁止 / Prohibited
+
+- 在任何衍生作品、分叉版本或商业产品中使用上述标识，或使用易致混淆的近似名称（如 "X-Island"、"XIsland Pro"、"X Island Plus"）。
+- 以暗示官方身份、合作、赞助或背书的方式使用上述标识。
+- 将上述标识注册为商标、商号、应用商店名称或社交媒体账号。
+
+完整规则见 [`TRADEMARK.md`](TRADEMARK.md)。See [`TRADEMARK.md`](TRADEMARK.md) for the full policy.
+
+---
+
+## 第四部分 音频 / Part 4: Audio
+
+**保留所有权利（All Rights Reserved）**
+
+本软件的音效由 `AudioEngine` 程序化合成（见 `Sources/DynamicIsland/Managers/AudioEngine.swift`），仓库不包含音频文件。
+
+- 作为本软件运行时的组成部分，合成音频归第一部分约束。
+- 将合成音频**单独提取、录制、剪辑**为音效素材，用于其他作品、素材库、铃声、视频或产品，属第二部分所约束的行为，需事先获得书面许可。
+- 用户自行导入的声音包（`soundPack`）版权归其各自权利人，不在本协议范围内，作者不承担相关责任。
+
+Sound effects are procedurally synthesized by `AudioEngine` (see `Sources/DynamicIsland/Managers/AudioEngine.swift`); no audio files are distributed with this repository.
+
+- As part of the Software at runtime, synthesized audio is governed by Part 1.
+- **Separately extracting, recording, or editing** the synthesized audio as sound material for other works, libraries, ringtones, videos, or products is governed by Part 2 and requires prior written permission.
+- User-imported sound packs remain the property of their respective rights holders and fall outside this Agreement.
+
+---
+
+## 第五部分 上游与第三方材料 / Part 5: Upstream and Third-Party
+
+本仓库在 Tower Island（https://github.com/g535879/TowerIsland，MIT）基础上接管与重构。
+
+- **源自上游的既有代码与资源**（含 `Sources/TowerIsland/Resources/` 下的图标资源）仍受 **MIT 许可证**约束，版权归原作者 guyubin、leeekyrie（Kunyang Lee）、greatbean/g535879 所有。本协议不改变、不缩减、不替代该 MIT 授权。
+- 任何在 2026-08 许可调整之前依据 MIT 获得的授权**继续有效**，本协议无法撤销。
+- 第三方依赖按其各自许可证授权，见 `Package.swift` 与 `Package.resolved`。
+- 若本协议与上游 MIT 条款就同一材料冲突，就该材料适用 MIT。
+
+This repository was taken over and refactored from Tower Island (https://github.com/g535879/TowerIsland, MIT).
+
+- **Pre-existing code and resources originating from the upstream project** (including icon resources under `Sources/TowerIsland/Resources/`) remain under the **MIT License**, copyright guyubin, leeekyrie (Kunyang Lee), greatbean/g535879. This Agreement does not alter, reduce, or supersede that MIT grant.
+- Any rights already granted under MIT prior to the 2026-08 license change **remain valid**; this Agreement cannot revoke them.
+- Third-party dependencies are licensed under their respective terms; see `Package.swift` and `Package.resolved`.
+- Where this Agreement conflicts with the upstream MIT terms regarding the same material, MIT governs for that material.
+
+---
 
 ## 免责声明 / DISCLAIMER
 本软件按"现状"提供，不对其正确性、安全性或适用性作任何明示或默示的担保。作者不对因使用本软件造成的任何直接或间接损失承担责任。

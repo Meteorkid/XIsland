@@ -30,7 +30,10 @@ struct MarqueeText: View {
     var body: some View {
         Group {
             if shouldAnimate {
-                TimelineView(.animation) { context in
+                // 用共享时钟而不是 `TimelineView(.animation)`：后者按屏幕刷新率驱动，
+                // 在收起态与吉祥物同屏时会额外产生一路高频唤醒，且不受能耗档位约束。
+                // 跑马灯只需要 60fps 网格上的一档，60Hz 足够，锁屏时随档位一起停。
+                SharedFrameClock(interval: FrameTicker.grid) { date in
                     Text(text)
                         .font(font)
                         .fixedSize(horizontal: true, vertical: false)
@@ -38,7 +41,7 @@ struct MarqueeText: View {
                             textWidth: textWidth,
                             availableWidth: availableWidth,
                             speed: speed,
-                            elapsed: context.date.timeIntervalSince(startTime)
+                            elapsed: date.timeIntervalSince(startTime)
                         ))
                 }
             } else {

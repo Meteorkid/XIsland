@@ -3,6 +3,7 @@ import Observation
 import AppKit
 import DIShared
 import CryptoKit
+import CompanionShared
 
 // MARK: - Session Grouping & Filtering
 
@@ -250,12 +251,18 @@ final class SessionManager {
     /// 展开列表显示所有会话（含已完成），提供全局视角
     var visibleSessions: [AgentSession] {
         _ = visibleSessionsVersion
-        return sessions
+        // A5 自动隐藏只作用于展开列表；`pendingInteractionSessions` 直接读 `sessions`，
+        // 保证待审批/待回答的会话永远不会被隐藏。
+        let governor = SessionLifecycleGovernor.shared
+        let hidden = governor.hiddenSessionIDs.union(governor.supersededSessionIDs)
+        guard !hidden.isEmpty else { return sessions }
+        return sessions.filter { !hidden.contains($0.id) }
     }
 
     /// 过滤后的会话列表：基于 activeFilter 和 searchText
     var filteredSessions: [AgentSession] {
-        var result = visibleSessions
+        // 搜索时绕过 A5 的显示层隐藏，保证被隐藏的会话仍能被找回（与设置页文案一致）。
+        var result = searchText.isEmpty ? visibleSessions : sessions
 
         // 应用 activeFilter
         switch activeFilter {
@@ -648,7 +655,41 @@ final class SessionManager {
         performPersistedOperation(completion: { [self] in
             handledMessageCount += 1
             AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+            // 会话状态已落盘，同步给伴端。未启用或无连接时内部直接返回，零开销。
+            publishToCompanion()
         }) { [self] in handleMessageImmediately(message) }
+    }
+
+    /// 伴端同步的唯一入口。
+    ///
+    /// 刻意做成一个方法而不是到处直接调 `CompanionPublisher.shared.publish`：
+    /// 会话变更路径不止一条（新消息、用户关闭、超时淘汰），分散调用必然会漏。
+    /// 上一轮就漏了两条删除路径，导致手机上残留已消失的会话。
+    func publishToCompanion() {
+        CompanionPublisher.shared.publish(sessions)
+        // A 类自动化共用同一个会话变更入口。router 未启动（如单元测试）时零开销。
+        if ASuiteEventRouter.shared.started {
+            ASuiteEventRouter.shared.sessionsDidChange(sessions)
+        }
+    }
+
+    /// A5：观察型来源已报告结束、但交互仍挂起时，撤销该交互。
+    ///
+    /// 不删除会话、不动历史——只对「用户可能对着幽灵请求点批准」这一风险做最小处理。
+    func reapStaleInteractionSessions(_ ids: Set<String>) {
+        guard !ids.isEmpty else { return }
+        var changed = false
+        for session in sessions where ids.contains(session.id) {
+            guard session.hasPendingInteraction else { continue }
+            cancelPendingInteractions(session)
+            session.status = .observationUnavailable
+            session.statusText = ""
+            session.lastActivityTime = Date()
+            changed = true
+        }
+        guard changed else { return }
+        publishToCompanion()
+        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
     }
 
     private func handleMessageImmediately(_ message: DIMessage) {
@@ -1456,6 +1497,46 @@ final class SessionManager {
         submitPermission(session: session, approved: true, requestID: requestID)
     }
 
+    /// 处理来自伴端（iPhone / Watch）的命令。
+    ///
+    /// 两道校验缺一不可：
+    /// 1. **会话必须仍然存在**——手机上的按钮可能停留在一条已经结束的会话上
+    /// 2. **必须仍处于对应的等待态**——用户可能在 Mac 上已经处理过，
+    ///    此时重复下发不应再触发一次 respond（否则会向已关闭的 socket 写数据）
+    ///
+    /// 返回是否真的执行了，供诊断与伴端回执使用。
+    @discardableResult
+    func handleCompanionCommand(_ command: CompanionCommand) -> Bool {
+        switch command {
+        case .requestState:
+            CompanionPublisher.shared.publish(sessions)
+            return true
+
+        case .approve(let sessionID), .deny(let sessionID):
+            guard let session = sessionById(sessionID) else { return false }
+            let approved = command == .approve(sessionId: sessionID)
+            // 计划审查走 respondToPlan，权限请求走 approve/denyPermission。
+            if session.pendingPlanReview != nil {
+                respondToPlan(session: session, approved: approved, feedback: nil)
+                return true
+            }
+            guard session.pendingPermission != nil else { return false }
+            if approved { approvePermission(session: session) } else { denyPermission(session: session) }
+            return true
+
+        case .answer(let sessionID, let text):
+            // 与 answerQuestion 的前置条件保持一致，否则会误报"已送达"：
+            // 多选题、空文本、不在选项内且不允许自定义的回答都会被丢弃。
+            guard let session = sessionById(sessionID),
+                  let request = session.pendingQuestion,
+                  !request.allowsMultipleAnswers,
+                  !request.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  request.acceptsAnswer(text) else { return false }
+            answerQuestion(session: session, answer: text)
+            return true
+        }
+    }
+
     func denyPermission(session: AgentSession, requestID: UUID? = nil) {
         submitPermission(session: session, approved: false, requestID: requestID)
     }
@@ -1579,6 +1660,7 @@ final class SessionManager {
                 taskAttentionEvents.removeValue(forKey: session.id)
                 planAttentionNativeIDs.removeValue(forKey: session.id)
                 if selectedSessionId == session.id { selectedSessionId = activeSessions.first?.id }
+                publishToCompanion()
                 AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
             }
         }
@@ -1846,6 +1928,8 @@ final class SessionManager {
         }
         if !toRemove.isEmpty {
             sessions.removeAll { toRemove.contains($0.id) }
+            // 会话被淘汰后必须同步伴端，否则手机上会一直显示已经消失的会话。
+            publishToCompanion()
         }
         rebuildSessionIndex()
         if let selectedSessionId, !sessions.contains(where: { $0.id == selectedSessionId }) {

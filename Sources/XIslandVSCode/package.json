@@ -4,6 +4,7 @@
     "description": "Observe verified Roo Code and experimental PearAI task events in X Island",
     "version": "1.0.1",
     "publisher": "meteorkid",
+    "license": "SEE LICENSE IN LICENSE.md",
     "engines": {
         "vscode": "^1.84.0"
     },

@@ -1,0 +1,89 @@
+# 美术资产许可 / Visual Assets License
+
+**保留所有权利 / All Rights Reserved**
+
+Copyright (c) 2026 Meteor Store
+联系 / Contact: meteor@stu.gpnu.edu.cn
+
+---
+
+## 本目录内容不属于源代码授权范围
+
+`Assets/` 下的全部内容（应用图标、图标集、界面截图、演示动图与视频、宣传图形、角色形象、界面视觉方案）**不随仓库源代码一并授权**。
+
+任何依 `../LICENSE` 第一部分取得的源代码权利，**均不包含**对本目录任何文件的使用权。
+
+The entire contents of `Assets/` (app icons, iconsets, UI screenshots, demo animations and videos, promotional graphics, character designs, and the visual design language of the interface) are **NOT licensed together with the source code**.
+
+No right obtained under Part 1 of `../LICENSE` includes any right to use any file in this directory.
+
+---
+
+## 允许 / Permitted
+
+1. 在**未修改**形态下，为介绍、评论、评测、教学、学术研究或新闻报道目的展示本目录中的截图，并注明来源为 X Island。
+   Displaying **unmodified** screenshots for introduction, review, evaluation, teaching, academic research, or news reporting, with attribution to X Island.
+
+2. 在个人设备上，为本软件原本用途而使用这些资产（如作为 X Island 的应用图标）。
+   Using the assets on your own device for the Software's intended purpose.
+
+---
+
+## 禁止 / Prohibited
+
+1. 将任何资产用于衍生作品、分叉版本、二次发行物或竞争产品。
+   Using any asset in any derivative work, fork, redistribution, or competing product.
+
+2. 复制、修改、重绘、重新配色、拆分或重组本目录中的图形元素，用于识别其他产品或服务。
+   Copying, modifying, redrawing, recoloring, decomposing, or recomposing any graphical element of this directory to identify another product or service.
+
+3. 将任何资产用于商标、标识、域名、社交媒体头像或应用商店素材。
+   Using any asset as a trademark, logo, domain name, social media avatar, or app store asset.
+
+4. 将任何资产用于训练生成式模型，或作为生成式模型的输出素材。
+   Using any asset to train generative models, or as output material of generative models.
+
+5. 移除或篡改图标、截图中的版权水印与来源标注（如有）。
+   Removing or altering any copyright notice or attribution in the assets.
+
+---
+
+## 二次开发要求 / Requirement for Derivative Development
+
+如计划公开发布基于本仓库源代码的衍生作品，你**必须**：
+
+If you intend to publicly release a derivative work based on this repository's source code, you **MUST**:
+
+1. 移除、替换或重新绘制**全部**美术资产，不得保留任何原始图形元素或其可识别的近似变体；
+   Remove, replace, or redraw **all** visual assets, retaining no original graphical element or recognizable near-variant thereof;
+
+2. 更换产品名称，不得使用 `../TRADEMARK.md` 所列的任何名称或标识；
+   Change the product name, and use none of the names or marks listed in `../TRADEMARK.md`;
+
+3. 在 README 与关于页面显著位置声明：该作品为第三方衍生作品，非官方出品，与原作者无关联、未获背书。
+   Prominently state in the README and About screen that the work is an unofficial third-party derivative, not affiliated with or endorsed by the original author.
+
+---
+
+## 文件清单与来源 / Inventory and Provenance
+
+| 文件 / 路径 | 说明 | 权利归属 |
+|---|---|---|
+| `app-icon.png` | 第一代应用图标 1024px | Meteor Store |
+| `app-icon-v2.png`、`AppIcon-v2.iconset/` | 第二代应用图标 | Meteor Store |
+| `app-icon-v3.png`、`AppIcon-v3.iconset/` | 第三代（当前）应用图标 | Meteor Store |
+| `AppIcon.icns`、`AppIcon.iconset/` | 打包用图标集 | Meteor Store |
+| `demo.gif` | 功能演示动图 | Meteor Store |
+| `screenshots/` | 界面截图 | Meteor Store |
+| `icon-concepts/` | 图标设计过程稿 | Meteor Store |
+| `录屏2026-07-11 18.32.44.mov` | 屏幕录制原始素材 | Meteor Store |
+
+**除外 / Excluded：** `../Sources/TowerIsland/Resources/Assets.xcassets/AppIcon.appiconset/icon.png` 为上游 Tower Island 项目资源，版权归原作者 guyubin、leeekyrie（Kunyang Lee）、greatbean/g535879，按 **MIT 许可证**授权，**不受本文件约束**，亦不应作为本仓库的原创资产主张。
+
+---
+
+## 争议处理 / Enforcement
+
+未经书面许可使用本目录资产，作者保留追究法律责任的权利，包括但不限于要求下架、发送平台投诉与 DMCA 通知、主张损害赔偿。
+
+Unauthorized use of the assets in this directory may result in legal action, including takedown requests, platform complaints, DMCA notices, and claims for damages.

@@ -25,6 +25,19 @@ enum HookConfigurationFile {
 
     private static func configuration(from data: Data?) throws -> [String: Any] {
         guard let data else { return [:] }
+        // 先按标准 JSON 解析；失败再剥注释重试，兼容用户手写的 JSONC。
+        if let object = try? JSONSerialization.jsonObject(with: data),
+           let configuration = object as? [String: Any] {
+            return configuration
+        }
+        if let text = String(data: data, encoding: .utf8) {
+            let stripped = JSONTextSurgery.strippingComments(text)
+            if let object = try? JSONSerialization.jsonObject(with: Data(stripped.utf8)),
+               let configuration = object as? [String: Any] {
+                return configuration
+            }
+        }
+        // 两次都不成立：既可能是语法错误，也可能根不是对象。
         let object = try JSONSerialization.jsonObject(with: data)
         guard let configuration = object as? [String: Any] else { throw ConfigurationError.rootMustBeObject }
         return configuration
@@ -37,9 +50,35 @@ enum HookConfigurationFile {
         let original = try configuration(from: snapshot.file?.data)
         let updated = try transform(original)
         guard !NSDictionary(dictionary: original).isEqual(to: updated) else { return false }
-        let data = try JSONSerialization.data(withJSONObject: updated, options: [.prettyPrinted, .sortedKeys])
+        let data = try encode(updated, preservingCommentsOf: snapshot.file?.data)
         try replace(snapshot, with: data)
         return true
+    }
+
+    /// 优先保留原文件的注释与键序：只替换顶层 `hooks` 的值。
+    ///
+    /// 仅当原文件**含注释**时才走局部替换——无注释时全量重写的结果与原来一致，
+    /// 保持既有行为不变。局部替换还必须通过"语义等价"校验，任何不满足都回退。
+    private static func encode(_ updated: [String: Any], preservingCommentsOf originalData: Data?) throws -> Data {
+        let fallback = try JSONSerialization.data(withJSONObject: updated, options: [.prettyPrinted, .sortedKeys])
+
+        guard let originalData,
+              let originalText = String(data: originalData, encoding: .utf8),
+              JSONTextSurgery.containsComments(originalText),
+              let newHooks = updated["hooks"],
+              JSONSerialization.isValidJSONObject(newHooks),
+              let rendered = try? JSONSerialization.data(withJSONObject: newHooks, options: [.sortedKeys]),
+              let renderedText = String(data: rendered, encoding: .utf8),
+              let patched = JSONTextSurgery.replaceTopLevelValue(in: originalText, key: "hooks", with: renderedText)
+        else { return fallback }
+
+        // 安全网：剥掉注释后必须解析出与目标**完全一致**的文档，否则回退全量重写。
+        let stripped = JSONTextSurgery.strippingComments(patched)
+        guard let check = try? JSONSerialization.jsonObject(with: Data(stripped.utf8)) as? [String: Any],
+              NSDictionary(dictionary: check).isEqual(to: updated)
+        else { return fallback }
+
+        return Data(patched.utf8)
     }
 
     @discardableResult
@@ -150,7 +189,8 @@ enum HookConfigurationFile {
             if !committed, let backup { try? files.removeItem(at: backup) }
         }
         if let original = snapshot.file {
-            let recovery = directory.appendingPathComponent(".\(url.lastPathComponent).xisland-\(UUID().uuidString).bak")
+            // 备份名要让用户自己也能找到并恢复：明文时间戳，不用隐藏文件与 UUID。
+            let recovery = freeBackupURL(for: url)
             _ = try writeExclusive(original.data, to: recovery, permissions: 0o600)
             backup = recovery
         }
@@ -183,6 +223,25 @@ enum HookConfigurationFile {
         try handle.close()
         completed = true
         return RegularFile(identity: FileIdentity(info), data: data)
+    }
+
+    /// 用户可见的备份路径：`settings.json.bak-20261103-230045`。
+    ///
+    /// 用明文时间戳而不是隐藏文件加 UUID——备份的价值在于程序跑不起来时用户还能自己 `mv` 回去；
+    /// 同秒重名时追加序号，避免"安装后立刻卸载"覆盖掉第一份备份。
+    private static func freeBackupURL(for url: URL) -> URL {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let base = "\(url.lastPathComponent).bak-\(formatter.string(from: Date()))"
+        let directory = url.deletingLastPathComponent()
+        var candidate = directory.appendingPathComponent(base)
+        var suffix = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("\(base)-\(suffix)")
+            suffix += 1
+        }
+        return candidate
     }
 
     private static func metadata(at url: URL) throws -> stat? {

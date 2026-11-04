@@ -77,6 +77,8 @@ final class AudioEngineTests: XCTestCase {
     // MARK: - Quiet hours
 
     func testQuietHoursDisabledByDefault() {
+        // 不依赖执行顺序：显式关闭，避免前一个用例写入的状态泄漏进来。
+        AppPreferences.defaults.set(false, forKey: "quietHoursEnabled")
         XCTAssertFalse(engine.isQuietHoursActive)
     }
 
@@ -95,9 +97,15 @@ final class AudioEngineTests: XCTestCase {
         let startStr = String(format: "%02d:%02d", startHour, currentMinute)
         let endStr = String(format: "%02d:%02d", endHour, currentMinute)
 
-        AppPreferences.defaults.set(true, forKey: "audio.quietHoursEnabled")
-        AppPreferences.defaults.set(startStr, forKey: "audio.quietHoursStart")
-        AppPreferences.defaults.set(endStr, forKey: "audio.quietHoursEnd")
+        // 设置页写入的是无前缀键，AudioEngine 必须读同一组键才能让用户设置生效。
+        AppPreferences.defaults.set(true, forKey: "quietHoursEnabled")
+        AppPreferences.defaults.set(startStr, forKey: "quietHoursStart")
+        AppPreferences.defaults.set(endStr, forKey: "quietHoursEnd")
+        defer {
+            AppPreferences.defaults.removeObject(forKey: "quietHoursEnabled")
+            AppPreferences.defaults.removeObject(forKey: "quietHoursStart")
+            AppPreferences.defaults.removeObject(forKey: "quietHoursEnd")
+        }
 
         // 重新创建 engine 读取新设置
         let testEngine = AudioEngine()

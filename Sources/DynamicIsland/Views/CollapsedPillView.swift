@@ -21,10 +21,18 @@ struct CollapsedPillView: View {
     @AppStorage("showCollapsedQuota") private var showCollapsedQuota = true
     @AppStorage("taskAttentionEnabled") private var taskAttentionEnabled = true
 
-    private var displayedSessions: [AgentSession] {
-        CollapsedTaskSelection.select(from: visible, limit: collapsedRecentTaskLimit,
-                                      remindersEnabled: taskAttentionEnabled)
+    /// 上次展示的顺序，用于在候选集合不变时锁定图标次序（见 `stableSelection`）。
+    @State private var displayedOrder: [String] = []
+
+    private var selection: CollapsedTaskSelection.StableResult {
+        CollapsedTaskSelection.stableSelection(
+            from: visible,
+            limit: collapsedRecentTaskLimit,
+            remindersEnabled: taskAttentionEnabled,
+            previousOrder: displayedOrder)
     }
+
+    private var displayedSessions: [AgentSession] { selection.sessions }
 
     private var reduceMotion: Bool {
         !IslandMotionPolicy(
@@ -66,6 +74,9 @@ struct CollapsedPillView: View {
                 transaction.animation = nil
                 transaction.disablesAnimations = true
             }
+        }
+        .onChange(of: selection.sessions.map(\.id)) { _, newOrder in
+            displayedOrder = newOrder
         }
     }
 
@@ -189,8 +200,8 @@ struct CollapsedPillView: View {
                       accessibility: "\(totalCount) total agents", compact: compact)
         } else {
             // 计数轮换属于状态更新，减少动态效果时也保留低频刷新。
-            TimelineView(.periodic(from: .now, by: Self.countRotationInterval)) { timeline in
-                let showTotal = Self.countKind(isExpanded: false, at: timeline.date) == .total
+            SharedFrameClock(interval: Self.countRotationInterval) { date in
+                let showTotal = Self.countKind(isExpanded: false, at: date) == .total
                 let displayCount = showTotal ? totalCount : trulyActiveCount
                 let displayLabel = showTotal ? L10n.total : L10n.active
                 let a11y = showTotal
@@ -326,15 +337,13 @@ struct CollapsedPillView: View {
 private struct RotatingSessionIcon: View {
     let sessions: [AgentSession]
 
-    /// 按状态优先级排序的会话列表（数值越小越优先）
-    private var sortedSessions: [AgentSession] {
-        sessions.sorted { a, b in
-            if a.status.statusPriority != b.status.statusPriority {
-                return a.status.statusPriority < b.status.statusPriority
-            }
-            return a.lastActivityTime > b.lastActivityTime
-        }
-    }
+    /// 轮播顺序由调用方决定（`CollapsedTaskSelection`）。
+    ///
+    /// 这里**不能**再按 `statusPriority` 二次排序：外层已按"待处理 > 刚失败 > 完成待查看 >
+    /// 活动 > 空闲"排过，两套规则的档位不一致（`statusPriority` 认为 error 最优先、
+    /// completed 最末），二次排序会把顺序翻转；而轮播用 index 定位，
+    /// 顺序一变，同一个 elapsed 就指向另一个会话，表现为内容突然换位。
+    private var rotationOrder: [AgentSession] { sessions }
 
     /// 根据会话状态决定轮换周期（秒）
     /// 等待处理：5s（让用户有时间看到），运行中：0.8s（快速轮换突出等待）
@@ -379,14 +388,17 @@ private struct RotatingSessionIcon: View {
     }
 
     var body: some View {
-        let sorted = sortedSessions
+        let sorted = rotationOrder
         let count = sorted.count
         ZStack {
             if count <= 1 {
                 sessionIcon(for: sorted[0])
             } else {
-                TimelineView(.periodic(from: .now, by: 0.15)) { timeline in
-                    let elapsed = timeline.date.timeIntervalSince1970
+                // 与吉祥物共用时钟：收起态同时存在多个订阅者时只有一个 timer。
+                // 原为 `TimelineView(.periodic(from: .now, by: 0.15))`，每个实例
+                // 各起一路 timer 且相位不对齐，且不受能耗档位约束。
+                SharedFrameClock(interval: 0.15) { date in
+                    let elapsed = date.timeIntervalSince1970
                     let state = rotationState(elapsed: elapsed, count: count, sorted: sorted)
 
                     ZStack {

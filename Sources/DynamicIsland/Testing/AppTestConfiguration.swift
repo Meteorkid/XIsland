@@ -31,12 +31,29 @@ enum AppPreferences {
         processConfiguration.isEnabled
     }
 
+    /// 仅 DEBUG 的本地验收通道。
+    ///
+    /// 与 `--ui-test-mode` 的区别：不隔离 UserDefaults，因此全局热键与 IOKit 断言仍然可用；
+    /// 只把授权检查替换为"可用"，用于开发期手工验收。
+    /// 两种启用方式：命令行 `--acceptance-mode`，或打包时写入 `LSEnvironment`
+    /// 的 `X_ISLAND_ACCEPTANCE=1`（便于双击启动）。
+    /// Release 构建里恒为 false，发行包无法通过启动参数获得免授权运行。
+    static var allowsAcceptanceMode: Bool {
+        #if DEBUG
+        guard !isIsolated else { return false }
+        return ProcessInfo.processInfo.arguments.contains("--acceptance-mode")
+            || ProcessInfo.processInfo.environment["X_ISLAND_ACCEPTANCE"] == "1"
+        #else
+        return false
+        #endif
+    }
+
     /// 正式安装包不能通过测试启动参数获得免授权的运行模式。
     static var allowsLicenseFixture: Bool {
-        guard isIsolated else { return false }
         #if DEBUG
-        return true
+        return isIsolated || allowsAcceptanceMode
         #else
+        guard isIsolated else { return false }
         return Bundle.allBundles.contains { $0.bundleURL.pathExtension == "xctest" }
         #endif
     }

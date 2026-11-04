@@ -112,6 +112,21 @@ struct NotchContentView: View {
 
     private var isExpanded: Bool { state != .collapsed }
 
+    /// 展开决策的输入快照。只读状态，无副作用；触发源竞争时由 `IslandExpansionRouter` 裁决。
+    private var expansionContext: IslandExpansionContext {
+        var context = IslandExpansionContext()
+        context.isExpanded = isExpanded
+        context.expandPending = expandPending
+        context.collapseAnimating = collapseAnimating
+        context.isSwitchingApps = notchWindow?.isSwitchingApps == true
+        context.hasVisibleSessions = !manager.visibleSessions.isEmpty
+        context.hasPendingInteraction = manager.hasInteraction
+        context.interactionTarget = Self.initialAutoExpandedState(for: manager)
+        context.hoverToExpandEnabled = hoverToExpandPanel
+        context.smartSuppressionActive = smartSuppression && isAgentTerminalFocused()
+        return context
+    }
+
     private var contentWidth: CGFloat {
         isExpanded ? expandedWidth : pillWidth
     }
@@ -491,7 +506,9 @@ struct NotchContentView: View {
 
             ZStack(alignment: .top) {
                 CollapsedPillView(obscuredByNotch: islandObscuredByNotch, isExpanded: isExpanded) {
-                    expand(to: .expanded)
+                    if case .expand(let target) = IslandExpansionRouter.decide(.click, expansionContext) {
+                        expand(to: target)
+                    }
                 }
                 .frame(width: shapeWidth, height: collapsedShapeHeight)
 
@@ -653,16 +670,14 @@ struct NotchContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .xislandScrollDown)) { _ in
             let now = Date()
-            let cooldown: TimeInterval = 0.5
-            guard !isExpanded,
-                  !collapseAnimating,
-                  now.timeIntervalSince(lastScrollExpandAt) > cooldown
-            else {
+            var context = expansionContext
+            context.secondsSinceLastScrollExpand = now.timeIntervalSince(lastScrollExpandAt)
+            guard case .expand(let target) = IslandExpansionRouter.decide(.scroll, context) else {
                 return
             }
 
             lastScrollExpandAt = now
-            expand(to: .expanded)
+            expand(to: target)
         }
         .onDisappear {
             taskAttentionPresented = false
@@ -804,12 +819,13 @@ struct NotchContentView: View {
     @ViewBuilder
     private var collapsedTickerView: some View {
         if resolvedTickerContentMode == .automatic {
-            TimelineView(.periodic(from: .now, by: CollapsedTickerContentMode.rotationInterval)) { context in
+            // 与其他动画共用时钟，避免收起态存在多路独立唤醒。
+            SharedFrameClock(interval: CollapsedTickerContentMode.rotationInterval) { date in
                 tickerMarquee(
                     text: Self.collapsedTickerText(
                         for: manager.latestMessagedVisibleSession,
                         mode: resolvedTickerContentMode,
-                        now: context.date
+                        now: date
                     )
                 )
             }
@@ -838,6 +854,7 @@ struct NotchContentView: View {
 
     private func expand(to newState: IslandState) {
         guard !expandPending, notchWindow?.isSwitchingApps != true else { return }
+        EnergyGovernor.shared.notePanelExpanded(newState != .collapsed)
         notchWindow?.isCollapsedPreviewReady = false
         cancelAutoCollapse()
         collapseGeneration += 1
@@ -894,6 +911,7 @@ struct NotchContentView: View {
             return
         }
         notchWindow?.isCollapsedPreviewReady = false
+        EnergyGovernor.shared.notePanelExpanded(false)
         cancelAutoCollapse()
         collapseGeneration += 1
         let generation = collapseGeneration
@@ -1269,13 +1287,17 @@ struct NotchContentView: View {
     }
 
     private func autoExpandForInteraction() {
-        guard let targetState = Self.initialAutoExpandedState(for: manager) else { return }
-        if notchWindow?.isSwitchingApps == true {
+        switch IslandExpansionRouter.decide(.autoInteraction, expansionContext) {
+        case .deferUntilHandoff:
             interactionExpansionAfterHandoff = true
+        case .ignore:
             return
-        }
-
-        if !isExpanded {
+        case .expand(let target):
+            guard target == .expanded else {
+                expand(to: target)
+                return
+            }
+            // 未展开时先展开总览，0.18s 后再校正到专用面板（保留原时序）。
             expand(to: .expanded)
             let generation = collapseGeneration
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
@@ -1283,10 +1305,7 @@ struct NotchContentView: View {
                       let currentTarget = Self.initialAutoExpandedState(for: manager) else { return }
                 expand(to: currentTarget)
             }
-            return
         }
-
-        expand(to: targetState)
     }
 
     private func cancelAutoCollapse() {
@@ -1475,9 +1494,11 @@ struct NotchContentView: View {
                 jumpMouseLocation = nil
             }
             if !manager.visibleSessions.isEmpty {
-                if !hoverToExpandPanel { return }
-                if smartSuppression && isAgentTerminalFocused() { return }
-                expand(to: .expanded)
+                // 决策交给路由：悬停会被"已展开""开关关闭""终端聚焦抑制"三者之一拦住。
+                // 其中"已展开"在收敛前没有判断，导致鼠标在岛内移动会把审批面板切回总览。
+                if case .expand(let target) = IslandExpansionRouter.decide(.hover, expansionContext) {
+                    expand(to: target)
+                }
             } else if !isHovering {
                 if disableAnimations {
                     isHovering = true

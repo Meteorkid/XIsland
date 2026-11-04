@@ -65,7 +65,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let softwareLicense: SoftwareLicenseController?
     private(set) var licensedRuntimeRunning = false
     private var allowsIsolatedLicenseFixture: Bool {
-        testConfiguration.isEnabled && softwareLicense == nil && AppPreferences.allowsLicenseFixture
+        (testConfiguration.isEnabled || AppPreferences.allowsAcceptanceMode)
+            && softwareLicense == nil
+            && AppPreferences.allowsLicenseFixture
     }
     private var allowsFeatureActions: Bool { licensedRuntimeRunning || allowsIsolatedLicenseFixture }
     private var socketServer: SocketServer?
@@ -92,6 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let launchHooks: LaunchHooks
     private var scrollMonitor: Any?
     private var islandHideObserver: NSObjectProtocol?
+    private var defaultsObserver: NSObjectProtocol?
     private var linkedIslandPreviewService: LinkedIslandPreviewService?
     private var clearSwitchingAppsWorkItem: DispatchWorkItem?
     private var pendingIslandShowURL: URL?
@@ -122,7 +125,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.sessionManager = SessionManager(testConfiguration: testConfiguration)
         self.quotaTracker = QuotaTracker(testConfiguration: testConfiguration, startImmediately: false)
         self.integrationSetupManager = IntegrationSetupManager(environment: testConfiguration.isEnabled ? .isolated : nil)
-        self.softwareLicense = softwareLicense ?? (testConfiguration.isEnabled || AppPreferences.isIsolated
+        let usesLicenseFixture = testConfiguration.isEnabled
+            || AppPreferences.isIsolated
+            || AppPreferences.allowsAcceptanceMode
+        self.softwareLicense = softwareLicense ?? (usesLicenseFixture
             ? nil : SoftwareLicenseController.live())
         super.init()
         sessionManager.onTaskAttention = { [weak self] event in
@@ -176,6 +182,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "taskAttentionEnabled": true,
         ])
         IslandIntegrationSettings.registerDefaults()
+        // 锁屏、睡眠与唤醒驱动的能耗档位。启动即订阅，避免错过首个唤醒事件。
+        EnergyGovernor.shared.start()
+        configureCompanion()
+        ASuiteSettings.registerDefaults()
+        configureASuite()
         testConfiguration.applyDefaults()
         do {
             try configureTesting()
@@ -189,11 +200,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         softwareLicense?.start()
         if !licensedRuntimeRunning, !AppPreferences.isIsolated { openSoftwareLicense() }
 
-        NotificationCenter.default.addObserver(
+        defaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
+                ASuiteSettings.apply()
                 self?.notchWindow?.applySpaceBehavior()
             }
         }
@@ -304,6 +316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        ASuiteEventRouter.shared.stop()
         softwareLicense?.stop()
         quotaTracker.suspendPolling()
         taskAttentionPresenter.cancel()
@@ -321,6 +334,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let observer = islandHideObserver {
             DistributedNotificationCenter.default().removeObserver(observer)
             islandHideObserver = nil
+        }
+        if let observer = defaultsObserver {
+            NotificationCenter.default.removeObserver(observer)
+            defaultsObserver = nil
         }
         if let monitor = scrollMonitor {
             NSEvent.removeMonitor(monitor)
@@ -378,6 +395,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func hideIslandForSwitch(from peer: String? = nil, shownAt: TimeInterval? = nil,
                              using switcher: AppSwitcher? = nil, motion: IslandSwitchMotion? = nil) {
         let switcher = switcher ?? .shared
+        // 对端未运行时，迟到的让位请求不能把岛隐藏掉——没有接管者，用户会找不到窗口。
+        guard switcher.isOtherAppRunning() else {
+            NSLog("[XIsland] ignore hide request: no peer island is running")
+            return
+        }
         guard let window = notchWindow,
               switcher.acceptPeerHideRequest(from: peer, shownAt: shownAt,
                   after: window.lastExplicitShowTime, motion: motion) else { return }
@@ -571,8 +593,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Show Island", action: #selector(showNotch), keyEquivalent: "s"))
-        menu.addItem(NSMenuItem(title: integrationSetupTitle, action: #selector(showIntegrationSetup as () -> Void), keyEquivalent: ""))
+        // 必须显式设置 target：AppDelegate 不在 responder chain 上，
+        // target 为 nil 时这些菜单项点了不会有任何反应。
+        let showItem = NSMenuItem(title: "Show Island", action: #selector(showNotch), keyEquivalent: "s")
+        showItem.target = self
+        menu.addItem(showItem)
+        let setupItem = NSMenuItem(title: integrationSetupTitle, action: #selector(showIntegrationSetup as () -> Void), keyEquivalent: "")
+        setupItem.target = self
+        menu.addItem(setupItem)
         let licenseItem = NSMenuItem(title: L10n.isChinese ? "软件授权…" : "Software License…", action: #selector(openSoftwareLicense), keyEquivalent: "")
         licenseItem.target = self
         menu.addItem(licenseItem)
@@ -588,13 +616,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: ""
         )
         installUpdateItem.isHidden = true
+        checkForUpdatesItem.target = self
+        installUpdateItem.target = self
         menu.addItem(checkForUpdatesItem)
         menu.addItem(installUpdateItem)
         let preferencesItem = NSMenuItem(title: L10n.settings + "…", action: #selector(openPreferences), keyEquivalent: ",")
         preferencesItem.target = self
         menu.addItem(preferencesItem)
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
         statusItem?.menu = menu
         checkForUpdatesMenuItem = checkForUpdatesItem
         installUpdateMenuItem = installUpdateItem
@@ -619,6 +651,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// 菜单、授权与历史导出始终可用；监控服务只在有效租约期间启动。
+    /// 接通伴端广播。
+    ///
+    /// 刻意保持"默认关闭"：广播会把会话标题与项目名送到同一 Wi-Fi 下的设备，
+    /// 属于隐私暴露，必须由用户在设置里显式开启。这里只接线，不改开关。
+    private func configureCompanion() {
+        let publisher = CompanionPublisher.shared
+        publisher.onRequestState = { [weak self] in self?.sessionManager.sessions ?? [] }
+        publisher.onCommand = { [weak self] command in
+            guard let self else { return }
+            _ = self.sessionManager.handleCompanionCommand(command)
+            // 命令处理会改变会话状态（等待态被消费），立即回推让伴端看到结果。
+            self.sessionManager.publishToCompanion()
+        }
+        CompanionSettings.registerDefaults()
+        CompanionSettings.apply()
+    }
+
+    /// A 类自动化的启动接线：把系统级动作翻译成既有业务操作。
+    private func configureASuite() {
+        let router = ASuiteEventRouter.shared
+        router.onNotificationDecision = { [weak self] action, sessionId, requestId in
+            self?.handleASuiteDecision(action, sessionId: sessionId, requestId: requestId)
+        }
+        router.onReapSessionIDs = { [weak self] ids in
+            // 延后到当前事件分发结束：reap → publishToCompanion → sessionsDidChange 若同步重入，
+            // 外层会继续用 reap 前的快照评估防休眠与隐藏，得到过期结论。
+            Task { @MainActor [weak self] in
+                self?.sessionManager.reapStaleInteractionSessions(ids)
+            }
+        }
+        router.start()
+    }
+
+    private func handleASuiteDecision(_ action: SystemNotificationAction,
+                                      sessionId: String,
+                                      requestId: String?) {
+        guard let session = sessionManager.sessions.first(where: { $0.id == sessionId }) else { return }
+        switch action {
+        case .allow, .deny:
+            // 三重校验：设置显式允许 + 通知带 requestID + 请求仍存在且 ID 精确匹配。
+            // 过期或被消费的请求一律忽略，绝不隐式批准。
+            guard AppPreferences.defaults.bool(forKey: ASuiteSettings.notificationsAllowDecisionsKey),
+                  let requestId,
+                  let pending = session.pendingPermission,
+                  pending.id.uuidString == requestId else { return }
+            if action == .allow {
+                sessionManager.approvePermission(session: session, requestID: pending.id)
+            } else {
+                sessionManager.denyPermission(session: session, requestID: pending.id)
+            }
+            SystemNotificationCenter.shared.removeDelivered(sessionId: sessionId, requestId: requestId)
+        case .review:
+            NSApp.activate(ignoringOtherApps: true)
+            showIsland(preferMouseScreen: false, hidePeers: true)
+        }
+    }
+
     func applyLicenseAccess(_ allowed: Bool) {
         guard !isTerminating, allowed != licensedRuntimeRunning else { return }
         licensedRuntimeRunning = allowed
@@ -626,6 +715,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sessionManager.resumeAcceptingPersistenceOperations()
             integrationSetupManager.resumeAfterLicenseActivation()
             launchHooks.performLicensedStartup(self)
+            // 授权恢复后重新接管系统资源：lockdown 时 router 已 stop。
+            configureASuite()
             if testConfiguration.runsProductionGlobalStartupSideEffects {
                 launchHooks.performProductionGlobalStartup(self)
             }
@@ -664,6 +755,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func performLicenseLockdown() {
+        // 授权过期后必须停掉所有系统级资源：热键、通知 delegate、防休眠断言。
+        // 否则用户既关不掉它们，也看不到设置页（设置页在未授权时被禁用）。
+        ASuiteEventRouter.shared.stop()
         taskAttentionPresenter.cancel()
         clearSwitchingAppsWorkItem?.cancel()
         pendingIslandShowURL = nil

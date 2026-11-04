@@ -301,6 +301,14 @@ final class SocketServer: @unchecked Sendable {
 
         logger.debug("Received \(data.count) bytes")
 
+        // 有真实 agent 事件就说明岛"正在被需要"，能耗档位应回到 active。
+        //
+        // 这里在后台队列上，不能直接碰 @MainActor 的单例。也刻意不用
+        // `Task { @MainActor in ... }`：高频 hook 下会往主线程堆大量短命 Task，
+        // 而主线程同时跑着 60Hz 的动画时钟。改为向主队列投递一个合并标记，
+        // 同一轮 runloop 内的多次事件只会触发一次更新。
+        EnergyGovernor.signalActivityFromBackground()
+
         guard let message = try? DIProtocol.decode(data) else {
             let preview = String(data: data.prefix(200), encoding: .utf8) ?? "?"
             logger.error("Failed to decode: \(preview)")

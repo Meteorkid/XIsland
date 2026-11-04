@@ -225,7 +225,8 @@ final class DirectionalSwitchTransactionTests: XCTestCase {
         let switcher = AppSwitcher(environment: .init(
             applicationURL: { _ in URL(fileURLWithPath: "/Applications/Fixture.app") },
             open: { url, _, done in state.url = url; state.opened = done },
-            isVisible: { _ in state.visible }, isFrontmost: { _ in state.visible },
+            isVisible: { _ in state.visible }, isRunning: { _ in true },
+            isFrontmost: { _ in state.visible },
             setSwitching: { state.switching = $0 }, hideSource: { state.hides.append(nil) },
             restoreSource: { state.restores += 1 },
             schedule: { delay, action in

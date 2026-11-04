@@ -76,7 +76,7 @@ final class HookConfigurationFileTests: XCTestCase {
         let backups = try backupFiles(in: directory)
         XCTAssertEqual(backups.count, 1)
         XCTAssertEqual(try Data(contentsOf: XCTUnwrap(backups.first)), Data("{\"custom\":true}".utf8))
-        XCTAssertTrue(try XCTUnwrap(backups.first).lastPathComponent.hasPrefix(".managed-settings.json.xisland-"))
+        XCTAssertTrue(try XCTUnwrap(backups.first).lastPathComponent.hasPrefix("managed-settings.json.bak-"))
     }
 
     func testInvalidExistingJSONIsNotOverwritten() throws {
@@ -258,26 +258,65 @@ final class HookConfigurationFileTests: XCTestCase {
         }
     }
 
+    func testCommentsSurviveUpdateWhenFileIsJSONC() throws {
+        try withDirectory { directory in
+            let path = directory.appendingPathComponent("settings.json")
+            let source = """
+            {
+              // 用户自己写的备注，工具不该抹掉
+              "hooks": {"Existing": []},
+              "model": "opus"
+            }
+            """
+            try Data(source.utf8).write(to: path)
+
+            XCTAssertTrue(try HookConfigurationFile.update(at: path) { config in
+                var updated = config
+                updated["hooks"] = ["Mine": []]
+                return updated
+            })
+
+            let written = try String(contentsOf: path, encoding: .utf8)
+            XCTAssertTrue(written.contains("用户自己写的备注"), "更新后必须保留注释")
+            XCTAssertTrue(written.contains("\"model\": \"opus\""), "无关键必须原样保留")
+            // 剥掉注释后仍应解析出期望的文档。
+            let stripped = JSONTextSurgery.strippingComments(written)
+            let parsed = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(stripped.utf8)) as? [String: Any])
+            XCTAssertNotNil(parsed["hooks"])
+        }
+    }
+
     func testUpdatesDoNotReuseExistingBackupOrTemporarySymlinks() throws {
         try withDirectory { directory in
             let path = directory.appendingPathComponent("settings")
             let sentinel = directory.appendingPathComponent("unrelated")
-            let previousBackup = directory.appendingPathComponent(".settings.xisland-existing.bak")
+            // 备份名现在是可预测的时间戳，所以"已存在同名备份"是真实可能发生的：
+            // 预置当前秒与前一秒两条符号链接，验证新建时不会跟随它们写到别处。
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyyMMdd-HHmmss"
+            let now = Date()
+            let previousBackups = [now, now.addingTimeInterval(-1)].map {
+                directory.appendingPathComponent("settings.bak-\(formatter.string(from: $0))")
+            }
             let previousTemporary = directory.appendingPathComponent(".xisland-existing.tmp")
             let original = Data("{}".utf8)
             let unrelated = Data("private unrelated content".utf8)
             try original.write(to: path)
             try unrelated.write(to: sentinel)
-            try FileManager.default.createSymbolicLink(at: previousBackup, withDestinationURL: sentinel)
+            for backup in previousBackups {
+                try FileManager.default.createSymbolicLink(at: backup, withDestinationURL: sentinel)
+            }
             try FileManager.default.createSymbolicLink(at: previousTemporary, withDestinationURL: sentinel)
 
             XCTAssertTrue(try HookConfigurationFile.update(at: path) { _ in ["hooks": true] })
 
             XCTAssertEqual(try Data(contentsOf: sentinel), unrelated)
-            for symlink in [previousBackup, previousTemporary] {
+            for symlink in previousBackups + [previousTemporary] {
                 XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: symlink.path), sentinel.path)
             }
-            let createdBackups = try backupFiles(in: directory).filter { $0.lastPathComponent != previousBackup.lastPathComponent }
+            let createdBackups = try backupFiles(in: directory)
+                .filter { !previousBackups.map(\.lastPathComponent).contains($0.lastPathComponent) }
             XCTAssertEqual(createdBackups.count, 1)
             XCTAssertEqual(try Data(contentsOf: XCTUnwrap(createdBackups.first)), original)
             XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: XCTUnwrap(createdBackups.first).path)[.type] as? FileAttributeType, .typeRegular)
@@ -328,6 +367,7 @@ final class HookConfigurationFileTests: XCTestCase {
 
     private func backupFiles(in directory: URL) throws -> [URL] {
         try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-            .filter { $0.lastPathComponent.contains(".xisland-") && $0.pathExtension == "bak" }
+            // 备份名形如 `settings.json.bak-20261103-230045`：可预测、用户可见。
+            .filter { $0.lastPathComponent.contains(".bak-") }
     }
 }

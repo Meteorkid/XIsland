@@ -79,9 +79,11 @@ final class AudioEngine {
 
     /// 当前是否处于免打扰时段（quiet hours）。
     var isQuietHoursActive: Bool {
-        guard AppPreferences.defaults.bool(forKey: "audio.quietHoursEnabled") else { return false }
-        guard let start = Self.minutesOfDay(from: AppPreferences.defaults.string(forKey: "audio.quietHoursStart")),
-              let end = Self.minutesOfDay(from: AppPreferences.defaults.string(forKey: "audio.quietHoursEnd")) else {
+        // 与设置页使用同一组键。此前这里读的是 audio. 前缀，而设置页写的是无前缀键，
+        // 结果是用户配置的静默时段从未对声音生效。
+        guard AppPreferences.defaults.bool(forKey: "quietHoursEnabled") else { return false }
+        guard let start = Self.minutesOfDay(from: AppPreferences.defaults.string(forKey: "quietHoursStart")),
+              let end = Self.minutesOfDay(from: AppPreferences.defaults.string(forKey: "quietHoursEnd")) else {
             return false
         }
 

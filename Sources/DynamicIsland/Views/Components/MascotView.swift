@@ -29,20 +29,27 @@ struct MascotView: View {
             if reduceMotion {
                 staticFace
             } else {
-                TimelineView(.periodic(from: .now, by: 0.15)) { timeline in
-                    let tick = Int(timeline.date.timeIntervalSince1970 * 0.83)
-                    ZStack {
-                        eyesView(tick: tick)
-                            .offset(y: -size * 0.07)
-                        mouthView(tick: tick)
-                            .offset(y: size * 0.19)
-                        if showsDecorations { extrasView(tick: tick) }
-                    }
+                // 共享时钟：收起态同时显示多个吉祥物时共用一个 timer，全部离屏后自动停。
+                SharedFrameClock(interval: Self.blinkInterval) { date in
+                    face(tick: Int(date.timeIntervalSince1970 * 0.83))
                 }
             }
         }
         .frame(width: size, height: size)
         .animation(nil, value: status)
+    }
+
+    /// 眨眼与呼吸的步进间隔，保留原 TimelineView 的 0.15s。
+    private static let blinkInterval: TimeInterval = 0.15
+
+    private func face(tick: Int) -> some View {
+        ZStack {
+            eyesView(tick: tick)
+                .offset(y: -size * 0.07)
+            mouthView(tick: tick)
+                .offset(y: size * 0.19)
+            if showsDecorations { extrasView(tick: tick) }
+        }
     }
 
     /// reduceMotion 时的静态表情（无 TimelineView）

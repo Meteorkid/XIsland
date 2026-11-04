@@ -405,6 +405,9 @@ enum ZeroConfigManager {
     /// 仅检查已有文件；轮询修复不为未安装的软件创建配置目录。
     static func shouldRepairNativeHooks(for agent: AgentType, homeDirectory: String) -> Bool {
         if hasUnverifiedIntegration(agent) || usesCompanionExtension(agent) || usesACPBridge(agent) || usesStateObserver(agent) || usesCodyBridge(agent) || usesAmazonQWrapper(agent) || usesWorkBuddyPlugin(agent) { return false }
+        // 用户可能有意删掉了部分事件。只要还能找到我们注入的条目，就不补齐——
+        // 否则每次"检查修复"都会把他的编辑抹掉，而他会以为设置没生效。
+        if userPrunedHooksDeliberately(for: agent, homeDirectory: homeDirectory) { return false }
         if agent == .deepseek {
             return DeepSeekHookInstallation.shouldRepair(homeDirectory: homeDirectory, bridgePath: "\(homeDirectory)/.xisland/bin/di-bridge",
                                                         environment: ProcessInfo.processInfo.environment)
@@ -451,6 +454,46 @@ enum ZeroConfigManager {
         return !WindsurfHookConfiguration.isConfigured(in: config, bridgePath: bridge)
     }
 
+    /// 用户是否故意删掉了部分事件。
+    ///
+    /// 只在能读到配置、且其中仍有我们注入的条目时才成立。
+    /// 配置读不出来（格式异常）时不拦修复——那种情况需要重建。
+    ///
+    /// 归属判定不依赖各配置类型的内部 `isOwned`（它们是 private）：
+    /// 用「`removing` 之后配置是否发生变化」来等价判断——
+    /// 变了就说明里面有我们的东西。
+    private static func userPrunedHooksDeliberately(for agent: AgentType, homeDirectory: String) -> Bool {
+        // 只有这些客户端走「JSON hooks 文件 + 移除式合并」的统一路径。
+        let relativePath: String
+        let remove: ([String: Any]) throws -> [String: Any]
+        switch agent {
+        case .cursor:
+            relativePath = CursorHookConfiguration.relativeConfigPath
+            remove = { try CursorHookConfiguration.removing(from: $0) }
+        case .trae:
+            relativePath = TraeHookConfiguration.relativeConfigPath
+            remove = { try TraeHookConfiguration.removing(from: $0) }
+        case .windsurf:
+            relativePath = WindsurfHookConfiguration.relativeConfigPath
+            remove = { try WindsurfHookConfiguration.removing(from: $0) }
+        case .devin:
+            relativePath = DevinHookConfiguration.relativeConfigPath
+            remove = { try DevinHookConfiguration.removing(from: $0) }
+        case .codeBuddy:
+            relativePath = CodeBuddyHookConfiguration.relativeConfigPath
+            remove = { try CodeBuddyHookConfiguration.removing(from: $0) }
+        default:
+            return false
+        }
+
+        let url = URL(fileURLWithPath: homeDirectory).appendingPathComponent(relativePath)
+        guard FileManager.default.fileExists(atPath: url.path),
+              let configuration = try? HookConfigurationFile.read(at: url),
+              let stripped = try? remove(configuration) else { return false }
+
+        // 判定逻辑集中在 HookDriftPolicy，保证被测试的就是生效的。
+        return HookDriftPolicy.shouldPreservePartial(original: configuration, stripped: stripped)
+    }
     @MainActor
     static func repairHooksIfNeeded(agents: Set<AgentType>? = nil) async {
         let discovered = await IntegrationSetupDiscovery.scan()
@@ -960,28 +1003,80 @@ enum ZeroConfigManager {
     // MARK: - Hermes
 
     private static func configureHermes() {
-        // Hermes does not have a formal hook system.
-        // It only supports MCP / Quick Commands / Skills as indirect integration points.
-        // We create a simple wrapper script that users can invoke via Quick Commands.
+        // Hermes 官方提供 shell hooks（profile 的 config.yaml 中 `hooks:` 块），因此不再
+        // 依赖 Quick Commands 手动触发：把下面这个脚本登记为 shell hook 即可。
+        //
+        // 注意 fail-closed：Hermes 的 pre_tool_call 在超时或异常时会**阻断**工具调用，
+        // 与 Claude Code 的 fail-open 相反。脚本因此必须在 bridge 不存在时立刻 exit 0，
+        // 且不能让 bridge 长时间挂住；需要审批的路径要由 bridge 自己保证在超时前返回。
+        //
+        // 官方文档：https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks/
         let wrapperDir = "\(home)/.xisland/bin"
         let wrapperPath = "\(wrapperDir)/hermes-bridge"
         ensureDir(wrapperDir)
 
         let wrapper = #"""
         #!/bin/bash
-        # Hermes X Island bridge wrapper
-        # Usage: hermes-bridge <hook> [session_id]
-        # Add this to Hermes Quick Commands to forward events to X Island.
-        HOOK="${1:-notification}"
-        SESSION="${2:-hermes-$(pwd)}"
-        echo '{}' | /Users/$USER/.xisland/bin/di-bridge --agent hermes --hook "$HOOK" --session "$SESSION"
+        # X Island ⇄ Hermes bridge.
+        # 用法（作为 shell hook）：hermes-bridge <event> [session_id]
+        # stdin 由 Hermes 传入事件 JSON，原样交给 di-bridge；不要再 echo '{}' 覆盖它。
+        EVENT="${1:-notification}"
+        SESSION="${2:-${HERMES_SESSION_ID:-hermes-$$}}"
+        BRIDGE="$HOME/.xisland/bin/di-bridge"
+        # fail-closed 保护：bridge 不可用时立即放行，绝不让 Hermes 卡住。
+        [ -x "$BRIDGE" ] || exit 0
+        exec "$BRIDGE" --agent hermes --hook "$EVENT" --session "$SESSION"
         """#
 
         guard !Task.isCancelled else { return }
         try? wrapper.write(toFile: wrapperPath, atomically: true, encoding: String.Encoding.utf8)
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapperPath)
 
-        print("[ZeroConfig] Hermes wrapper installed at \(wrapperPath). Add it to Hermes Quick Commands for manual integration.")
+        // 不自动改写 Hermes 的 profile config.yaml：本项目没有 YAML 解析依赖，
+        // 用手写文本插入去改用户的配置文件，一旦格式判断失误就是破坏性写入。
+        // 改为生成一份说明，由用户自己粘贴——他看得见改动，也能随时撤销。
+        let guidePath = "\(wrapperDir)/HERMES-SETUP.md"
+        let guide = #"""
+        # 把 X Island 接到 Hermes
+
+        生成时间：一次应用启动时自动刷新。
+
+        ## 一步：登记 shell hook
+
+        在 Hermes profile 的 `config.yaml` 里，把下面这条命令登记为 `pre_tool_call`
+        的 shell hook（外层结构以官方文档为准）：
+
+        ```
+        $HOME/.xisland/bin/hermes-bridge pre_tool_call
+        ```
+
+        事件名按需替换，例如 `on_session_start`、`post_tool_call`。
+        脚本从 stdin 读取 Hermes 传入的事件 JSON，原样转给 `di-bridge`。
+
+        ## 注意：Hermes 是 fail-closed
+
+        Hermes 的 `pre_tool_call` 在超时或异常时**阻断工具调用**，
+        与 Claude Code 的 fail-open 相反。脚本已在 bridge 缺失时 `exit 0` 兜底，
+        但 bridge 自身若卡住，Hermes 仍会等待到超时。
+
+        接入前请先确认：bridge 在无响应场景下能否在 timeout 内返回。
+
+        ## 不要使用的入口
+
+        `pre_approval_request` 只是 observer，**不能否决或预先作答**。
+        审批必须走 `pre_tool_call`。
+
+        ## 未实测声明
+
+        以上命令由文档推导，**未在真实 Hermes 安装上验证**。
+        首次接入请固定客户端版本，逐一确认：原生观察、工具事件、完成与中断、
+        同一聊天续问四项。
+
+        官方文档：https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks/
+        """#
+        try? guide.write(toFile: guidePath, atomically: true, encoding: String.Encoding.utf8)
+
+        print("[ZeroConfig] Hermes bridge installed at \(wrapperPath); setup guide at \(guidePath).")
     }
 
     // MARK: - Aider
