@@ -1,0 +1,91 @@
+{
+  "checkedAt": "2026-10-28T20:57:02.188536+08:00",
+  "version": "2.0.14",
+  "releaseCommit": "d6ebd0728ca7345635038c0639bca4d0f14e3584",
+  "published": true,
+  "installed": true,
+  "releaseURL": "https://github.com/Meteorkid/XIsland/releases/tag/v2.0.14",
+  "publicDownloadSHA256": "9a67fefa437b500147f7a672ce230cabc47bebbb347ee3151b92cba69d4660d7",
+  "appSHA256": "df43eda3770dde7e08ff4671ccfd27be244d8d6a3602e4a139a0145fa36f8611",
+  "bridgeSHA256": "3f358b68dfc97cfe06790f3ecdeb55045d4db2bbebe511ff086bfa9e4373e820",
+  "signatureVerified": true,
+  "installedBundleMatchesPublicDownload": true,
+  "comparedBundleFiles": 8,
+  "ci": [
+    {
+      "conclusion": "success",
+      "headSha": "d6ebd0728ca7345635038c0639bca4d0f14e3584",
+      "status": "completed",
+      "updatedAt": "2026-10-27T12:12:27Z",
+      "url": "https://github.com/Meteorkid/XIsland/actions/runs/40501552665",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "success",
+      "headSha": "d6ebd0728ca7345635038c0639bca4d0f14e3584",
+      "status": "completed",
+      "updatedAt": "2026-10-27T12:13:30Z",
+      "url": "https://github.com/Meteorkid/XIsland/actions/runs/40501552644",
+      "workflowName": "Windows checks"
+    }
+  ],
+  "nativeAcceptance": {
+    "date": "2026-10-27",
+    "workBuddyVersion": "5.9.2",
+    "successfulFormalPackageTurns": 1,
+    "taskLabel": "XIsland正式版2.0.14验收-20261027-D",
+    "returnedFromXNook": true,
+    "completedAndUnreadObserved": true,
+    "completionTimestampPersisted": true,
+    "testUsedNativeClientNotSyntheticEvents": true
+  },
+  "data": {
+    "integrity": "ok",
+    "schemaUnchanged": true,
+    "missingOldPrimaryKeys": {
+      "ZSTOREDTOOLEVENT": 0,
+      "ZSTOREDSESSION": 0,
+      "ZSTOREDCHATMESSAGE": 0,
+      "ZSTOREDKIMICODEAPPROVALORPHAN": 0
+    }
+  },
+  "preferences": {
+    "dev.xisland.app": {
+      "autoCollapseEnabled": true,
+      "pointerExitCollapseDelay": 0.0,
+      "taskAttentionEnabled": true
+    },
+    "com.meteorkid.xnook": {
+      "showTaskInboxShortcut": false
+    }
+  },
+  "xnook": {
+    "notReplaced": true,
+    "version": "1.3.26",
+    "sha256": "6665313f5d1802527dcc78cbbcdec307d27facf8e940cb6ef4ebc845ce170d07",
+    "showTaskInboxShortcut": false
+  },
+  "currentLatestRelease": "2.0.15",
+  "laterReleasePreserved": true,
+  "notVerified": [
+    "Native compression recovery and cross-turn out-of-order events",
+    "Full nested agent lifecycle",
+    "Physical animation frame rate"
+  ],
+  "evidenceFiles": [
+    "local-test/installation.json",
+    "local-test/task-first-observation.json",
+    "local-test/workbuddy-result.txt",
+    "local-test/completed-island.txt",
+    "local-test/before-task-xnook.png",
+    "local-test/completed-island.png"
+  ],
+  "evidenceSHA256": {
+    "local-test/installation.json": "5dc9333000a1bd32044d169e79c60c58bcb1927487d3dffa349f98b2e2a17f6a",
+    "local-test/task-first-observation.json": "5450281c49a9d1c16cbc3cd0073ccc377b1b820983e0893dad2477c6e3af8121",
+    "local-test/workbuddy-result.txt": "0c36f0d9c9ff31970d95138c0d6ffa559cf387d141954ca5f673cf9f57be83c1",
+    "local-test/completed-island.txt": "f5bb619d1c5c2b38730980cc044de4a25b3ee8537935b44e68fae9a6646f9e31",
+    "local-test/before-task-xnook.png": "cbf642925e7468b27080aa6a7649b474a2a876ebb18f75e70aab7ce62bc89dec",
+    "local-test/completed-island.png": "93f56dbfe02c7ec9a0f9e2dcd88e9cfdbf293d42d6067fc69c07f995d39a69db"
+  }
+}
