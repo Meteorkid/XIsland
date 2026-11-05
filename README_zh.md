@@ -295,6 +295,10 @@ bash Scripts/install-git-hooks.sh
 
 上游项目最后更新于 2026-04-16；本仓库自 2026-05-15 起由 Meteorkid 接管。
 
+## 反馈
+
+发现 Bug、想要新功能，或者只是想聊两句？[提一个 Issue](https://github.com/Meteorkid/XIsland/issues)。每一条我都会看。
+
 ## 许可证
 
 本项目**按内容类型分层授权**，不同部分适用不同条款：

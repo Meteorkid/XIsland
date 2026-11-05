@@ -297,6 +297,10 @@ Thanks to the original authors: guyubin, leeekyrie (Kunyang Lee), and greatbean/
 
 The upstream project was last updated on 2026-04-16; this repository has been maintained by Meteorkid since 2026-05-15.
 
+## Feedback
+
+Found a bug? Have a feature request? Want to tell us something? [Open an issue](https://github.com/Meteorkid/XIsland/issues). I read every one.
+
 ## License
 
 This project is **licensed by content type** — different parts carry different terms:
