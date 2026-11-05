@@ -2303,6 +2303,72 @@ enum L10n {
             en: "Reason/scope: ")
     }
 
+    static var approvalContextMapFile: String {
+        localized("approvalContextMapFile",
+            zh: "文件", ko: "파일", ja: "ファイル", fr: "Fichier",
+            en: "File")
+    }
+
+    static var approvalContextMapDeltaTitle: String {
+        localized("approvalContextMapDeltaTitle",
+            zh: "较上一轮", ko: "지난 회차 대비", ja: "前回との差分", fr: "Depuis le tour précédent",
+            en: "Since last round")
+    }
+
+    static var annotationButton: String {
+        localized("annotationButton",
+            zh: "批注", ko: "주석", ja: "注釈", fr: "Annoter",
+            en: "Annotate")
+    }
+
+    static var annotationQuestion: String {
+        localized("annotationQuestion",
+            zh: "提问", ko: "질문", ja: "質問", fr: "Question",
+            en: "Question")
+    }
+
+    static var annotationCommand: String {
+        localized("annotationCommand",
+            zh: "命令", ko: "명령", ja: "コマンド", fr: "Commande",
+            en: "Command")
+    }
+
+    static var annotationPlaceholder: String {
+        localized("annotationPlaceholder",
+            zh: "写下批注…", ko: "주석을 입력하세요…", ja: "注釈を入力…", fr: "Écrire une annotation…",
+            en: "Write an annotation…")
+    }
+
+    static var annotationCopyAndJump: String {
+        localized("annotationCopyAndJump",
+            zh: "复制并跳转", ko: "복사 후 이동", ja: "コピーして移動", fr: "Copier et ouvrir",
+            en: "Copy & jump")
+    }
+
+    static var annotationCopied: String {
+        localized("annotationCopied",
+            zh: "已复制，跳转后粘贴发送", ko: "복사됨. 이동 후 붙여넣어 전송하세요.", ja: "コピーしました。移動後に貼り付けて送信します。", fr: "Copié. Collez et envoyez après le saut.",
+            en: "Copied. Paste and send after the jump.")
+    }
+
+    static var annotationCancel: String {
+        localized("annotationCancel",
+            zh: "取消", ko: "취소", ja: "キャンセル", fr: "Annuler",
+            en: "Cancel")
+    }
+
+    static var annotationQuestionMessageFormat: String {
+        localized("annotationQuestionMessageFormat",
+            zh: "关于「%@」：%@", ko: "「%@」에 대한 질문: %@", ja: "「%@」についての質問: %@", fr: "Question sur « %@ » : %@",
+            en: "Question about \"%@\": %@")
+    }
+
+    static var annotationCommandMessageFormat: String {
+        localized("annotationCommandMessageFormat",
+            zh: "请根据以下批注调整「%@」：%@", ko: "다음 주석에 따라 「%@」을(를) 조정하세요: %@", ja: "次の注釈に従って「%@」を調整してください: %@", fr: "Ajustez « %@ » selon cette note : %@",
+            en: "Please adjust \"%@\" based on this note: %@")
+    }
+
     static var approvalContextMapCreatedLabel: String {
         localized("approvalContextMapCreatedLabel",
             zh: "新建", ko: "새로 만듦", ja: "新規", fr: "Nouveau",

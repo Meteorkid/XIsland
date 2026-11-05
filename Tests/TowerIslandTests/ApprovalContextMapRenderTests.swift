@@ -29,8 +29,29 @@ final class ApprovalContextMapRenderTests: XCTestCase {
         )
 
         let theme = ThemeManager()
+        let manager = SessionManager()
+        let historyStore = ApprovalContextMapSnapshotStore(
+            url: output.appendingPathComponent("approval-map-history.json")
+        )
+        let previousMap = ApprovalContextMap(
+            task: .init(title: "上一轮任务"),
+            plan: [.init(title: "数据模型", depth: 1), .init(title: "旧流程", depth: 2)],
+            changes: [
+                .init(path: "/tmp/xisland/SessionManager.swift", kind: .modified),
+                .init(path: "/tmp/xisland/RemovedView.swift", kind: .created),
+            ],
+            pending: nil,
+            reason: nil
+        )
+        historyStore.append(ApprovalContextMapSnapshot(map: previousMap), sessionID: session.id)
         for expanded in [false, true] {
-            let content = ApprovalContextMapView(session: session, pendingKind: .permission, initiallyExpanded: expanded)
+            let content = ApprovalContextMapView(
+                session: session,
+                pendingKind: .permission,
+                initiallyExpanded: expanded,
+                snapshotStore: historyStore
+            )
+                .environment(manager)
                 .environment(theme)
                 .frame(width: 380)
                 .padding(16)
@@ -39,7 +60,6 @@ final class ApprovalContextMapRenderTests: XCTestCase {
         }
 
         // 集成形态：审批卡片内的地图与批准/拒绝按钮共存。
-        let manager = SessionManager()
         let card = PendingTaskCardView(session: session)
             .environment(manager)
             .environment(theme)

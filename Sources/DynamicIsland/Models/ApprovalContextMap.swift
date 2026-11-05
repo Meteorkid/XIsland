@@ -1,4 +1,5 @@
 import Foundation
+import DIShared
 
 /// 审批上下文地图的用户开关。
 /// 默认开启；关闭后审批卡片不再渲染地图，偏好沿用 `AppPreferences` 隔离存储。
@@ -30,7 +31,7 @@ struct ApprovalContextMap: Equatable {
     }
 
     struct ChangeNode: Equatable {
-        enum Kind: Equatable {
+        enum Kind: String, Codable, Equatable {
             case created
             case modified
             case deleted
@@ -68,6 +69,162 @@ struct ApprovalContextMap: Equatable {
     }
 
     static let empty = ApprovalContextMap(task: nil, plan: [], changes: [], pending: nil, reason: nil)
+}
+
+/// 某一轮完成时的地图快照，用于和下一轮做节点变化对比。
+struct ApprovalContextMapSnapshot: Codable, Equatable {
+    struct FileChange: Codable, Equatable {
+        let path: String
+        let kind: ApprovalContextMap.ChangeNode.Kind
+    }
+
+    let capturedAt: Date
+    let taskTitle: String?
+    let planTitles: [String]
+    let changes: [FileChange]
+
+    init(map: ApprovalContextMap, capturedAt: Date = Date()) {
+        self.capturedAt = capturedAt
+        self.taskTitle = map.task?.title
+        self.planTitles = map.plan.map(\.title)
+        self.changes = map.changes.map { FileChange(path: $0.path, kind: $0.kind) }
+    }
+}
+
+/// 上一轮快照与当前地图的差异：文件增删、类型变化与计划标题变化。
+struct ApprovalContextMapDelta: Equatable {
+    struct KindChange: Equatable {
+        let path: String
+        let from: ApprovalContextMap.ChangeNode.Kind
+        let to: ApprovalContextMap.ChangeNode.Kind
+    }
+
+    var addedFiles: [String] = []
+    var removedFiles: [String] = []
+    var kindChangedFiles: [KindChange] = []
+    var addedPlanTitles: [String] = []
+    var removedPlanTitles: [String] = []
+
+    var isEmpty: Bool {
+        addedFiles.isEmpty && removedFiles.isEmpty && kindChangedFiles.isEmpty
+            && addedPlanTitles.isEmpty && removedPlanTitles.isEmpty
+    }
+
+    static func between(
+        previous: ApprovalContextMapSnapshot,
+        current: ApprovalContextMapSnapshot
+    ) -> ApprovalContextMapDelta {
+        let previousByPath = Dictionary(
+            previous.changes.map { ($0.path, $0.kind) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let currentByPath = Dictionary(
+            current.changes.map { ($0.path, $0.kind) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        var addedFiles: [String] = []
+        var removedFiles: [String] = []
+        var kindChangedFiles: [KindChange] = []
+        for change in current.changes where previousByPath[change.path] == nil {
+            addedFiles.append(change.path)
+        }
+        for change in previous.changes where currentByPath[change.path] == nil {
+            removedFiles.append(change.path)
+        }
+        for change in current.changes {
+            guard let previousKind = previousByPath[change.path], previousKind != change.kind else { continue }
+            kindChangedFiles.append(KindChange(path: change.path, from: previousKind, to: change.kind))
+        }
+
+        let previousPlans = Set(previous.planTitles)
+        let currentPlans = Set(current.planTitles)
+        return ApprovalContextMapDelta(
+            addedFiles: addedFiles,
+            removedFiles: removedFiles,
+            kindChangedFiles: kindChangedFiles,
+            addedPlanTitles: current.planTitles.filter { !previousPlans.contains($0) },
+            removedPlanTitles: previous.planTitles.filter { !currentPlans.contains($0) }
+        )
+    }
+}
+
+/// 地图快照的轻量 JSON 存储：按会话保留最近 N 轮，写入失败不影响审批主流程。
+struct ApprovalContextMapSnapshotStore {
+    private struct Payload: Codable {
+        var sessions: [String: [ApprovalContextMapSnapshot]] = [:]
+    }
+
+    let url: URL
+    let limitPerSession: Int
+    let maxSessions: Int
+
+    init(url: URL, limitPerSession: Int = 20, maxSessions: Int = 300) {
+        self.url = url
+        self.limitPerSession = limitPerSession
+        self.maxSessions = maxSessions
+    }
+
+    /// 正式运行使用 `~/.xisland/approval-map-history.json`；测试隔离时默认不落盘。
+    static func defaultStore() -> ApprovalContextMapSnapshotStore? {
+        guard !AppPreferences.isIsolated else { return nil }
+        let url = URL(fileURLWithPath: DISocketConfig.socketDir, isDirectory: true)
+            .appendingPathComponent("approval-map-history.json")
+        return ApprovalContextMapSnapshotStore(url: url)
+    }
+
+    func history(sessionID: String) -> [ApprovalContextMapSnapshot] {
+        load().sessions[sessionID] ?? []
+    }
+
+    func latest(sessionID: String) -> ApprovalContextMapSnapshot? {
+        history(sessionID: sessionID).last
+    }
+
+    func append(_ snapshot: ApprovalContextMapSnapshot, sessionID: String) {
+        var payload = load()
+        var entries = payload.sessions[sessionID] ?? []
+        entries.append(snapshot)
+        if entries.count > limitPerSession {
+            entries.removeFirst(entries.count - limitPerSession)
+        }
+        payload.sessions[sessionID] = entries
+        trimSessions(&payload)
+        save(payload)
+    }
+
+    private func load() -> Payload {
+        guard let data = try? Data(contentsOf: url),
+              let payload = try? JSONDecoder().decode(Payload.self, from: data) else {
+            return Payload()
+        }
+        return payload
+    }
+
+    private func save(_ payload: Payload) {
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let data = try JSONEncoder().encode(payload)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            // 快照为可选增强；写入失败时保持审批流程可用。
+        }
+    }
+
+    private func trimSessions(_ payload: inout Payload) {
+        guard payload.sessions.count > maxSessions else { return }
+        let overflow = payload.sessions.count - maxSessions
+        let oldest = payload.sessions
+            .map { (id: $0.key, last: $0.value.last?.capturedAt ?? .distantPast) }
+            .sorted { $0.last < $1.last }
+            .prefix(overflow)
+        for entry in oldest {
+            payload.sessions.removeValue(forKey: entry.id)
+        }
+    }
 }
 
 /// 地图构建器：把会话数据转换成地图节点。

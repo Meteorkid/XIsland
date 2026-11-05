@@ -1,52 +1,88 @@
 import SwiftUI
+import AppKit
 
 /// 审批上下文地图：把会话中的任务、计划、文件变更与当前待审批请求
 /// 聚合成可折叠的节点列表，帮助在批准/拒绝前快速浏览结构。
 ///
 /// 设计约束：
-/// - 只消费 `ApprovalContextMapBuilder` 的派生数据，不在 View 内重复业务判定；
+/// - 只消费 ApprovalContextMapBuilder 的派生数据，不在 View 内重复业务判定；
 /// - 折叠态只显示一行变更摘要，展开态才渲染节点列表，保持灵动岛紧凑；
-/// - 变更节点沿用 Midmap 式标记：绿色新建、橙色修改、红色删除。
+/// - 变更节点沿用 Midmap 式标记：绿色新建、橙色修改、红色删除；
+/// - 节点批注通过「复制预填消息 + 跳转会话」实现近似闭环，不改 agent 协议。
 struct ApprovalContextMapView: View {
     let session: AgentSession
     let pendingKind: ApprovalContextMap.PendingNode.Kind
+    let snapshotStore: ApprovalContextMapSnapshotStore?
 
     @Environment(ThemeManager.self) private var themeManager
+    @Environment(SessionManager.self) private var manager
     @State private var isExpanded = false
     @State private var changeFilter: ApprovalContextMap.ChangeNode.Kind?
+    @State private var previousSnapshot: ApprovalContextMapSnapshot?
+    @State private var jumpState = SessionJumpState()
+    @State private var annotationTarget: AnnotationTarget?
+    @State private var annotationKind: AnnotationKind = .question
+    @State private var annotationText = ""
+    @State private var copiedHint = false
+    @State private var hintDismissal: DispatchWorkItem?
     @AppStorage(ApprovalContextMapSettings.enabledKey) private var isEnabled = true
 
     /// 展开后变更节点的展示上限，超出部分折叠成「还有 N 个」。
     static let visibleChangeLimit = 8
+    /// 上一轮差异的展示上限。
+    static let visibleDeltaLimit = 6
+
+    struct AnnotationTarget: Equatable {
+        let label: String
+        let title: String
+    }
+
+    enum AnnotationKind: Equatable {
+        case question
+        case command
+    }
 
     init(
         session: AgentSession,
         pendingKind: ApprovalContextMap.PendingNode.Kind,
-        initiallyExpanded: Bool = false
+        initiallyExpanded: Bool = false,
+        snapshotStore: ApprovalContextMapSnapshotStore? = nil
     ) {
         self.session = session
         self.pendingKind = pendingKind
+        self.snapshotStore = snapshotStore
         _isExpanded = State(initialValue: initiallyExpanded)
+        let store = snapshotStore ?? ApprovalContextMapSnapshotStore.defaultStore()
+        _previousSnapshot = State(initialValue: store?.latest(sessionID: session.id))
     }
 
     private var scheme: ColorScheme { themeManager.resolvedScheme }
 
     var body: some View {
         let map = ApprovalContextMapBuilder.build(session: session, pendingKind: pendingKind)
+        let delta = previousSnapshot.map {
+            ApprovalContextMapDelta.between(previous: $0, current: ApprovalContextMapSnapshot(map: map))
+        }
         if Self.shouldShow(map: map, enabled: isEnabled) {
             VStack(alignment: .leading, spacing: 6) {
                 toggleRow(map)
-                if isExpanded { nodeList(map) }
+                if isExpanded {
+                    nodeList(map, delta: delta)
+                    if let target = annotationTarget {
+                        annotationComposer(target)
+                    }
+                }
             }
             .padding(8)
             .background(IslandStyle.insetFill(for: scheme).opacity(0.55))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .modifier(SessionJumpFeedback(state: jumpState))
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier(TestAccessibility.approvalContextMap)
         }
     }
 
-    // MARK: - 折叠摘要行
+    // MARK: - 折叠摘要与筛选
 
     private func toggleRow(_ map: ApprovalContextMap) -> some View {
         HStack(spacing: 6) {
@@ -83,46 +119,6 @@ struct ApprovalContextMapView: View {
             }
         }
     }
-
-    // MARK: - 展开节点列表
-
-    private func nodeList(_ map: ApprovalContextMap) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let reason = map.reason, !reason.isEmpty {
-                reasonRow(reason)
-            }
-            if let task = map.task {
-                section(L10n.approvalContextMapTask) { taskRow(task) }
-            }
-            if !map.plan.isEmpty {
-                section(L10n.approvalContextMapPlan) { planRows(map.plan) }
-            }
-            if !map.changes.isEmpty {
-                let filtered = Self.filteredChanges(map.changes, filter: changeFilter)
-                if !filtered.isEmpty {
-                    section(L10n.approvalContextMapChanges) { changeRows(filtered) }
-                }
-            }
-            if let pending = map.pending {
-                section(L10n.approvalContextMapPending) { pendingRow(pending) }
-            }
-        }
-    }
-
-    private func reasonRow(_ reason: String) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Text(L10n.approvalContextMapReasonScope)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
-            Text(reason)
-                .font(.system(size: 10))
-                .foregroundStyle(IslandStyle.secondaryText)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    // MARK: - 按类型筛选
 
     private func filterChips(_ map: ApprovalContextMap) -> some View {
         HStack(spacing: 4) {
@@ -165,7 +161,48 @@ struct ApprovalContextMapView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(Self.filterLabel(for: kind, count: count))
         .accessibilityIdentifier(TestAccessibility.approvalContextMapFilter(Self.kindKey(kind)))
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityAddTraits(selected ? .isSelected : AccessibilityTraits())
+    }
+
+    // MARK: - 展开节点列表
+
+    private func nodeList(_ map: ApprovalContextMap, delta: ApprovalContextMapDelta?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let reason = map.reason, !reason.isEmpty {
+                reasonRow(reason)
+            }
+            if let delta, !delta.isEmpty, let previous = previousSnapshot {
+                deltaSection(delta, capturedAt: previous.capturedAt)
+            }
+            if let task = map.task {
+                section(L10n.approvalContextMapTask) { taskRow(task) }
+            }
+            if !map.plan.isEmpty {
+                section(L10n.approvalContextMapPlan) { planRows(map.plan) }
+            }
+            if !map.changes.isEmpty {
+                let filtered = Self.filteredChanges(map.changes, filter: changeFilter)
+                if !filtered.isEmpty {
+                    section(L10n.approvalContextMapChanges) { changeRows(filtered) }
+                }
+            }
+            if let pending = map.pending {
+                section(L10n.approvalContextMapPending) { pendingRow(pending) }
+            }
+        }
+    }
+
+    private func reasonRow(_ reason: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text(L10n.approvalContextMapReasonScope)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
+            Text(reason)
+                .font(.system(size: 10))
+                .foregroundStyle(IslandStyle.secondaryText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -188,9 +225,10 @@ struct ApprovalContextMapView: View {
                 .foregroundStyle(IslandStyle.primaryText)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            annotateButton(AnnotationTarget(label: L10n.approvalContextMapTask, title: task.title))
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(L10n.approvalContextMapTask): \(task.title)")
+        .accessibilityElement(children: .contain)
     }
 
     private func planRows(_ nodes: [ApprovalContextMap.PlanNode]) -> some View {
@@ -204,6 +242,8 @@ struct ApprovalContextMapView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(IslandStyle.primaryText)
                         .lineLimit(1)
+                    Spacer(minLength: 4)
+                    annotateButton(AnnotationTarget(label: L10n.approvalContextMapPlan, title: node.title))
                 }
                 .padding(.leading, CGFloat(max(0, node.depth - 1)) * 10)
             }
@@ -228,9 +268,8 @@ struct ApprovalContextMapView: View {
                     Text(Self.changeLabel(for: change.kind))
                         .font(.system(size: 9))
                         .foregroundStyle(Self.changeColor(for: change.kind).opacity(0.9))
+                    annotateButton(AnnotationTarget(label: L10n.approvalContextMapFile, title: change.path))
                 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(Self.changeLabel(for: change.kind)): \(change.path)")
             }
             if changes.count > Self.visibleChangeLimit {
                 Text(L10n.approvalContextMapMore(changes.count - Self.visibleChangeLimit))
@@ -281,7 +320,190 @@ struct ApprovalContextMapView: View {
         .accessibilityLabel("\(Self.pendingLabel(for: pending.kind)): \(Self.pendingTitle(for: pending))")
     }
 
+    // MARK: - 较上一轮的变化
+
+    struct DeltaRow {
+        let text: String
+        let color: Color
+    }
+
+    private func deltaSection(_ delta: ApprovalContextMapDelta, capturedAt: Date) -> some View {
+        let rows = Self.deltaRows(delta)
+        return section("\(L10n.approvalContextMapDeltaTitle) · \(capturedAt.formatted(date: .omitted, time: .shortened))") {
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(Array(rows.prefix(Self.visibleDeltaLimit).enumerated()), id: \.offset) { _, row in
+                    Text(row.text)
+                        .font(.system(size: 10))
+                        .foregroundStyle(row.color)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                if rows.count > Self.visibleDeltaLimit {
+                    Text(L10n.approvalContextMapMore(rows.count - Self.visibleDeltaLimit))
+                        .font(.system(size: 9))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
+                }
+            }
+        }
+    }
+
+    static func deltaRows(_ delta: ApprovalContextMapDelta) -> [DeltaRow] {
+        var rows: [DeltaRow] = []
+        for path in delta.addedFiles {
+            rows.append(DeltaRow(text: "+ \(path)", color: .green))
+        }
+        for path in delta.removedFiles {
+            rows.append(DeltaRow(text: "− \(path)", color: .red))
+        }
+        for change in delta.kindChangedFiles {
+            rows.append(DeltaRow(
+                text: "~ \(change.path)：\(changeLabel(for: change.from)) → \(changeLabel(for: change.to))",
+                color: .orange
+            ))
+        }
+        for title in delta.addedPlanTitles {
+            rows.append(DeltaRow(text: "+ \(L10n.approvalContextMapPlan)：\(title)", color: .purple))
+        }
+        for title in delta.removedPlanTitles {
+            rows.append(DeltaRow(text: "− \(L10n.approvalContextMapPlan)：\(title)", color: .secondary))
+        }
+        return rows
+    }
+
+    // MARK: - 节点批注
+
+    private func annotateButton(_ target: AnnotationTarget) -> some View {
+        Button {
+            annotationTarget = target
+            annotationKind = .question
+            annotationText = ""
+            copiedHint = false
+        } label: {
+            Image(systemName: "text.bubble")
+                .font(.system(size: 9))
+                .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
+                .frame(width: 16, height: 16)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L10n.annotationButton)
+        .accessibilityIdentifier(TestAccessibility.approvalContextMapAnnotate)
+        .help(L10n.annotationButton)
+    }
+
+    private func annotationComposer(_ target: AnnotationTarget) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("\(target.label) · \(target.title)")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(IslandStyle.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 4)
+                Button { closeAnnotation() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.annotationCancel)
+                .accessibilityIdentifier(TestAccessibility.approvalContextMapAnnotationCancel)
+            }
+            HStack(spacing: 4) {
+                annotationKindButton(.question, title: L10n.annotationQuestion)
+                annotationKindButton(.command, title: L10n.annotationCommand)
+            }
+            TextField(L10n.annotationPlaceholder, text: $annotationText, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.system(size: 11))
+                .lineLimit(2...4)
+                .padding(6)
+                .background(IslandStyle.codeWell(for: scheme))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .accessibilityIdentifier(TestAccessibility.approvalContextMapAnnotationField)
+            HStack(spacing: 6) {
+                if copiedHint {
+                    Text(L10n.annotationCopied)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.green)
+                }
+                Spacer(minLength: 4)
+                Button(L10n.annotationCopyAndJump) { submitAnnotation(target) }
+                    .font(.system(size: 10, weight: .semibold))
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.accentColor.opacity(annotationText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.08 : 0.25))
+                    .clipShape(Capsule())
+                    .disabled(annotationText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier(TestAccessibility.approvalContextMapAnnotationSubmit)
+            }
+        }
+        .padding(6)
+        .background(IslandStyle.insetFill(for: scheme).opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func annotationKindButton(_ kind: AnnotationKind, title: String) -> some View {
+        let selected = annotationKind == kind
+        return Button {
+            annotationKind = kind
+        } label: {
+            Text(title)
+                .font(.system(size: 9, weight: selected ? .semibold : .regular))
+                .foregroundStyle(selected ? Color.accentColor : IslandStyle.secondaryText)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(selected ? Color.accentColor.opacity(0.15) : Color.clear)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func submitAnnotation(_ target: AnnotationTarget) {
+        let text = annotationText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let message = Self.annotationMessage(kind: annotationKind, nodeLabel: target.label, title: target.title, text: text)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(message, forType: .string)
+        copiedHint = true
+        hintDismissal?.cancel()
+        let work = DispatchWorkItem { copiedHint = false }
+        hintDismissal = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
+        jumpState.request(session, manager: manager)
+    }
+
+    private func closeAnnotation() {
+        annotationTarget = nil
+        annotationText = ""
+        copiedHint = false
+        hintDismissal?.cancel()
+        hintDismissal = nil
+    }
+
+    /// 批注预填消息：引用节点标题与用户输入，提问/命令两种措辞。
+    static func annotationMessage(
+        kind: AnnotationKind,
+        nodeLabel: String,
+        title: String,
+        text: String
+    ) -> String {
+        let reference = nodeLabel.isEmpty ? title : "\(nodeLabel) · \(title)"
+        switch kind {
+        case .question:
+            return String(format: L10n.annotationQuestionMessageFormat, reference, text)
+        case .command:
+            return String(format: L10n.annotationCommandMessageFormat, reference, text)
+        }
+    }
+
     // MARK: - 纯函数（供测试与复用）
+
+    /// 开关关闭或没有可展示内容时隐藏整个地图。
+    static func shouldShow(map: ApprovalContextMap, enabled: Bool) -> Bool {
+        enabled && map.hasContent
+    }
 
     /// 按类型筛选变更节点；nil 表示全部。
     static func filteredChanges(
@@ -306,11 +528,6 @@ struct ApprovalContextMapView: View {
         case .modified: return "modified"
         case .deleted: return "deleted"
         }
-    }
-
-    /// 开关关闭或没有可展示内容时隐藏整个地图。
-    static func shouldShow(map: ApprovalContextMap, enabled: Bool) -> Bool {
-        enabled && map.hasContent
     }
 
     /// 折叠摘要，例如 “3 新建 · 2 修改 · 1 删除”；没有文件变更时显示占位文案。

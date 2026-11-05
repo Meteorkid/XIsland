@@ -1,4 +1,5 @@
 import XCTest
+import DIShared
 @testable import XIsland
 
 /// 审批上下文地图的解析与聚合回归：
@@ -310,6 +311,139 @@ final class ApprovalContextMapTests: XCTestCase {
         XCTAssertEqual(ApprovalContextMapView.filteredChanges(changes, filter: .modified).map(\.path), ["/tmp/b"])
         XCTAssertEqual(ApprovalContextMapView.filteredChanges(changes, filter: .deleted).map(\.path), ["/tmp/c"])
         XCTAssertEqual(ApprovalContextMapView.kindKey(.created), "created")
+    }
+
+    // MARK: - P2: 快照、差异与批注
+
+    func testSnapshotRoundTrip() throws {
+        let snapshot = ApprovalContextMapSnapshot(
+            map: ApprovalContextMap(
+                task: .init(title: "旧任务"),
+                plan: [.init(title: "数据模型", depth: 1), .init(title: "旧流程", depth: 2)],
+                changes: [
+                    .init(path: "/tmp/a", kind: .modified),
+                    .init(path: "/tmp/b", kind: .created),
+                ],
+                pending: nil,
+                reason: nil
+            ),
+            capturedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let data = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(ApprovalContextMapSnapshot.self, from: data)
+        XCTAssertEqual(decoded, snapshot)
+    }
+
+    func testDeltaDetectsFileAndPlanChanges() {
+        let previous = ApprovalContextMapSnapshot(map: ApprovalContextMap(
+            task: .init(title: "旧任务"),
+            plan: [.init(title: "A", depth: 1), .init(title: "B", depth: 1)],
+            changes: [
+                .init(path: "/tmp/a", kind: .modified),
+                .init(path: "/tmp/b", kind: .created),
+            ],
+            pending: nil,
+            reason: nil
+        ))
+        let current = ApprovalContextMapSnapshot(map: ApprovalContextMap(
+            task: .init(title: "新任务"),
+            plan: [.init(title: "B", depth: 1), .init(title: "C", depth: 1)],
+            changes: [
+                .init(path: "/tmp/a", kind: .deleted),
+                .init(path: "/tmp/c", kind: .created),
+            ],
+            pending: nil,
+            reason: nil
+        ))
+        let delta = ApprovalContextMapDelta.between(previous: previous, current: current)
+        XCTAssertEqual(delta.addedFiles, ["/tmp/c"])
+        XCTAssertEqual(delta.removedFiles, ["/tmp/b"])
+        XCTAssertEqual(delta.kindChangedFiles, [.init(path: "/tmp/a", from: .modified, to: .deleted)])
+        XCTAssertEqual(delta.addedPlanTitles, ["C"])
+        XCTAssertEqual(delta.removedPlanTitles, ["A"])
+        XCTAssertFalse(delta.isEmpty)
+    }
+
+    func testDeltaIsEmptyWhenSnapshotsMatch() {
+        let map = ApprovalContextMap(
+            task: .init(title: "同一任务"),
+            plan: [.init(title: "步骤", depth: 1)],
+            changes: [.init(path: "/tmp/a", kind: .created)],
+            pending: nil,
+            reason: nil
+        )
+        let snapshot = ApprovalContextMapSnapshot(map: map)
+        XCTAssertTrue(ApprovalContextMapDelta.between(previous: snapshot, current: snapshot).isEmpty)
+    }
+
+    func testSnapshotStoreAppendLoadAndTrim() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("xisland-map-store-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ApprovalContextMapSnapshotStore(
+            url: directory.appendingPathComponent("history.json"),
+            limitPerSession: 2
+        )
+        XCTAssertNil(store.latest(sessionID: "s"))
+        func snapshot(_ title: String, at seconds: TimeInterval) -> ApprovalContextMapSnapshot {
+            ApprovalContextMapSnapshot(
+                map: ApprovalContextMap(task: .init(title: title), plan: [], changes: [], pending: nil, reason: nil),
+                capturedAt: Date(timeIntervalSince1970: seconds)
+            )
+        }
+        store.append(snapshot("one", at: 1), sessionID: "s")
+        store.append(snapshot("two", at: 2), sessionID: "s")
+        store.append(snapshot("three", at: 3), sessionID: "s")
+        XCTAssertEqual(store.history(sessionID: "s").map(\.taskTitle), ["two", "three"])
+        XCTAssertEqual(store.latest(sessionID: "s")?.taskTitle, "three")
+        XCTAssertTrue(store.history(sessionID: "other").isEmpty)
+    }
+
+    func testSessionManagerRecordsSnapshotOnCompletionOnlyOnce() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("xisland-map-record-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ApprovalContextMapSnapshotStore(url: directory.appendingPathComponent("history.json"))
+        let manager = SessionManager()
+        manager.approvalMapSnapshotStore = store
+
+        var start = DIMessage(type: .sessionStart, sessionId: "record-session")
+        start.agentType = "codex"
+        start.prompt = "记录地图快照"
+        manager.handleMessage(start)
+        manager.sessions.first?.appendEvent(ToolEvent(tool: "Write", input: #"{"file_path":"/tmp/x"}"#, isComplete: true))
+
+        var end = DIMessage(type: .sessionEnd, sessionId: "record-session")
+        end.agentType = "codex"
+        end.observedState = "completed"
+        manager.handleMessage(end)
+
+        XCTAssertEqual(store.history(sessionID: "record-session").count, 1)
+        let snapshot = try XCTUnwrap(store.latest(sessionID: "record-session"))
+        XCTAssertEqual(snapshot.taskTitle, "记录地图快照")
+        XCTAssertEqual(snapshot.changes.map(\.path), ["/tmp/x"])
+        XCTAssertEqual(snapshot.changes.first?.kind, .created)
+
+        manager.handleMessage(end)
+        XCTAssertEqual(store.history(sessionID: "record-session").count, 1)
+    }
+
+    func testDefaultSnapshotStoreIsDisabledUnderTests() {
+        XCTAssertTrue(AppPreferences.isIsolated)
+        XCTAssertNil(ApprovalContextMapSnapshotStore.defaultStore())
+    }
+
+    func testAnnotationMessageFormatsQuestionAndCommand() {
+        let question = ApprovalContextMapView.annotationMessage(
+            kind: .question, nodeLabel: "File", title: "/tmp/a.swift", text: "这个文件为什么改？"
+        )
+        XCTAssertTrue(question.contains("File · /tmp/a.swift"))
+        XCTAssertTrue(question.contains("这个文件为什么改？"))
+
+        let command = ApprovalContextMapView.annotationMessage(
+            kind: .command, nodeLabel: "File", title: "/tmp/a.swift", text: "拆成两个文件"
+        )
+        XCTAssertNotEqual(question, command)
+        XCTAssertTrue(command.lowercased().contains("adjust"))
+        XCTAssertTrue(command.contains("拆成两个文件"))
     }
 
     func testSettingsDefaultEnabledAndPersistOptOut() throws {
