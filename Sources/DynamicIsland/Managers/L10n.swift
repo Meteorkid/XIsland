@@ -2249,6 +2249,179 @@ enum L10n {
             zh: "切换主题", ko: "테마 전환", ja: "テーマ切替", fr: "Changer de thème",
             en: "Toggle Theme")
     }
+
+    // MARK: - Approval Context Map
+
+    static var approvalContextMap: String {
+        localized("approvalContextMap",
+            zh: "上下文地图", ko: "컨텍스트 맵", ja: "コンテキストマップ", fr: "Carte de contexte",
+            en: "Context map")
+    }
+
+    static var approvalContextMapTask: String {
+        localized("approvalContextMapTask",
+            zh: "任务", ko: "작업", ja: "タスク", fr: "Tâche",
+            en: "Task")
+    }
+
+    static var approvalContextMapPlan: String {
+        localized("approvalContextMapPlan",
+            zh: "计划", ko: "계획", ja: "計画", fr: "Plan",
+            en: "Plan")
+    }
+
+    static var approvalContextMapChanges: String {
+        localized("approvalContextMapChanges",
+            zh: "变更", ko: "변경", ja: "変更", fr: "Modifications",
+            en: "Changes")
+    }
+
+    static var approvalContextMapPending: String {
+        localized("approvalContextMapPending",
+            zh: "待审批", ko: "승인 대기", ja: "承認待ち", fr: "En attente",
+            en: "Awaiting review")
+    }
+
+    static var approvalContextMapNoChanges: String {
+        localized("approvalContextMapNoChanges",
+            zh: "暂无文件变更", ko: "파일 변경 없음", ja: "ファイル変更なし", fr: "Aucune modification",
+            en: "No file changes")
+    }
+
+    static var approvalContextMapDescription: String {
+        localized("approvalContextMapDescription",
+            zh: "在权限审批和计划审阅卡片中显示任务、计划与文件变更的结构化速览，默认折叠为一行摘要。关闭后不再显示。",
+            ko: "권한 승인 및 계획 검토 카드에 작업, 계획, 파일 변경의 구조화된 요약을 표시합니다. 기본적으로 한 줄로 접혀 있습니다. 끄면 표시하지 않습니다.",
+            ja: "権限承認と計画レビューのカードに、タスク・計画・ファイル変更の構造化された概要を表示します。既定では1行に折りたたまれます。オフにすると表示しません。",
+            fr: "Affiche un aperçu structuré de la tâche, du plan et des modifications de fichiers dans les cartes d’approbation. Replié sur une ligne par défaut. Désactiver pour masquer.",
+            en: "Show a structured overview of the task, plan, and file changes in approval cards. Collapsed to one line by default. Turn off to hide it.")
+    }
+
+    static var approvalContextMapReasonScope: String {
+        localized("approvalContextMapReasonScope",
+            zh: "原因/范围：", ko: "이유/범위: ", ja: "理由/範囲: ", fr: "Raison/portée : ",
+            en: "Reason/scope: ")
+    }
+
+    static var approvalContextMapFile: String {
+        localized("approvalContextMapFile",
+            zh: "文件", ko: "파일", ja: "ファイル", fr: "Fichier",
+            en: "File")
+    }
+
+    static func approvalContextMapItemsCount(_ count: Int) -> String {
+        String(format: localized("approvalContextMapItemsCount",
+            zh: "%d 项", ko: "%d개", ja: "%d 件", fr: "%d éléments",
+            en: "%d items"), count)
+    }
+
+    static func approvalContextMapFileCount(_ count: Int) -> String {
+        String(format: localized("approvalContextMapFileCount",
+            zh: "%d 个文件", ko: "파일 %d개", ja: "%d ファイル", fr: "%d fichiers",
+            en: "%d files"), count)
+    }
+
+    static var approvalContextMapDeltaTitle: String {
+        localized("approvalContextMapDeltaTitle",
+            zh: "较上一轮", ko: "지난 회차 대비", ja: "前回との差分", fr: "Depuis le tour précédent",
+            en: "Since last round")
+    }
+
+    static var annotationButton: String {
+        localized("annotationButton",
+            zh: "批注", ko: "주석", ja: "注釈", fr: "Annoter",
+            en: "Annotate")
+    }
+
+    static var annotationQuestion: String {
+        localized("annotationQuestion",
+            zh: "提问", ko: "질문", ja: "質問", fr: "Question",
+            en: "Question")
+    }
+
+    static var annotationCommand: String {
+        localized("annotationCommand",
+            zh: "命令", ko: "명령", ja: "コマンド", fr: "Commande",
+            en: "Command")
+    }
+
+    static var annotationPlaceholder: String {
+        localized("annotationPlaceholder",
+            zh: "写下批注…", ko: "주석을 입력하세요…", ja: "注釈を入力…", fr: "Écrire une annotation…",
+            en: "Write an annotation…")
+    }
+
+    static var annotationCopyAndJump: String {
+        localized("annotationCopyAndJump",
+            zh: "复制并跳转", ko: "복사 후 이동", ja: "コピーして移動", fr: "Copier et ouvrir",
+            en: "Copy & jump")
+    }
+
+    static var annotationCopied: String {
+        localized("annotationCopied",
+            zh: "已复制，跳转后粘贴发送", ko: "복사됨. 이동 후 붙여넣어 전송하세요.", ja: "コピーしました。移動後に貼り付けて送信します。", fr: "Copié. Collez et envoyez après le saut.",
+            en: "Copied. Paste and send after the jump.")
+    }
+
+    static var annotationCancel: String {
+        localized("annotationCancel",
+            zh: "取消", ko: "취소", ja: "キャンセル", fr: "Annuler",
+            en: "Cancel")
+    }
+
+    static var annotationQuestionMessageFormat: String {
+        localized("annotationQuestionMessageFormat",
+            zh: "关于「%@」：%@", ko: "「%@」에 대한 질문: %@", ja: "「%@」についての質問: %@", fr: "Question sur « %@ » : %@",
+            en: "Question about \"%@\": %@")
+    }
+
+    static var annotationCommandMessageFormat: String {
+        localized("annotationCommandMessageFormat",
+            zh: "请根据以下批注调整「%@」：%@", ko: "다음 주석에 따라 「%@」을(를) 조정하세요: %@", ja: "次の注釈に従って「%@」を調整してください: %@", fr: "Ajustez « %@ » selon cette note : %@",
+            en: "Please adjust \"%@\" based on this note: %@")
+    }
+
+    static var approvalContextMapCreatedLabel: String {
+        localized("approvalContextMapCreatedLabel",
+            zh: "新建", ko: "새로 만듦", ja: "新規", fr: "Nouveau",
+            en: "New")
+    }
+
+    static var approvalContextMapModifiedLabel: String {
+        localized("approvalContextMapModifiedLabel",
+            zh: "修改", ko: "수정", ja: "変更", fr: "Modifié",
+            en: "Modified")
+    }
+
+    static var approvalContextMapDeletedLabel: String {
+        localized("approvalContextMapDeletedLabel",
+            zh: "删除", ko: "삭제", ja: "削除", fr: "Supprimé",
+            en: "Deleted")
+    }
+
+    static func approvalContextMapCreated(_ count: Int) -> String {
+        String(format: localized("approvalContextMapCreated",
+            zh: "%d 新建", ko: "새 파일 %d", ja: "新規 %d", fr: "%d nouveau",
+            en: "%d new"), count)
+    }
+
+    static func approvalContextMapModified(_ count: Int) -> String {
+        String(format: localized("approvalContextMapModified",
+            zh: "%d 修改", ko: "수정 %d", ja: "変更 %d", fr: "%d modifié",
+            en: "%d modified"), count)
+    }
+
+    static func approvalContextMapDeleted(_ count: Int) -> String {
+        String(format: localized("approvalContextMapDeleted",
+            zh: "%d 删除", ko: "삭제 %d", ja: "削除 %d", fr: "%d supprimé",
+            en: "%d deleted"), count)
+    }
+
+    static func approvalContextMapMore(_ count: Int) -> String {
+        String(format: localized("approvalContextMapMore",
+            zh: "还有 %d 个文件", ko: "파일 %d개 더", ja: "他 %d ファイル", fr: "%d fichiers de plus",
+            en: "%d more files"), count)
+    }
 }
 
 

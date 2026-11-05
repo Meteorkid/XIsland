@@ -34,6 +34,7 @@ X Island sits at the top of your screen as a compact pill. When your AI agents a
 - **Unified dashboard** — See all AI coding agents in one place, regardless of which terminal or IDE they run in
 - **Real-time status** — Live status dots (blue = working, green = done, orange = needs input, red = error)
 - **Permission approval** — Approve or deny file/command permissions directly from the island, no need to switch windows
+- **Approval context map** — Review the task, plan, file changes and reason before approval, with node annotations and round-to-round diffs
 - **Question answering** — Answer agent questions from the island UI
 - **Plan review** — Review and approve agent plans inline
 - **Smart notifications** — 8-bit sound effects for session events (configurable per event)

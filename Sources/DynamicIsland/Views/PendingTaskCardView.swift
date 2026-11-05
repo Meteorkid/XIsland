@@ -151,6 +151,7 @@ struct PendingTaskCardView: View {
                 requestID: permission.id,
                 base: "island.permission-details"
             )
+            ApprovalContextMapView(session: session, pendingKind: .permission)
             HStack(spacing: 8) {
                 decisionButton(L10n.denyTitle, color: .red, enabled: permission.state.canSubmit,
                                base: TestAccessibility.permissionDenyButton, requestID: permission.id) {
@@ -282,6 +283,7 @@ struct PendingTaskCardView: View {
                 }
                 .accessibilityLabel(L10n.planFeedback)
                 .accessibilityIdentifier(identifier(TestAccessibility.planFeedbackField, requestID: plan.id))
+            ApprovalContextMapView(session: session, pendingKind: .planReview)
             HStack(spacing: 8) {
                 decisionButton(L10n.planDeny, color: .red, enabled: state.canSubmit,
                                base: TestAccessibility.planRejectButton, requestID: plan.id) {

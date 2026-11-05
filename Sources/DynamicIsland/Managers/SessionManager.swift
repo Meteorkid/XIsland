@@ -69,6 +69,8 @@ final class SessionManager {
     private var closedAmazonQWrapperIDs: Set<String> = []
     var audioEngine: AudioEngine?
     var persistenceManager: SessionPersistenceManager?
+    /// 测试可注入临时快照存储；正式运行默认落到 `~/.xisland`。
+    @ObservationIgnored var approvalMapSnapshotStore: ApprovalContextMapSnapshotStore?
     @ObservationIgnored var onIntegrationActivity: ((AgentType) -> Void)?
     @ObservationIgnored var onTaskAttention: ((TaskAttentionEvent) -> Void)?
     @ObservationIgnored private var taskAttentionEvents: [String: [TaskAttentionEvent.Kind: TaskAttentionEvent]] = [:]
@@ -1800,6 +1802,7 @@ final class SessionManager {
         if newlyCompleted {
             session.completionNeedsReview = true
             session.completedAt = Date()
+            recordApprovalMapSnapshot(for: session)
         }
         session.status = .completed
         session.currentTool = nil
@@ -1810,6 +1813,16 @@ final class SessionManager {
             recordTaskAttention(TaskAttentionEvent(sessionID: session.id, kind: .completion,
                 completedAt: session.completedAt))
         }
+    }
+
+    /// 每轮完成时保存地图快照，供下一轮审批时对比节点变化。
+    /// 写入失败或测试隔离未注入存储时静默跳过，不影响完成流程。
+    private func recordApprovalMapSnapshot(for session: AgentSession) {
+        let store = approvalMapSnapshotStore ?? ApprovalContextMapSnapshotStore.defaultStore()
+        guard let store else { return }
+        let map = ApprovalContextMapBuilder.build(session: session)
+        guard map.hasContent else { return }
+        store.append(ApprovalContextMapSnapshot(map: map), sessionID: session.id)
     }
 
     /// 仅在接受新的活动后调用；历史重放、迟到结果和查找会话不能清除结束时间。
