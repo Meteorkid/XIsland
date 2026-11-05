@@ -61,6 +61,7 @@ struct NotchContentView: View {
     @AppStorage("hoverToExpandPanel") private var hoverToExpandPanel = false
     @AppStorage("smartSuppression") private var smartSuppression = true
     @AppStorage("taskAttentionEnabled") private var taskAttentionEnabled = true
+    @AppStorage(ApprovalContextMapSettings.enabledKey) private var approvalContextMapEnabled = true
     @AppStorage("autoHideWhenNoActiveSessions") private var autoHideWhenNoActiveSessions = false
     @AppStorage("panelWidth") private var panelWidth = 380.0
     @AppStorage("panelMaxHeight") private var panelMaxHeight = 620.0
@@ -536,6 +537,7 @@ struct NotchContentView: View {
             }
             Divider()
             Toggle(L10n.taskAttention, isOn: $taskAttentionEnabled)
+            Toggle(L10n.approvalContextMap, isOn: $approvalContextMapEnabled)
             Divider()
             Button(L10n.prefsEllipsis) {
                 openSettingsWindow()

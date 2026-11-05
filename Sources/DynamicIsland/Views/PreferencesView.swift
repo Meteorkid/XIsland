@@ -83,6 +83,7 @@ struct PreferencesView: View {
     @AppStorage("autoHideWhenNoActiveSessions") private var autoHideWhenNoActiveSessions = false
     @AppStorage("smartSuppression") private var smartSuppression = true
     @AppStorage("taskAttentionEnabled") private var taskAttentionEnabled = true
+    @AppStorage(ApprovalContextMapSettings.enabledKey) private var approvalContextMapEnabled = true
     @AppStorage(CompanionSettings.enabledKey) private var companionBroadcastEnabled = false
     @AppStorage(CompanionSettings.decisionsKey) private var companionRemoteDecisions = false
     @AppStorage("autoCollapseEnabled") private var autoCollapseEnabled = true
@@ -322,6 +323,14 @@ struct PreferencesView: View {
                 card {
                     settingRow(L10n.taskAttention, id: "taskAttentionEnabled", description: L10n.taskAttentionDescription) {
                         Toggle("", isOn: $taskAttentionEnabled).labelsHidden()
+                    }
+                    dividerLine
+                    settingRow(L10n.approvalContextMap, id: ApprovalContextMapSettings.enabledKey,
+                               description: L10n.approvalContextMapDescription) {
+                        Toggle("", isOn: $approvalContextMapEnabled)
+                            .labelsHidden()
+                            .accessibilityLabel(L10n.approvalContextMap)
+                            .accessibilityIdentifier("preferences.approvalContextMapEnabled")
                     }
                     dividerLine
                     settingRow(L10n.bypassMode, id: "bypassMode", description: L10n.bypassDesc) {

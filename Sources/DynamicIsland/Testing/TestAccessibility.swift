@@ -23,6 +23,12 @@ public enum TestAccessibility {
     public static let updateInstallButton = "preferences.update-install"
     public static let updateStatusLabel = "preferences.update-status"
     public static let agentFlowRegion = "island.agent-flow-region"
+    /// 审批上下文地图：折叠摘要行与整体容器。
+    public static let approvalContextMap = "island.approval-context-map"
+    public static let approvalContextMapToggle = "island.approval-context-map.toggle"
+    public static func approvalContextMapFilter(_ kind: String) -> String {
+        "island.approval-context-map.filter.\(kind)"
+    }
     /// 专用状态（permission / question / planReview）下进入 Agent Flow 总览的入口按钮。
     public static let agentFlowViewEntryButton = "island.agent-flow.view-entry"
 
