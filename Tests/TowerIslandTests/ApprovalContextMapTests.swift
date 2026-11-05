@@ -376,6 +376,17 @@ final class ApprovalContextMapTests: XCTestCase {
         XCTAssertTrue(ApprovalContextMapDelta.between(previous: snapshot, current: snapshot).isEmpty)
     }
 
+    func testDeltaSummaryCounts() {
+        let delta = ApprovalContextMapDelta(
+            addedFiles: ["/a", "/b"],
+            removedFiles: ["/c"],
+            kindChangedFiles: [.init(path: "/d", from: .modified, to: .deleted)],
+            addedPlanTitles: ["P"],
+            removedPlanTitles: ["Q"]
+        )
+        XCTAssertEqual(ApprovalContextMapView.deltaSummary(delta), "+2 · −1 · ~1 · Plan +1 −1")
+    }
+
     func testSnapshotStoreAppendLoadAndTrim() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("xisland-map-store-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }

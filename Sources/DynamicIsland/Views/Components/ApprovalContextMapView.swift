@@ -18,6 +18,7 @@ struct ApprovalContextMapView: View {
     @Environment(SessionManager.self) private var manager
     @State private var isExpanded = false
     @State private var changeFilter: ApprovalContextMap.ChangeNode.Kind?
+    @State private var deltaExpanded = false
     @State private var previousSnapshot: ApprovalContextMapSnapshot?
     @State private var jumpState = SessionJumpState()
     @State private var annotationTarget: AnnotationTarget?
@@ -28,9 +29,9 @@ struct ApprovalContextMapView: View {
     @AppStorage(ApprovalContextMapSettings.enabledKey) private var isEnabled = true
 
     /// 展开后变更节点的展示上限，超出部分折叠成「还有 N 个」。
-    static let visibleChangeLimit = 8
+    static let visibleChangeLimit = 6
     /// 上一轮差异的展示上限。
-    static let visibleDeltaLimit = 6
+    static let visibleDeltaLimit = 4
 
     struct AnnotationTarget: Equatable {
         let label: String
@@ -46,12 +47,14 @@ struct ApprovalContextMapView: View {
         session: AgentSession,
         pendingKind: ApprovalContextMap.PendingNode.Kind,
         initiallyExpanded: Bool = false,
+        initiallyDeltaExpanded: Bool = false,
         snapshotStore: ApprovalContextMapSnapshotStore? = nil
     ) {
         self.session = session
         self.pendingKind = pendingKind
         self.snapshotStore = snapshotStore
         _isExpanded = State(initialValue: initiallyExpanded)
+        _deltaExpanded = State(initialValue: initiallyDeltaExpanded)
         let store = snapshotStore ?? ApprovalContextMapSnapshotStore.defaultStore()
         _previousSnapshot = State(initialValue: store?.latest(sessionID: session.id))
     }
@@ -329,22 +332,61 @@ struct ApprovalContextMapView: View {
 
     private func deltaSection(_ delta: ApprovalContextMapDelta, capturedAt: Date) -> some View {
         let rows = Self.deltaRows(delta)
-        return section("\(L10n.approvalContextMapDeltaTitle) · \(capturedAt.formatted(date: .omitted, time: .shortened))") {
-            VStack(alignment: .leading, spacing: 3) {
-                ForEach(Array(rows.prefix(Self.visibleDeltaLimit).enumerated()), id: \.offset) { _, row in
-                    Text(row.text)
-                        .font(.system(size: 10))
-                        .foregroundStyle(row.color)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                if rows.count > Self.visibleDeltaLimit {
-                    Text(L10n.approvalContextMapMore(rows.count - Self.visibleDeltaLimit))
-                        .font(.system(size: 9))
+        return VStack(alignment: .leading, spacing: 4) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { deltaExpanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("\(L10n.approvalContextMapDeltaTitle) · \(capturedAt.formatted(date: .omitted, time: .shortened))")
+                        .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
+                    Spacer(minLength: 4)
+                    Text(Self.deltaSummary(delta))
+                        .font(.system(size: 9))
+                        .foregroundStyle(IslandStyle.secondaryText)
+                        .lineLimit(1)
+                    Image(systemName: deltaExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(TestAccessibility.approvalContextMapDeltaToggle)
+            .accessibilityLabel(L10n.approvalContextMapDeltaTitle)
+            .accessibilityValue(Self.deltaSummary(delta))
+            if deltaExpanded {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(rows.prefix(Self.visibleDeltaLimit).enumerated()), id: \.offset) { _, row in
+                        Text(row.text)
+                            .font(.system(size: 10))
+                            .foregroundStyle(row.color)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    if rows.count > Self.visibleDeltaLimit {
+                        Text(L10n.approvalContextMapMore(rows.count - Self.visibleDeltaLimit))
+                            .font(.system(size: 9))
+                            .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
+                    }
                 }
             }
         }
+    }
+
+    /// 差异摘要，例如 “+2 · −1 · ~1 · Plan +1 −1”；默认只展示这一行。
+    static func deltaSummary(_ delta: ApprovalContextMapDelta) -> String {
+        var parts: [String] = []
+        if !delta.addedFiles.isEmpty { parts.append("+\(delta.addedFiles.count)") }
+        if !delta.removedFiles.isEmpty { parts.append("−\(delta.removedFiles.count)") }
+        if !delta.kindChangedFiles.isEmpty { parts.append("~\(delta.kindChangedFiles.count)") }
+        var planParts: [String] = []
+        if !delta.addedPlanTitles.isEmpty { planParts.append("+\(delta.addedPlanTitles.count)") }
+        if !delta.removedPlanTitles.isEmpty { planParts.append("−\(delta.removedPlanTitles.count)") }
+        if !planParts.isEmpty {
+            parts.append("\(L10n.approvalContextMapPlan) \(planParts.joined(separator: " "))")
+        }
+        return parts.joined(separator: " · ")
     }
 
     static func deltaRows(_ delta: ApprovalContextMapDelta) -> [DeltaRow] {

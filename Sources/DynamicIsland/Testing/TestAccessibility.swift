@@ -33,6 +33,7 @@ public enum TestAccessibility {
     public static let approvalContextMapAnnotationField = "island.approval-context-map.annotation-field"
     public static let approvalContextMapAnnotationSubmit = "island.approval-context-map.annotation-submit"
     public static let approvalContextMapAnnotationCancel = "island.approval-context-map.annotation-cancel"
+    public static let approvalContextMapDeltaToggle = "island.approval-context-map.delta-toggle"
     /// 专用状态（permission / question / planReview）下进入 Agent Flow 总览的入口按钮。
     public static let agentFlowViewEntryButton = "island.agent-flow.view-entry"
 

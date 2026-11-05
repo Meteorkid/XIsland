@@ -230,7 +230,7 @@ struct ApprovalContextMapSnapshotStore {
 /// 地图构建器：把会话数据转换成地图节点。
 enum ApprovalContextMapBuilder {
     /// 计划节点的数量上限，保持展开列表紧凑。
-    static let maxPlanNodes = 6
+    static let maxPlanNodes = 4
 
     static func build(
         session: AgentSession,

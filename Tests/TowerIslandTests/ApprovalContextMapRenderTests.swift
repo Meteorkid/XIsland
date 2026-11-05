@@ -59,6 +59,21 @@ final class ApprovalContextMapRenderTests: XCTestCase {
             try render(content, to: output.appendingPathComponent(expanded ? "map-expanded.png" : "map-collapsed.png"))
         }
 
+        // 差异明细展开态：刻意点开才显示逐条变化。
+        let deltaContent = ApprovalContextMapView(
+            session: session,
+            pendingKind: .permission,
+            initiallyExpanded: true,
+            initiallyDeltaExpanded: true,
+            snapshotStore: historyStore
+        )
+            .environment(manager)
+            .environment(theme)
+            .frame(width: 380)
+            .padding(16)
+            .background(Color.black)
+        try render(deltaContent, to: output.appendingPathComponent("map-delta-expanded.png"))
+
         // 集成形态：审批卡片内的地图与批准/拒绝按钮共存。
         let card = PendingTaskCardView(session: session)
             .environment(manager)
