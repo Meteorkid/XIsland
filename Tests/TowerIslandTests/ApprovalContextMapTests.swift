@@ -387,6 +387,35 @@ final class ApprovalContextMapTests: XCTestCase {
         XCTAssertEqual(ApprovalContextMapView.deltaSummary(delta), "+2 · −1 · ~1 · Plan +1 −1")
     }
 
+    func testDefaultExpandedSectionsOnlyPending() {
+        XCTAssertEqual(ApprovalContextMapView.defaultExpandedSections, [.pending])
+        XCTAssertEqual(ApprovalContextMapView.sectionKey(.task), "task")
+        XCTAssertEqual(ApprovalContextMapView.sectionKey(.plan), "plan")
+        XCTAssertEqual(ApprovalContextMapView.sectionKey(.changes), "changes")
+        XCTAssertEqual(ApprovalContextMapView.sectionKey(.pending), "pending")
+    }
+
+    func testGroupSummaries() {
+        let task = ApprovalContextMap.TaskNode(title: "整理审批上下文")
+        XCTAssertEqual(ApprovalContextMapView.taskSummary(task), "整理审批上下文")
+
+        let plan = [
+            ApprovalContextMap.PlanNode(title: "数据模型", depth: 1),
+            ApprovalContextMap.PlanNode(title: "视图接入", depth: 2),
+        ]
+        XCTAssertEqual(ApprovalContextMapView.planSummary(plan), "2 items · 数据模型")
+
+        let changes = [
+            ApprovalContextMap.ChangeNode(path: "/tmp/a", kind: .created),
+            ApprovalContextMap.ChangeNode(path: "/tmp/b", kind: .modified),
+            ApprovalContextMap.ChangeNode(path: "/tmp/c", kind: .deleted),
+        ]
+        XCTAssertEqual(ApprovalContextMapView.changeSummary(changes), "3 files")
+
+        let pending = ApprovalContextMap.PendingNode(kind: .permission, title: "Bash", detail: nil)
+        XCTAssertEqual(ApprovalContextMapView.pendingSummary(pending), "Bash")
+    }
+
     func testSnapshotStoreAppendLoadAndTrim() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("xisland-map-store-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -2309,6 +2309,18 @@ enum L10n {
             en: "File")
     }
 
+    static func approvalContextMapItemsCount(_ count: Int) -> String {
+        String(format: localized("approvalContextMapItemsCount",
+            zh: "%d 项", ko: "%d개", ja: "%d 件", fr: "%d éléments",
+            en: "%d items"), count)
+    }
+
+    static func approvalContextMapFileCount(_ count: Int) -> String {
+        String(format: localized("approvalContextMapFileCount",
+            zh: "%d 个文件", ko: "파일 %d개", ja: "%d ファイル", fr: "%d fichiers",
+            en: "%d files"), count)
+    }
+
     static var approvalContextMapDeltaTitle: String {
         localized("approvalContextMapDeltaTitle",
             zh: "较上一轮", ko: "지난 회차 대비", ja: "前回との差分", fr: "Depuis le tour précédent",

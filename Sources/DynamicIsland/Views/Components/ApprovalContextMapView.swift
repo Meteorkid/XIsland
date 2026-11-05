@@ -17,6 +17,7 @@ struct ApprovalContextMapView: View {
     @Environment(ThemeManager.self) private var themeManager
     @Environment(SessionManager.self) private var manager
     @State private var isExpanded = false
+    @State private var expandedSections: Set<SectionKind>
     @State private var changeFilter: ApprovalContextMap.ChangeNode.Kind?
     @State private var deltaExpanded = false
     @State private var previousSnapshot: ApprovalContextMapSnapshot?
@@ -33,6 +34,16 @@ struct ApprovalContextMapView: View {
     /// 上一轮差异的展示上限。
     static let visibleDeltaLimit = 4
 
+    /// 可折叠分组：默认只展开待审批，其余显示一行摘要。
+    enum SectionKind: Hashable, CaseIterable {
+        case task
+        case plan
+        case changes
+        case pending
+    }
+
+    static let defaultExpandedSections: Set<SectionKind> = [.pending]
+
     struct AnnotationTarget: Equatable {
         let label: String
         let title: String
@@ -48,6 +59,7 @@ struct ApprovalContextMapView: View {
         pendingKind: ApprovalContextMap.PendingNode.Kind,
         initiallyExpanded: Bool = false,
         initiallyDeltaExpanded: Bool = false,
+        initiallyExpandedSections: Set<SectionKind>? = nil,
         snapshotStore: ApprovalContextMapSnapshotStore? = nil
     ) {
         self.session = session
@@ -55,6 +67,7 @@ struct ApprovalContextMapView: View {
         self.snapshotStore = snapshotStore
         _isExpanded = State(initialValue: initiallyExpanded)
         _deltaExpanded = State(initialValue: initiallyDeltaExpanded)
+        _expandedSections = State(initialValue: initiallyExpandedSections ?? Self.defaultExpandedSections)
         let store = snapshotStore ?? ApprovalContextMapSnapshotStore.defaultStore()
         _previousSnapshot = State(initialValue: store?.latest(sessionID: session.id))
     }
@@ -147,6 +160,7 @@ struct ApprovalContextMapView: View {
                 } else {
                     changeFilter = kind
                     isExpanded = true
+                    expandedSections.insert(.changes)
                 }
             }
         } label: {
@@ -178,20 +192,73 @@ struct ApprovalContextMapView: View {
                 deltaSection(delta, capturedAt: previous.capturedAt)
             }
             if let task = map.task {
-                section(L10n.approvalContextMapTask) { taskRow(task) }
+                collapsibleSection(.task, title: L10n.approvalContextMapTask, summary: Self.taskSummary(task)) {
+                    taskRow(task)
+                }
             }
             if !map.plan.isEmpty {
-                section(L10n.approvalContextMapPlan) { planRows(map.plan) }
+                collapsibleSection(.plan, title: L10n.approvalContextMapPlan, summary: Self.planSummary(map.plan)) {
+                    planRows(map.plan)
+                }
             }
             if !map.changes.isEmpty {
                 let filtered = Self.filteredChanges(map.changes, filter: changeFilter)
                 if !filtered.isEmpty {
-                    section(L10n.approvalContextMapChanges) { changeRows(filtered) }
+                    collapsibleSection(.changes, title: L10n.approvalContextMapChanges,
+                                       summary: Self.changeSummary(filtered)) {
+                        changeRows(filtered)
+                    }
                 }
             }
             if let pending = map.pending {
-                section(L10n.approvalContextMapPending) { pendingRow(pending) }
+                collapsibleSection(.pending, title: L10n.approvalContextMapPending,
+                                   summary: Self.pendingSummary(pending)) {
+                    pendingRow(pending)
+                }
             }
+        }
+    }
+
+    private func collapsibleSection<Content: View>(
+        _ section: SectionKind,
+        title: String,
+        summary: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        let expanded = expandedSections.contains(section)
+        return VStack(alignment: .leading, spacing: 4) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { toggle(section) }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
+                    Spacer(minLength: 6)
+                    Text(summary)
+                        .font(.system(size: 10))
+                        .foregroundStyle(IslandStyle.secondaryText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(TestAccessibility.approvalContextMapSection(Self.sectionKey(section)))
+            .accessibilityLabel(title)
+            .accessibilityValue(summary)
+            if expanded { content() }
+        }
+    }
+
+    private func toggle(_ section: SectionKind) {
+        if expandedSections.contains(section) {
+            expandedSections.remove(section)
+        } else {
+            expandedSections.insert(section)
         }
     }
 
@@ -205,15 +272,6 @@ struct ApprovalContextMapView: View {
                 .foregroundStyle(IslandStyle.secondaryText)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
-            content()
         }
     }
 
@@ -569,6 +627,35 @@ struct ApprovalContextMapView: View {
         case .created: return "created"
         case .modified: return "modified"
         case .deleted: return "deleted"
+        }
+    }
+
+    // MARK: - 分组摘要（供折叠标题与测试）
+
+    static func taskSummary(_ task: ApprovalContextMap.TaskNode) -> String {
+        task.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func planSummary(_ nodes: [ApprovalContextMap.PlanNode]) -> String {
+        let count = L10n.approvalContextMapItemsCount(nodes.count)
+        guard let first = nodes.first?.title, !first.isEmpty else { return count }
+        return "\(count) · \(first)"
+    }
+
+    static func changeSummary(_ changes: [ApprovalContextMap.ChangeNode]) -> String {
+        L10n.approvalContextMapFileCount(changes.count)
+    }
+
+    static func pendingSummary(_ pending: ApprovalContextMap.PendingNode) -> String {
+        pendingTitle(for: pending)
+    }
+
+    static func sectionKey(_ section: SectionKind) -> String {
+        switch section {
+        case .task: return "task"
+        case .plan: return "plan"
+        case .changes: return "changes"
+        case .pending: return "pending"
         }
     }
 
