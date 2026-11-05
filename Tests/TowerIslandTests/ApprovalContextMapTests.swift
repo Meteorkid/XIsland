@@ -389,6 +389,7 @@ final class ApprovalContextMapTests: XCTestCase {
 
     func testDefaultExpandedSectionsOnlyPending() {
         XCTAssertEqual(ApprovalContextMapView.defaultExpandedSections, [.pending])
+        XCTAssertEqual(ApprovalContextMapView.sectionKey(.graph), "graph")
         XCTAssertEqual(ApprovalContextMapView.sectionKey(.task), "task")
         XCTAssertEqual(ApprovalContextMapView.sectionKey(.plan), "plan")
         XCTAssertEqual(ApprovalContextMapView.sectionKey(.changes), "changes")
@@ -504,5 +505,9 @@ final class ApprovalContextMapTests: XCTestCase {
         XCTAssertTrue(ApprovalContextMapView.shouldShow(map: map, enabled: true))
         XCTAssertFalse(ApprovalContextMapView.shouldShow(map: map, enabled: false))
         XCTAssertFalse(ApprovalContextMapView.shouldShow(map: .empty, enabled: true))
+        let graph = ApprovalGraphDocument(sessionID: "graph-only", acceptedNodes: [
+            .init(id: "root", kind: .task, title: "Agent graph", status: .active)
+        ])
+        XCTAssertTrue(ApprovalContextMapView.shouldShow(map: .empty, enabled: true, graph: graph))
     }
 }

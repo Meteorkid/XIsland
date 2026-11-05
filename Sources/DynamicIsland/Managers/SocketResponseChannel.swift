@@ -55,6 +55,11 @@ final class SocketResponseChannel: @unchecked Sendable {
             response.planApproved = approved
             response.feedback = feedback
         }
+        return await send(response)
+    }
+
+    /// Sends one graph response on the same one-shot channel used by interactions.
+    func send(_ response: DIMessage) async -> Bool {
         guard let data = try? DIProtocol.encode(response) else {
             cancel()
             return false

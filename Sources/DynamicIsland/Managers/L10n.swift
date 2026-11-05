@@ -2252,6 +2252,56 @@ enum L10n {
 
     // MARK: - Approval Context Map
 
+    static var approvalGraph: String {
+        localized("approvalGraph",
+            zh: "任务图", ko: "작업 그래프", ja: "タスクグラフ", fr: "Graphe des tâches",
+            en: "Task graph")
+    }
+
+    static func approvalGraphSummary(accepted: Int, pending: Int) -> String {
+        String(format: localized("approvalGraphSummary",
+            zh: "%d 已保留 · %d 待处理", ko: "%d 승인 · %d 대기",
+            ja: "%d 承認済み · %d 保留", fr: "%d acceptés · %d en attente",
+            en: "%d accepted · %d pending"), accepted, pending)
+    }
+
+    static var approvalGraphKeep: String {
+        localized("approvalGraphKeep",
+            zh: "保留", ko: "유지", ja: "保持", fr: "Conserver", en: "Keep")
+    }
+
+    static var approvalGraphDiscard: String {
+        localized("approvalGraphDiscard",
+            zh: "撤回", ko: "취소", ja: "取り下げ", fr: "Retirer", en: "Discard")
+    }
+
+    static var approvalGraphActionFailed: String {
+        localized("approvalGraphActionFailed",
+            zh: "任务图保存失败，未修改已保留内容", ko: "작업 그래프 저장 실패",
+            ja: "タスクグラフを保存できませんでした", fr: "Échec de l’enregistrement du graphe",
+            en: "Could not save the task graph")
+    }
+
+    static var approvalGraphStatusPending: String {
+        localized("approvalGraphStatusPending", zh: "待处理", ko: "대기", ja: "保留", fr: "En attente", en: "Pending")
+    }
+
+    static var approvalGraphStatusActive: String {
+        localized("approvalGraphStatusActive", zh: "进行中", ko: "진행 중", ja: "進行中", fr: "En cours", en: "Active")
+    }
+
+    static var approvalGraphStatusDone: String {
+        localized("approvalGraphStatusDone", zh: "完成", ko: "완료", ja: "完了", fr: "Terminé", en: "Done")
+    }
+
+    static var approvalGraphStatusBlocked: String {
+        localized("approvalGraphStatusBlocked", zh: "阻塞", ko: "차단됨", ja: "ブロック", fr: "Bloqué", en: "Blocked")
+    }
+
+    static var approvalGraphStatusCancelled: String {
+        localized("approvalGraphStatusCancelled", zh: "取消", ko: "취소됨", ja: "キャンセル", fr: "Annulé", en: "Cancelled")
+    }
+
     static var approvalContextMap: String {
         localized("approvalContextMap",
             zh: "上下文地图", ko: "컨텍스트 맵", ja: "コンテキストマップ", fr: "Carte de contexte",

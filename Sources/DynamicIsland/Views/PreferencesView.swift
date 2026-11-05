@@ -1116,6 +1116,7 @@ struct PreferencesView: View {
                                     startHistoryTask {
                                         do {
                                             try await persistenceManager.deleteHistoryAsync(sessionID: session.sessionId)
+                                            try sessionManager.removeApprovalGraph(sessionID: session.sessionId)
                                             historyOperationError = nil
                                             await historyBrowser.reloadAsync(from: persistenceManager)
                                         } catch { if !Task.isCancelled { historyOperationError = error.localizedDescription } }

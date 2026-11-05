@@ -28,8 +28,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-APP_BUNDLE="$PROJECT_DIR/.build/X Island.app"
-BRIDGE="$PROJECT_DIR/.build/X Island.app/Contents/MacOS/di-bridge"
+RELEASE_APP_BUNDLE="$PROJECT_DIR/.build/X Island.app"
+APP_BUNDLE="$PROJECT_DIR/.build/integration/X Island.app"
+BRIDGE="$APP_BUNDLE/Contents/MacOS/di-bridge"
 FIXTURE="$PROJECT_DIR/Tests/Fixtures/app/empty-interaction.json"
 
 PASSED=0
@@ -350,11 +351,31 @@ assert_stored() {
 # ── 隔离实例生命周期 ──────────────────────────────────────────────────────────
 
 check_prereqs() {
-    if [[ ! -d "$APP_BUNDLE" ]]; then
-        echo -e "${RED}ERROR: App bundle not found at $APP_BUNDLE${NC}"
+    if [[ ! -d "$RELEASE_APP_BUNDLE" ]]; then
+        echo -e "${RED}ERROR: App bundle not found at $RELEASE_APP_BUNDLE${NC}"
         echo "Run: bash Scripts/build.sh"
         exit 1
     fi
+    case "$APP_BUNDLE" in
+        "$PROJECT_DIR/.build/integration/X Island.app") ;;
+        *) echo -e "${RED}ERROR: unsafe integration app path: $APP_BUNDLE${NC}"; exit 1 ;;
+    esac
+    # Integration mode must use a DEBUG executable because release binaries
+    # intentionally refuse to bypass licensing through --ui-test-mode.
+    echo -e "  ${CYAN}preparing DEBUG integration app...${NC}"
+    swift build --disable-sandbox >/dev/null
+    local debug_bin="$PROJECT_DIR/.build/debug/XIsland"
+    local debug_bridge="$PROJECT_DIR/.build/debug/DIBridge"
+    if [[ ! -x "$debug_bin" || ! -x "$debug_bridge" ]]; then
+        echo -e "${RED}ERROR: debug integration binaries are missing${NC}"
+        exit 1
+    fi
+    rm -rf "$APP_BUNDLE"
+    mkdir -p "$(dirname "$APP_BUNDLE")"
+    ditto "$RELEASE_APP_BUNDLE" "$APP_BUNDLE"
+    cp "$debug_bin" "$APP_BUNDLE/Contents/MacOS/XIsland"
+    cp "$debug_bridge" "$BRIDGE"
+    codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null 2>&1
     if [[ ! -x "$BRIDGE" ]]; then
         echo -e "${RED}ERROR: di-bridge not found at $BRIDGE${NC}"
         echo "Run: bash Scripts/build.sh"
@@ -995,6 +1016,31 @@ test_m19() {
     fi
 }
 
+# ── M20: Approval graph MCP bridge ───────────────────────────────────────
+
+test_m20() {
+    section "M20: Approval Graph MCP"
+    local sid="codex-mcp-graph"
+    local workspace="/tmp/m20test"
+    mkdir -p "$workspace"
+    deliver codex session_start \
+        "{\"prompt\":\"approval graph MCP test\",\"cwd\":\"$workspace\",\"timestamp\":\"$(stamp)\"}" \
+        --session "$sid"
+
+    # Graph writes require a stable executable path. Production uses
+    # ~/.xisland/bin/di-bridge; the isolated runtime uses the same shape.
+    mkdir -p "$RUNTIME/bin"
+    cp "$BRIDGE" "$RUNTIME/bin/di-bridge"
+    chmod 700 "$RUNTIME/bin/di-bridge"
+    if env DI_SOCKET_PATH="$RUNTIME/di.sock" X_ISLAND_TEST_MODE=1 \
+        python3 "$SCRIPT_DIR/test-approval-graph-mcp.py" \
+        "$RUNTIME/bin/di-bridge" "$sid" "$workspace"; then
+        pass "T20.1 MCP handshake, GET/WRITE, retry and stale revision"
+    else
+        fail "T20.1 approval graph MCP round trip"
+    fi
+}
+
 # ── Run ──────────────────────────────────────────────────────────────────
 
 main() {
@@ -1027,6 +1073,7 @@ main() {
     should_run M17 && test_m17
     should_run M18 && test_m18
     should_run M19 && test_m19
+    should_run M20 && test_m20
 
     echo ""
     echo -e "${CYAN}━━━ Results ━━━${NC}"

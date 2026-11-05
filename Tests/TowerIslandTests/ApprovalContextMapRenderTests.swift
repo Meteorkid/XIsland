@@ -1,6 +1,7 @@
 import XCTest
 import SwiftUI
 import AppKit
+import DIShared
 @testable import XIsland
 
 /// 审批上下文地图的隔离渲染快照，默认跳过；
@@ -115,6 +116,56 @@ final class ApprovalContextMapRenderTests: XCTestCase {
             .padding(16)
             .background(Color.black)
         try render(planCard, to: output.appendingPathComponent("plan-card.png"))
+
+        // Agent-authored graph: accepted root plus one pending child.
+        let graphSession = AgentSession(id: "render-agent-graph", agentType: .codex,
+                                        workingDirectory: "/tmp/render-agent-graph")
+        graphSession.pendingPermission = PendingPermission(
+            requestingAgent: .codex, tool: "Bash", description: "Review graph",
+            diff: nil, filePath: nil, respond: { _ in }
+        )
+        let graphManager = SessionManager()
+        graphManager.sessions = [graphSession]
+        let graphDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("approval-graph-render-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: graphDirectory) }
+        let graphStore = ApprovalGraphStore(directory: graphDirectory)
+        graphManager.approvalGraphStore = graphStore
+        var graphRequest = ApprovalGraphRequest(
+            operation: .write,
+            target: .init(sessionID: graphSession.id),
+            baseRevision: 0,
+            requestID: "render-write",
+            nodes: [
+                .init(id: "goal", kind: .task, title: "接入显式任务图", status: .active),
+                .init(id: "mcp", parentID: "goal", kind: .step, title: "MCP 写入", status: .pending),
+                .init(id: "ui", parentID: "goal", kind: .step, title: "逐节点保留", status: .pending),
+            ]
+        )
+        let writeResponse = graphManager.handleApprovalGraphRequest(graphRequest)
+        XCTAssertTrue(writeResponse.ok)
+        let goal = try XCTUnwrap(writeResponse.document?.proposals.first(where: { $0.node.id == "goal" }))
+        XCTAssertTrue(graphManager.keepApprovalGraphNode(
+            sessionID: graphSession.id, nodeID: "goal",
+            expectedRevision: writeResponse.document!.revision, expectedNode: goal.node
+        ))
+        graphRequest = ApprovalGraphRequest(
+            operation: .get, target: .init(sessionID: graphSession.id)
+        )
+        XCTAssertTrue(graphManager.handleApprovalGraphRequest(graphRequest).ok)
+        let graphView = ApprovalContextMapView(
+            session: graphSession,
+            pendingKind: .permission,
+            initiallyExpanded: true,
+            initiallyExpandedSections: [.graph, .pending],
+            snapshotStore: historyStore
+        )
+        .environment(graphManager)
+        .environment(theme)
+        .frame(width: 380)
+        .padding(16)
+        .background(Color.black)
+        try render(graphView, to: output.appendingPathComponent("map-agent-graph.png"))
     }
 
     private func render<V: View>(_ view: V, to url: URL) throws {

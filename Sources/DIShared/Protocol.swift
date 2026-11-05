@@ -86,6 +86,8 @@ public enum DIMessageType: String, Codable, Sendable {
     case subagentEnd = "subagent_end"
     case contextCompact = "context_compact"
     case recap = "recap"
+    case approvalGraphRequest = "approval_graph_request"
+    case approvalGraphResponse = "approval_graph_response"
     case observationHeartbeat = "observation_heartbeat"
     case observationEnded = "observation_ended"
 }
@@ -199,6 +201,10 @@ public struct DIMessage: Codable, Sendable {
     public var subagentId: String?
     /// true 表示仅收到子代理准备结束的通知，尚无最终完成回执。
     public var subagentEndIsProvisional: Bool?
+
+    // 审批任务图扩展；旧客户端忽略未知字段。
+    public var approvalGraphRequest: ApprovalGraphRequest?
+    public var approvalGraphResponse: ApprovalGraphResponsePayload?
 
     public init(type: DIMessageType, sessionId: String) {
         self.type = type

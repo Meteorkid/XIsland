@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import DIShared
 
 /// 审批上下文地图：把会话中的任务、计划、文件变更与当前待审批请求
 /// 聚合成可折叠的节点列表，帮助在批准/拒绝前快速浏览结构。
@@ -26,6 +27,7 @@ struct ApprovalContextMapView: View {
     @State private var annotationKind: AnnotationKind = .question
     @State private var annotationText = ""
     @State private var copiedHint = false
+    @State private var annotationSaveFailed = false
     @State private var hintDismissal: DispatchWorkItem?
     @AppStorage(ApprovalContextMapSettings.enabledKey) private var isEnabled = true
 
@@ -36,6 +38,7 @@ struct ApprovalContextMapView: View {
 
     /// 可折叠分组：默认只展开待审批，其余显示一行摘要。
     enum SectionKind: Hashable, CaseIterable {
+        case graph
         case task
         case plan
         case changes
@@ -47,6 +50,13 @@ struct ApprovalContextMapView: View {
     struct AnnotationTarget: Equatable {
         let label: String
         let title: String
+        let nodeID: String?
+
+        init(label: String, title: String, nodeID: String? = nil) {
+            self.label = label
+            self.title = title
+            self.nodeID = nodeID
+        }
     }
 
     enum AnnotationKind: Equatable {
@@ -79,11 +89,12 @@ struct ApprovalContextMapView: View {
         let delta = previousSnapshot.map {
             ApprovalContextMapDelta.between(previous: $0, current: ApprovalContextMapSnapshot(map: map))
         }
-        if Self.shouldShow(map: map, enabled: isEnabled) {
+        let graph = manager.approvalGraph(for: session.id)
+        if Self.shouldShow(map: map, enabled: isEnabled, graph: graph) {
             VStack(alignment: .leading, spacing: 6) {
                 toggleRow(map)
                 if isExpanded {
-                    nodeList(map, delta: delta)
+                    nodeList(map, delta: delta, graph: graph)
                     if let target = annotationTarget {
                         annotationComposer(target)
                     }
@@ -183,13 +194,22 @@ struct ApprovalContextMapView: View {
 
     // MARK: - 展开节点列表
 
-    private func nodeList(_ map: ApprovalContextMap, delta: ApprovalContextMapDelta?) -> some View {
+    private func nodeList(_ map: ApprovalContextMap, delta: ApprovalContextMapDelta?,
+                          graph: ApprovalGraphDocument?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if let reason = map.reason, !reason.isEmpty {
                 reasonRow(reason)
             }
             if let delta, !delta.isEmpty, let previous = previousSnapshot {
                 deltaSection(delta, capturedAt: previous.capturedAt)
+            }
+            if let graph, !graph.acceptedNodes.isEmpty || !graph.proposals.isEmpty {
+                collapsibleSection(.graph, title: L10n.approvalGraph,
+                                   summary: L10n.approvalGraphSummary(
+                                    accepted: graph.acceptedNodes.count,
+                                    pending: graph.proposals.count)) {
+                    graphRows(graph)
+                }
             }
             if let task = map.task {
                 collapsibleSection(.task, title: L10n.approvalContextMapTask, summary: Self.taskSummary(task)) {
@@ -287,14 +307,15 @@ struct ApprovalContextMapView: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
-            annotateButton(AnnotationTarget(label: L10n.approvalContextMapTask, title: task.title))
+            annotateButton(AnnotationTarget(label: L10n.approvalContextMapTask,
+                                           title: task.title, nodeID: "derived-task"))
         }
         .accessibilityElement(children: .contain)
     }
 
     private func planRows(_ nodes: [ApprovalContextMap.PlanNode]) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            ForEach(Array(nodes.enumerated()), id: \.offset) { _, node in
+            ForEach(Array(nodes.enumerated()), id: \.offset) { index, node in
                 HStack(alignment: .top, spacing: 6) {
                     Text("•")
                         .font(.system(size: 10))
@@ -304,7 +325,8 @@ struct ApprovalContextMapView: View {
                         .foregroundStyle(IslandStyle.primaryText)
                         .lineLimit(1)
                     Spacer(minLength: 4)
-                    annotateButton(AnnotationTarget(label: L10n.approvalContextMapPlan, title: node.title))
+                    annotateButton(AnnotationTarget(label: L10n.approvalContextMapPlan,
+                                                   title: node.title, nodeID: "derived-plan-\(index)"))
                 }
                 .padding(.leading, CGFloat(max(0, node.depth - 1)) * 10)
             }
@@ -329,7 +351,9 @@ struct ApprovalContextMapView: View {
                     Text(Self.changeLabel(for: change.kind))
                         .font(.system(size: 9))
                         .foregroundStyle(Self.changeColor(for: change.kind).opacity(0.9))
-                    annotateButton(AnnotationTarget(label: L10n.approvalContextMapFile, title: change.path))
+                    annotateButton(AnnotationTarget(label: L10n.approvalContextMapFile,
+                                                   title: change.path,
+                                                   nodeID: "derived-file-\(change.path)"))
                 }
             }
             if changes.count > Self.visibleChangeLimit {
@@ -338,6 +362,111 @@ struct ApprovalContextMapView: View {
                     .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
             }
         }
+    }
+
+    private func graphRows(_ document: ApprovalGraphDocument) -> some View {
+        let proposalIDs = Set(document.proposals.map(\.node.id))
+        let comments = Dictionary(grouping: document.comments, by: \.nodeID)
+        return VStack(alignment: .leading, spacing: 5) {
+            ForEach(Self.orderedGraphNodes(document), id: \.node.id) { entry in
+                let isProposal = proposalIDs.contains(entry.node.id)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .top, spacing: 6) {
+                        Circle()
+                            .fill(Self.graphStatusColor(entry.node.status))
+                            .frame(width: 6, height: 6)
+                            .padding(.top, 4)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.node.title)
+                                .font(.system(size: 11, weight: isProposal ? .semibold : .regular))
+                                .foregroundStyle(IslandStyle.primaryText)
+                                .lineLimit(2)
+                            HStack(spacing: 5) {
+                                Text(Self.graphStatusLabel(entry.node.status))
+                                if let detail = entry.node.detail, !detail.isEmpty {
+                                    Text(detail)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                }
+                                if let count = comments[entry.node.id]?.count, count > 0 {
+                                    Label("\(count)", systemImage: "text.bubble")
+                                }
+                            }
+                            .font(.system(size: 9))
+                            .foregroundStyle(IslandStyle.tertiaryText(for: scheme))
+                        }
+                        Spacer(minLength: 4)
+                        annotateButton(AnnotationTarget(label: L10n.approvalGraph,
+                                                       title: entry.node.title,
+                                                       nodeID: entry.node.id))
+                    }
+                    if isProposal {
+                        HStack(spacing: 6) {
+                            Spacer(minLength: 20)
+                            Button(L10n.approvalGraphDiscard) {
+                                if !manager.discardApprovalGraphNode(
+                                    sessionID: session.id, nodeID: entry.node.id,
+                                    expectedRevision: document.revision, expectedNode: entry.node
+                                ) {
+                                    annotationSaveFailed = true
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier(TestAccessibility.approvalGraphDiscard(entry.node.id))
+                            Button(L10n.approvalGraphKeep) {
+                                if !manager.keepApprovalGraphNode(
+                                    sessionID: session.id, nodeID: entry.node.id,
+                                    expectedRevision: document.revision, expectedNode: entry.node
+                                ) {
+                                    annotationSaveFailed = true
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.green)
+                            .accessibilityIdentifier(TestAccessibility.approvalGraphKeep(entry.node.id))
+                        }
+                        .font(.system(size: 9, weight: .semibold))
+                    }
+                }
+                .padding(.leading, CGFloat(max(0, entry.depth - 1)) * 10)
+                .padding(5)
+                .background(isProposal ? Color.orange.opacity(0.10) : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            if annotationSaveFailed {
+                Label(L10n.approvalGraphActionFailed, systemImage: "exclamationmark.circle")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+
+    struct OrderedGraphNode {
+        let node: ApprovalGraphNode
+        let depth: Int
+    }
+
+    static func orderedGraphNodes(_ document: ApprovalGraphDocument) -> [OrderedGraphNode] {
+        var orderedIDs = document.acceptedNodes.map(\.id)
+        for proposal in document.proposals where !orderedIDs.contains(proposal.node.id) {
+            orderedIDs.append(proposal.node.id)
+        }
+        var byID = Dictionary(uniqueKeysWithValues: document.acceptedNodes.map { ($0.id, $0) })
+        for proposal in document.proposals { byID[proposal.node.id] = proposal.node }
+        let nodes = orderedIDs.compactMap { byID[$0] }
+        func depth(_ node: ApprovalGraphNode) -> Int {
+            var value = 1
+            var parent = node.parentID
+            var seen: Set<String> = [node.id]
+            while let id = parent, value < ApprovalGraphValidator.maxDepth,
+                  let current = byID[id], seen.insert(id).inserted {
+                value += 1
+                parent = current.parentID
+            }
+            return value
+        }
+        return nodes.map { OrderedGraphNode(node: $0, depth: depth($0)) }
     }
 
     private func pendingRow(_ pending: ApprovalContextMap.PendingNode) -> some View {
@@ -478,6 +607,7 @@ struct ApprovalContextMapView: View {
             annotationKind = .question
             annotationText = ""
             copiedHint = false
+            annotationSaveFailed = false
         } label: {
             Image(systemName: "text.bubble")
                 .font(.system(size: 9))
@@ -566,6 +696,15 @@ struct ApprovalContextMapView: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(message, forType: .string)
+        if let nodeID = target.nodeID,
+           let graph = manager.approvalGraph(for: session.id),
+           graph.acceptedNodes.contains(where: { $0.id == nodeID })
+            || graph.proposals.contains(where: { $0.node.id == nodeID }) {
+            let kind: ApprovalGraphCommentKind = annotationKind == .question ? .question : .command
+            annotationSaveFailed = !manager.addApprovalGraphComment(
+                sessionID: session.id, nodeID: nodeID, kind: kind, text: text
+            )
+        }
         copiedHint = true
         hintDismissal?.cancel()
         let work = DispatchWorkItem { copiedHint = false }
@@ -601,8 +740,10 @@ struct ApprovalContextMapView: View {
     // MARK: - 纯函数（供测试与复用）
 
     /// 开关关闭或没有可展示内容时隐藏整个地图。
-    static func shouldShow(map: ApprovalContextMap, enabled: Bool) -> Bool {
-        enabled && map.hasContent
+    static func shouldShow(map: ApprovalContextMap, enabled: Bool,
+                           graph: ApprovalGraphDocument? = nil) -> Bool {
+        enabled && (map.hasContent || !(graph?.acceptedNodes.isEmpty ?? true)
+                    || !(graph?.proposals.isEmpty ?? true))
     }
 
     /// 按类型筛选变更节点；nil 表示全部。
@@ -652,6 +793,7 @@ struct ApprovalContextMapView: View {
 
     static func sectionKey(_ section: SectionKind) -> String {
         switch section {
+        case .graph: return "graph"
         case .task: return "task"
         case .plan: return "plan"
         case .changes: return "changes"
@@ -681,6 +823,26 @@ struct ApprovalContextMapView: View {
         case .created: return L10n.approvalContextMapCreatedLabel
         case .modified: return L10n.approvalContextMapModifiedLabel
         case .deleted: return L10n.approvalContextMapDeletedLabel
+        }
+    }
+
+    static func graphStatusColor(_ status: ApprovalGraphNodeStatus) -> Color {
+        switch status {
+        case .pending: return .orange
+        case .active: return .blue
+        case .done: return .green
+        case .blocked: return .red
+        case .cancelled: return .secondary
+        }
+    }
+
+    static func graphStatusLabel(_ status: ApprovalGraphNodeStatus) -> String {
+        switch status {
+        case .pending: return L10n.approvalGraphStatusPending
+        case .active: return L10n.approvalGraphStatusActive
+        case .done: return L10n.approvalGraphStatusDone
+        case .blocked: return L10n.approvalGraphStatusBlocked
+        case .cancelled: return L10n.approvalGraphStatusCancelled
         }
     }
 
