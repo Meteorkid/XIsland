@@ -205,7 +205,8 @@ final class IntegrationSetupManagerTests: XCTestCase {
         XCTAssertEqual(phase(.claudeCode, in: manager), .waitingForActivity)
         XCTAssertNil(row(.claudeCode, in: manager)?.lastSeen)
 
-        manager.recordMCPHandshake(from: .claudeCode)
+        manager.recordMCPHandshake(from: .claudeCode,
+                                   fingerprint: IntegrationSetupManager.expectedMCPFingerprint(for: .claudeCode))
         XCTAssertEqual(phase(.claudeCode, in: manager), .connected)
         XCTAssertNotNil(row(.claudeCode, in: manager)?.lastSeen)
     }
@@ -214,10 +215,46 @@ final class IntegrationSetupManagerTests: XCTestCase {
         let fixture = Fixture(entries: [entry(.cursor, mcpRequired: true)])
         let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
 
-        manager.recordMCPHandshake(from: .cursor)
+        manager.recordMCPHandshake(from: .cursor,
+                                   fingerprint: IntegrationSetupManager.expectedMCPFingerprint(for: .cursor))
         await manager.refresh()
 
         XCTAssertEqual(phase(.cursor, in: manager), .connected)
+    }
+
+    func testEnablingMCPInvalidatesEarlierHookObservation() async throws {
+        let fixture = Fixture(entries: [entry(.claudeCode)])
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+        await manager.refresh()
+        manager.recordActivity(from: .claudeCode)
+        XCTAssertEqual(phase(.claudeCode, in: manager), .connected)
+
+        fixture.entries = [entry(.claudeCode, mcpRequired: true)]
+        await manager.refresh()
+
+        XCTAssertEqual(phase(.claudeCode, in: manager), .waitingForActivity)
+        XCTAssertNil(row(.claudeCode, in: manager)?.lastSeen)
+    }
+
+    func testMCPHandshakeIsBoundAndConsumedOnce() async throws {
+        let fixture = Fixture(entries: [entry(.cursor, mcpRequired: true)])
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+        await manager.refresh()
+
+        manager.recordMCPHandshake(from: .cursor, fingerprint: "wrong-definition")
+        XCTAssertEqual(phase(.cursor, in: manager), .waitingForActivity)
+
+        manager.recordMCPHandshake(
+            from: .cursor,
+            fingerprint: IntegrationSetupManager.expectedMCPFingerprint(for: .cursor)
+        )
+        XCTAssertEqual(phase(.cursor, in: manager), .connected)
+
+        fixture.entries = [entry(.cursor, fingerprint: "configuration-v2", mcpRequired: true)]
+        await manager.refresh()
+
+        XCTAssertEqual(phase(.cursor, in: manager), .waitingForActivity)
+        XCTAssertNil(row(.cursor, in: manager)?.lastSeen)
     }
 
     func testChangedConfigurationNeedsNewActivityAndAnotherIntroduction() async throws {

@@ -313,7 +313,7 @@ enum MCPConfigurationManager {
         return [
             "type": "stdio",
             "command": bridgePath,
-            "args": ["mcp-server", "--agent", agent.rawValue],
+            "args": ApprovalGraphMCPIdentity.arguments(agent: agent.rawValue),
         ]
     }
 

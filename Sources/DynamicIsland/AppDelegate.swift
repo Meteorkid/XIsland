@@ -638,8 +638,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard licensedRuntimeRunning else { return }
         socketServer?.stop()
         socketServer = SocketServer(sessionManager: sessionManager)
-        socketServer?.onMCPHandshake = { [weak self] agent in
-            self?.integrationSetupManager.recordMCPHandshake(from: agent)
+        socketServer?.onMCPHandshake = { [weak self] agent, fingerprint in
+            self?.integrationSetupManager.recordMCPHandshake(from: agent, fingerprint: fingerprint)
         }
         socketServer?.start()
     }
@@ -859,6 +859,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     await self.configureApprovalGraphMCP(clients: granted, bridge: bridge, home: home)
                 )
             }
+            let declined = clients.filter {
+                MCPConfigurationManager.consentDecision(for: $0, bridgePath: bridge) == false
+            }
+            if !declined.isEmpty {
+                self.presentMCPConfigurationFailures(
+                    await self.removeApprovalGraphMCP(clients: declined, home: home)
+                )
+            }
             let pending = force ? clients : clients.filter {
                 MCPConfigurationManager.consentDecision(for: $0, bridgePath: bridge) == nil
             }
@@ -887,6 +895,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             } else {
                 MCPConfigurationManager.recordConsent(false, for: pending, bridgePath: bridge)
+                self.presentMCPConfigurationFailures(
+                    await self.removeApprovalGraphMCP(clients: pending, home: home)
+                )
             }
         }
     }
@@ -935,6 +946,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .joined(separator: "\n")
         alert.addButton(withTitle: chinese ? "好" : "OK")
         alert.runModal()
+    }
+
+    private func removeApprovalGraphMCP(clients: [AgentType],
+                                        home: URL) async -> [MCPConfigurationFailure] {
+        do {
+            return try await IntegrationSetupIO.run { () -> [MCPConfigurationFailure] in
+                var failures: [MCPConfigurationFailure] = []
+                for agent in clients {
+                    guard !Task.isCancelled else { break }
+                    do {
+                        _ = try MCPConfigurationManager.remove(agent, homeDirectory: home)
+                    } catch {
+                        failures.append(MCPConfigurationFailure(
+                            agent: agent, message: error.localizedDescription
+                        ))
+                    }
+                }
+                return failures
+            }
+        } catch {
+            return clients.map { MCPConfigurationFailure(
+                agent: $0, message: error.localizedDescription
+            ) }
+        }
     }
 
     func configureTesting() throws {

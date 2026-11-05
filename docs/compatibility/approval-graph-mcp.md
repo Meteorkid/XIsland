@@ -10,8 +10,9 @@ the first protocol slice; guarded first-run registration is implemented separate
 X Island asks once before writing any MCP configuration. The confirmation shows
 each affected client, its configuration path, the absolute `di-bridge` path, and
 the complete `mcp-server --agent <client>` arguments. Consent is bound to that
-client, path and server definition. Declining leaves all client files alone. The
-permission can be reopened from Settings or the island context menu.
+client, path and server definition. A first-time decline leaves all client files
+alone; declining after an earlier registration removes the exact X Island entry.
+The permission can be reopened from Settings or the island context menu.
 
 The guarded registration supports user-scope configuration for:
 
@@ -36,14 +37,19 @@ ACP-based clients also remain manual.
 After a file is written, restart the client. The client's own MCP trust boundary
 is still separate from X Island's consent: Codex/Cursor/VS Code-style hosts may ask
 again before enabling the server or running a tool. X Island records file
-configuration, the client's MCP `initialize` handshake, and hook activity as
-separate evidence. A configured client is shown as waiting until either the real
-MCP handshake (when automatic MCP was enabled) or the existing hook evidence is
-available under the current definition.
+configuration, the client's MCP handshake, and hook activity as separate evidence.
+The bridge identifies itself with the executable path and full argument list and
+reports on initialize, tool discovery and actual graph requests, so a handshake is
+not lost when the App starts after the client. A configured client waits for a
+matching MCP handshake under the current definition; an older hook-only
+observation cannot be reused after MCP is enabled.
 
 Turning off the approval context map removes only exact X Island entries and
 leaves unrelated MCP servers intact. Cleanup is repeated at startup so an app exit
 during a previous removal cannot leave an enabled entry behind indefinitely.
+Declining the MCP permission also removes entries previously written for that
+client. Rapid off/on changes are serialized so an older cleanup cannot win over a
+newer enable request.
 
 ## Tools
 

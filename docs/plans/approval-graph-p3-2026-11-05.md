@@ -16,7 +16,10 @@ Date: 2026-11-05
   have a safe editor.
 - MCP `initialize` is reported to the App as separate connection evidence. Hook
   activity cannot mark an opted-in client connected when its MCP server was never
-  loaded by the client.
+  loaded by the client. The handshake is bound to the exact executable and argument
+  list, retained until it can be matched, and consumed after one successful match.
+- Rejecting MCP registration removes prior exact entries. Startup cleanup and
+  rapid off/on operations converge to the latest setting.
 - Revision checks, idempotent request IDs, strict bridge process authentication,
   bounded input, private file permissions and corrupt-file fallback.
 
@@ -30,14 +33,14 @@ Date: 2026-11-05
 
 ## Next increments
 
-1. Add client-specific MCP configuration and one-time trust onboarding.
+1. Add client-specific MCP configuration beyond the stable five-client set.
 2. Add a visual tree/canvas shelf while retaining the compact list representation.
 3. Add graph retention and deletion hooks when session history is removed.
 4. Exercise real Codex and Claude Code MCP hosts after explicit configuration.
 
 ## Verification snapshot
 
-- Swift: 2032 X Island tests (21 conditional skips) and 31 license tests
+- Swift: 2046 X Island tests (21 conditional skips) and 31 license tests
   (1 conditional skip), zero failures.
 - Integration: 128 checks, including the compiled MCP bridge handshake, optional
   GET arguments, automatic session binding, write, idempotent retry and stale revision.

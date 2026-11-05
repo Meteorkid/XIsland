@@ -134,7 +134,7 @@ enum IntegrationSetupDiscovery {
                 }
             }
             if definition == nil { automatic = false; detail = "无法生成当前接入定义。" }
-            let data = Data("xisland-integration-v1\n\(agent.rawValue)\n\(automatic)\n\(configured)\n\(definition ?? "unavailable")".utf8)
+            let data = Data("xisland-integration-v2\n\(agent.rawValue)\n\(automatic)\n\(configured)\n\(mcpRequired)\n\(definition ?? "unavailable")".utf8)
             let fingerprint = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
             result.append(IntegrationSetupDiscoveryEntry(agent: agent, installed: installed, configured: configured,
                 fingerprint: fingerprint, appURL: app, codexBinary: codexBinary,

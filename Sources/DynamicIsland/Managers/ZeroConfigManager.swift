@@ -18,6 +18,8 @@ enum HookInstallStatus {
 enum ZeroConfigManager {
     private static let home = FileManager.default.homeDirectoryForCurrentUser.path
     private static let autoConfigKeyPrefix = "autoConfigure."
+    @MainActor private static var approvalGraphMCPUpdateTail: Task<Void, Never>?
+    @MainActor private static var approvalGraphMCPUpdateGeneration = 0
 
     @MainActor
     static func configureAllAgents(agents: Set<AgentType>? = nil) async {
@@ -379,18 +381,30 @@ enum ZeroConfigManager {
     /// cannot submit an approval graph that the user has hidden.
     @MainActor
     static func setApprovalGraphMCPEnabled(_ enabled: Bool) async {
-        _ = try? await IntegrationSetupIO.run {
-            for agent in MCPConfigurationManager.supportedAgents() + [.openCode] {
-                guard !Task.isCancelled else { continue }
-                if enabled {
-                    if isAutoConfigEnabled(for: agent),
-                       MCPConfigurationManager.isConsentGranted(for: agent, bridgePath: bridgePath) {
-                        _ = try? MCPConfigurationManager.configure(agent, bridgePath: bridgePath)
+        approvalGraphMCPUpdateGeneration += 1
+        let generation = approvalGraphMCPUpdateGeneration
+        let previous = approvalGraphMCPUpdateTail
+        let work = Task { @MainActor in
+            await previous?.value
+            guard !Task.isCancelled, generation == approvalGraphMCPUpdateGeneration else { return }
+            _ = try? await IntegrationSetupIO.run {
+                for agent in MCPConfigurationManager.supportedAgents() + [.openCode] {
+                    guard !Task.isCancelled else { continue }
+                    if enabled {
+                        if isAutoConfigEnabled(for: agent),
+                           MCPConfigurationManager.isConsentGranted(for: agent, bridgePath: bridgePath) {
+                            _ = try? MCPConfigurationManager.configure(agent, bridgePath: bridgePath)
+                        }
+                    } else {
+                        _ = try? MCPConfigurationManager.remove(agent)
                     }
-                } else {
-                    _ = try? MCPConfigurationManager.remove(agent)
                 }
             }
+        }
+        approvalGraphMCPUpdateTail = work
+        await work.value
+        if generation == approvalGraphMCPUpdateGeneration {
+            approvalGraphMCPUpdateTail = nil
         }
     }
 

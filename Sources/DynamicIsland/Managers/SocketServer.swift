@@ -35,7 +35,7 @@ final class SocketServer: @unchecked Sendable {
 
     private let logger = Logger(subsystem: "dev.xisland", category: "socket")
     private let sessionManager: SessionManager
-    var onMCPHandshake: ((AgentType) -> Void)?
+    var onMCPHandshake: ((AgentType, String) -> Void)?
     private let queue = DispatchQueue(label: "dev.towerisland.socket", qos: .userInitiated)
 
     /// Shared mutable state protected by `stateLock`.
@@ -332,8 +332,9 @@ final class SocketServer: @unchecked Sendable {
 
         switch message.type {
         case .mcpHandshake:
-            if let agent = AgentType.from(message.agentType), agent.isSupported {
-                Task { @MainActor [weak self] in self?.onMCPHandshake?(agent) }
+            if let agent = AgentType.from(message.agentType), agent.isSupported,
+               let fingerprint = message.integrationFingerprint {
+                Task { @MainActor [weak self] in self?.onMCPHandshake?(agent, fingerprint) }
             }
             close(fd)
             releaseConnection()
@@ -346,6 +347,10 @@ final class SocketServer: @unchecked Sendable {
             let channel = SocketResponseChannel(fd: fd, idleTimeout: 8,
                                                 onRelease: { [weak self] in self?.releaseConnection() })
             Task { @MainActor in
+                if let agent = AgentType.from(message.agentType), agent.isSupported,
+                   let fingerprint = message.integrationFingerprint {
+                    self.onMCPHandshake?(agent, fingerprint)
+                }
                 let payload = self.sessionManager.handleApprovalGraphRequest(request)
                 var response = DIMessage(type: .approvalGraphResponse, sessionId: message.sessionId)
                 response.approvalGraphResponse = payload

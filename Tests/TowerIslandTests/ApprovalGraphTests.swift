@@ -300,10 +300,14 @@ final class ApprovalGraphTests: XCTestCase {
         var message = DIMessage(type: .mcpHandshake, sessionId: "mcp-handshake:codex")
         message.agentType = "codex"
         message.nativeEvent = "initialize"
+        message.integrationFingerprint = ApprovalGraphMCPIdentity.fingerprint(
+            command: "/Users/me/.xisland/bin/di-bridge", agent: "codex"
+        )
 
         let decoded = try DIProtocol.decode(DIProtocol.encode(message))
         XCTAssertEqual(decoded.type, .mcpHandshake)
         XCTAssertEqual(decoded.agentType, "codex")
+        XCTAssertEqual(decoded.integrationFingerprint, message.integrationFingerprint)
         XCTAssertNotEqual(decoded.type, .sessionStart)
         XCTAssertNotEqual(decoded.type, .approvalGraphRequest)
     }

@@ -1,4 +1,5 @@
 import AppKit
+import DIShared
 import Foundation
 import Observation
 
@@ -48,9 +49,12 @@ final class IntegrationSetupManager {
         }
     }
 
+    private enum ActivitySource: String, Codable { case hook, mcp }
+
     private struct ObservationRecord: Codable {
         let fingerprint: String
         let lastSeen: Date
+        let source: ActivitySource?
     }
 
     private enum Key {
@@ -68,7 +72,7 @@ final class IntegrationSetupManager {
     private var entries: [AgentType: IntegrationSetupDiscoveryEntry] = [:]
     private var evidence: [AgentType: IntegrationSetupEvidence] = [:]
     private var observations: [String: ObservationRecord]
-    private var mcpHandshakes: [AgentType: Date] = [:]
+    private var mcpHandshakes: [AgentType: (date: Date, fingerprint: String)] = [:]
     private var attempts: [String: String]
     private var reminders: [String: String]
     private var introductions: [String: String]
@@ -241,7 +245,8 @@ final class IntegrationSetupManager {
         entries = Dictionary(uniqueKeysWithValues: discovered.map { ($0.agent, $0) })
         for entry in discovered {
             let previous = evidence[entry.agent]
-            let observed = observations[entry.agent.rawValue]
+            let rawObserved = observations[entry.agent.rawValue]
+            let observed = entry.mcpRequired && rawObserved?.source != .mcp ? nil : rawObserved
             evidence[entry.agent] = IntegrationSetupEvidence(
                 installed: entry.installed || receivedThisRun.contains(entry.agent),
                 enabled: environment.isEnabled(entry.agent), configured: entry.configured,
@@ -303,8 +308,11 @@ final class IntegrationSetupManager {
         // A client can initialize MCP immediately after launch, before the first
         // configuration scan has populated evidence. Bind the retained handshake
         // only after the current configuration and Codex authorization are known.
-        for (agent, date) in mcpHandshakes {
-            recordIntegrationEvidence(from: agent, at: date, source: .mcp)
+        for (agent, receipt) in Array(mcpHandshakes) {
+            if recordIntegrationEvidence(from: agent, at: receipt.date, source: .mcp,
+                                         fingerprint: receipt.fingerprint) {
+                mcpHandshakes.removeValue(forKey: agent)
+            }
         }
         rebuildRows()
         for row in rows where row.phase == .connected || row.phase == .waitingForActivity {
@@ -389,44 +397,60 @@ final class IntegrationSetupManager {
     }
 
     func recordActivity(from agent: AgentType, at date: Date = Date()) {
-        recordIntegrationEvidence(from: agent, at: date, source: .hook)
+        _ = recordIntegrationEvidence(from: agent, at: date, source: .hook)
     }
 
-    func recordMCPHandshake(from agent: AgentType, at date: Date = Date()) {
-        mcpHandshakes[agent] = date
-        recordIntegrationEvidence(from: agent, at: date, source: .mcp)
+    static func expectedMCPFingerprint(for agent: AgentType) -> String {
+        let bridge = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".xisland/bin/di-bridge").path
+        return ApprovalGraphMCPIdentity.fingerprint(command: bridge, agent: agent.rawValue)
     }
 
-    private enum ActivitySource { case hook, mcp }
+    func recordMCPHandshake(from agent: AgentType, fingerprint: String, at date: Date = Date()) {
+        guard fingerprint == Self.expectedMCPFingerprint(for: agent) else { return }
+        mcpHandshakes[agent] = (date, fingerprint)
+        if recordIntegrationEvidence(from: agent, at: date, source: .mcp, fingerprint: fingerprint) {
+            mcpHandshakes.removeValue(forKey: agent)
+        }
+    }
 
+    @discardableResult
     private func recordIntegrationEvidence(from agent: AgentType, at date: Date,
-                                           source: ActivitySource) {
-        guard !isShuttingDown, agent.isSupported, agent != .glm, var state = evidence[agent], state.enabled, environment.isEnabled(agent) else { return }
-        if entries[agent]?.mcpRequired == true, source != .mcp { return }
+                                           source: ActivitySource,
+                                           fingerprint expectedFingerprint: String? = nil) -> Bool {
+        guard !isShuttingDown, agent.isSupported, agent != .glm, var state = evidence[agent], state.enabled, environment.isEnabled(agent) else { return false }
+        if entries[agent]?.mcpRequired == true {
+            guard source == .mcp else { return false }
+            guard expectedFingerprint == Self.expectedMCPFingerprint(for: agent) else { return false }
+        }
         if agent == .codex, let fingerprint = codexProbeFingerprint {
-            guard state.configured, state.configurationFingerprint == fingerprint else { return }
+            guard state.configured, state.configurationFingerprint == fingerprint else { return false }
             pendingCodexActivity = (fingerprint, date, source)
-            return
+            return false
         }
         guard !state.checkFailed, state.authorization != .required, state.authorization != .failed,
-              let fingerprint = state.configurationFingerprint else { return }
+              let fingerprint = state.configurationFingerprint else { return false }
         if agent == .codex {
             guard state.configured, state.authorization == .granted,
-                  state.authorizationFingerprint == fingerprint else { return }
+                  state.authorizationFingerprint == fingerprint else { return false }
         }
         if let previous = observations[agent.rawValue], previous.fingerprint == fingerprint,
-           state.observedFingerprint == fingerprint, date.timeIntervalSince(previous.lastSeen) < 10 { return }
+           state.observedFingerprint == fingerprint, date.timeIntervalSince(previous.lastSeen) < 10 {
+            return true
+        }
         receivedThisRun.insert(agent)
         state.installed = true
         state.observedFingerprint = fingerprint
         evidence[agent] = state
-        observations[agent.rawValue] = ObservationRecord(fingerprint: fingerprint, lastSeen: date)
+        observations[agent.rawValue] = ObservationRecord(fingerprint: fingerprint, lastSeen: date,
+                                                          source: source)
         reminders.removeValue(forKey: agent.rawValue)
         introductions[agent.rawValue] = fingerprint
         saveObservations()
         defaults.set(reminders, forKey: Key.reminders)
         defaults.set(introductions, forKey: Key.introductions)
         rebuildRows()
+        return true
     }
 
     func markPresented() {

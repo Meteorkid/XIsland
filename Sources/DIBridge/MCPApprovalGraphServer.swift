@@ -79,8 +79,10 @@ enum MCPApprovalGraphServer {
         case "notifications/initialized", "notifications/cancelled":
             return [:]
         case "ping":
+            sendHandshake(target: target)
             return [:]
         case "tools/list":
+            sendHandshake(target: target)
             return ["tools": toolDefinitions]
         case "tools/call":
             guard let name = params["name"] as? String else {
@@ -99,6 +101,7 @@ enum MCPApprovalGraphServer {
             default:
                 throw MCPError(code: -32602, message: "Unknown tool: \(name)")
             }
+            sendHandshake(target: target)
             let response = send(request)
             guard let response, response.ok, let document = response.document else {
                 let message = response?.message ?? "X Island is not running or did not return a graph response."
@@ -214,6 +217,9 @@ enum MCPApprovalGraphServer {
         defer { close(fd) }
         var message = DIMessage(type: .approvalGraphRequest, sessionId: request.target.sessionID ?? "")
         message.agentType = request.target.agentType
+        if let agent = request.target.agentType, !agent.isEmpty {
+            message.integrationFingerprint = handshakeFingerprint(agent: agent)
+        }
         message.workingDir = request.target.workingDirectory
         message.termSessionId = request.target.terminalSessionID
         message.approvalGraphRequest = request
@@ -235,9 +241,15 @@ enum MCPApprovalGraphServer {
         var message = DIMessage(type: .mcpHandshake, sessionId: "mcp-handshake:\(agent)")
         message.agentType = agent
         message.nativeEvent = "initialize"
+        message.integrationFingerprint = handshakeFingerprint(agent: agent)
         guard let data = try? DIProtocol.encode(message),
               DIBridge.sendAll(fd: fd, data: data) else { return }
         shutdown(fd, SHUT_WR)
+    }
+
+    private static func handshakeFingerprint(agent: String) -> String {
+        let executable = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL.path
+        return ApprovalGraphMCPIdentity.fingerprint(command: executable, agent: agent)
     }
 
     private static func prettyJSON<T: Encodable>(_ value: T) throws -> String {
