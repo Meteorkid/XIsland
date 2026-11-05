@@ -39,6 +39,16 @@ enum ZeroConfigManager {
     /// v1.13.0 新增的 4 个工具正是因为 default 分支而被静默漏配。
     static func configure(_ agent: AgentType) {
         guard !Task.isCancelled else { return }
+        if ApprovalContextMapSettings.isEnabled(), MCPConfigurationManager.isSupported(agent),
+           MCPConfigurationManager.isConsentGranted(for: agent, bridgePath: bridgePath) {
+            do {
+                try MCPConfigurationManager.configure(agent, bridgePath: bridgePath)
+            } catch MCPConfigurationManager.ConfigurationError.missingClientDirectory {
+                // 客户端目录不存在时视为未安装，不凭空创建配置目录。
+            } catch {
+                print("[ZeroConfig] \(agent.rawValue) MCP configuration failed: \(error.localizedDescription)")
+            }
+        }
         if usesCompanionExtension(agent) || usesACPBridge(agent) || usesStateObserver(agent) || usesCodyBridge(agent) || usesAmazonQWrapper(agent) || usesWorkBuddyPlugin(agent) || hasUnverifiedIntegration(agent) { return }
         if let profile = effectiveNativeProfile(for: agent) {
             let url = URL(fileURLWithPath: home).appendingPathComponent(profile.relativeConfigPath)
@@ -365,6 +375,25 @@ enum ZeroConfigManager {
         }
     }
 
+    /// The graph MCP entry follows the context-map visibility switch so agents
+    /// cannot submit an approval graph that the user has hidden.
+    @MainActor
+    static func setApprovalGraphMCPEnabled(_ enabled: Bool) async {
+        _ = try? await IntegrationSetupIO.run {
+            for agent in MCPConfigurationManager.supportedAgents() + [.openCode] {
+                guard !Task.isCancelled else { continue }
+                if enabled {
+                    if isAutoConfigEnabled(for: agent),
+                       MCPConfigurationManager.isConsentGranted(for: agent, bridgePath: bridgePath) {
+                        _ = try? MCPConfigurationManager.configure(agent, bridgePath: bridgePath)
+                    }
+                } else {
+                    _ = try? MCPConfigurationManager.remove(agent)
+                }
+            }
+        }
+    }
+
     static func hookStatus(for agent: AgentType) -> HookInstallStatus {
         if let external = externalHookStatus(for: agent) { return external }
         return hasConfiguration(for: agent) ? .active : .inactive
@@ -503,6 +532,13 @@ enum ZeroConfigManager {
 
     private static func repairDetectedAgents(_ detected: Set<AgentType>) {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
+
+        if ApprovalContextMapSettings.isEnabled() {
+            for agent in MCPConfigurationManager.supportedAgents() where detected.contains(agent) {
+                guard !Task.isCancelled, isAutoConfigEnabled(for: agent) else { continue }
+                _ = try? MCPConfigurationManager.configure(agent, bridgePath: bridgePath)
+            }
+        }
 
         // 按完整事件集合检测；只剩一条旧命令不能视为配置正常。
         for agent in AgentType.allCases where detected.contains(agent) && isAutoConfigEnabled(for: agent) {
@@ -1304,6 +1340,9 @@ enum ZeroConfigManager {
 
     private static func removeConfiguration(for agent: AgentType) {
         guard !Task.isCancelled else { return }
+        if MCPConfigurationManager.canRemove(agent) {
+            _ = try? MCPConfigurationManager.remove(agent)
+        }
         if usesCompanionExtension(agent) || usesACPBridge(agent) || usesStateObserver(agent) || usesCodyBridge(agent) || usesAmazonQWrapper(agent) || usesWorkBuddyPlugin(agent) || hasUnverifiedIntegration(agent) { return }
         if agent == .codeBuddy {
             let url = URL(fileURLWithPath: home).appendingPathComponent(CodeBuddyHookConfiguration.relativeConfigPath)

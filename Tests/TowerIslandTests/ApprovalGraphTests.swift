@@ -296,6 +296,18 @@ final class ApprovalGraphTests: XCTestCase {
         XCTAssertTrue(decodedResponse.approvalGraphResponse?.ok == true)
     }
 
+    func testMCPHandshakeRoundTripsAsDistinctConnectionEvidence() throws {
+        var message = DIMessage(type: .mcpHandshake, sessionId: "mcp-handshake:codex")
+        message.agentType = "codex"
+        message.nativeEvent = "initialize"
+
+        let decoded = try DIProtocol.decode(DIProtocol.encode(message))
+        XCTAssertEqual(decoded.type, .mcpHandshake)
+        XCTAssertEqual(decoded.agentType, "codex")
+        XCTAssertNotEqual(decoded.type, .sessionStart)
+        XCTAssertNotEqual(decoded.type, .approvalGraphRequest)
+    }
+
     func testMCPWriteParserPreservesChineseTitles() throws {
         let arguments: [String: Any] = [
             "base_revision": 0,

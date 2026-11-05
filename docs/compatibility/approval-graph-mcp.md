@@ -3,7 +3,47 @@
 Status: local vertical slice. The server is packaged as a `di-bridge mcp-server`
 subcommand and talks to the running X Island process over the existing owner-only
 Unix socket. Automatic edits to third-party MCP configuration files are not part of
-this stage.
+the first protocol slice; guarded first-run registration is implemented separately.
+
+## Automatic registration
+
+X Island asks once before writing any MCP configuration. The confirmation shows
+each affected client, its configuration path, the absolute `di-bridge` path, and
+the complete `mcp-server --agent <client>` arguments. Consent is bound to that
+client, path and server definition. Declining leaves all client files alone. The
+permission can be reopened from Settings or the island context menu.
+
+The guarded registration supports user-scope configuration for:
+
+- Codex: `~/.codex/config.toml`, `[mcp_servers.xisland_approval_graph]`
+- Claude Code: `~/.claude.json`, `mcpServers.xisland_approval_graph`
+- Gemini CLI: `~/.gemini/settings.json`, `mcpServers.xisland_approval_graph`
+- Cursor: `~/.cursor/mcp.json`, `mcpServers.xisland_approval_graph`
+- Qwen Code: `~/.qwen/settings.json`, `mcpServers.xisland_approval_graph`
+
+Codex honors `CODEX_HOME`, and Claude Code honors `CLAUDE_CONFIG_DIR`, when the
+override is an absolute path. The manager only adds a user-scope entry after the
+client directory exists; an old configuration folder alone is not installation
+evidence. Existing same-name entries are compared as complete definitions. Any
+user modification is preserved and reported as a conflict instead of being
+overwritten or removed.
+
+OpenCode is deliberately excluded from automatic writes in this stage because
+its JSONC, alternate config path and project-override variants are not yet safe to
+edit generically. WorkBuddy, Kimi, CodeBuddy, Trae, Cline, Roo, Continue, and
+ACP-based clients also remain manual.
+
+After a file is written, restart the client. The client's own MCP trust boundary
+is still separate from X Island's consent: Codex/Cursor/VS Code-style hosts may ask
+again before enabling the server or running a tool. X Island records file
+configuration, the client's MCP `initialize` handshake, and hook activity as
+separate evidence. A configured client is shown as waiting until either the real
+MCP handshake (when automatic MCP was enabled) or the existing hook evidence is
+available under the current definition.
+
+Turning off the approval context map removes only exact X Island entries and
+leaves unrelated MCP servers intact. Cleanup is repeated at startup so an app exit
+during a previous removal cannot leave an enabled entry behind indefinitely.
 
 ## Tools
 

@@ -86,6 +86,7 @@ public enum DIMessageType: String, Codable, Sendable {
     case subagentEnd = "subagent_end"
     case contextCompact = "context_compact"
     case recap = "recap"
+    case mcpHandshake = "mcp_handshake"
     case approvalGraphRequest = "approval_graph_request"
     case approvalGraphResponse = "approval_graph_response"
     case observationHeartbeat = "observation_heartbeat"

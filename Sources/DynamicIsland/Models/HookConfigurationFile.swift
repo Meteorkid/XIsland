@@ -44,13 +44,15 @@ enum HookConfigurationFile {
     }
 
     @discardableResult
-    static func update(at url: URL, transform: ([String: Any]) throws -> [String: Any]) throws -> Bool {
+    static func update(at url: URL, preservingTopLevelKey: String = "hooks",
+                       transform: ([String: Any]) throws -> [String: Any]) throws -> Bool {
         try Task.checkCancellation()
         let snapshot = try Snapshot.read(at: url)
         let original = try configuration(from: snapshot.file?.data)
         let updated = try transform(original)
         guard !NSDictionary(dictionary: original).isEqual(to: updated) else { return false }
-        let data = try encode(updated, preservingCommentsOf: snapshot.file?.data)
+        let data = try encode(updated, preservingTopLevelKey: preservingTopLevelKey,
+                              of: snapshot.file?.data)
         try replace(snapshot, with: data)
         return true
     }
@@ -59,17 +61,18 @@ enum HookConfigurationFile {
     ///
     /// 仅当原文件**含注释**时才走局部替换——无注释时全量重写的结果与原来一致，
     /// 保持既有行为不变。局部替换还必须通过"语义等价"校验，任何不满足都回退。
-    private static func encode(_ updated: [String: Any], preservingCommentsOf originalData: Data?) throws -> Data {
+    private static func encode(_ updated: [String: Any], preservingTopLevelKey key: String,
+                               of originalData: Data?) throws -> Data {
         let fallback = try JSONSerialization.data(withJSONObject: updated, options: [.prettyPrinted, .sortedKeys])
 
         guard let originalData,
               let originalText = String(data: originalData, encoding: .utf8),
               JSONTextSurgery.containsComments(originalText),
-              let newHooks = updated["hooks"],
-              JSONSerialization.isValidJSONObject(newHooks),
-              let rendered = try? JSONSerialization.data(withJSONObject: newHooks, options: [.sortedKeys]),
+              let newValue = updated[key],
+              JSONSerialization.isValidJSONObject(newValue),
+              let rendered = try? JSONSerialization.data(withJSONObject: newValue, options: [.sortedKeys]),
               let renderedText = String(data: rendered, encoding: .utf8),
-              let patched = JSONTextSurgery.replaceTopLevelValue(in: originalText, key: "hooks", with: renderedText)
+              let patched = JSONTextSurgery.replaceTopLevelValue(in: originalText, key: key, with: renderedText)
         else { return fallback }
 
         // 安全网：剥掉注释后必须解析出与目标**完全一致**的文档，否则回退全量重写。

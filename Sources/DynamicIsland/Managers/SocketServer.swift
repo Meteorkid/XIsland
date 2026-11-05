@@ -35,6 +35,7 @@ final class SocketServer: @unchecked Sendable {
 
     private let logger = Logger(subsystem: "dev.xisland", category: "socket")
     private let sessionManager: SessionManager
+    var onMCPHandshake: ((AgentType) -> Void)?
     private let queue = DispatchQueue(label: "dev.towerisland.socket", qos: .userInitiated)
 
     /// Shared mutable state protected by `stateLock`.
@@ -318,9 +319,9 @@ final class SocketServer: @unchecked Sendable {
             return
         }
 
-        if message.type == .approvalGraphRequest,
+        if [.approvalGraphRequest, .mcpHandshake].contains(message.type),
            !Self.isApprovalGraphPeerTrusted(identity, ownUID: ownUID, bridgePath: bridgePath) {
-            logger.error("Rejected approval graph write from an unverified bridge")
+            logger.error("Rejected approval graph MCP message from an unverified bridge")
             close(fd)
             releaseConnection()
             return
@@ -330,6 +331,12 @@ final class SocketServer: @unchecked Sendable {
         logger.debug("Message: type=\(message.type.rawValue) session=\(message.sessionId) agent=\(message.agentType ?? "nil") tool=\(message.tool ?? "nil") desc=\(message.permDescription ?? "nil") question=\(message.questionText ?? "nil") options=\(message.options?.joined(separator: ",") ?? "nil") status=\(statusPreview)")
 
         switch message.type {
+        case .mcpHandshake:
+            if let agent = AgentType.from(message.agentType), agent.isSupported {
+                Task { @MainActor [weak self] in self?.onMCPHandshake?(agent) }
+            }
+            close(fd)
+            releaseConnection()
         case .approvalGraphRequest:
             guard let request = message.approvalGraphRequest else {
                 close(fd)

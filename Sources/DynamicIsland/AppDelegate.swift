@@ -80,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var integrationWindowObserver: NSObjectProtocol?
     private var integrationActivationObserver: NSObjectProtocol?
     private var recheckIntegrationOnActivation = false
+    private var approvalGraphMCPPromptPresented = false
     private var isTerminating = false
     private var terminationTask: Task<Void, Never>?
     private enum UpdateTerminationState { case idle, preparing, prepared, committed }
@@ -637,6 +638,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard licensedRuntimeRunning else { return }
         socketServer?.stop()
         socketServer = SocketServer(sessionManager: sessionManager)
+        socketServer?.onMCPHandshake = { [weak self] agent in
+            self?.integrationSetupManager.recordMCPHandshake(from: agent)
+        }
         socketServer?.start()
     }
 
@@ -802,6 +806,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         integrationRefreshTask = Task { [weak self] in
             await self?.integrationSetupManager.refresh(prepareAutomatically: true)
         }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            if ApprovalContextMapSettings.isEnabled() {
+                self?.requestApprovalGraphMCPConfiguration()
+            } else {
+                await ZeroConfigManager.setApprovalGraphMCPEnabled(false)
+            }
+        }
         hookRepairTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, !self.isTerminating, self.licensedRuntimeRunning else { return }
@@ -820,6 +833,108 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await self.integrationSetupManager.refresh()
             }
         }
+    }
+
+    /// First-run consent for the optional local MCP registration. Configuration
+    /// files are never changed before this review prompt is accepted.
+    func requestApprovalGraphMCPConfiguration(force: Bool = false) {
+        guard licensedRuntimeRunning, !AppPreferences.isIsolated,
+              ApprovalContextMapSettings.isEnabled(), !approvalGraphMCPPromptPresented else { return }
+        approvalGraphMCPPromptPresented = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.approvalGraphMCPPromptPresented = false }
+            let home = FileManager.default.homeDirectoryForCurrentUser
+            let entries = await IntegrationSetupDiscovery.scan()
+            let installed = Set(entries.filter(\.installed).map(\.agent))
+            let clients = MCPConfigurationManager.presentClientAgents(homeDirectory: home)
+                .filter(installed.contains)
+            guard !clients.isEmpty else { return }
+            let bridge = home.appendingPathComponent(".xisland/bin/di-bridge").path
+            let granted = clients.filter {
+                MCPConfigurationManager.isConsentGranted(for: $0, bridgePath: bridge)
+            }
+            if !granted.isEmpty {
+                self.presentMCPConfigurationFailures(
+                    await self.configureApprovalGraphMCP(clients: granted, bridge: bridge, home: home)
+                )
+            }
+            let pending = force ? clients : clients.filter {
+                MCPConfigurationManager.consentDecision(for: $0, bridgePath: bridge) == nil
+            }
+            guard !pending.isEmpty else { return }
+
+            let chinese = L10n.effectiveLanguage.hasPrefix("zh")
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = chinese ? "启用审批任务图 MCP？" : "Enable approval graph MCP?"
+            let commands = pending.compactMap { agent -> String? in
+                guard let path = MCPConfigurationManager.configurationPath(for: agent, homeDirectory: home) else {
+                    return nil
+                }
+                return "\(agent.displayName): \(bridge) mcp-server --agent \(agent.rawValue)\n\(path)"
+            }.joined(separator: "\n\n")
+            alert.informativeText = chinese
+                ? "X Island 将在以下客户端中添加本地 MCP：\n\n\(commands)\n\n它只能读取和提交本地任务图，不能批准命令、回答问题或修改文件。写入后请重启客户端，并在首次调用时确认客户端自己的信任提示。"
+                : "X Island will add a local MCP server to these clients:\n\n\(commands)\n\nIt can only read and submit local task graphs. It cannot approve commands, answer questions, or modify files. Restart each client and confirm its own trust prompt on first use."
+            alert.addButton(withTitle: chinese ? "配置并允许" : "Configure and Allow")
+            alert.addButton(withTitle: chinese ? "保持未启用" : "Keep Disabled")
+            NSApp.activate(ignoringOtherApps: true)
+            if alert.runModal() == .alertFirstButtonReturn {
+                MCPConfigurationManager.recordConsent(true, for: pending, bridgePath: bridge)
+                self.presentMCPConfigurationFailures(
+                    await self.configureApprovalGraphMCP(clients: pending, bridge: bridge, home: home)
+                )
+            } else {
+                MCPConfigurationManager.recordConsent(false, for: pending, bridgePath: bridge)
+            }
+        }
+    }
+
+    private struct MCPConfigurationFailure: Sendable {
+        let agent: AgentType
+        let message: String
+    }
+
+    private func configureApprovalGraphMCP(clients: [AgentType], bridge: String,
+                                           home: URL) async -> [MCPConfigurationFailure] {
+        let failures: [MCPConfigurationFailure]
+        do {
+            failures = try await IntegrationSetupIO.run { () -> [MCPConfigurationFailure] in
+                var failures: [MCPConfigurationFailure] = []
+                ZeroConfigManager.syncCommandLineTools()
+                for agent in clients {
+                    guard !Task.isCancelled, ZeroConfigManager.isAutoConfigEnabled(for: agent) else { continue }
+                    do {
+                        _ = try MCPConfigurationManager.configure(agent, bridgePath: bridge, homeDirectory: home)
+                    } catch {
+                        failures.append(MCPConfigurationFailure(
+                            agent: agent, message: error.localizedDescription
+                        ))
+                    }
+                }
+                return failures
+            }
+        } catch {
+            failures = clients.map { MCPConfigurationFailure(
+                agent: $0, message: error.localizedDescription
+            ) }
+        }
+        await integrationSetupManager.refresh(prepareAutomatically: true)
+        return failures
+    }
+
+    private func presentMCPConfigurationFailures(_ failures: [MCPConfigurationFailure]) {
+        guard !failures.isEmpty else { return }
+        let chinese = L10n.effectiveLanguage.hasPrefix("zh")
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = chinese ? "部分 MCP 配置未完成" : "Some MCP configurations were not completed"
+        alert.informativeText = failures
+            .map { "\($0.agent.displayName): \($0.message)" }
+            .joined(separator: "\n")
+        alert.addButton(withTitle: chinese ? "好" : "OK")
+        alert.runModal()
     }
 
     func configureTesting() throws {

@@ -196,6 +196,30 @@ final class IntegrationSetupManagerTests: XCTestCase {
         }
     }
 
+    func testMCPRegistrationNeedsMCPHandshakeInsteadOfHookActivity() async throws {
+        let fixture = Fixture(entries: [entry(.claudeCode, mcpRequired: true)])
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+        await manager.refresh()
+
+        manager.recordActivity(from: .claudeCode)
+        XCTAssertEqual(phase(.claudeCode, in: manager), .waitingForActivity)
+        XCTAssertNil(row(.claudeCode, in: manager)?.lastSeen)
+
+        manager.recordMCPHandshake(from: .claudeCode)
+        XCTAssertEqual(phase(.claudeCode, in: manager), .connected)
+        XCTAssertNotNil(row(.claudeCode, in: manager)?.lastSeen)
+    }
+
+    func testMCPHandshakeArrivingBeforeFirstScanIsNotLost() async throws {
+        let fixture = Fixture(entries: [entry(.cursor, mcpRequired: true)])
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+
+        manager.recordMCPHandshake(from: .cursor)
+        await manager.refresh()
+
+        XCTAssertEqual(phase(.cursor, in: manager), .connected)
+    }
+
     func testChangedConfigurationNeedsNewActivityAndAnotherIntroduction() async throws {
         let fixture = Fixture(entries: [entry(.claudeCode)])
         let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
@@ -665,12 +689,14 @@ final class IntegrationSetupManagerTests: XCTestCase {
     }
 
     private func entry(_ agent: AgentType, installed: Bool = true, configured: Bool = true,
-                       fingerprint: String = "configuration-v1", hasCodexBinary: Bool = true) -> IntegrationSetupDiscoveryEntry {
+                       fingerprint: String = "configuration-v1", hasCodexBinary: Bool = true,
+                       mcpRequired: Bool = false) -> IntegrationSetupDiscoveryEntry {
         IntegrationSetupDiscoveryEntry(agent: agent, installed: installed, configured: configured,
             fingerprint: fingerprint, appURL: nil,
             codexBinary: agent == .codex && hasCodexBinary ? URL(fileURLWithPath: "/fixture/codex") : nil,
             detail: "Isolated integration fixture",
-            canAutoConfigure: IntegrationSetupDescriptor.descriptor(for: agent, language: "en").canAutoConfigure)
+            canAutoConfigure: IntegrationSetupDescriptor.descriptor(for: agent, language: "en").canAutoConfigure,
+            mcpRequired: mcpRequired)
     }
 
     private func trust(_ state: CodexHookTrustSnapshot.State, fingerprint: String? = "hooks-v1") -> CodexHookTrustSnapshot {
@@ -709,7 +735,8 @@ final class IntegrationSetupManagerTests: XCTestCase {
                 self.entries[index] = IntegrationSetupDiscoveryEntry(agent: previous.agent,
                     installed: previous.installed, configured: true, fingerprint: previous.fingerprint + ":ready",
                     appURL: previous.appURL, codexBinary: previous.codexBinary,
-                    detail: previous.detail, canAutoConfigure: previous.canAutoConfigure)
+                    detail: previous.detail, canAutoConfigure: previous.canAutoConfigure,
+                    mcpRequired: previous.mcpRequired)
             }, prepareTools: {
                 self.prepareCalls += 1
             }, inspectCodex: {

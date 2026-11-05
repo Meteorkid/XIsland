@@ -2258,6 +2258,26 @@ enum L10n {
             en: "Task graph")
     }
 
+    static var approvalGraphMCPConfiguration: String {
+        localized("approvalGraphMCPConfiguration",
+            zh: "审批任务图 MCP", ko: "승인 작업 그래프 MCP", ja: "承認タスクグラフ MCP",
+            fr: "MCP du graphe d’approbation", en: "Approval graph MCP")
+    }
+
+    static var approvalGraphMCPConfigurationDescription: String {
+        localized("approvalGraphMCPConfigurationDescription",
+            zh: "为已安装且兼容的客户端添加本地 MCP。配置前会显示目标客户端、完整命令和权限范围；写入后仍需在客户端确认信任。",
+            ko: "설치된 호환 클라이언트에 로컬 MCP를 추가합니다. 구성 전에 대상, 전체 명령 및 권한 범위를 표시하며 클라이언트에서도 신뢰를 확인해야 합니다.",
+            ja: "インストール済みの対応クライアントにローカル MCP を追加します。設定前に対象、完全なコマンド、権限範囲を表示し、クライアント側でも信頼の確認が必要です。",
+            fr: "Ajoute un MCP local aux clients compatibles installés. Les cibles, la commande complète et les limites sont affichées avant l’écriture; la confiance reste à confirmer dans le client.",
+            en: "Adds a local MCP server to installed compatible clients. The targets, full command and permission boundary are shown before writing; trust is still confirmed in each client.")
+    }
+
+    static var approvalGraphMCPConfigure: String {
+        localized("approvalGraphMCPConfigure",
+            zh: "配置…", ko: "구성…", ja: "設定…", fr: "Configurer…", en: "Configure…")
+    }
+
     static func approvalGraphSummary(accepted: Int, pending: Int) -> String {
         String(format: localized("approvalGraphSummary",
             zh: "%d 已保留 · %d 待处理", ko: "%d 승인 · %d 대기",

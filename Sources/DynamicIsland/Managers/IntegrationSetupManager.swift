@@ -68,6 +68,7 @@ final class IntegrationSetupManager {
     private var entries: [AgentType: IntegrationSetupDiscoveryEntry] = [:]
     private var evidence: [AgentType: IntegrationSetupEvidence] = [:]
     private var observations: [String: ObservationRecord]
+    private var mcpHandshakes: [AgentType: Date] = [:]
     private var attempts: [String: String]
     private var reminders: [String: String]
     private var introductions: [String: String]
@@ -81,7 +82,7 @@ final class IntegrationSetupManager {
     private var artifactFailures: Set<AgentType> = []
     private var artifactFingerprints: [AgentType: String] = [:]
     private var codexProbeFingerprint: String?
-    private var pendingCodexActivity: (fingerprint: String, date: Date)?
+    private var pendingCodexActivity: (fingerprint: String, date: Date, source: ActivitySource)?
     private var checkingCodexRow: IntegrationSetupRow?
     private(set) var isPresented = false
     private var isShuttingDown = false
@@ -290,7 +291,7 @@ final class IntegrationSetupManager {
                 evidence[.codex]?.authorizationFingerprint = snapshot.state == .granted ? fingerprint : nil
                 evidence[.codex]?.observedFingerprint = observations[AgentType.codex.rawValue]?.fingerprint
                 if snapshot.state == .granted, let pending, pending.fingerprint == current.fingerprint {
-                    recordActivity(from: .codex, at: pending.date)
+                    recordIntegrationEvidence(from: .codex, at: pending.date, source: pending.source)
                 }
             } else {
                 entries[.codex] = current
@@ -298,6 +299,12 @@ final class IntegrationSetupManager {
                     configured: current?.configured ?? false, configurationFingerprint: current?.fingerprint,
                     checkFailed: current?.configured == true && enabled)
             }
+        }
+        // A client can initialize MCP immediately after launch, before the first
+        // configuration scan has populated evidence. Bind the retained handshake
+        // only after the current configuration and Codex authorization are known.
+        for (agent, date) in mcpHandshakes {
+            recordIntegrationEvidence(from: agent, at: date, source: .mcp)
         }
         rebuildRows()
         for row in rows where row.phase == .connected || row.phase == .waitingForActivity {
@@ -382,10 +389,23 @@ final class IntegrationSetupManager {
     }
 
     func recordActivity(from agent: AgentType, at date: Date = Date()) {
+        recordIntegrationEvidence(from: agent, at: date, source: .hook)
+    }
+
+    func recordMCPHandshake(from agent: AgentType, at date: Date = Date()) {
+        mcpHandshakes[agent] = date
+        recordIntegrationEvidence(from: agent, at: date, source: .mcp)
+    }
+
+    private enum ActivitySource { case hook, mcp }
+
+    private func recordIntegrationEvidence(from agent: AgentType, at date: Date,
+                                           source: ActivitySource) {
         guard !isShuttingDown, agent.isSupported, agent != .glm, var state = evidence[agent], state.enabled, environment.isEnabled(agent) else { return }
+        if entries[agent]?.mcpRequired == true, source != .mcp { return }
         if agent == .codex, let fingerprint = codexProbeFingerprint {
             guard state.configured, state.configurationFingerprint == fingerprint else { return }
-            pendingCodexActivity = (fingerprint, date)
+            pendingCodexActivity = (fingerprint, date, source)
             return
         }
         guard !state.checkFailed, state.authorization != .required, state.authorization != .failed,

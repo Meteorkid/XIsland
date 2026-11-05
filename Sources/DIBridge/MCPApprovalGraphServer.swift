@@ -68,6 +68,7 @@ enum MCPApprovalGraphServer {
                                  target: ApprovalGraphTarget) throws -> Any {
         switch method {
         case "initialize":
+            sendHandshake(target: target)
             let requested = params["protocolVersion"] as? String
             let version = requested.flatMap { supportedVersions.contains($0) ? $0 : nil } ?? "2025-06-18"
             return [
@@ -222,6 +223,21 @@ enum MCPApprovalGraphServer {
               let response = try? DIProtocol.decode(responseData),
               response.type == .approvalGraphResponse else { return nil }
         return response.approvalGraphResponse
+    }
+
+    /// MCP initialization is the first point at which a real client has loaded
+    /// this server. Report that fact separately from hook activity and file writes.
+    private static func sendHandshake(target: ApprovalGraphTarget) {
+        guard let agent = target.agentType, !agent.isEmpty else { return }
+        let fd = DIBridge.connectSocket()
+        guard fd >= 0 else { return }
+        defer { close(fd) }
+        var message = DIMessage(type: .mcpHandshake, sessionId: "mcp-handshake:\(agent)")
+        message.agentType = agent
+        message.nativeEvent = "initialize"
+        guard let data = try? DIProtocol.encode(message),
+              DIBridge.sendAll(fd: fd, data: data) else { return }
+        shutdown(fd, SHUT_WR)
     }
 
     private static func prettyJSON<T: Encodable>(_ value: T) throws -> String {
