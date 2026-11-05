@@ -19,9 +19,11 @@
   <img src="Assets/demo.gif" width="560" alt="X Island Demo">
 </p>
 
-| Collapsed (Notch) | Collapsed (External) | Expanded | Question |
+▶ **[Watch the 30-second product demo](https://github.com/Meteorkid/XIsland/releases/download/v2.0.16/XIsland-AgentFlow-demo.mp4)** · 1080p · 32s
+
+| Collapsed (Notch) | Collapsed (External) | Expanded | Blocked |
 |:---------:|:---------:|:--------:|:--------:|
-| <img src="Assets/screenshots/notch-collapsed.png" width="220" alt="Notch Collapsed"> | <img src="Assets/screenshots/external-collapsed.png" width="220" alt="External Collapsed"> | <img src="Assets/screenshots/notch-expanded.png" width="220" alt="Expanded"> | <img src="Assets/screenshots/notch-question.png" width="220" alt="Question"> |
+| <img src="Assets/screenshots/notch-collapsed.png" width="220" alt="Notch Collapsed"> | <img src="Assets/screenshots/external-collapsed.png" width="220" alt="External Collapsed"> | <img src="Assets/screenshots/notch-expanded.png" width="220" alt="Expanded"> | <img src="Assets/screenshots/notch-question.png" width="220" alt="Blocked"> |
 
 ## What It Does
 

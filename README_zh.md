@@ -17,9 +17,11 @@
   <img src="Assets/demo.gif" width="560" alt="X Island 演示">
 </p>
 
-| 收起（刘海屏） | 收起（外接屏） | 展开状态 | 问题回答 |
+▶ **[观看 30 秒产品演示](https://github.com/Meteorkid/XIsland/releases/download/v2.0.16/XIsland-AgentFlow-demo.mp4)** · 1080p · 32 秒
+
+| 收起（刘海屏） | 收起（外接屏） | 展开状态 | 阻塞诊断 |
 |:---------:|:---------:|:-------:|:-------:|
-| <img src="Assets/screenshots/notch-collapsed.png" width="220" alt="刘海屏收起"> | <img src="Assets/screenshots/external-collapsed.png" width="220" alt="外接屏收起"> | <img src="Assets/screenshots/notch-expanded.png" width="220" alt="展开状态"> | <img src="Assets/screenshots/notch-question.png" width="220" alt="问题回答"> |
+| <img src="Assets/screenshots/notch-collapsed.png" width="220" alt="刘海屏收起"> | <img src="Assets/screenshots/external-collapsed.png" width="220" alt="外接屏收起"> | <img src="Assets/screenshots/notch-expanded.png" width="220" alt="展开状态"> | <img src="Assets/screenshots/notch-question.png" width="220" alt="阻塞诊断"> |
 
 ## 功能介绍
 

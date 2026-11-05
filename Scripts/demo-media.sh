@@ -42,13 +42,13 @@ cmd_seed() {
   check_bridge
   check_socket
   echo "==> Seeding demo sessions (IDs: readme-demo-*)..."
-  echo '{"prompt":"Refactor authentication and session cookies","working_dir":"/Users/demo/Projects/acme"}' \
+  echo '{"hook_event_name":"SessionStart","session_id":"readme-demo-claude","prompt":"Refactor authentication and session cookies","working_dir":"/Users/demo/Projects/acme"}' \
     | "$BRIDGE" --agent claude_code --session "readme-demo-claude" --hook session_start
   sleep 0.25
-  echo '{"prompt":"Fix TypeScript errors in the API package","working_dir":"/Users/demo/Projects/acme/packages/api"}' \
-    | "$BRIDGE" --agent cursor --session "readme-demo-cursor" --hook session_start
+  echo '{"hook_event_name":"sessionStart","conversation_id":"readme-demo-cursor","session_id":"readme-demo-cursor","prompt":"Fix TypeScript errors in the API package","cwd":"/Users/demo/Projects/acme/packages/api"}' \
+    | "$BRIDGE" --agent cursor --session "readme-demo-cursor" --hook sessionStart
   sleep 0.25
-  echo '{"prompt":"Add unit tests for the markdown parser","working_dir":"/Users/demo/Projects/acme"}' \
+  echo '{"hook_event_name":"SessionStart","session_id":"readme-demo-codex","prompt":"Add unit tests for the markdown parser","working_dir":"/Users/demo/Projects/acme"}' \
     | "$BRIDGE" --agent codex --session "readme-demo-codex" --hook session_start
   echo ""
   echo "Done. You should see 3 active sessions."
@@ -68,7 +68,7 @@ cmd_question() {
   echo "==> Sending AskUserQuestion (bridge will wait until you answer in X Island)..."
   echo "    Capture Assets/screenshots/question.png while this prompt is visible, then pick an option."
   echo ""
-  echo '{"tool_name":"AskUserQuestion","tool_input":{"question":"Which approach should we take next?","options":["Incremental refactor","Rewrite module","Defer to next sprint"]}}' \
+  echo '{"hook_event_name":"PreToolUse","session_id":"readme-demo-claude","tool_name":"AskUserQuestion","tool_input":{"question":"Which approach should we take next?","options":["Incremental refactor","Rewrite module","Defer to next sprint"]}}' \
     | "$BRIDGE" --agent claude_code --session "readme-demo-claude" --hook permission
 }
 
@@ -78,7 +78,7 @@ cmd_cleanup() {
   echo "==> Ending demo sessions..."
   for entry in "${DEMO_SESSIONS[@]}"; do
     IFS=: read -r sid agent <<<"$entry"
-    echo '{}' | "$BRIDGE" --agent "$agent" --session "$sid" --hook session_end || true
+    echo '{"hook_event_name":"SessionEnd","session_id":"'"$sid"'"}' | "$BRIDGE" --agent "$agent" --session "$sid" --hook session_end || true
     sleep 0.15
   done
   echo "Done."
