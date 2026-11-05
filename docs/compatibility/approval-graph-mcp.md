@@ -108,3 +108,15 @@ Use an explicit session when the same client has multiple chats in one directory
 checks `initialize`, `tools/list`, GET, WRITE, retry idempotency and stale revisions.
 `ApprovalGraphTests` covers the reducer, persistence, keep/discard ordering, comments,
 protocol round-trip and strict peer policy.
+
+Real-host check on 2026-11-05:
+
+- Codex loaded the user-level entry and completed an actual read-only
+  `approval_graph_get`; the returned document contained `sessionID`, revision and
+  the graph collections.
+- Claude Code listed the server as connected and exposed the expected MCP tool.
+  Its model-backed tool call was blocked before tool use by the configured
+  third-party endpoint returning HTTP 400 for unsupported model names. This is a
+  provider failure, so Claude tool execution is not recorded as passed.
+- Cursor configuration was written and checked, but no real Cursor tool call was
+  run in this acceptance round.

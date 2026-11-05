@@ -36,7 +36,8 @@ Date: 2026-11-05
 1. Add client-specific MCP configuration beyond the stable five-client set.
 2. Add a visual tree/canvas shelf while retaining the compact list representation.
 3. Add graph retention and deletion hooks when session history is removed.
-4. Exercise real Codex and Claude Code MCP hosts after explicit configuration.
+4. Complete the remaining Claude model-backed call, Cursor GUI call, and custom
+   configuration-root checks.
 
 ## Verification snapshot
 
@@ -53,3 +54,7 @@ Date: 2026-11-05
   entry preservation and MCP handshake evidence have unit coverage.
 - Real Codex and Claude Code MCP-host verification is recorded separately in the
   acceptance evidence after the candidate build is exercised.
+- Codex completed a real `approval_graph_get` against the installed candidate.
+  Claude Code loaded the server, exposed its tools and produced a matching MCP
+  handshake, but its configured third-party model endpoint rejected the model
+  before a tool-use event, so Claude tool execution remains partial evidence.
