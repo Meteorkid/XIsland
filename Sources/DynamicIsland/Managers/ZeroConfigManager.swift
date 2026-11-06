@@ -144,6 +144,26 @@ enum ZeroConfigManager {
         }
     }
 
+    /// Re-check the optional MCP entry after a broader hook preparation pass.
+    /// The normal `configure` path keeps hook and MCP failures independent, but
+    /// integration setup needs a structured message to surface in its UI.
+    static func mcpConfigurationDiagnostic(for agent: AgentType) -> String? {
+        guard ApprovalContextMapSettings.isEnabled(), MCPConfigurationManager.isSupported(agent),
+              MCPConfigurationManager.isConsentGranted(for: agent, bridgePath: bridgePath) else {
+            return nil
+        }
+        do {
+            _ = try MCPConfigurationManager.configure(agent, bridgePath: bridgePath)
+            return nil
+        } catch MCPConfigurationManager.ConfigurationError.missingClientDirectory {
+            return nil
+        } catch {
+            let path = MCPConfigurationManager.configurationPath(for: agent)
+                ?? "(unsupported client)"
+            return "\(path): \(error.localizedDescription)"
+        }
+    }
+
     /// Factory 仍支持 settings.json 回退；不新建更高优先级文件去遮蔽用户既有 hooks。
     static func effectiveNativeProfile(for agent: AgentType, homeDirectory: String? = nil) -> NativeHookProfile? {
         guard let profile = NativeHookProfile.profile(for: agent) else { return nil }

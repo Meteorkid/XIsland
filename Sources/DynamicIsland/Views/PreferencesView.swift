@@ -1345,7 +1345,12 @@ struct PreferencesView: View {
                     }
                     dividerLine
                     row("Repair Hooks") {
-                        Button("Check & Fix") { Task { await ZeroConfigManager.repairHooksIfNeeded() } }
+                        Button("Check & Fix") {
+                            Task {
+                                await ZeroConfigManager.repairHooksIfNeeded()
+                                await AppDelegate.shared?.integrationSetupManager.prepareAll()
+                            }
+                        }
                             .controlSize(.small)
                     }
                 }

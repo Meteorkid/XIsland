@@ -114,9 +114,17 @@ Real-host check on 2026-11-05:
 - Codex loaded the user-level entry and completed an actual read-only
   `approval_graph_get`; the returned document contained `sessionID`, revision and
   the graph collections.
-- Claude Code listed the server as connected and exposed the expected MCP tool.
-  Its model-backed tool call was blocked before tool use by the configured
-  third-party endpoint returning HTTP 400 for unsupported model names. This is a
-  provider failure, so Claude tool execution is not recorded as passed.
-- Cursor configuration was written and checked, but no real Cursor tool call was
-  run in this acceptance round.
+- Claude Code listed the server as connected and completed a real
+  `approval_graph_get` with `mimo-v2.6-pro` after the older model aliases returned
+  HTTP 400 from the third-party endpoint.
+- Cursor Agent listed and loaded the server, exposed both graph tools, reported an
+  MCP handshake, and completed a real `approval_graph_get` against an explicit
+  acceptance session. The CLI did not emit its own session hook in this run, so
+  automatic session binding for Cursor CLI still needs separate coverage.
+
+Configuration failures found during background preparation are persisted with
+the affected definition fingerprint. The integration row changes to **Check
+failed**. MCP failures include the target configuration path and concrete error;
+other configuration routes show a generic post-repair verification failure.
+**Check & Fix** retries the failed setup instead of leaving the failure visible
+only in logs.

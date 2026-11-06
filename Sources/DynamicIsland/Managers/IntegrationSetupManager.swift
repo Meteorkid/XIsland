@@ -12,6 +12,7 @@ final class IntegrationSetupManager {
         var scan: () async -> [IntegrationSetupDiscoveryEntry]
         var isEnabled: (AgentType) -> Bool
         var configure: (AgentType) async -> Void
+        var configurationDiagnostic: (AgentType) async -> String? = { _ in nil }
         var prepareTools: () async -> Void
         var inspectCodex: (URL) async -> CodexHookTrustSnapshot
         var prepareArtifact: (AgentType) async throws -> URL? = { _ in nil }
@@ -22,6 +23,23 @@ final class IntegrationSetupManager {
                  isEnabled: { ZeroConfigManager.isAutoConfigEnabled(for: $0) },
                  configure: { agent in
                     _ = try? await IntegrationSetupIO.run { ZeroConfigManager.configure(agent) }
+                 },
+                 configurationDiagnostic: { agent in
+                    do {
+                        if let diagnostic = try await IntegrationSetupIO.run({
+                            ZeroConfigManager.mcpConfigurationDiagnostic(for: agent)
+                        }) {
+                            return diagnostic
+                        }
+                    } catch {
+                        return error.localizedDescription
+                    }
+                    let discovered = await IntegrationSetupDiscovery.scan()
+                    guard let entry = discovered.first(where: { $0.agent == agent }),
+                          entry.installed, entry.canAutoConfigure, !entry.configured else {
+                        return nil
+                    }
+                    return "Configuration did not verify after the automatic repair pass."
                  },
                  prepareTools: {
                     _ = try? await IntegrationSetupIO.run { ZeroConfigManager.syncCommandLineTools() }
@@ -57,11 +75,17 @@ final class IntegrationSetupManager {
         let source: ActivitySource?
     }
 
+    private struct ConfigurationFailureRecord: Codable {
+        let fingerprint: String
+        let message: String
+    }
+
     private enum Key {
         static let attempts = "integrationSetup.v1.configurationAttempts"
         static let reminders = "integrationSetup.v1.reminders"
         static let introductions = "integrationSetup.v1.introductions"
         static let observations = "integrationSetup.v1.observations"
+        static let configurationErrors = "integrationSetup.v1.configurationErrors"
     }
 
     private(set) var rows: [IntegrationSetupRow] = []
@@ -74,6 +98,7 @@ final class IntegrationSetupManager {
     private var observations: [String: ObservationRecord]
     private var mcpHandshakes: [AgentType: (date: Date, fingerprint: String)] = [:]
     private var attempts: [String: String]
+    private var configurationErrors: [String: ConfigurationFailureRecord]
     private var reminders: [String: String]
     private var introductions: [String: String]
     private var receivedThisRun: Set<AgentType> = []
@@ -101,6 +126,9 @@ final class IntegrationSetupManager {
         self.defaults = defaults
         self.environment = environment ?? (AppPreferences.isIsolated ? .isolated : .live)
         self.attempts = defaults.dictionary(forKey: Key.attempts) as? [String: String] ?? [:]
+        self.configurationErrors = defaults.data(forKey: Key.configurationErrors)
+            .flatMap { try? JSONDecoder().decode([String: ConfigurationFailureRecord].self, from: $0) }
+            ?? [:]
         self.reminders = defaults.dictionary(forKey: Key.reminders) as? [String: String] ?? [:]
         self.introductions = defaults.dictionary(forKey: Key.introductions) as? [String: String] ?? [:]
         self.observations = defaults.data(forKey: Key.observations)
@@ -203,6 +231,15 @@ final class IntegrationSetupManager {
             }
             artifactFingerprints[entry.agent] = entry.fingerprint
         }
+        for entry in discovered {
+            let key = entry.agent.rawValue
+            if configurationErrors[key]?.fingerprint != entry.fingerprint
+                || !entry.installed || !entry.canAutoConfigure
+                || !environment.isEnabled(entry.agent) {
+                configurationErrors.removeValue(forKey: key)
+            }
+        }
+        saveConfigurationErrors()
         if prepareAutomatically {
             let eligible = discovered.filter { $0.installed && $0.canAutoConfigure && environment.isEnabled($0.agent) }
             if !eligible.isEmpty && !preparedTools {
@@ -215,6 +252,15 @@ final class IntegrationSetupManager {
                 guard isCurrent(generation), environment.isEnabled(entry.agent) else { return }
                 await environment.configure(entry.agent)
                 guard isCurrent(generation) else { return }
+                if let diagnostic = await environment.configurationDiagnostic(entry.agent),
+                   isCurrent(generation) {
+                    configurationErrors[entry.agent.rawValue] = ConfigurationFailureRecord(
+                        fingerprint: entry.fingerprint, message: diagnostic
+                    )
+                } else {
+                    configurationErrors.removeValue(forKey: entry.agent.rawValue)
+                }
+                saveConfigurationErrors()
                 // 只记录完成的尝试；取消不能留下一个阻止下次恢复的失败标记。
                 attempts[entry.agent.rawValue] = entry.fingerprint
                 defaults.set(attempts, forKey: Key.attempts)
@@ -237,6 +283,10 @@ final class IntegrationSetupManager {
             for entry in recovered { attempts.removeValue(forKey: entry.agent.rawValue) }
             defaults.set(attempts, forKey: Key.attempts)
         }
+        for entry in discovered where entry.configured {
+            configurationErrors.removeValue(forKey: entry.agent.rawValue)
+        }
+        saveConfigurationErrors()
         if let codex = discovered.first(where: { $0.agent == .codex }), codex.installed, codex.configured,
            environment.isEnabled(.codex), let previous = evidence[.codex]?.configurationFingerprint,
            previous == codex.fingerprint || previous.hasPrefix(codex.fingerprint + ":") {
@@ -335,6 +385,16 @@ final class IntegrationSetupManager {
             guard isCurrent(generation), environment.isEnabled(agent) else { return }
             preparedTools = true
             await environment.configure(agent)
+            guard isCurrent(generation) else { return }
+            if let diagnostic = await environment.configurationDiagnostic(agent),
+               isCurrent(generation) {
+                configurationErrors[agent.rawValue] = ConfigurationFailureRecord(
+                    fingerprint: entry.fingerprint, message: diagnostic
+                )
+            } else {
+                configurationErrors.removeValue(forKey: agent.rawValue)
+            }
+            saveConfigurationErrors()
         }
         isRefreshing = false
         guard isCurrent(generation) || refreshPending else { return }
@@ -539,14 +599,27 @@ final class IntegrationSetupManager {
                 descriptor.canAutoConfigure = entry.canAutoConfigure
             }
             let state = evidence[descriptor.agent] ?? IntegrationSetupEvidence()
-            let phase = IntegrationSetupState.phase(descriptor: descriptor, evidence: state)
+            var phase = IntegrationSetupState.phase(descriptor: descriptor, evidence: state)
             var detail = entry?.detail ?? descriptor.authorizationGuidance
+            let failure: ConfigurationFailureRecord?
+            if let entry, entry.installed, entry.canAutoConfigure, state.enabled,
+               let stored = configurationErrors[descriptor.agent.rawValue],
+               stored.fingerprint == entry.fingerprint {
+                failure = stored
+            } else {
+                failure = nil
+            }
+            if failure != nil { phase = .checkFailed }
             if phase == .checkFailed {
                 detail = text("暂时无法确认客户端授权。请确认软件已安装且支持 hooks，完成原客户端设置后重新检查。",
                               "Client authorization could not be checked. Confirm the app supports hooks, complete its setup, then check again.")
             } else if phase == .connected {
                 detail = text("已收到此配置下的真实活动。不同客户端版本的具体能力请参阅接入说明。",
                               "Activity received with this configuration. See the guide for capabilities in your client version.")
+            }
+            if let failure {
+                detail = text("自动配置失败：\(failure.message)",
+                              "Automatic configuration failed: \(failure.message)")
             }
             if artifactFailures.contains(descriptor.agent) {
                 detail = text("接入文件未能准备，已有文件会保留。请检查 X Island 接入文件目录的权限或修改内容后重试。",
@@ -564,6 +637,11 @@ final class IntegrationSetupManager {
 
     private func saveObservations() {
         if let data = try? JSONEncoder().encode(observations) { defaults.set(data, forKey: Key.observations) }
+    }
+
+    private func saveConfigurationErrors() {
+        let data = try? JSONEncoder().encode(configurationErrors)
+        defaults.set(data, forKey: Key.configurationErrors)
     }
 
     private func text(_ zh: String, _ en: String) -> String { L10n.effectiveLanguage.hasPrefix("zh") ? zh : en }

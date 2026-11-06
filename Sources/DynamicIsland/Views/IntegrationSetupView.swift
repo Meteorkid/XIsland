@@ -219,7 +219,9 @@ struct IntegrationSetupView: View {
                         .lineLimit(2)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if let action = IntegrationSetupPresentation.rowAction(row, canPrepareFiles: onPrepareFiles != nil) {
+                if let action = IntegrationSetupPresentation.rowAction(
+                    row, canPrepareAll: onPrepareAll != nil, canPrepareFiles: onPrepareFiles != nil
+                ) {
                     Button(openingAgent == row.agent ? copy("正在打开…", "Opening…")
                            : row.agent == .codex && row.phase == .needsAuthorization
                            ? copy("打开 Codex 确认", "Open Codex to confirm") : actionTitle(action)) { perform(action) }

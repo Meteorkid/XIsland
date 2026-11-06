@@ -77,6 +77,39 @@ final class IntegrationSetupManagerTests: XCTestCase {
         XCTAssertEqual(phase(.claudeCode, in: restarted), .needsConfiguration)
     }
 
+    func testAutomaticConfigurationFailureIsVisiblePersistedAndRetryable() async throws {
+        let defaults = try makeDefaults()
+        let fixture = Fixture(entries: [entry(.claudeCode, configured: false)])
+        fixture.configurationDiagnostics[.claudeCode] = "/fixture/config: user-owned entry"
+        let manager = IntegrationSetupManager(defaults: defaults, environment: fixture.environment)
+
+        await manager.refresh(prepareAutomatically: true)
+
+        XCTAssertEqual(phase(.claudeCode, in: manager), .checkFailed)
+        XCTAssertTrue(row(.claudeCode, in: manager)?.detail.contains("user-owned entry") == true)
+
+        let restarted = IntegrationSetupManager(defaults: defaults, environment: fixture.environment)
+        await restarted.refresh(prepareAutomatically: true)
+        XCTAssertEqual(fixture.configurationCalls, [.claudeCode])
+        XCTAssertEqual(phase(.claudeCode, in: restarted), .checkFailed)
+        XCTAssertTrue(row(.claudeCode, in: restarted)?.detail.contains("/fixture/config") == true)
+
+        fixture.disabledAgents = [.claudeCode]
+        await restarted.refresh()
+        XCTAssertEqual(phase(.claudeCode, in: restarted), .disabled)
+
+        fixture.disabledAgents = []
+        let reenabled = IntegrationSetupManager(defaults: defaults, environment: fixture.environment)
+        await reenabled.refresh()
+        XCTAssertEqual(phase(.claudeCode, in: reenabled), .needsConfiguration)
+
+        fixture.configurationDiagnostics.removeValue(forKey: .claudeCode)
+        fixture.successfulConfigurations = [.claudeCode]
+        await reenabled.prepareAll()
+        XCTAssertEqual(phase(.claudeCode, in: reenabled), .waitingForActivity)
+        XCTAssertFalse(row(.claudeCode, in: reenabled)?.detail.contains("user-owned entry") == true)
+    }
+
     func testExplicitConfigureCanRetryAFailedAutomaticAttempt() async throws {
         let fixture = Fixture(entries: [entry(.claudeCode, configured: false)])
         let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
@@ -755,6 +788,7 @@ final class IntegrationSetupManagerTests: XCTestCase {
         var inspectCodex: ((URL) async -> CodexHookTrustSnapshot)?
         var artifactCalls: [AgentType] = []
         var failedArtifacts: Set<AgentType> = []
+        var configurationDiagnostics: [AgentType: String] = [:]
 
         private enum ArtifactError: Error { case preparationFailed }
 
@@ -774,6 +808,8 @@ final class IntegrationSetupManagerTests: XCTestCase {
                     appURL: previous.appURL, codexBinary: previous.codexBinary,
                     detail: previous.detail, canAutoConfigure: previous.canAutoConfigure,
                     mcpRequired: previous.mcpRequired)
+            }, configurationDiagnostic: { agent in
+                self.configurationDiagnostics[agent]
             }, prepareTools: {
                 self.prepareCalls += 1
             }, inspectCodex: {

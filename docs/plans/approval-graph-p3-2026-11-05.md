@@ -41,7 +41,7 @@ Date: 2026-11-05
 
 ## Verification snapshot
 
-- Swift: 2046 X Island tests (21 conditional skips) and 31 license tests
+- Swift: 2047 X Island tests (21 conditional skips) and 31 license tests
   (1 conditional skip), zero failures.
 - Integration: 128 checks, including the compiled MCP bridge handshake, optional
   GET arguments, automatic session binding, write, idempotent retry and stale revision.
@@ -55,6 +55,10 @@ Date: 2026-11-05
 - Real Codex and Claude Code MCP-host verification is recorded separately in the
   acceptance evidence after the candidate build is exercised.
 - Codex completed a real `approval_graph_get` against the installed candidate.
-  Claude Code loaded the server, exposed its tools and produced a matching MCP
-  handshake, but its configured third-party model endpoint rejected the model
-  before a tool-use event, so Claude tool execution remains partial evidence.
+- Claude Code completed a real `approval_graph_get` with the currently valid
+  `mimo-v2.6-pro` model and produced a matching MCP handshake.
+- Cursor Agent loaded the server, listed both tools and completed a real GET using
+  an explicit acceptance session. Cursor CLI hook-driven automatic session
+  binding remains to be verified.
+- Background configuration diagnostics are persisted and exposed as Check failed,
+  including the target path and error, with an explicit retry path.
