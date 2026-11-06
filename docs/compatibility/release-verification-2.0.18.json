@@ -1,0 +1,78 @@
+{
+  "version": "2.0.18",
+  "verificationStage": "pre-publication-package",
+  "implementationCommit": "be75781",
+  "previousPublishedRelease": "v2.0.17",
+  "platform": "macOS",
+  "architecture": "arm64",
+  "minimumOS": "14.0",
+  "windowsSourceChanged": false,
+  "regression": {
+    "XIslandTests": {
+      "total": 2047,
+      "passed": 2026,
+      "skipped": 21,
+      "failed": 0
+    },
+    "MeteorLicenseCoreTests": {
+      "total": 31,
+      "passed": 30,
+      "skipped": 1,
+      "failed": 0
+    },
+    "isolatedIntegration": {
+      "total": 128,
+      "failed": 0
+    }
+  },
+  "package": {
+    "status": "passed",
+    "version": "2.0.18",
+    "readOnlyMounted": true,
+    "arm64": true,
+    "signatureVerified": true,
+    "signature": "ad-hoc",
+    "notarized": false,
+    "mountedAppMatchesBuiltBundle": true,
+    "dmgSHA256": "7d7350a434d689d59dc07d5787ebcc76ec9020192a4d3ce534266442aff42f97",
+    "dmgBytes": 7353528,
+    "binarySHA256": {
+      "XIsland": "7fa5d81c91ecdb56ed54d16bd425a398bf69973a06949912669b453e8331b9fd",
+      "di-bridge": "5178738f24c6b478ab3713ba7c34668122d10488efbc69910433109b8eefe965"
+    }
+  },
+  "licensing": {
+    "apiBaseURL": "https://www.imagentx.top",
+    "publicKeyRawSHA256": "feea02bdbb70c8aad874eb326b3ba601f825a3ceaf039254aaa1091288ca424e",
+    "matchesProductionKey": true
+  },
+  "sourceInputs": {
+    "manifest": "source-hashes-2.0.18.json",
+    "sha256": "17e7bca20f910a0f7e42b519448648e99f24f076f073c9b615952fb8c894aa66",
+    "count": 621,
+    "matchesBuildSnapshot": true
+  },
+  "realClients": {
+    "codex": "passed",
+    "claudeCode": "passed with mimo-v2.6-pro",
+    "cursorAgent": "passed with an explicit acceptance session",
+    "geminiCli": "not installed",
+    "qwenCode": "not installed"
+  },
+  "ci": {
+    "requiredBeforePublication": [
+      "Tests",
+      "Windows checks"
+    ],
+    "requiresExactReleaseCommit": true
+  },
+  "notVerified": [
+    "Cursor CLI hook-driven automatic session creation",
+    "Gemini CLI and Qwen Code real-host calls",
+    "Custom CODEX_HOME/CLAUDE_CONFIG_DIR end-to-end hook discovery",
+    "Developer ID signing, notarization and stapling"
+  ],
+  "bridgeInstallationSkippedForPackaging": true,
+  "installed": false,
+  "published": false
+}
