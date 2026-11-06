@@ -41,6 +41,9 @@ struct DIBridge {
         if command == "continue-state" {
             exit(ContinueStateWatcher.run(arguments: Array(CommandLine.arguments.dropFirst(2))))
         }
+        if command == "mcp-server" {
+            exit(MCPApprovalGraphServer.run(arguments: Array(CommandLine.arguments.dropFirst(2))))
+        }
         if command == "acp-config" {
             exit(ACPConfigurationCommand.run(arguments: Array(CommandLine.arguments.dropFirst(2)), bridgePath: CommandLine.arguments[0]))
         }

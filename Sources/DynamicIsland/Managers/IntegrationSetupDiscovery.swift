@@ -12,6 +12,21 @@ struct IntegrationSetupDiscoveryEntry: Sendable {
     let codexBinary: URL?
     let detail: String?
     let canAutoConfigure: Bool
+    let mcpRequired: Bool
+
+    init(agent: AgentType, installed: Bool, configured: Bool, fingerprint: String,
+         appURL: URL?, codexBinary: URL?, detail: String?, canAutoConfigure: Bool,
+         mcpRequired: Bool = false) {
+        self.agent = agent
+        self.installed = installed
+        self.configured = configured
+        self.fingerprint = fingerprint
+        self.appURL = appURL
+        self.codexBinary = codexBinary
+        self.detail = detail
+        self.canAutoConfigure = canAutoConfigure
+        self.mcpRequired = mcpRequired
+    }
 }
 
 enum IntegrationSetupDiscovery {
@@ -91,14 +106,39 @@ enum IntegrationSetupDiscovery {
             } else if agent == .amazonQ && binary?.lastPathComponent == "q" {
                 detail = "已发现旧 Amazon Q 入口；当前接入仅覆盖 qchat 1.19.7 包装器。"
             }
-            let configured = installed && agent != .glm && environment.hasConfiguration(agent)
-            let definition = try? expectedDefinition(for: agent, homeDirectory: environment.homeDirectory.path, bridgePath: bridge)
+            let hookConfigured = installed && agent != .glm && environment.hasConfiguration(agent)
+            let mcpRequired = installed && ApprovalContextMapSettings.isEnabled()
+                && MCPConfigurationManager.isSupported(agent)
+                && MCPConfigurationManager.isConsentGranted(for: agent, bridgePath: bridge)
+            let mcpConfigured = !mcpRequired || MCPConfigurationManager.isConfigured(
+                for: agent, bridgePath: bridge, homeDirectory: environment.homeDirectory
+            )
+            let configured = hookConfigured && mcpConfigured
+            var definition = try? expectedDefinition(for: agent, homeDirectory: environment.homeDirectory.path, bridgePath: bridge)
+            if MCPConfigurationManager.isSupported(agent),
+               let mcp = MCPConfigurationManager.expectedDefinition(
+                for: agent, bridgePath: bridge, homeDirectory: environment.homeDirectory
+            ) {
+                definition = (definition ?? "") + "\napproval-graph-mcp-v1\n" + mcp
+                if installed, ApprovalContextMapSettings.isEnabled() {
+                    switch MCPConfigurationManager.consentDecision(for: agent, bridgePath: bridge) {
+                    case true?:
+                        detail = mcpConfigured
+                            ? "审批任务图 MCP 已配置；重启客户端后首次调用会请求信任。"
+                            : "审批任务图 MCP 将在下次自动配置时写入；完成后需重启客户端并确认首次信任。"
+                    case false?:
+                        detail = "审批任务图 MCP 尚未启用，可在 X Island 中重新配置。"
+                    case nil:
+                        detail = "首次启用审批任务图 MCP 前会显示将写入的客户端和完整命令。"
+                    }
+                }
+            }
             if definition == nil { automatic = false; detail = "无法生成当前接入定义。" }
-            let data = Data("xisland-integration-v1\n\(agent.rawValue)\n\(automatic)\n\(configured)\n\(definition ?? "unavailable")".utf8)
+            let data = Data("xisland-integration-v2\n\(agent.rawValue)\n\(automatic)\n\(configured)\n\(mcpRequired)\n\(definition ?? "unavailable")".utf8)
             let fingerprint = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
             result.append(IntegrationSetupDiscoveryEntry(agent: agent, installed: installed, configured: configured,
                 fingerprint: fingerprint, appURL: app, codexBinary: codexBinary,
-                detail: detail, canAutoConfigure: installed && automatic))
+                detail: detail, canAutoConfigure: installed && automatic, mcpRequired: mcpRequired))
         }
         return result
     }

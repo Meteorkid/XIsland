@@ -42,7 +42,9 @@ final class IntegrationSetupPresentationTests: XCTestCase {
         XCTAssertTrue(IntegrationSetupPresentation.pendingRows(rows).isEmpty)
         XCTAssertEqual(IntegrationSetupPresentation.readyRows(rows).map(\.agent), [.codex])
         XCTAssertNil(primary(rows))
-        XCTAssertEqual(IntegrationSetupPresentation.rowAction(rows[0], canPrepareFiles: true), .refresh)
+        XCTAssertEqual(IntegrationSetupPresentation.rowAction(
+            rows[0], canPrepareAll: true, canPrepareFiles: true
+        ), .refresh)
     }
 
     func testDisabledMissingAndModelSourcesNeverEnterThePrimaryWorkflow() {
@@ -52,7 +54,9 @@ final class IntegrationSetupPresentationTests: XCTestCase {
         XCTAssertNil(primary(rows))
         XCTAssertTrue(IntegrationSetupPresentation.pendingRows(rows).isEmpty)
         XCTAssertEqual(IntegrationSetupPresentation.otherRows(rows).count, rows.count)
-        XCTAssertNil(IntegrationSetupPresentation.rowAction(rows[0], canPrepareFiles: true),
+        XCTAssertNil(IntegrationSetupPresentation.rowAction(
+            rows[0], canPrepareAll: true, canPrepareFiles: true
+        ),
                      "已关闭来源只能到设置重新开启，不能提供无效的配置按钮")
     }
 
@@ -61,11 +65,17 @@ final class IntegrationSetupPresentationTests: XCTestCase {
 
         XCTAssertNil(primary([]))
         XCTAssertNil(primary([connected]))
-        XCTAssertNil(IntegrationSetupPresentation.rowAction(connected, canPrepareFiles: true))
+        XCTAssertNil(IntegrationSetupPresentation.rowAction(
+            connected, canPrepareAll: true, canPrepareFiles: true
+        ))
     }
 
-    func testFailedChecksRefreshWithoutRewritingConfigurationsOrGrantingTrust() {
-        XCTAssertEqual(primary([row(.codex, .checkFailed, canConfigure: true)]), .refresh)
+    func testFailedChecksRetryAutomaticConfigurationWhenRepairIsAvailable() {
+        XCTAssertEqual(primary([row(.codex, .checkFailed, canConfigure: true)]), .prepareAll)
+        XCTAssertEqual(IntegrationSetupPresentation.primaryAction(
+            [row(.codex, .checkFailed, canConfigure: true)],
+            canPrepareAll: false, canPrepareFiles: true
+        ), .refresh)
         XCTAssertEqual(primary([row(.zed, .needsConfiguration)]), .openGuide(.zed))
     }
 

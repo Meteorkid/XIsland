@@ -538,6 +538,11 @@ struct NotchContentView: View {
             Divider()
             Toggle(L10n.taskAttention, isOn: $taskAttentionEnabled)
             Toggle(L10n.approvalContextMap, isOn: $approvalContextMapEnabled)
+            if approvalContextMapEnabled {
+                Button(L10n.approvalGraphMCPConfigure) {
+                    AppDelegate.shared?.requestApprovalGraphMCPConfiguration(force: true)
+                }
+            }
             Divider()
             Button(L10n.prefsEllipsis) {
                 openSettingsWindow()
@@ -567,6 +572,13 @@ struct NotchContentView: View {
         }
         .onChange(of: taskAttentionEnabled) { _, enabled in
             if !enabled { notchWindow?.releaseTaskAttentionProtection() }
+        }
+        .onChange(of: approvalContextMapEnabled) { _, enabled in
+            if enabled {
+                AppDelegate.shared?.requestApprovalGraphMCPConfiguration()
+            } else {
+                Task { await ZeroConfigManager.setApprovalGraphMCPEnabled(false) }
+            }
         }
         .onChange(of: isReadyForLinkedPreview, initial: true) { _, _ in
             updateLinkedPreviewReadiness()

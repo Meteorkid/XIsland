@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 // MARK: - Socket 路径约定
@@ -86,6 +87,9 @@ public enum DIMessageType: String, Codable, Sendable {
     case subagentEnd = "subagent_end"
     case contextCompact = "context_compact"
     case recap = "recap"
+    case mcpHandshake = "mcp_handshake"
+    case approvalGraphRequest = "approval_graph_request"
+    case approvalGraphResponse = "approval_graph_response"
     case observationHeartbeat = "observation_heartbeat"
     case observationEnded = "observation_ended"
 }
@@ -200,10 +204,30 @@ public struct DIMessage: Codable, Sendable {
     /// true 表示仅收到子代理准备结束的通知，尚无最终完成回执。
     public var subagentEndIsProvisional: Bool?
 
+    // 审批任务图扩展；旧客户端忽略未知字段。
+    public var integrationFingerprint: String?
+    public var approvalGraphRequest: ApprovalGraphRequest?
+    public var approvalGraphResponse: ApprovalGraphResponsePayload?
+
     public init(type: DIMessageType, sessionId: String) {
         self.type = type
         self.sessionId = sessionId
         self.timestamp = Date()
+    }
+}
+
+/// Stable identity for the local approval-graph MCP server. The bridge and the
+/// app compute this value independently so a handshake cannot claim another
+/// executable or argument list.
+public enum ApprovalGraphMCPIdentity {
+    public static func arguments(agent: String) -> [String] {
+        ["mcp-server", "--agent", agent]
+    }
+
+    public static func fingerprint(command: String, agent: String) -> String {
+        let parts = [command] + arguments(agent: agent)
+        let data = Data(parts.joined(separator: "\0").utf8)
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }
 

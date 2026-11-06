@@ -77,6 +77,39 @@ final class IntegrationSetupManagerTests: XCTestCase {
         XCTAssertEqual(phase(.claudeCode, in: restarted), .needsConfiguration)
     }
 
+    func testAutomaticConfigurationFailureIsVisiblePersistedAndRetryable() async throws {
+        let defaults = try makeDefaults()
+        let fixture = Fixture(entries: [entry(.claudeCode, configured: false)])
+        fixture.configurationDiagnostics[.claudeCode] = "/fixture/config: user-owned entry"
+        let manager = IntegrationSetupManager(defaults: defaults, environment: fixture.environment)
+
+        await manager.refresh(prepareAutomatically: true)
+
+        XCTAssertEqual(phase(.claudeCode, in: manager), .checkFailed)
+        XCTAssertTrue(row(.claudeCode, in: manager)?.detail.contains("user-owned entry") == true)
+
+        let restarted = IntegrationSetupManager(defaults: defaults, environment: fixture.environment)
+        await restarted.refresh(prepareAutomatically: true)
+        XCTAssertEqual(fixture.configurationCalls, [.claudeCode])
+        XCTAssertEqual(phase(.claudeCode, in: restarted), .checkFailed)
+        XCTAssertTrue(row(.claudeCode, in: restarted)?.detail.contains("/fixture/config") == true)
+
+        fixture.disabledAgents = [.claudeCode]
+        await restarted.refresh()
+        XCTAssertEqual(phase(.claudeCode, in: restarted), .disabled)
+
+        fixture.disabledAgents = []
+        let reenabled = IntegrationSetupManager(defaults: defaults, environment: fixture.environment)
+        await reenabled.refresh()
+        XCTAssertEqual(phase(.claudeCode, in: reenabled), .needsConfiguration)
+
+        fixture.configurationDiagnostics.removeValue(forKey: .claudeCode)
+        fixture.successfulConfigurations = [.claudeCode]
+        await reenabled.prepareAll()
+        XCTAssertEqual(phase(.claudeCode, in: reenabled), .waitingForActivity)
+        XCTAssertFalse(row(.claudeCode, in: reenabled)?.detail.contains("user-owned entry") == true)
+    }
+
     func testExplicitConfigureCanRetryAFailedAutomaticAttempt() async throws {
         let fixture = Fixture(entries: [entry(.claudeCode, configured: false)])
         let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
@@ -194,6 +227,67 @@ final class IntegrationSetupManagerTests: XCTestCase {
             XCTAssertFalse(restarted.hasUnpresentedReminder, agent.rawValue)
             XCTAssertTrue(fixture.configurationCalls.isEmpty, agent.rawValue)
         }
+    }
+
+    func testMCPRegistrationNeedsMCPHandshakeInsteadOfHookActivity() async throws {
+        let fixture = Fixture(entries: [entry(.claudeCode, mcpRequired: true)])
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+        await manager.refresh()
+
+        manager.recordActivity(from: .claudeCode)
+        XCTAssertEqual(phase(.claudeCode, in: manager), .waitingForActivity)
+        XCTAssertNil(row(.claudeCode, in: manager)?.lastSeen)
+
+        manager.recordMCPHandshake(from: .claudeCode,
+                                   fingerprint: IntegrationSetupManager.expectedMCPFingerprint(for: .claudeCode))
+        XCTAssertEqual(phase(.claudeCode, in: manager), .connected)
+        XCTAssertNotNil(row(.claudeCode, in: manager)?.lastSeen)
+    }
+
+    func testMCPHandshakeArrivingBeforeFirstScanIsNotLost() async throws {
+        let fixture = Fixture(entries: [entry(.cursor, mcpRequired: true)])
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+
+        manager.recordMCPHandshake(from: .cursor,
+                                   fingerprint: IntegrationSetupManager.expectedMCPFingerprint(for: .cursor))
+        await manager.refresh()
+
+        XCTAssertEqual(phase(.cursor, in: manager), .connected)
+    }
+
+    func testEnablingMCPInvalidatesEarlierHookObservation() async throws {
+        let fixture = Fixture(entries: [entry(.claudeCode)])
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+        await manager.refresh()
+        manager.recordActivity(from: .claudeCode)
+        XCTAssertEqual(phase(.claudeCode, in: manager), .connected)
+
+        fixture.entries = [entry(.claudeCode, mcpRequired: true)]
+        await manager.refresh()
+
+        XCTAssertEqual(phase(.claudeCode, in: manager), .waitingForActivity)
+        XCTAssertNil(row(.claudeCode, in: manager)?.lastSeen)
+    }
+
+    func testMCPHandshakeIsBoundAndConsumedOnce() async throws {
+        let fixture = Fixture(entries: [entry(.cursor, mcpRequired: true)])
+        let manager = IntegrationSetupManager(defaults: try makeDefaults(), environment: fixture.environment)
+        await manager.refresh()
+
+        manager.recordMCPHandshake(from: .cursor, fingerprint: "wrong-definition")
+        XCTAssertEqual(phase(.cursor, in: manager), .waitingForActivity)
+
+        manager.recordMCPHandshake(
+            from: .cursor,
+            fingerprint: IntegrationSetupManager.expectedMCPFingerprint(for: .cursor)
+        )
+        XCTAssertEqual(phase(.cursor, in: manager), .connected)
+
+        fixture.entries = [entry(.cursor, fingerprint: "configuration-v2", mcpRequired: true)]
+        await manager.refresh()
+
+        XCTAssertEqual(phase(.cursor, in: manager), .waitingForActivity)
+        XCTAssertNil(row(.cursor, in: manager)?.lastSeen)
     }
 
     func testChangedConfigurationNeedsNewActivityAndAnotherIntroduction() async throws {
@@ -665,12 +759,14 @@ final class IntegrationSetupManagerTests: XCTestCase {
     }
 
     private func entry(_ agent: AgentType, installed: Bool = true, configured: Bool = true,
-                       fingerprint: String = "configuration-v1", hasCodexBinary: Bool = true) -> IntegrationSetupDiscoveryEntry {
+                       fingerprint: String = "configuration-v1", hasCodexBinary: Bool = true,
+                       mcpRequired: Bool = false) -> IntegrationSetupDiscoveryEntry {
         IntegrationSetupDiscoveryEntry(agent: agent, installed: installed, configured: configured,
             fingerprint: fingerprint, appURL: nil,
             codexBinary: agent == .codex && hasCodexBinary ? URL(fileURLWithPath: "/fixture/codex") : nil,
             detail: "Isolated integration fixture",
-            canAutoConfigure: IntegrationSetupDescriptor.descriptor(for: agent, language: "en").canAutoConfigure)
+            canAutoConfigure: IntegrationSetupDescriptor.descriptor(for: agent, language: "en").canAutoConfigure,
+            mcpRequired: mcpRequired)
     }
 
     private func trust(_ state: CodexHookTrustSnapshot.State, fingerprint: String? = "hooks-v1") -> CodexHookTrustSnapshot {
@@ -692,6 +788,7 @@ final class IntegrationSetupManagerTests: XCTestCase {
         var inspectCodex: ((URL) async -> CodexHookTrustSnapshot)?
         var artifactCalls: [AgentType] = []
         var failedArtifacts: Set<AgentType> = []
+        var configurationDiagnostics: [AgentType: String] = [:]
 
         private enum ArtifactError: Error { case preparationFailed }
 
@@ -709,7 +806,10 @@ final class IntegrationSetupManagerTests: XCTestCase {
                 self.entries[index] = IntegrationSetupDiscoveryEntry(agent: previous.agent,
                     installed: previous.installed, configured: true, fingerprint: previous.fingerprint + ":ready",
                     appURL: previous.appURL, codexBinary: previous.codexBinary,
-                    detail: previous.detail, canAutoConfigure: previous.canAutoConfigure)
+                    detail: previous.detail, canAutoConfigure: previous.canAutoConfigure,
+                    mcpRequired: previous.mcpRequired)
+            }, configurationDiagnostic: { agent in
+                self.configurationDiagnostics[agent]
             }, prepareTools: {
                 self.prepareCalls += 1
             }, inspectCodex: {

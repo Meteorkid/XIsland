@@ -49,10 +49,13 @@ enum IntegrationSetupPresentation {
         if let configurable = pending.first(where: { $0.phase == .needsConfiguration && $0.canConfigure }) {
             return canPrepareAll ? .prepareAll : .configure(configurable.agent)
         }
-        return pending.first.flatMap { rowAction($0, canPrepareFiles: canPrepareFiles) }
+        return pending.first.flatMap {
+            rowAction($0, canPrepareAll: canPrepareAll, canPrepareFiles: canPrepareFiles)
+        }
     }
 
-    static func rowAction(_ row: IntegrationSetupRow, canPrepareFiles: Bool) -> IntegrationSetupAction? {
+    static func rowAction(_ row: IntegrationSetupRow, canPrepareAll: Bool,
+                          canPrepareFiles: Bool) -> IntegrationSetupAction? {
         if row.agent == .glm { return .openGuide(row.agent) }
         switch row.phase {
         case .needsConfiguration:
@@ -62,7 +65,9 @@ enum IntegrationSetupPresentation {
         case .needsSetup:
             return canPrepareFiles && [.workBuddy, .kiro].contains(row.agent)
                 ? .prepareFiles(row.agent) : .openGuide(row.agent)
-        case .waitingForActivity, .checkFailed: return .refresh
+        case .waitingForActivity: return .refresh
+        case .checkFailed:
+            return canPrepareAll && row.canConfigure ? .prepareAll : .refresh
         case .notInstalled: return .openGuide(row.agent)
         case .connected: return nil
         }

@@ -1,4 +1,5 @@
 import AppKit
+import DIShared
 import Foundation
 import Observation
 
@@ -11,6 +12,7 @@ final class IntegrationSetupManager {
         var scan: () async -> [IntegrationSetupDiscoveryEntry]
         var isEnabled: (AgentType) -> Bool
         var configure: (AgentType) async -> Void
+        var configurationDiagnostic: (AgentType) async -> String? = { _ in nil }
         var prepareTools: () async -> Void
         var inspectCodex: (URL) async -> CodexHookTrustSnapshot
         var prepareArtifact: (AgentType) async throws -> URL? = { _ in nil }
@@ -21,6 +23,23 @@ final class IntegrationSetupManager {
                  isEnabled: { ZeroConfigManager.isAutoConfigEnabled(for: $0) },
                  configure: { agent in
                     _ = try? await IntegrationSetupIO.run { ZeroConfigManager.configure(agent) }
+                 },
+                 configurationDiagnostic: { agent in
+                    do {
+                        if let diagnostic = try await IntegrationSetupIO.run({
+                            ZeroConfigManager.mcpConfigurationDiagnostic(for: agent)
+                        }) {
+                            return diagnostic
+                        }
+                    } catch {
+                        return error.localizedDescription
+                    }
+                    let discovered = await IntegrationSetupDiscovery.scan()
+                    guard let entry = discovered.first(where: { $0.agent == agent }),
+                          entry.installed, entry.canAutoConfigure, !entry.configured else {
+                        return nil
+                    }
+                    return "Configuration did not verify after the automatic repair pass."
                  },
                  prepareTools: {
                     _ = try? await IntegrationSetupIO.run { ZeroConfigManager.syncCommandLineTools() }
@@ -48,9 +67,17 @@ final class IntegrationSetupManager {
         }
     }
 
+    private enum ActivitySource: String, Codable { case hook, mcp }
+
     private struct ObservationRecord: Codable {
         let fingerprint: String
         let lastSeen: Date
+        let source: ActivitySource?
+    }
+
+    private struct ConfigurationFailureRecord: Codable {
+        let fingerprint: String
+        let message: String
     }
 
     private enum Key {
@@ -58,6 +85,7 @@ final class IntegrationSetupManager {
         static let reminders = "integrationSetup.v1.reminders"
         static let introductions = "integrationSetup.v1.introductions"
         static let observations = "integrationSetup.v1.observations"
+        static let configurationErrors = "integrationSetup.v1.configurationErrors"
     }
 
     private(set) var rows: [IntegrationSetupRow] = []
@@ -68,7 +96,9 @@ final class IntegrationSetupManager {
     private var entries: [AgentType: IntegrationSetupDiscoveryEntry] = [:]
     private var evidence: [AgentType: IntegrationSetupEvidence] = [:]
     private var observations: [String: ObservationRecord]
+    private var mcpHandshakes: [AgentType: (date: Date, fingerprint: String)] = [:]
     private var attempts: [String: String]
+    private var configurationErrors: [String: ConfigurationFailureRecord]
     private var reminders: [String: String]
     private var introductions: [String: String]
     private var receivedThisRun: Set<AgentType> = []
@@ -81,7 +111,7 @@ final class IntegrationSetupManager {
     private var artifactFailures: Set<AgentType> = []
     private var artifactFingerprints: [AgentType: String] = [:]
     private var codexProbeFingerprint: String?
-    private var pendingCodexActivity: (fingerprint: String, date: Date)?
+    private var pendingCodexActivity: (fingerprint: String, date: Date, source: ActivitySource)?
     private var checkingCodexRow: IntegrationSetupRow?
     private(set) var isPresented = false
     private var isShuttingDown = false
@@ -96,6 +126,9 @@ final class IntegrationSetupManager {
         self.defaults = defaults
         self.environment = environment ?? (AppPreferences.isIsolated ? .isolated : .live)
         self.attempts = defaults.dictionary(forKey: Key.attempts) as? [String: String] ?? [:]
+        self.configurationErrors = defaults.data(forKey: Key.configurationErrors)
+            .flatMap { try? JSONDecoder().decode([String: ConfigurationFailureRecord].self, from: $0) }
+            ?? [:]
         self.reminders = defaults.dictionary(forKey: Key.reminders) as? [String: String] ?? [:]
         self.introductions = defaults.dictionary(forKey: Key.introductions) as? [String: String] ?? [:]
         self.observations = defaults.data(forKey: Key.observations)
@@ -198,6 +231,15 @@ final class IntegrationSetupManager {
             }
             artifactFingerprints[entry.agent] = entry.fingerprint
         }
+        for entry in discovered {
+            let key = entry.agent.rawValue
+            if configurationErrors[key]?.fingerprint != entry.fingerprint
+                || !entry.installed || !entry.canAutoConfigure
+                || !environment.isEnabled(entry.agent) {
+                configurationErrors.removeValue(forKey: key)
+            }
+        }
+        saveConfigurationErrors()
         if prepareAutomatically {
             let eligible = discovered.filter { $0.installed && $0.canAutoConfigure && environment.isEnabled($0.agent) }
             if !eligible.isEmpty && !preparedTools {
@@ -210,6 +252,15 @@ final class IntegrationSetupManager {
                 guard isCurrent(generation), environment.isEnabled(entry.agent) else { return }
                 await environment.configure(entry.agent)
                 guard isCurrent(generation) else { return }
+                if let diagnostic = await environment.configurationDiagnostic(entry.agent),
+                   isCurrent(generation) {
+                    configurationErrors[entry.agent.rawValue] = ConfigurationFailureRecord(
+                        fingerprint: entry.fingerprint, message: diagnostic
+                    )
+                } else {
+                    configurationErrors.removeValue(forKey: entry.agent.rawValue)
+                }
+                saveConfigurationErrors()
                 // 只记录完成的尝试；取消不能留下一个阻止下次恢复的失败标记。
                 attempts[entry.agent.rawValue] = entry.fingerprint
                 defaults.set(attempts, forKey: Key.attempts)
@@ -232,6 +283,10 @@ final class IntegrationSetupManager {
             for entry in recovered { attempts.removeValue(forKey: entry.agent.rawValue) }
             defaults.set(attempts, forKey: Key.attempts)
         }
+        for entry in discovered where entry.configured {
+            configurationErrors.removeValue(forKey: entry.agent.rawValue)
+        }
+        saveConfigurationErrors()
         if let codex = discovered.first(where: { $0.agent == .codex }), codex.installed, codex.configured,
            environment.isEnabled(.codex), let previous = evidence[.codex]?.configurationFingerprint,
            previous == codex.fingerprint || previous.hasPrefix(codex.fingerprint + ":") {
@@ -240,7 +295,8 @@ final class IntegrationSetupManager {
         entries = Dictionary(uniqueKeysWithValues: discovered.map { ($0.agent, $0) })
         for entry in discovered {
             let previous = evidence[entry.agent]
-            let observed = observations[entry.agent.rawValue]
+            let rawObserved = observations[entry.agent.rawValue]
+            let observed = entry.mcpRequired && rawObserved?.source != .mcp ? nil : rawObserved
             evidence[entry.agent] = IntegrationSetupEvidence(
                 installed: entry.installed || receivedThisRun.contains(entry.agent),
                 enabled: environment.isEnabled(entry.agent), configured: entry.configured,
@@ -290,13 +346,22 @@ final class IntegrationSetupManager {
                 evidence[.codex]?.authorizationFingerprint = snapshot.state == .granted ? fingerprint : nil
                 evidence[.codex]?.observedFingerprint = observations[AgentType.codex.rawValue]?.fingerprint
                 if snapshot.state == .granted, let pending, pending.fingerprint == current.fingerprint {
-                    recordActivity(from: .codex, at: pending.date)
+                    recordIntegrationEvidence(from: .codex, at: pending.date, source: pending.source)
                 }
             } else {
                 entries[.codex] = current
                 evidence[.codex] = IntegrationSetupEvidence(installed: current?.installed ?? false, enabled: enabled,
                     configured: current?.configured ?? false, configurationFingerprint: current?.fingerprint,
                     checkFailed: current?.configured == true && enabled)
+            }
+        }
+        // A client can initialize MCP immediately after launch, before the first
+        // configuration scan has populated evidence. Bind the retained handshake
+        // only after the current configuration and Codex authorization are known.
+        for (agent, receipt) in Array(mcpHandshakes) {
+            if recordIntegrationEvidence(from: agent, at: receipt.date, source: .mcp,
+                                         fingerprint: receipt.fingerprint) {
+                mcpHandshakes.removeValue(forKey: agent)
             }
         }
         rebuildRows()
@@ -320,6 +385,16 @@ final class IntegrationSetupManager {
             guard isCurrent(generation), environment.isEnabled(agent) else { return }
             preparedTools = true
             await environment.configure(agent)
+            guard isCurrent(generation) else { return }
+            if let diagnostic = await environment.configurationDiagnostic(agent),
+               isCurrent(generation) {
+                configurationErrors[agent.rawValue] = ConfigurationFailureRecord(
+                    fingerprint: entry.fingerprint, message: diagnostic
+                )
+            } else {
+                configurationErrors.removeValue(forKey: agent.rawValue)
+            }
+            saveConfigurationErrors()
         }
         isRefreshing = false
         guard isCurrent(generation) || refreshPending else { return }
@@ -382,31 +457,60 @@ final class IntegrationSetupManager {
     }
 
     func recordActivity(from agent: AgentType, at date: Date = Date()) {
-        guard !isShuttingDown, agent.isSupported, agent != .glm, var state = evidence[agent], state.enabled, environment.isEnabled(agent) else { return }
+        _ = recordIntegrationEvidence(from: agent, at: date, source: .hook)
+    }
+
+    static func expectedMCPFingerprint(for agent: AgentType) -> String {
+        let bridge = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".xisland/bin/di-bridge").path
+        return ApprovalGraphMCPIdentity.fingerprint(command: bridge, agent: agent.rawValue)
+    }
+
+    func recordMCPHandshake(from agent: AgentType, fingerprint: String, at date: Date = Date()) {
+        guard fingerprint == Self.expectedMCPFingerprint(for: agent) else { return }
+        mcpHandshakes[agent] = (date, fingerprint)
+        if recordIntegrationEvidence(from: agent, at: date, source: .mcp, fingerprint: fingerprint) {
+            mcpHandshakes.removeValue(forKey: agent)
+        }
+    }
+
+    @discardableResult
+    private func recordIntegrationEvidence(from agent: AgentType, at date: Date,
+                                           source: ActivitySource,
+                                           fingerprint expectedFingerprint: String? = nil) -> Bool {
+        guard !isShuttingDown, agent.isSupported, agent != .glm, var state = evidence[agent], state.enabled, environment.isEnabled(agent) else { return false }
+        if entries[agent]?.mcpRequired == true {
+            guard source == .mcp else { return false }
+            guard expectedFingerprint == Self.expectedMCPFingerprint(for: agent) else { return false }
+        }
         if agent == .codex, let fingerprint = codexProbeFingerprint {
-            guard state.configured, state.configurationFingerprint == fingerprint else { return }
-            pendingCodexActivity = (fingerprint, date)
-            return
+            guard state.configured, state.configurationFingerprint == fingerprint else { return false }
+            pendingCodexActivity = (fingerprint, date, source)
+            return false
         }
         guard !state.checkFailed, state.authorization != .required, state.authorization != .failed,
-              let fingerprint = state.configurationFingerprint else { return }
+              let fingerprint = state.configurationFingerprint else { return false }
         if agent == .codex {
             guard state.configured, state.authorization == .granted,
-                  state.authorizationFingerprint == fingerprint else { return }
+                  state.authorizationFingerprint == fingerprint else { return false }
         }
         if let previous = observations[agent.rawValue], previous.fingerprint == fingerprint,
-           state.observedFingerprint == fingerprint, date.timeIntervalSince(previous.lastSeen) < 10 { return }
+           state.observedFingerprint == fingerprint, date.timeIntervalSince(previous.lastSeen) < 10 {
+            return true
+        }
         receivedThisRun.insert(agent)
         state.installed = true
         state.observedFingerprint = fingerprint
         evidence[agent] = state
-        observations[agent.rawValue] = ObservationRecord(fingerprint: fingerprint, lastSeen: date)
+        observations[agent.rawValue] = ObservationRecord(fingerprint: fingerprint, lastSeen: date,
+                                                          source: source)
         reminders.removeValue(forKey: agent.rawValue)
         introductions[agent.rawValue] = fingerprint
         saveObservations()
         defaults.set(reminders, forKey: Key.reminders)
         defaults.set(introductions, forKey: Key.introductions)
         rebuildRows()
+        return true
     }
 
     func markPresented() {
@@ -495,14 +599,27 @@ final class IntegrationSetupManager {
                 descriptor.canAutoConfigure = entry.canAutoConfigure
             }
             let state = evidence[descriptor.agent] ?? IntegrationSetupEvidence()
-            let phase = IntegrationSetupState.phase(descriptor: descriptor, evidence: state)
+            var phase = IntegrationSetupState.phase(descriptor: descriptor, evidence: state)
             var detail = entry?.detail ?? descriptor.authorizationGuidance
+            let failure: ConfigurationFailureRecord?
+            if let entry, entry.installed, entry.canAutoConfigure, state.enabled,
+               let stored = configurationErrors[descriptor.agent.rawValue],
+               stored.fingerprint == entry.fingerprint {
+                failure = stored
+            } else {
+                failure = nil
+            }
+            if failure != nil { phase = .checkFailed }
             if phase == .checkFailed {
                 detail = text("暂时无法确认客户端授权。请确认软件已安装且支持 hooks，完成原客户端设置后重新检查。",
                               "Client authorization could not be checked. Confirm the app supports hooks, complete its setup, then check again.")
             } else if phase == .connected {
                 detail = text("已收到此配置下的真实活动。不同客户端版本的具体能力请参阅接入说明。",
                               "Activity received with this configuration. See the guide for capabilities in your client version.")
+            }
+            if let failure {
+                detail = text("自动配置失败：\(failure.message)",
+                              "Automatic configuration failed: \(failure.message)")
             }
             if artifactFailures.contains(descriptor.agent) {
                 detail = text("接入文件未能准备，已有文件会保留。请检查 X Island 接入文件目录的权限或修改内容后重试。",
@@ -520,6 +637,11 @@ final class IntegrationSetupManager {
 
     private func saveObservations() {
         if let data = try? JSONEncoder().encode(observations) { defaults.set(data, forKey: Key.observations) }
+    }
+
+    private func saveConfigurationErrors() {
+        let data = try? JSONEncoder().encode(configurationErrors)
+        defaults.set(data, forKey: Key.configurationErrors)
     }
 
     private func text(_ zh: String, _ en: String) -> String { L10n.effectiveLanguage.hasPrefix("zh") ? zh : en }

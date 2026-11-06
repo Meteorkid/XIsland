@@ -181,6 +181,13 @@ struct PreferencesView: View {
                 selection = .license
             }
         }
+        .onChange(of: approvalContextMapEnabled) { _, enabled in
+            if enabled {
+                AppDelegate.shared?.requestApprovalGraphMCPConfiguration()
+            } else {
+                Task { await ZeroConfigManager.setApprovalGraphMCPEnabled(false) }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .xislandShowAboutPane)) { _ in
             applyPendingPaneSelectionIfNeeded(fallbackToAbout: true)
         }
@@ -331,6 +338,16 @@ struct PreferencesView: View {
                             .labelsHidden()
                             .accessibilityLabel(L10n.approvalContextMap)
                             .accessibilityIdentifier("preferences.approvalContextMapEnabled")
+                    }
+                    dividerLine
+                    settingRow(L10n.approvalGraphMCPConfiguration, id: "approvalGraphMCPConfiguration",
+                               description: L10n.approvalGraphMCPConfigurationDescription) {
+                        Button(L10n.approvalGraphMCPConfigure) {
+                            AppDelegate.shared?.requestApprovalGraphMCPConfiguration(force: true)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(!approvalContextMapEnabled)
+                        .accessibilityIdentifier("preferences.approvalGraphMCPConfigure")
                     }
                     dividerLine
                     settingRow(L10n.bypassMode, id: "bypassMode", description: L10n.bypassDesc) {
@@ -1116,6 +1133,7 @@ struct PreferencesView: View {
                                     startHistoryTask {
                                         do {
                                             try await persistenceManager.deleteHistoryAsync(sessionID: session.sessionId)
+                                            try sessionManager.removeApprovalGraph(sessionID: session.sessionId)
                                             historyOperationError = nil
                                             await historyBrowser.reloadAsync(from: persistenceManager)
                                         } catch { if !Task.isCancelled { historyOperationError = error.localizedDescription } }
@@ -1327,7 +1345,12 @@ struct PreferencesView: View {
                     }
                     dividerLine
                     row("Repair Hooks") {
-                        Button("Check & Fix") { Task { await ZeroConfigManager.repairHooksIfNeeded() } }
+                        Button("Check & Fix") {
+                            Task {
+                                await ZeroConfigManager.repairHooksIfNeeded()
+                                await AppDelegate.shared?.integrationSetupManager.prepareAll()
+                            }
+                        }
                             .controlSize(.small)
                     }
                 }

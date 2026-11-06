@@ -55,6 +55,10 @@ struct SessionGroup: Identifiable {
 @Observable
 @MainActor
 final class SessionManager {
+    private enum ApprovalGraphSessionResolution {
+        case success(AgentSession)
+        case failure(ApprovalGraphResponsePayload)
+    }
     var sessions: [AgentSession] = []
     var selectedSessionId: String?
     var focusedInteraction: InteractionFocus?
@@ -71,6 +75,11 @@ final class SessionManager {
     var persistenceManager: SessionPersistenceManager?
     /// 测试可注入临时快照存储；正式运行默认落到 `~/.xisland`。
     @ObservationIgnored var approvalMapSnapshotStore: ApprovalContextMapSnapshotStore?
+    /// MCP 写入的显式任务图；与审批决定、文件操作完全分离。
+    private(set) var approvalGraphDocuments: [String: ApprovalGraphDocument] = [:]
+    @ObservationIgnored var approvalGraphStore: ApprovalGraphStore? = ApprovalGraphStore.defaultStore()
+    @ObservationIgnored private var loadedApprovalGraphSessions: Set<String> = []
+    @ObservationIgnored private var approvalGraphLoadErrors: [String: String] = [:]
     @ObservationIgnored var onIntegrationActivity: ((AgentType) -> Void)?
     @ObservationIgnored var onTaskAttention: ((TaskAttentionEvent) -> Void)?
     @ObservationIgnored private var taskAttentionEvents: [String: [TaskAttentionEvent.Kind: TaskAttentionEvent]] = [:]
@@ -1683,6 +1692,199 @@ final class SessionManager {
         }
     }
 
+    // MARK: - Agent-authored approval graph
+
+    func approvalGraph(for sessionID: String) -> ApprovalGraphDocument? {
+        approvalGraphDocuments[sessionID]
+    }
+
+    func approvalGraphError(for sessionID: String) -> String? {
+        approvalGraphLoadErrors[sessionID]
+    }
+
+    func handleApprovalGraphRequest(_ request: ApprovalGraphRequest) -> ApprovalGraphResponsePayload {
+        guard !isLicenseSuspended else {
+            return .failure(.invalidRequest, "X Island is not accepting graph writes while licensing is suspended.")
+        }
+        let session: AgentSession
+        switch resolveApprovalGraphSession(request.target) {
+        case .success(let resolved): session = resolved
+        case .failure(let response): return response
+        }
+        if let loadError = loadApprovalGraph(sessionID: session.id) {
+            return .failure(.persistenceFailed, loadError)
+        }
+        let current = approvalGraphDocuments[session.id] ?? .init(sessionID: session.id)
+        do {
+            let updated = try ApprovalGraphEngine.apply(request, to: current)
+            if request.operation != .get, updated != current {
+                try approvalGraphStore?.save(updated)
+                approvalGraphDocuments[session.id] = updated
+            }
+            return .success(updated)
+        } catch let error as ApprovalGraphEngineError {
+            let (code, message) = error.response
+            return .failure(code, message)
+        } catch {
+            return .failure(.persistenceFailed, "The approval graph could not be saved.")
+        }
+    }
+
+    @discardableResult
+    func keepApprovalGraphNode(sessionID: String, nodeID: String,
+                               expectedRevision: Int, expectedNode: ApprovalGraphNode) -> Bool {
+        resolveApprovalGraphNode(sessionID: sessionID, nodeID: nodeID, decision: .keep,
+                                 expectedRevision: expectedRevision, expectedNode: expectedNode)
+    }
+
+    @discardableResult
+    func discardApprovalGraphNode(sessionID: String, nodeID: String,
+                                  expectedRevision: Int, expectedNode: ApprovalGraphNode) -> Bool {
+        resolveApprovalGraphNode(sessionID: sessionID, nodeID: nodeID, decision: .discard,
+                                 expectedRevision: expectedRevision, expectedNode: expectedNode)
+    }
+
+    @discardableResult
+    func addApprovalGraphComment(sessionID: String, nodeID: String,
+                                 kind: ApprovalGraphCommentKind, text: String) -> Bool {
+        if loadApprovalGraph(sessionID: sessionID) != nil { return false }
+        let current = approvalGraphDocuments[sessionID] ?? .init(sessionID: sessionID)
+        let request = ApprovalGraphRequest(
+            operation: .comment,
+            baseRevision: current.revision,
+            nodeID: nodeID,
+            commentKind: kind,
+            commentText: text
+        )
+        do {
+            let updated = try ApprovalGraphEngine.apply(request, to: current)
+            try approvalGraphStore?.save(updated)
+            approvalGraphDocuments[sessionID] = updated
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func removeApprovalGraph(sessionID: String) throws {
+        try approvalGraphStore?.delete(sessionID: sessionID)
+        approvalGraphDocuments.removeValue(forKey: sessionID)
+        loadedApprovalGraphSessions.remove(sessionID)
+        approvalGraphLoadErrors.removeValue(forKey: sessionID)
+    }
+
+    private func resolveApprovalGraphNode(sessionID: String, nodeID: String,
+                                          decision: ApprovalGraphDecision,
+                                          expectedRevision: Int,
+                                          expectedNode: ApprovalGraphNode) -> Bool {
+        if loadApprovalGraph(sessionID: sessionID) != nil { return false }
+        guard let current = approvalGraphDocuments[sessionID],
+              current.revision == expectedRevision,
+              current.proposals.contains(where: { $0.node == expectedNode }) else { return false }
+        let request = ApprovalGraphRequest(
+            operation: .resolve,
+            baseRevision: current.revision,
+            nodeID: nodeID,
+            decision: decision
+        )
+        do {
+            let updated = try ApprovalGraphEngine.apply(request, to: current)
+            try approvalGraphStore?.save(updated)
+            approvalGraphDocuments[sessionID] = updated
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func loadApprovalGraphIfNeeded(sessionID: String) {
+        _ = loadApprovalGraph(sessionID: sessionID)
+    }
+
+    @discardableResult
+    private func loadApprovalGraph(sessionID: String) -> String? {
+        if loadedApprovalGraphSessions.contains(sessionID) {
+            return approvalGraphLoadErrors[sessionID]
+        }
+        loadedApprovalGraphSessions.insert(sessionID)
+        guard let store = approvalGraphStore else { return nil }
+        do {
+            if let document = try store.load(sessionID: sessionID) {
+                approvalGraphDocuments[sessionID] = document
+            }
+            approvalGraphLoadErrors.removeValue(forKey: sessionID)
+            return nil
+        } catch {
+            let message = "The saved approval graph could not be read; approval remains available."
+            approvalGraphLoadErrors[sessionID] = message
+            return message
+        }
+    }
+
+    private func resolveApprovalGraphSession(
+        _ target: ApprovalGraphTarget
+    ) -> ApprovalGraphSessionResolution {
+        let requestedAgent: AgentType?
+        if let rawAgent = target.agentType?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawAgent.isEmpty {
+            guard let parsed = AgentType.from(rawAgent) else {
+                return .failure(.failure(.invalidRequest, "Unknown agent type '\(rawAgent)'."))
+            }
+            requestedAgent = parsed
+        } else {
+            requestedAgent = nil
+        }
+        if let sessionID = target.sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !sessionID.isEmpty {
+            guard let session = sessionById(sessionID),
+                  requestedAgent == nil || session.agentType == requestedAgent else {
+                return .failure(.failure(.sessionNotFound, "No session matches session_id '\(sessionID)'."))
+            }
+            return .success(session)
+        }
+
+        let normalizedDirectory = target.workingDirectory.map {
+            URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL.resolvingSymlinksInPath().path
+        }
+        func matches(_ session: AgentSession) -> Bool {
+            guard requestedAgent == nil || session.agentType == requestedAgent else { return false }
+            if let terminal = target.terminalSessionID, !terminal.isEmpty,
+               session.termSessionId == terminal {
+                return true
+            }
+            if let directory = normalizedDirectory {
+                let candidate = URL(fileURLWithPath: session.workingDirectory, isDirectory: true)
+                    .standardizedFileURL.resolvingSymlinksInPath().path
+                return candidate == directory
+            }
+            return false
+        }
+        if let terminal = target.terminalSessionID, !terminal.isEmpty {
+            let terminalCandidates = sessions.filter {
+                (requestedAgent == nil || $0.agentType == requestedAgent)
+                    && $0.termSessionId == terminal
+            }
+            if terminalCandidates.count == 1 { return .success(terminalCandidates[0]) }
+            if terminalCandidates.isEmpty {
+                return .failure(.failure(.sessionNotFound,
+                    "No graph session matches terminal_session_id '\(terminal)'."))
+            }
+            let ids = terminalCandidates.prefix(5).map(\.id).joined(separator: ", ")
+            return .failure(.failure(.sessionAmbiguous,
+                "More than one graph session matches the terminal. Pass one of: \(ids)"))
+        }
+
+        let candidates = sessions.filter(matches)
+        if candidates.count == 1 { return .success(candidates[0]) }
+        if candidates.isEmpty {
+            return .failure(.failure(.sessionNotFound,
+                "No graph session matches the MCP client. Pass session_id explicitly."))
+        }
+        let ids = candidates.prefix(5).map(\.id).joined(separator: ", ")
+        return .failure(.failure(.sessionAmbiguous,
+            "More than one graph session matches. Pass one of: \(ids)"))
+    }
+
     // MARK: - Private
 
     /// 导航读取已有会话索引，子任务使用父会话的完整来源信息。
@@ -1692,6 +1894,7 @@ final class SessionManager {
         let session = sessionById(message.sessionId)
             ?? sessionMatchingMirror(of: message)
             ?? createNewSession(from: message)
+        loadApprovalGraphIfNeeded(sessionID: session.id)
 
         let duplicatePrompt = nativeChatID(message, role: .user).map { id in
             session.chatHistory.contains { $0.id == id }
@@ -1820,9 +2023,11 @@ final class SessionManager {
     private func recordApprovalMapSnapshot(for session: AgentSession) {
         let store = approvalMapSnapshotStore ?? ApprovalContextMapSnapshotStore.defaultStore()
         guard let store else { return }
+        _ = loadApprovalGraph(sessionID: session.id)
         let map = ApprovalContextMapBuilder.build(session: session)
-        guard map.hasContent else { return }
-        store.append(ApprovalContextMapSnapshot(map: map), sessionID: session.id)
+        let graph = approvalGraphDocuments[session.id]
+        guard map.hasContent || !(graph?.acceptedNodes.isEmpty ?? true) else { return }
+        store.append(ApprovalContextMapSnapshot(map: map, graph: graph), sessionID: session.id)
     }
 
     /// 仅在接受新的活动后调用；历史重放、迟到结果和查找会话不能清除结束时间。
@@ -2430,6 +2635,7 @@ final class SessionManager {
             ?? createNewSession(from: message)
 
         session.lastActivityTime = Date()
+        loadApprovalGraphIfNeeded(sessionID: session.id)
         return session
     }
 
@@ -2439,6 +2645,7 @@ final class SessionManager {
             ?? createNewSession(from: message)
 
         session.lastActivityTime = Date()
+        loadApprovalGraphIfNeeded(sessionID: session.id)
         return session
     }
 

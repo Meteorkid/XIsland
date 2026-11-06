@@ -35,6 +35,7 @@ final class SocketServer: @unchecked Sendable {
 
     private let logger = Logger(subsystem: "dev.xisland", category: "socket")
     private let sessionManager: SessionManager
+    var onMCPHandshake: ((AgentType, String) -> Void)?
     private let queue = DispatchQueue(label: "dev.towerisland.socket", qos: .userInitiated)
 
     /// Shared mutable state protected by `stateLock`.
@@ -277,8 +278,9 @@ final class SocketServer: @unchecked Sendable {
     private func handleClient(_ fd: Int32) {
         let ownUID = geteuid()
         let bridgePath = DISocketConfig.socketDir + "/bin/di-bridge"
+        let identity = Self.peerIdentity(of: fd)
         switch Self.evaluatePeer(
-            Self.peerIdentity(of: fd),
+            identity,
             ownUID: ownUID,
             bridgePath: bridgePath,
             isTestMode: Self.isTestMode
@@ -317,10 +319,43 @@ final class SocketServer: @unchecked Sendable {
             return
         }
 
+        if [.approvalGraphRequest, .mcpHandshake].contains(message.type),
+           !Self.isApprovalGraphPeerTrusted(identity, ownUID: ownUID, bridgePath: bridgePath) {
+            logger.error("Rejected approval graph MCP message from an unverified bridge")
+            close(fd)
+            releaseConnection()
+            return
+        }
+
         let statusPreview = String((message.status ?? "nil").prefix(100))
         logger.debug("Message: type=\(message.type.rawValue) session=\(message.sessionId) agent=\(message.agentType ?? "nil") tool=\(message.tool ?? "nil") desc=\(message.permDescription ?? "nil") question=\(message.questionText ?? "nil") options=\(message.options?.joined(separator: ",") ?? "nil") status=\(statusPreview)")
 
         switch message.type {
+        case .mcpHandshake:
+            if let agent = AgentType.from(message.agentType), agent.isSupported,
+               let fingerprint = message.integrationFingerprint {
+                Task { @MainActor [weak self] in self?.onMCPHandshake?(agent, fingerprint) }
+            }
+            close(fd)
+            releaseConnection()
+        case .approvalGraphRequest:
+            guard let request = message.approvalGraphRequest else {
+                close(fd)
+                releaseConnection()
+                return
+            }
+            let channel = SocketResponseChannel(fd: fd, idleTimeout: 8,
+                                                onRelease: { [weak self] in self?.releaseConnection() })
+            Task { @MainActor in
+                if let agent = AgentType.from(message.agentType), agent.isSupported,
+                   let fingerprint = message.integrationFingerprint {
+                    self.onMCPHandshake?(agent, fingerprint)
+                }
+                let payload = self.sessionManager.handleApprovalGraphRequest(request)
+                var response = DIMessage(type: .approvalGraphResponse, sessionId: message.sessionId)
+                response.approvalGraphResponse = payload
+                _ = await channel.send(response)
+            }
         case .permissionRequest, .question, .planReview:
             // 交互式连接的 fd 由 channel 持有，连接计数在其关闭时释放。
             let channel = SocketResponseChannel(
@@ -354,6 +389,25 @@ final class SocketServer: @unchecked Sendable {
             close(fd)
             releaseConnection()
         }
+    }
+
+    /// Approval graph writes need an executable path, unlike legacy one-shot hooks.
+    /// Shell wrappers and short-lived clients without a path are deliberately rejected.
+    static func isApprovalGraphPeerTrusted(
+        _ identity: PeerIdentity?, ownUID: uid_t, bridgePath: String,
+        fileAttributes: (String) -> [FileAttributeKey: Any]? = {
+            try? FileManager.default.attributesOfItem(atPath: $0)
+        }
+    ) -> Bool {
+        guard let identity, identity.effectiveUID == ownUID,
+              let path = identity.executablePath,
+              URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+                == URL(fileURLWithPath: bridgePath).resolvingSymlinksInPath().path,
+              let attributes = fileAttributes(path),
+              let owner = attributes[.ownerAccountID] as? NSNumber,
+              let mode = attributes[.posixPermissions] as? NSNumber,
+              owner.uint32Value == ownUID else { return false }
+        return mode.uint16Value & 0o022 == 0
     }
 
     /// 整个响应共用一个截止时间，避免部分写入把单次超时无限延长。

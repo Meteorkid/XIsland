@@ -78,16 +78,28 @@ struct ApprovalContextMapSnapshot: Codable, Equatable {
         let kind: ApprovalContextMap.ChangeNode.Kind
     }
 
+    struct GraphNodeSnapshot: Codable, Equatable {
+        let id: String
+        let parentID: String?
+        let title: String
+        let status: ApprovalGraphNodeStatus
+    }
+
     let capturedAt: Date
     let taskTitle: String?
     let planTitles: [String]
     let changes: [FileChange]
+    /// 只记录用户已保留的显式节点；待处理提案不能冒充已完成事实。
+    let graphNodes: [GraphNodeSnapshot]?
 
-    init(map: ApprovalContextMap, capturedAt: Date = Date()) {
+    init(map: ApprovalContextMap, graph: ApprovalGraphDocument? = nil, capturedAt: Date = Date()) {
         self.capturedAt = capturedAt
         self.taskTitle = map.task?.title
         self.planTitles = map.plan.map(\.title)
         self.changes = map.changes.map { FileChange(path: $0.path, kind: $0.kind) }
+        self.graphNodes = graph?.acceptedNodes.map {
+            GraphNodeSnapshot(id: $0.id, parentID: $0.parentID, title: $0.title, status: $0.status)
+        }
     }
 }
 
