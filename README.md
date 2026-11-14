@@ -35,6 +35,7 @@ X Island sits at the top of your screen as a compact pill. When your AI agents a
 
 - **Unified dashboard** — See all AI coding agents in one place, regardless of which terminal or IDE they run in
 - **Real-time status** — Live status dots (blue = working, green = done, orange = needs input, red = error)
+- **Native agent hooks** — Writes a hook into each agent's own config on first launch (Claude Code settings hooks, Codex hooks.json, Cursor native hooks, Kimi TOML hooks); no manual wiring
 - **Permission approval** — Approve or deny file/command permissions directly from the island, no need to switch windows
 - **Approval context map** — Review the task, plan, file changes and reason before approval, with node annotations and round-to-round diffs
 - **Approval graph MCP** — Agents can propose local task/step nodes while the user keeps or discards each node; no command, file or approval authority is granted
