@@ -13,6 +13,8 @@
 
 > Downloads · docs · updates: <https://www.imagentx.top/en/products/xisland>
 
+> **Name note** — this project is not affiliated with any other app called X Island or XIsland, including `xisland.app`, which is a separate project by a different author. Official downloads come only from this repository's Releases and `imagentx.top`.
+
 ## Demo
 
 <p align="center">

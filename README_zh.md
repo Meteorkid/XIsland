@@ -11,6 +11,8 @@
   在屏幕顶部的浮动面板中，统一监控 Claude Code、Cursor、Codex、OpenCode、Gemini CLI 等多个 AI Agent。
 </p>
 
+> **同名说明** — 本项目与其他名为 X Island / XIsland 的应用无关，包括 `xisland.app`（那是另一位作者的项目）。官方下载只来自本仓库的 Releases 与 `imagentx.top`。
+
 ## 演示
 
 <p align="center">
