@@ -70,18 +70,17 @@ final class SessionJumpState {
                 if Self.pasteClipboard() {
                     self.noticeMessage = L10n.continuePasted
                 } else {
-                    self.noticeMessage = L10n.continueNeedsAccessibility
-                    Self.openAccessibilitySettings()
+                    self.noticeMessage = String(format: L10n.continueNeedsAccessibilityPath,
+                                                Bundle.main.bundlePath)
+                    Self.revealForAccessibility()
                 }
             }
         }
     }
 
-    /// 需要辅助功能权限；未授权时向系统发起一次授权提示。
+    /// 静默检查授权：带 prompt 的检查会在每次点击时重复弹窗，已授权也可能被再次提示。
     private static func pasteClipboard() -> Bool {
-        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-        let options = [promptKey: true] as CFDictionary
-        guard AXIsProcessTrustedWithOptions(options) else { return false }
+        guard AXIsProcessTrusted() else { return false }
         let source = CGEventSource(stateID: .hidSystemState)
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
               let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else {
@@ -94,9 +93,12 @@ final class SessionJumpState {
         return true
     }
 
-    private static func openAccessibilitySettings() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
-        NSWorkspace.shared.open(url)
+    /// 同时打开系统设置的辅助功能页，并在 Finder 中选中 App，方便直接拖入授权列表。
+    private static func revealForAccessibility() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
     }
 
     static func targetSession(_ session: AgentSession,

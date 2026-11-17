@@ -300,29 +300,7 @@ struct PreferencesView: View {
 
             section(L10n.sectionMacPrivacy) {
                 card {
-                    Text(L10n.macPrivacyIntro)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 8) {
-                            macPrivacyButton(title: L10n.openPrivacySecurityButton) {
-                                SystemPrivacySettings.openPrivacySecurity()
-                            }
-                            macPrivacyButton(title: L10n.openAutomationButton) {
-                                SystemPrivacySettings.openAutomation()
-                            }
-                        }
-                        HStack(spacing: 8) {
-                            macPrivacyButton(title: L10n.openAccessibilityButton) {
-                                SystemPrivacySettings.openAccessibility()
-                            }
-                            macPrivacyButton(title: L10n.openLoginItemsButton) {
-                                SystemPrivacySettings.openLoginItems()
-                            }
-                        }
-                    }
-                    .padding(.top, 4)
+                    PermissionsSection()
                 }
             }
 

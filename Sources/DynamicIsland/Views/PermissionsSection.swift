@@ -1,0 +1,127 @@
+import AppKit
+import SwiftUI
+import UserNotifications
+
+/// 设置页「权限」面板：集中展示每项系统权限的当前状态与授权入口，
+/// 避免用户到功能触发时才发现没授权。
+struct PermissionsSection: View {
+    @State private var accessibilityGranted = AXIsProcessTrusted()
+    @State private var notificationsGranted = false
+    @State private var notificationsKnown = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            row(
+                title: L10n.permissionAccessibility,
+                detail: L10n.permissionAccessibilityDetail,
+                state: accessibilityGranted ? .granted : .missing,
+                open: { SystemPrivacySettings.openAccessibility() },
+                reveal: { NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL]) }
+            )
+            divider
+            row(
+                title: L10n.permissionAutomation,
+                detail: L10n.permissionAutomationDetail,
+                state: .onDemand,
+                open: { SystemPrivacySettings.openAutomation() },
+                reveal: nil
+            )
+            divider
+            row(
+                title: L10n.permissionNotifications,
+                detail: L10n.permissionNotificationsDetail,
+                state: notificationsKnown ? (notificationsGranted ? .granted : .missing) : .onDemand,
+                open: { SystemPrivacySettings.openNotifications() },
+                reveal: nil
+            )
+            divider
+            HStack {
+                Text(L10n.permissionHint)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Button(L10n.permissionRefresh) { refresh() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.cyan)
+            }
+            .padding(.top, 8)
+        }
+        .task { refresh() }
+    }
+
+    private enum State {
+        case granted, missing, onDemand
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.06))
+            .frame(height: 0.5)
+            .padding(.vertical, 8)
+    }
+
+    private func row(title: String, detail: String, state: State,
+                     open: @escaping () -> Void, reveal: (() -> Void)?) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 12, weight: .medium))
+                    Text(label(for: state))
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(color(for: state))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(color(for: state).opacity(0.12))
+                        .clipShape(Capsule())
+                }
+                Text(detail)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 6)
+            VStack(alignment: .trailing, spacing: 4) {
+                Button(L10n.permissionOpenSettings, action: open)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.cyan)
+                if let reveal {
+                    Button(L10n.permissionRevealApp, action: reveal)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func label(for state: State) -> String {
+        switch state {
+        case .granted: return L10n.permissionGranted
+        case .missing: return L10n.permissionMissing
+        case .onDemand: return L10n.permissionOnDemand
+        }
+    }
+
+    private func color(for state: State) -> Color {
+        switch state {
+        case .granted: return .green
+        case .missing: return .orange
+        case .onDemand: return .secondary
+        }
+    }
+
+    private func refresh() {
+        accessibilityGranted = AXIsProcessTrusted()
+        Task {
+            let settings = await UNUserNotificationCenter.current().notificationSettings()
+            await MainActor.run {
+                notificationsKnown = settings.authorizationStatus != .notDetermined
+                notificationsGranted = settings.authorizationStatus == .authorized
+            }
+        }
+    }
+}

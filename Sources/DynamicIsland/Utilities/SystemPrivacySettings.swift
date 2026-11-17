@@ -22,9 +22,17 @@ enum SystemPrivacySettings {
         open("x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
     }
 
-    /// Login Items & Extensions (background items) — pairs with “Launch at Login”.
-    static func openLoginItems() {
+    /// Notifications — used by task-completion and approval reminders.
+    static func openNotifications() {
         if #available(macOS 13.0, *) {
+            open("x-apple.systempreferences:com.apple.Notifications-Settings.extension")
+        } else {
+            open("x-apple.systempreferences:com.apple.preference.notifications")
+        }
+    }
+
+    /// Login Items & Extensions (background items) — pairs with “Launch at Login”.
+    static func openLoginItems() {        if #available(macOS 13.0, *) {
             open("x-apple.systempreferences:com.apple.LoginItems-Settings.extension")
         } else {
             open("x-apple.systempreferences:com.apple.preferences.users")

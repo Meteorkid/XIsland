@@ -13,6 +13,14 @@ CLI_SRC="$PROJECT_DIR/Scripts/xisland"
 CLI_LIB_DIR="$PROJECT_DIR/Scripts/lib"
 APP_CLI_DIR="$APP_BUNDLE/Contents/Resources/cli"
 
+# 可选：本地固定签名身份（自签名证书），让 macOS 授权跨构建保留。
+# 优先 CODESIGN_IDENTITY 环境变量，其次 ~/.xisland/signing-identity，缺省 adhoc。
+LOCAL_SIGNING_IDENTITY_FILE="${HOME}/.xisland/signing-identity"
+if [[ -z "${CODESIGN_IDENTITY:-}" && -f "$LOCAL_SIGNING_IDENTITY_FILE" ]]; then
+    CODESIGN_IDENTITY="$(head -n 1 "$LOCAL_SIGNING_IDENTITY_FILE" | tr -d '\r\n')"
+fi
+CODE_SIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+
 # 从 VERSION 文件读取版本号（单一版本源）
 VERSION=$(cat "$PROJECT_DIR/VERSION" | tr -d '[:space:]')
 
@@ -81,8 +89,8 @@ cp "$BUILD_DIR/release/XIsland" "$APP_BUNDLE/Contents/MacOS/XIsland"
 cp "$BUILD_DIR/release/DIBridge" "$APP_BUNDLE/Contents/MacOS/di-bridge"
 cp "$CLI_SRC" "$APP_CLI_DIR/xisland"
 cp "$CLI_LIB_DIR/xisland-cli.sh" "$APP_CLI_DIR/lib/xisland-cli.sh"
-codesign -s - -f "$APP_BUNDLE/Contents/MacOS/di-bridge" 2>/dev/null || true
-codesign -s - -f "$APP_BUNDLE/Contents/MacOS/XIsland" 2>/dev/null || true
+codesign -s "$CODE_SIGN_IDENTITY" -f "$APP_BUNDLE/Contents/MacOS/di-bridge" 2>/dev/null || true
+codesign -s "$CODE_SIGN_IDENTITY" -f "$APP_BUNDLE/Contents/MacOS/XIsland" 2>/dev/null || true
 
 cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -152,7 +160,7 @@ cat > "$APP_BUNDLE/Contents/PkgInfo" << 'EOF'
 APPL????
 EOF
 
-codesign --force --deep --sign - "$APP_BUNDLE"
+codesign --force --deep --sign "$CODE_SIGN_IDENTITY" "$APP_BUNDLE"
 
 echo "==> Installing bridge binary..."
 if [[ "${X_ISLAND_SKIP_BRIDGE_INSTALL:-0}" == "1" ]]; then
@@ -161,7 +169,7 @@ else
     mkdir -p "$BRIDGE_INSTALL_DIR"
     cp "$BUILD_DIR/release/DIBridge" "$BRIDGE_INSTALL_DIR/di-bridge"
     chmod +x "$BRIDGE_INSTALL_DIR/di-bridge"
-    codesign -s - -f "$BRIDGE_INSTALL_DIR/di-bridge" 2>/dev/null || true
+    codesign -s "$CODE_SIGN_IDENTITY" -f "$BRIDGE_INSTALL_DIR/di-bridge" 2>/dev/null || true
     cp "$CLI_SRC" "$BRIDGE_INSTALL_DIR/xisland"
     mkdir -p "$BRIDGE_INSTALL_DIR/lib"
     cp "$CLI_LIB_DIR/xisland-cli.sh" "$BRIDGE_INSTALL_DIR/lib/xisland-cli.sh"

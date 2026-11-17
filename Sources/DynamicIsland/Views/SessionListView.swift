@@ -165,7 +165,7 @@ struct SessionCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             // 可跳转的卡片内容
             Button {
-                jumpState.request(session, manager: manager, onAccepted: { onJump?() })
+                jumpToSession()
             } label: {
                 VStack(alignment: .leading, spacing: 0) {
                     cardHeader
@@ -240,6 +240,8 @@ struct SessionCardView: View {
                 recapSection(recap)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                    .onTapGesture { jumpToSession() }
             } else if recapOnlyCards {
                 Divider()
                     .background(IslandStyle.divider(for: themeManager.resolvedScheme).opacity(IslandStyle.dividerOpacity(for: themeManager.resolvedScheme)))
@@ -257,6 +259,8 @@ struct SessionCardView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
+                .contentShape(Rectangle())
+                .onTapGesture { jumpToSession() }
             }
 
             // 子代理区（独立于跳转 Button）
@@ -601,6 +605,11 @@ struct SessionCardView: View {
         .padding(.vertical, 6)
         .background(.cyan.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
+    /// 卡片内任何非按钮区域都走同一个跳转动作。
+    private func jumpToSession() {
+        jumpState.request(session, manager: manager, onAccepted: { onJump?() })
     }
 
     /// 只有已结束或空闲的顶层会话显示「继续下一步」；子代理不单独发送。

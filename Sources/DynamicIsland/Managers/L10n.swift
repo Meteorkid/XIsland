@@ -1067,6 +1067,98 @@ enum L10n {
                   en: "Copied — allow X Island in Privacy & Security → Accessibility, then retry")
     }
 
+    static var continueNeedsAccessibilityPath: String {
+        localized("continueNeedsAccessibilityPath",
+                  zh: "已复制；把 %@ 拖入「辅助功能」列表即可（设置与 Finder 已打开）",
+                  ko: "복사했습니다. %@ 를 '손쉬운 사용' 목록으로 끌어다 놓으세요(설정과 Finder를 열었습니다)",
+                  ja: "コピーしました。%@ を「アクセシビリティ」リストへドラッグしてください(設定と Finder を開きました)",
+                  fr: "Copié ; glissez %@ dans la liste « Accessibilité » (réglages et Finder ouverts)",
+                  en: "Copied — drag %@ into the Accessibility list (Settings and Finder opened)")
+    }
+
+    // MARK: - Permissions
+
+    static var permissionAccessibility: String {
+        localized("permissionAccessibility", zh: "辅助功能", ko: "손쉬운 사용", ja: "アクセシビリティ",
+                  fr: "Accessibilité", en: "Accessibility")
+    }
+
+    static var permissionAccessibilityDetail: String {
+        localized("permissionAccessibilityDetail",
+                  zh: "「继续下一步」自动粘贴需要；更新版本后需重新拖入一次。",
+                  ko: "'다음 단계 계속' 자동 붙여넣기에 필요하며, 업데이트 후 다시 추가해야 합니다.",
+                  ja: "「次のステップへ」の自動貼り付けに必要です。更新後は再度追加が必要です。",
+                  fr: "Requis pour le collage automatique de « Continuer » ; à réautoriser après chaque mise à jour.",
+                  en: "Required for Continue auto-paste; re-authorize after each update.")
+    }
+
+    static var permissionAutomation: String {
+        localized("permissionAutomation", zh: "自动化", ko: "자동화", ja: "オートメーション",
+                  fr: "Automatisation", en: "Automation")
+    }
+
+    static var permissionAutomationDetail: String {
+        localized("permissionAutomationDetail",
+                  zh: "跳转到终端标签页时使用，首次会由系统询问。",
+                  ko: "터미널 탭으로 이동할 때 사용하며, 처음 한 번 시스템이 묻습니다.",
+                  ja: "ターミナルのタブへ移動する際に使用します。初回はシステムが確認します。",
+                  fr: "Utilisé pour revenir à l'onglet du terminal ; demandé par le système la première fois.",
+                  en: "Used when jumping back to a terminal tab; macOS asks once.")
+    }
+
+    static var permissionNotifications: String {
+        localized("permissionNotifications", zh: "通知", ko: "알림", ja: "通知",
+                  fr: "Notifications", en: "Notifications")
+    }
+
+    static var permissionNotificationsDetail: String {
+        localized("permissionNotificationsDetail",
+                  zh: "任务完成与审批提醒使用系统通知。",
+                  ko: "작업 완료 및 승인 알림에 시스템 알림을 사용합니다.",
+                  ja: "タスク完了と承認の通知にシステム通知を使用します。",
+                  fr: "Les alertes de fin de tâche et d'approbation utilisent les notifications système.",
+                  en: "Task completion and approval reminders use system notifications.")
+    }
+
+    static var permissionGranted: String {
+        localized("permissionGranted", zh: "已允许", ko: "허용됨", ja: "許可済み",
+                  fr: "Autorisé", en: "Allowed")
+    }
+
+    static var permissionMissing: String {
+        localized("permissionMissing", zh: "未允许", ko: "허용 안 됨", ja: "未許可",
+                  fr: "Non autorisé", en: "Not allowed")
+    }
+
+    static var permissionOnDemand: String {
+        localized("permissionOnDemand", zh: "按需", ko: "필요 시", ja: "必要時",
+                  fr: "À la demande", en: "On demand")
+    }
+
+    static var permissionOpenSettings: String {
+        localized("permissionOpenSettings", zh: "打开设置", ko: "설정 열기", ja: "設定を開く",
+                  fr: "Ouvrir les réglages", en: "Open Settings")
+    }
+
+    static var permissionRevealApp: String {
+        localized("permissionRevealApp", zh: "显示 App", ko: "앱 보기", ja: "アプリを表示",
+                  fr: "Afficher l'app", en: "Show App")
+    }
+
+    static var permissionRefresh: String {
+        localized("permissionRefresh", zh: "刷新状态", ko: "상태 새로고침", ja: "状態を更新",
+                  fr: "Actualiser", en: "Refresh")
+    }
+
+    static var permissionHint: String {
+        localized("permissionHint",
+                  zh: "授权后如状态未更新，请重启应用。",
+                  ko: "허용 후 상태가 갱신되지 않으면 앱을 다시 시작하세요.",
+                  ja: "許可後に状態が更新されない場合はアプリを再起動してください。",
+                  fr: "Redémarrez l'app si l'état ne se met pas à jour.",
+                  en: "Restart the app if the status does not update.")
+    }
+
     static var localSummary: String {
         localized("localSummary",
             zh: "摘要（本地）", ko: "요약(로컬)", ja: "要約(ローカル)",
