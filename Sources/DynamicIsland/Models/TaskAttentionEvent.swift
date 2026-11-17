@@ -14,8 +14,35 @@ struct TaskAttentionEvent: Equatable {
 
 enum TaskAttentionSettings {
     static let enabledKey = "taskAttentionEnabled"
+    static let onCompletionKey = "taskAttentionOnCompletion"
+    static let onInteractionKey = "taskAttentionOnInteraction"
+    static let forceAcrossSpacesKey = "taskAttentionForceAcrossSpaces"
 
     static func isEnabled(defaults: UserDefaults = AppPreferences.defaults) -> Bool {
         defaults.object(forKey: enabledKey) as? Bool ?? true
+    }
+
+    static func onCompletion(defaults: UserDefaults = AppPreferences.defaults) -> Bool {
+        defaults.object(forKey: onCompletionKey) as? Bool ?? true
+    }
+
+    static func onInteraction(defaults: UserDefaults = AppPreferences.defaults) -> Bool {
+        defaults.object(forKey: onInteractionKey) as? Bool ?? true
+    }
+
+    static func forcesAcrossSpaces(defaults: UserDefaults = AppPreferences.defaults) -> Bool {
+        defaults.object(forKey: forceAcrossSpacesKey) as? Bool ?? false
+    }
+
+    /// 总开关优先；随后按事件类型分流，完成与审批/问答/计划可以分开控制。
+    static func shouldPresent(for kind: TaskAttentionEvent.Kind,
+                              defaults: UserDefaults = AppPreferences.defaults) -> Bool {
+        guard isEnabled(defaults: defaults) else { return false }
+        switch kind {
+        case .completion:
+            return onCompletion(defaults: defaults)
+        case .permission, .question, .planReview:
+            return onInteraction(defaults: defaults)
+        }
     }
 }

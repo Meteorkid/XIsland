@@ -88,6 +88,7 @@ struct PreferencesView: View {
     @AppStorage(CompanionSettings.decisionsKey) private var companionRemoteDecisions = false
     @AppStorage("autoCollapseEnabled") private var autoCollapseEnabled = true
     @AppStorage("compactBadgesInExpandedView") private var compactBadgesInExpandedView = true
+    @AppStorage("recapOnlyCards") private var recapOnlyCards = false
     @AppStorage("displayTimestamp") private var displayTimestamp = true
     @AppStorage("reduceMotion") private var reduceMotion = false
     @AppStorage("hoverToExpandPanel") private var hoverToExpandPanel = false
@@ -497,6 +498,10 @@ struct PreferencesView: View {
                     dividerLine
                     settingRow(L10n.compactBadges, id: "compactBadges", description: L10n.compactBadgesDesc) {
                         Toggle("", isOn: $compactBadgesInExpandedView).labelsHidden()
+                    }
+                    dividerLine
+                    settingRow(L10n.recapOnlyCards, id: "recapOnlyCards", description: L10n.recapOnlyCardsDesc) {
+                        Toggle("", isOn: $recapOnlyCards).labelsHidden()
                     }
                     dividerLine
                     settingRow(L10n.showTimestamps, id: "showTimestamps", description: L10n.showTimestampsDesc) {

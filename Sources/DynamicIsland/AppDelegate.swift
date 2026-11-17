@@ -12,6 +12,8 @@ extension Notification.Name {
     static let xislandExportSession = Notification.Name("xislandExportSession")
     static let xislandToggleSearch = Notification.Name("xislandToggleSearch")
     static let xislandTaskAttention = Notification.Name("xislandTaskAttention")
+    /// 任务提醒要求「显示并展开面板」时使用；与仅显示窗口的 taskAttention 分开。
+    static let xislandRequestExpand = Notification.Name("xislandRequestExpand")
 }
 
 /// 跨进程通知前缀：请求目标灵动岛隐藏自身
@@ -1098,7 +1100,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 提醒只争取岛的显示权，不激活应用或替用户打开/确认任务详情。
     func presentTaskAttention(_ event: TaskAttentionEvent) {
-        guard !isTerminating, allowsFeatureActions, TaskAttentionSettings.isEnabled(),
+        guard !isTerminating, allowsFeatureActions,
+              TaskAttentionSettings.shouldPresent(for: event.kind),
               sessionManager.isCurrentTaskAttention(event), let window = notchWindow else { return }
         hasExplicitIslandVisibilityRequest = true
         pendingIslandShowURL = nil
@@ -1106,11 +1109,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         IslandAttentionEpoch.advance()
         AppSwitcher.shared.cancelSwitch()
         window.protectsTaskAttention = true
+        if TaskAttentionSettings.forcesAcrossSpaces() { window.presentAcrossSpaces() }
         if NSApp.isHidden, !testConfiguration.isEnabled { NSApp.unhideWithoutActivation() }
         window.showAtActiveScreen(pinUntilCollapse: event.kind != .completion || sessionManager.hasInteraction)
         requestOtherIslandsToHide()
         NotificationCenter.default.post(name: .xislandTaskAttention, object: window,
                                         userInfo: ["event": event])
+
+        // 窗口显示与展开是两步：等窗口真正可见后再请求展开，避免 expand 被 expandPending 拦下。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self, weak window] in
+            guard let self, let window, window.isVisible,
+                  self.sessionManager.isCurrentTaskAttention(event) else { return }
+            NotificationCenter.default.post(name: .xislandRequestExpand, object: window,
+                                            userInfo: ["event": event])
+        }
 
         // WindowServer 可见性可能滞后一帧；仅在仍拥有这次显示意图时重发让位通知。
         let shownAt = window.lastExplicitShowTime

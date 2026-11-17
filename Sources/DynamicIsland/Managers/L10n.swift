@@ -57,6 +57,26 @@ enum L10n {
                   fr: "Alertes de tâche", en: "Task alerts")
     }
 
+    static var taskAttentionOnCompletion: String {
+        localized("taskAttentionOnCompletion", zh: "完成时自动展开", ko: "완료 시 자동 펼침",
+                  ja: "完了時に自動展開", fr: "Déplier à la fin",
+                  en: "Auto-expand on completion")
+    }
+
+    static var taskAttentionOnInteraction: String {
+        localized("taskAttentionOnInteraction", zh: "审批时自动展开", ko: "승인 요청 시 자동 펼침",
+                  ja: "承認時に自動展開", fr: "Déplier pour les approbations",
+                  en: "Auto-expand for approvals")
+    }
+
+    static var taskAttentionAcrossSpaces: String {
+        localized("taskAttentionAcrossSpaces", zh: "在所有桌面与全屏应用上强制显示",
+                  ko: "모든 Space와 전체 화면 앱에서 강제 표시",
+                  ja: "すべてのスペースとフルスクリーンアプリで強制表示",
+                  fr: "Afficher sur tous les espaces et apps plein écran",
+                  en: "Force across all Spaces and full-screen apps")
+    }
+
     static var taskAttentionOn: String {
         localized("taskAttentionOn", zh: "已开启", ko: "켜짐", ja: "オン", fr: "Activé", en: "On")
     }
@@ -942,6 +962,22 @@ enum L10n {
             zh: "显示时间戳", ko: "타임스탬프 표시", ja: "タイムスタンプを表示",
             fr: "Afficher l'horodatage",
             en: "Show timestamps")
+    }
+
+    static var recapOnlyCards: String {
+        localized("recapOnlyCards",
+            zh: "会话卡片只显示摘要", ko: "세션 카드에 요약만 표시", ja: "セッションカードは要約のみ",
+            fr: "Cartes de session : résumé seul",
+            en: "Session cards: summary only")
+    }
+
+    static var recapOnlyCardsDesc: String {
+        localized("recapOnlyCardsDesc",
+            zh: "隐藏提示词、回复流和工具调用，只保留结束后的 AI 摘要。没有摘要的会话仍显示完整内容。",
+            ko: "프롬프트, 응답 스트림, 도구 호출을 숨기고 완료 후 AI 요약만 표시합니다. 요약이 없는 세션은 전체 내용을 표시합니다.",
+            ja: "プロンプト、応答ストリーム、ツール呼び出しを隠し、完了後の AI 要約だけを表示します。要約がないセッションは全文を表示します。",
+            fr: "Masque les invites, le flux de réponse et les appels d'outils ; seule la synthèse IA est affichée. Les sessions sans synthèse gardent le détail complet.",
+            en: "Hide prompts, streaming replies and tool calls; keep only the post-run AI summary. Sessions without a summary still show full details.")
     }
 
     static var reduceMotion: String {

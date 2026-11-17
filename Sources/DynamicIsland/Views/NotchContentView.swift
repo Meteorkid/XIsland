@@ -62,6 +62,9 @@ struct NotchContentView: View {
     @AppStorage("smartSuppression") private var smartSuppression = true
     @AppStorage("taskAttentionEnabled") private var taskAttentionEnabled = true
     @AppStorage(ApprovalContextMapSettings.enabledKey) private var approvalContextMapEnabled = true
+    @AppStorage(TaskAttentionSettings.onCompletionKey) private var taskAttentionOnCompletion = true
+    @AppStorage(TaskAttentionSettings.onInteractionKey) private var taskAttentionOnInteraction = true
+    @AppStorage(TaskAttentionSettings.forceAcrossSpacesKey) private var taskAttentionAcrossSpaces = false
     @AppStorage("autoHideWhenNoActiveSessions") private var autoHideWhenNoActiveSessions = false
     @AppStorage("panelWidth") private var panelWidth = 380.0
     @AppStorage("panelMaxHeight") private var panelMaxHeight = 620.0
@@ -537,6 +540,11 @@ struct NotchContentView: View {
             }
             Divider()
             Toggle(L10n.taskAttention, isOn: $taskAttentionEnabled)
+            if taskAttentionEnabled {
+                Toggle(L10n.taskAttentionOnCompletion, isOn: $taskAttentionOnCompletion)
+                Toggle(L10n.taskAttentionOnInteraction, isOn: $taskAttentionOnInteraction)
+                Toggle(L10n.taskAttentionAcrossSpaces, isOn: $taskAttentionAcrossSpaces)
+            }
             Toggle(L10n.approvalContextMap, isOn: $approvalContextMapEnabled)
             if approvalContextMapEnabled {
                 Button(L10n.approvalGraphMCPConfigure) {
@@ -681,6 +689,11 @@ struct NotchContentView: View {
                 // 仅能观察等待状态的客户端回到总览，通过原有跳转入口处理。
                 expand(to: .expanded)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xislandRequestExpand)) { note in
+            guard let window = notchWindow, note.object as AnyObject? === window else { return }
+            // 提醒类事件要求用户立刻看到完整面板，而不是只显示一个提示药丸。
+            if !isExpanded { expand(to: .expanded) }
         }
         .onReceive(NotificationCenter.default.publisher(for: .xislandScrollDown)) { _ in
             let now = Date()

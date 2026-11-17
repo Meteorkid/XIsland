@@ -6,7 +6,23 @@ import XCTest
 
 @MainActor
 final class AppDelegateTaskAttentionTests: XCTestCase {
+    /// 完成提醒默认只提醒不展开；这些用例验证"用户开启完成展开"后的行为。
+    private func enableCompletionAttention() -> () -> Void {
+        let defaults = AppPreferences.defaults
+        let previous = defaults.object(forKey: TaskAttentionSettings.onCompletionKey)
+        defaults.set(true, forKey: TaskAttentionSettings.onCompletionKey)
+        return {
+            if let previous {
+                defaults.set(previous, forKey: TaskAttentionSettings.onCompletionKey)
+            } else {
+                defaults.removeObject(forKey: TaskAttentionSettings.onCompletionKey)
+            }
+        }
+    }
+
     func testRealCompletionCancelsOldHandoffAndNotifiesOnlyItsWindowWithoutAcknowledging() throws {
+        let restoreCompletion = enableCompletionAttention()
+        defer { restoreCompletion() }
         let fixture = try makeFixture()
         defer { fixture.close() }
         let oldGeneration = fixture.window.beginInboundHandoff { _ in
@@ -76,6 +92,8 @@ final class AppDelegateTaskAttentionTests: XCTestCase {
     }
 
     func testWorkBuddyCompletionUsesDefaultQueueCancelsOldHandoffAndDoesNotRepeat() async throws {
+        let restoreCompletion = enableCompletionAttention()
+        defer { restoreCompletion() }
         let fixture = try makeFixture()
         defer { fixture.close() }
         let receptionKey = "autoConfigure.workbuddy"

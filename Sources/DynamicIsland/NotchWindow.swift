@@ -280,6 +280,13 @@ final class NotchWindow: NSPanel {
         }
     }
 
+    /// 提醒类事件可以要求「不论当前在哪个桌面或全屏应用，都显示出来」。
+    /// 只在用户显式开启后调用，避免默认把所有桌面都占上。
+    func presentAcrossSpaces() {
+        collectionBehavior.insert([.canJoinAllSpaces, .fullScreenAuxiliary])
+        orderFrontRegardless()
+    }
+
     @objc private func activeSpaceDidChange(_ note: Notification) {
         refreshFullscreenVisibility()
     }

@@ -163,6 +163,7 @@ struct SessionCardView: View {
     @State private var previousStatus: SessionStatus?
     @State private var statusChangeTrigger = 0
     @AppStorage("compactBadgesInExpandedView") private var compactBadges = true
+    @AppStorage("recapOnlyCards") private var recapOnlyCards = false
     @AppStorage("displayTimestamp") private var displayTimestamp = true
     @AppStorage("reduceMotion") private var appReduceMotion = false
     @AppStorage("disableAnimations") private var disableAnimations = false
@@ -171,6 +172,12 @@ struct SessionCardView: View {
     private var reduceMotion: Bool {
         !IslandMotionPolicy(reduceMotion: appReduceMotion, systemReduceMotion: systemReduceMotion,
                             disableAnimations: disableAnimations).allowsContinuousAnimation
+    }
+
+    /// 精简模式下只保留标题与 AI 摘要；没有摘要的会话仍显示完整内容，避免只剩一个标题。
+    private var showsSessionDetails: Bool {
+        guard recapOnlyCards else { return true }
+        return (session.recapText ?? "").isEmpty
     }
 
     var body: some View {
@@ -185,7 +192,7 @@ struct SessionCardView: View {
                         .padding(.top, 12)
                         .padding(.bottom, 6)
 
-                    if !session.prompt.isEmpty && !session.hasPromptTitle {
+                    if showsSessionDetails && !session.prompt.isEmpty && !session.hasPromptTitle {
                         HStack(alignment: .top, spacing: 6) {
                             Image(systemName: "person.fill")
                                 .font(.system(size: 8))
@@ -200,13 +207,13 @@ struct SessionCardView: View {
                         .padding(.bottom, 4)
                     }
 
-                    if !session.agentResponse.isEmpty {
+                    if showsSessionDetails && !session.agentResponse.isEmpty {
                         streamingThoughtView(for: session)
                             .padding(.horizontal, 14)
                             .padding(.bottom, 6)
                     }
 
-                    if session.currentTool != nil {
+                    if showsSessionDetails, session.currentTool != nil {
                         HStack(spacing: 5) {
                             ProgressView()
                                 .scaleEffect(0.4)
@@ -219,7 +226,7 @@ struct SessionCardView: View {
                         .padding(.bottom, 8)
                     }
 
-                    if !session.events.isEmpty {
+                    if showsSessionDetails && !session.events.isEmpty {
                         Divider()
                             .background(IslandStyle.divider(for: themeManager.resolvedScheme).opacity(IslandStyle.dividerOpacity(for: themeManager.resolvedScheme)))
                             .padding(.horizontal, 12)

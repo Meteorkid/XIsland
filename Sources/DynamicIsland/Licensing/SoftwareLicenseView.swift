@@ -25,11 +25,20 @@ struct SoftwareLicenseView: View {
                     Label(statusTitle(controller.state), systemImage: controller.allowsAccess ? "checkmark.shield.fill" : "lock.shield")
                         .font(.headline)
                     if case .active(let payload) = controller.state {
-                        if let expiry = payload.entitlementExpiresAt {
-                            Text((isChinese ? "使用期限：" : "Valid until: ") + formattedDate(expiry))
+                        if payload.kind == .lifetime {
+                            // 永久授权没有到期日；expiresAt 只是离线凭证的刷新周期，
+                            // 显示成"可离线使用至"会让用户误以为授权要过期。
+                            Text(isChinese
+                                 ? "永久有效 · 无需续期（联网时自动刷新离线凭证）"
+                                 : "Lifetime access · no renewal needed (offline credential refreshes when online)")
+                                .font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            if let expiry = payload.entitlementExpiresAt {
+                                Text((isChinese ? "使用期限：" : "Valid until: ") + formattedDate(expiry))
+                            }
+                            Text((isChinese ? "可离线使用至：" : "Offline access until: ") + formattedDate(payload.expiresAt))
+                                .font(.caption).foregroundStyle(.secondary)
                         }
-                        Text((isChinese ? "可离线使用至：" : "Offline access until: ") + formattedDate(payload.expiresAt))
-                            .font(.caption).foregroundStyle(.secondary)
                     }
                     if let error = controller.lastError {
                         Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
