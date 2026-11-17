@@ -28,9 +28,9 @@ struct CardEntranceCascade: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            // 只保留淡入：缩放与上浮会让卡片在滚动进出时反复「弹一下」，
+            // 而 LazyVStack 的 onAppear 会随可视区变化重播。
             .opacity(hasEntered ? 1 : 0)
-            .scaleEffect(hasEntered ? 1 : IslandMotionTokens.Geometry.cascadeScale, anchor: .top)
-            .offset(y: hasEntered ? 0 : IslandMotionTokens.Geometry.cascadeRise)
             .onAppear {
                 guard isEnabled, !reduceMotion else {
                     hasEntered = true
