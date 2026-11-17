@@ -117,6 +117,17 @@ These are the intended integration routes. See the [compatibility matrix](docs/c
 >
 > Or: **System Settings → Privacy & Security → scroll down → click "Open Anyway"** next to the X Island warning.
 
+### Accessibility permission ("Continue" auto-paste)
+
+The **Continue** action sends ⌘V to the terminal window, which macOS only allows for apps holding the Accessibility permission.
+
+- On first use, X Island opens **System Settings → Privacy & Security → Accessibility** and reveals the app in Finder.
+- Drag **X Island** from Finder into the Accessibility list (or click `+` and choose `/Applications/X Island.app`).
+- **Re-authorize after every update**: X Island is adhoc-signed, so macOS treats each new build as a different app and drops the previous grant.
+- Without the permission nothing breaks: the command is still copied to the clipboard, and you can paste it manually with ⌘V before pressing Return.
+
+See [Accessibility permission](docs/accessibility-permission.md) for details.
+
 ### CLI Upgrade
 
 X Island installs a companion CLI at `~/.xisland/bin/xisland`.
