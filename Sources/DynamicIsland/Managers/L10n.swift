@@ -973,11 +973,96 @@ enum L10n {
 
     static var recapOnlyCardsDesc: String {
         localized("recapOnlyCardsDesc",
-            zh: "隐藏提示词、回复流和工具调用，只保留结束后的 AI 摘要。没有摘要的会话仍显示完整内容。",
-            ko: "프롬프트, 응답 스트림, 도구 호출을 숨기고 완료 후 AI 요약만 표시합니다. 요약이 없는 세션은 전체 내용을 표시합니다.",
-            ja: "プロンプト、応答ストリーム、ツール呼び出しを隠し、完了後の AI 要約だけを表示します。要約がないセッションは全文を表示します。",
-            fr: "Masque les invites, le flux de réponse et les appels d'outils ; seule la synthèse IA est affichée. Les sessions sans synthèse gardent le détail complet.",
-            en: "Hide prompts, streaming replies and tool calls; keep only the post-run AI summary. Sessions without a summary still show full details.")
+            zh: "隐藏提示词、回复流和工具调用，只保留结束后的 AI 摘要。没有摘要的会话会显示占位提示。",
+            ko: "프롬프트, 응답 스트림, 도구 호출을 숨기고 완료 후 AI 요약만 표시합니다. 요약이 없는 세션에는 안내 문구가 표시됩니다.",
+            ja: "プロンプト、応答ストリーム、ツール呼び出しを隠し、完了後の AI 要約だけを表示します。要約がないセッションには案内が表示されます。",
+            fr: "Masque les invites, le flux de réponse et les appels d'outils ; seule la synthèse IA est affichée. Les sessions sans synthèse affichent un texte indicatif.",
+            en: "Hide prompts, streaming replies and tool calls; keep only the post-run AI summary. Sessions without a summary show a placeholder.")
+    }
+
+    static var recapUnavailable: String {
+        localized("recapUnavailable",
+            zh: "此会话还没有摘要（由客户端在结束后上报）",
+            ko: "이 세션에는 아직 요약이 없습니다(클라이언트가 완료 후 보고)",
+            ja: "このセッションにはまだ要約がありません(クライアントが完了後に報告)",
+            fr: "Pas encore de synthèse pour cette session (fournie par le client à la fin)",
+            en: "No summary for this session yet (reported by the client on completion)")
+    }
+
+    static var activeWindow: String {
+        localized("activeWindow", zh: "活跃窗口", ko: "활성 기간", ja: "アクティブ期間",
+                  fr: "Fenêtre active", en: "Active window")
+    }
+
+    static var activeWindowDesc: String {
+        localized("activeWindowDesc",
+            zh: "只显示这段时间内有对话的会话；右键会话可保留，搜索不受限制。",
+            ko: "이 기간에 대화가 있는 세션만 표시합니다. 세션을 마우스 오른쪽 클릭해 유지할 수 있으며 검색은 제한되지 않습니다.",
+            ja: "この期間内に対話のあるセッションのみ表示します。右クリックで保持でき、検索は制限されません。",
+            fr: "Affiche les sessions actives sur cette période ; clic droit pour en conserver une. La recherche n'est pas limitée.",
+            en: "Show sessions with activity in this window. Right-click a session to keep it; search is not limited.")
+    }
+
+    static var allSessions: String {
+        localized("allSessions", zh: "全部", ko: "전체", ja: "すべて",
+                  fr: "Tout", en: "All")
+    }
+
+    static var pinActiveSession: String {
+        localized("pinActiveSession", zh: "保留在活跃列表", ko: "활성 목록에 유지",
+                  ja: "アクティブ一覧に保持", fr: "Garder dans la liste active",
+                  en: "Keep in active list")
+    }
+
+    static var unpinActiveSession: String {
+        localized("unpinActiveSession", zh: "取消保留", ko: "유지 해제",
+                  ja: "保持を解除", fr: "Ne plus garder",
+                  en: "Stop keeping")
+    }
+
+    static var noActiveSessions: String {
+        localized("noActiveSessions", zh: "最近没有活跃会话", ko: "최근 활성 세션이 없습니다",
+                  ja: "最近のアクティブセッションはありません", fr: "Aucune session active récemment",
+                  en: "No active sessions recently")
+    }
+
+    static var noActiveSessionsDesc: String {
+        localized("noActiveSessionsDesc",
+            zh: "可在设置中调整「活跃窗口」，或直接搜索历史会话。",
+            ko: "설정에서 '활성 기간'을 조정하거나 기록 세션을 검색하세요.",
+            ja: "設定で「アクティブ期間」を変更するか、過去のセッションを検索してください。",
+            fr: "Ajustez la « fenêtre active » dans les réglages, ou recherchez une session plus ancienne.",
+            en: "Adjust the active window in settings, or search for an older session.")
+    }
+
+    static var showAllSessions: String {
+        localized("showAllSessions", zh: "显示全部会话", ko: "모든 세션 표시",
+                  ja: "すべてのセッションを表示", fr: "Afficher toutes les sessions",
+                  en: "Show all sessions")
+    }
+
+    static var localSummary: String {
+        localized("localSummary",
+            zh: "摘要（本地）", ko: "요약(로컬)", ja: "要約(ローカル)",
+            fr: "Résumé (local)", en: "Summary (local)")
+    }
+
+    static var compactSummaryLast: String {
+        localized("compactSummaryLast",
+            zh: "最后：", ko: "마지막: ", ja: "最後: ",
+            fr: "Dernier : ", en: "Last: ")
+    }
+
+    static var compactSummaryCount: String {
+        localized("compactSummaryCount",
+            zh: "%d 次工具", ko: "도구 %d회", ja: "ツール %d回",
+            fr: "%d outils", en: "%d tools")
+    }
+
+    static var compactSummaryDuration: String {
+        localized("compactSummaryDuration",
+            zh: "用时 %@", ko: "소요 %@", ja: "所要 %@",
+            fr: "Durée %@", en: "Duration %@")
     }
 
     static var reduceMotion: String {

@@ -4,13 +4,13 @@ struct SessionListView: View {
     @Environment(SessionManager.self) private var manager
     @Environment(ThemeManager.self) private var themeManager
     var onJump: (() -> Void)?
+    /// 上报列表内容的真实高度（含内边距），用于让窗口跟随 SwiftUI 布局而不是估算。
+    var onContentHeightChange: ((CGFloat) -> Void)?
     @State private var showFilterBar = false
     @AppStorage("reduceMotion") private var appReduceMotion = false
     @AppStorage("disableAnimations") private var disableAnimations = false
     @AppStorage("cascadeEntranceEnabled") private var cascadeEntranceEnabled = true
-    @AppStorage("proximityLiftEnabled") private var proximityLiftEnabled = false
-    /// 指针在列表坐标系中的 y。仅当距离感应开启时才更新，避免无谓的状态写入。
-    @State private var pointerY: CGFloat?
+    @AppStorage(SessionActivityPreferences.windowHoursKey) private var activeWindowHours = SessionActivityPreferences.defaultWindowHours
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     private var reduceMotion: Bool {
         !IslandMotionPolicy(reduceMotion: appReduceMotion, systemReduceMotion: systemReduceMotion,
@@ -21,9 +21,6 @@ struct SessionListView: View {
         insertion: .move(edge: .trailing).combined(with: .opacity),
         removal: .move(edge: .leading).combined(with: .opacity)
     )
-
-    /// 列表内卡片的估算宽度，用于推导距离感应的作用半径。
-    private static let estimatedCardWidth: CGFloat = 340
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,6 +51,27 @@ struct SessionListView: View {
 
             ScrollView {
                 LazyVStack(spacing: 10) {
+                    if manager.pendingInteractionSessions.isEmpty,
+                       Self.regularSessions(in: manager.filteredSessions).isEmpty {
+                        VStack(spacing: 6) {
+                            Text(L10n.noActiveSessions)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(IslandStyle.secondaryText)
+                            Text(L10n.noActiveSessionsDesc)
+                                .font(.system(size: 10))
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                            if activeWindowHours != 0 {
+                                Button(L10n.showAllSessions) { activeWindowHours = 0 }
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(.cyan)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 28)
+                    }
+
                     // 待处理任务置顶区域
                     ForEach(Array(manager.pendingInteractionSessions.enumerated()), id: \.element.id) { index, session in
                         PendingTaskCardView(session: session)
@@ -72,13 +90,6 @@ struct SessionListView: View {
                                     index: index + manager.pendingInteractionSessions.count,
                                     reduceMotion: reduceMotion,
                                     isEnabled: cascadeEntranceEnabled
-                                ))
-                                .modifier(ProximityLiftModifier(
-                                    pointerY: pointerY,
-                                    itemMidY: cardMidY(forIndex: index + manager.pendingInteractionSessions.count),
-                                    itemWidth: Self.estimatedCardWidth,
-                                    isEnabled: proximityLiftEnabled,
-                                    reduceMotion: reduceMotion
                                 ))
                                 .transition(reduceMotion ? .identity : cardTransition)
                         }
@@ -111,23 +122,14 @@ struct SessionListView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { height in
+                    onContentHeightChange?(height)
+                }
             }
             .animation(reduceMotion ? nil : IslandMotionTokens.elementTransition, value: manager.filteredSessions.count)
             .animation(reduceMotion ? nil : IslandMotionTokens.elementTransition, value: manager.grouping)
-            .onContinuousHover { phase in
-                guard proximityLiftEnabled, !reduceMotion else {
-                    if pointerY != nil { pointerY = nil }
-                    return
-                }
-                switch phase {
-                case .active(let location):
-                    // 只在位移超过 1pt 时写入状态，过滤亚像素抖动。
-                    if let current = pointerY, abs(current - location.y) < 1 { return }
-                    pointerY = location.y
-                case .ended:
-                    pointerY = nil
-                }
-            }
         }
         .accessibilityIdentifier(TestAccessibility.sessionList)
         .onReceive(NotificationCenter.default.publisher(for: .xislandToggleSearch)) { _ in
@@ -135,14 +137,6 @@ struct SessionListView: View {
                 showFilterBar.toggle()
             }
         }
-    }
-
-    /// 估算第 index 张卡片的中心 y。用于距离感应——卡片高度不一，
-    /// 这里用平均高度近似，精度足够（隆起半径远大于高度误差）。
-    private func cardMidY(forIndex index: Int) -> CGFloat {
-        let averageCardHeight: CGFloat = 96
-        let spacing: CGFloat = 10
-        return CGFloat(index) * (averageCardHeight + spacing) + averageCardHeight / 2
     }
 
     static func regularSessions(in sessions: [AgentSession]) -> [AgentSession] {
@@ -174,10 +168,30 @@ struct SessionCardView: View {
                             disableAnimations: disableAnimations).allowsContinuousAnimation
     }
 
-    /// 精简模式下只保留标题与 AI 摘要；没有摘要的会话仍显示完整内容，避免只剩一个标题。
-    private var showsSessionDetails: Bool {
-        guard recapOnlyCards else { return true }
-        return (session.recapText ?? "").isEmpty
+    /// 精简模式下始终只保留标题与摘要；没有客户端摘要时用本地字段拼一条紧凑描述。
+    private var showsSessionDetails: Bool { !recapOnlyCards }
+
+    /// 不调用任何模型：最后一条工具活动 + 工具次数 + 用时。
+    private var compactSummaryLines: [String] {
+        var lines: [String] = []
+        if let last = session.events.last {
+            var tail = last.tool
+            if let input = last.input?.trimmingCharacters(in: .whitespacesAndNewlines), !input.isEmpty {
+                tail += " · " + String(input.prefix(48))
+            } else if let added = last.linesAdded, added > 0 {
+                tail += " · +\(added)"
+            }
+            lines.append(L10n.compactSummaryLast + tail)
+        } else if let tool = session.currentTool, !tool.isEmpty {
+            lines.append(L10n.compactSummaryLast + tool)
+        }
+        var meta: [String] = []
+        if !session.events.isEmpty {
+            meta.append(String(format: L10n.compactSummaryCount, session.events.count))
+        }
+        meta.append(String(format: L10n.compactSummaryDuration, session.formattedDuration))
+        lines.append(meta.joined(separator: " · "))
+        return lines
     }
 
     var body: some View {
@@ -259,6 +273,23 @@ struct SessionCardView: View {
                 recapSection(recap)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
+            } else if recapOnlyCards {
+                Divider()
+                    .background(IslandStyle.divider(for: themeManager.resolvedScheme).opacity(IslandStyle.dividerOpacity(for: themeManager.resolvedScheme)))
+                    .padding(.horizontal, 12)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.localSummary)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                    ForEach(compactSummaryLines, id: \.self) { line in
+                        Text(line)
+                            .font(.system(size: 11))
+                            .foregroundStyle(IslandStyle.secondaryText)
+                            .lineLimit(2)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
             }
 
             // 子代理区（独立于跳转 Button）
@@ -310,6 +341,9 @@ struct SessionCardView: View {
         .contextMenu {
             if session.status == .completed && session.completionNeedsReview {
                 Button(L10n.markCompletionReviewed) { manager.markCompletionReviewed(sessionID: session.id) }
+            }
+            Button(SessionActivityPreferences.isPinned(session.id) ? L10n.unpinActiveSession : L10n.pinActiveSession) {
+                manager.togglePinnedActive(sessionID: session.id)
             }
             Button {
                 showExportSheet = true

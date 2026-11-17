@@ -271,6 +271,13 @@ final class SessionManager {
     }
 
     /// 过滤后的会话列表：基于 activeFilter 和 searchText
+    /// 手动保留/取消保留：保留的会话不受活跃时间窗口限制。
+    func togglePinnedActive(sessionID: String) {
+        let pinned = SessionActivityPreferences.isPinned(sessionID)
+        SessionActivityPreferences.setPinned(sessionID, pinned: !pinned)
+        visibleSessionsVersion += 1
+    }
+
     var filteredSessions: [AgentSession] {
         // 搜索时绕过 A5 的显示层隐藏，保证被隐藏的会话仍能被找回（与设置页文案一致）。
         var result = searchText.isEmpty ? visibleSessions : sessions
@@ -290,6 +297,15 @@ final class SessionManager {
                     || session.workspaceName.lowercased().contains(lower)
                     || session.terminal.lowercased().contains(lower)
                     || session.tokenUsage.model.lowercased().contains(lower)
+            }
+        }
+
+        // 活跃窗口：默认只显示最近有对话的会话；搜索时绕过，保证旧会话仍能被找回。
+        if searchText.isEmpty {
+            let hours = SessionActivityPreferences.windowHours()
+            let pinned = SessionActivityPreferences.pinnedIDs()
+            result = result.filter {
+                SessionActivityPreferences.isActive($0, windowHours: hours, pinned: pinned)
             }
         }
 

@@ -43,13 +43,14 @@ enum IslandSizeCalculator {
         for state: IslandState,
         visibleSessionCount: Int,
         panelMaxHeight: CGFloat,
-        activityLogExpanded: Bool = false
+        activityLogExpanded: Bool = false,
+        perSessionHeight: CGFloat = 80
     ) -> CGFloat {
         switch state {
         case .collapsed: return 0
         case .expanded, .permission, .question, .planReview:
             let minimumContentHeight: CGFloat = state == .expanded ? 0 : interactionContentMinimumHeight
-            let listH = min(max(CGFloat(visibleSessionCount) * 80 + 30, minimumContentHeight), panelMaxHeight)
+            let listH = min(max(CGFloat(visibleSessionCount) * perSessionHeight + 30, minimumContentHeight), panelMaxHeight)
             let logH: CGFloat = activityLogExpanded ? 140 : 0
             return expandedPanelHeaderHeight + listH + logH + expandedPanelBottomInset
         }
@@ -62,7 +63,8 @@ enum IslandSizeCalculator {
         visibleSessionCount: Int,
         panelWidth: CGFloat,
         panelMaxHeight: CGFloat,
-        activityLogExpanded: Bool = false
+        activityLogExpanded: Bool = false,
+        perSessionHeight: CGFloat = 80
     ) -> (width: CGFloat, height: CGFloat) {
         switch state {
         case .collapsed:
@@ -72,7 +74,8 @@ enum IslandSizeCalculator {
                 for: state,
                 visibleSessionCount: visibleSessionCount,
                 panelMaxHeight: panelMaxHeight,
-                activityLogExpanded: activityLogExpanded
+                activityLogExpanded: activityLogExpanded,
+                perSessionHeight: perSessionHeight
             ))
         }
     }

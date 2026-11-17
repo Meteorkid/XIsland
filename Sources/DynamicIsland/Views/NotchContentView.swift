@@ -36,6 +36,10 @@ struct NotchContentView: View {
     @State private var magneticOffset: CGSize = .zero
     @State private var lastScrollExpandAt: Date = .distantPast
     @State private var autoCollapseCountdown = ExpandedAutoCollapseCountdown()
+    /// 程序化展开（完成提醒）后的自动收起；与鼠标离开触发的倒计时分开。
+    @State private var attentionCollapseWorkItem: DispatchWorkItem?
+    /// 列表布局后的真实内容高度；为 0 时回退到估算。
+    @State private var sessionListContentHeight: CGFloat = 0
     @State private var lastExpandedInteractionMarkAt: Date = .distantPast
     /// Last known expanded `shapeHeight` (black panel), used to interpolate notch corner radii with `shapeHeight` during spring (avoids boolean snap).
     @State private var cachedExpandedShapeHeight: CGFloat = 220
@@ -144,13 +148,26 @@ struct NotchContentView: View {
     }
 
     private var expandedHeight: CGFloat {
-        IslandSizeCalculator.expandedHeight(
+        // 有真实测量时以内容为准；尚未布局时用估算兜底，避免首帧高度为 0。
+        if sessionListContentHeight > 0 {
+            let listH = min(sessionListContentHeight, panelMaxHeight)
+            let logH: CGFloat = activityLogExpanded ? 140 : 0
+            return IslandSizeCalculator.expandedPanelHeaderHeight + listH + logH
+                + IslandSizeCalculator.expandedPanelBottomInset
+        }
+        return IslandSizeCalculator.expandedHeight(
             for: state,
-            visibleSessionCount: manager.visibleSessions.count,
+            visibleSessionCount: manager.filteredSessions.count,
             panelMaxHeight: panelMaxHeight,
-            activityLogExpanded: activityLogExpanded
+            activityLogExpanded: activityLogExpanded,
+            perSessionHeight: cardHeightEstimate
         )
     }
+
+    /// 卡片高度差异很大：仅摘要约 130pt，完整详情约 220pt。
+    /// 估算偏低会把内容裁掉，这是「展开不完整」的直接原因。
+    @AppStorage("recapOnlyCards") private var recapOnlyCards = false
+    private var cardHeightEstimate: CGFloat { recapOnlyCards ? 132 : 220 }
 
     private var shapeWidth: CGFloat {
         isExpanded ? expandedWidth : pillWidth
@@ -693,7 +710,11 @@ struct NotchContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .xislandRequestExpand)) { note in
             guard let window = notchWindow, note.object as AnyObject? === window else { return }
             // 提醒类事件要求用户立刻看到完整面板，而不是只显示一个提示药丸。
-            if !isExpanded { expand(to: .expanded) }
+            requestAttentionExpansion()
+            // 完成不是必须立刻处理的事项：停留几秒后自动收起，避免面板一直挡着。
+            if let event = note.userInfo?["event"] as? TaskAttentionEvent, event.kind == .completion {
+                scheduleAttentionAutoCollapse()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .xislandScrollDown)) { _ in
             let now = Date()
@@ -879,6 +900,40 @@ struct NotchContentView: View {
         .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
+    /// 程序化展开时 `expandPending` 可能仍在上一段动画中，固定延迟会丢请求；小幅重试直到可以展开。
+    private func requestAttentionExpansion(attempt: Int = 0) {
+        guard !isExpanded else { return }
+        if expandPending || collapseAnimating {
+            guard attempt < 12 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                self.requestAttentionExpansion(attempt: attempt + 1)
+            }
+            return
+        }
+        expand(to: .expanded)
+    }
+
+    /// 完成提醒的停留时间：默认 6 秒；用户仍把指针放在面板上时顺延，离开后再收。
+    private func scheduleAttentionAutoCollapse(after seconds: TimeInterval = 6) {
+        attentionCollapseWorkItem?.cancel()
+        let work = DispatchWorkItem {
+            guard self.state != .collapsed else { return }
+            if self.isHovering || self.expandPending || self.collapseAnimating {
+                self.scheduleAttentionAutoCollapse(after: 3)
+                return
+            }
+            guard self.notchWindow?.isInteractiveSwitchPreviewActive != true else { return }
+            self.collapse()
+        }
+        attentionCollapseWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    private func cancelAttentionAutoCollapse() {
+        attentionCollapseWorkItem?.cancel()
+        attentionCollapseWorkItem = nil
+    }
+
     private func expand(to newState: IslandState) {
         guard !expandPending, notchWindow?.isSwitchingApps != true else { return }
         EnergyGovernor.shared.notePanelExpanded(newState != .collapsed)
@@ -933,6 +988,7 @@ struct NotchContentView: View {
     }
 
     private func collapse() {
+        cancelAttentionAutoCollapse()
         if notchWindow?.isInteractiveSwitchPreviewActive == true {
             notchWindow?.cancelIslandSwitchPreview()
             return
@@ -1045,10 +1101,11 @@ struct NotchContentView: View {
     private func targetSize(for state: IslandState) -> (width: CGFloat, height: CGFloat) {
         IslandSizeCalculator.targetSize(
             for: state,
-            visibleSessionCount: manager.visibleSessions.count,
+            visibleSessionCount: manager.filteredSessions.count,
             panelWidth: panelWidth,
             panelMaxHeight: panelMaxHeight,
-            activityLogExpanded: activityLogExpanded
+            activityLogExpanded: activityLogExpanded,
+            perSessionHeight: cardHeightEstimate
         )
     }
 
@@ -1081,6 +1138,9 @@ struct NotchContentView: View {
                 // 待处理任务（question/permission/planReview）已在 SessionListView 顶部内联显示
                 SessionListView(onJump: {
                     // 跳转后保持面板打开——鼠标仍在面板上，auto-collapse 会在鼠标移出时自然触发
+                }, onContentHeightChange: { height in
+                    guard abs(height - sessionListContentHeight) > 0.5 else { return }
+                    sessionListContentHeight = height
                 })
 
                 if activityLogExpanded {

@@ -89,6 +89,7 @@ struct PreferencesView: View {
     @AppStorage("autoCollapseEnabled") private var autoCollapseEnabled = true
     @AppStorage("compactBadgesInExpandedView") private var compactBadgesInExpandedView = true
     @AppStorage("recapOnlyCards") private var recapOnlyCards = false
+    @AppStorage(SessionActivityPreferences.windowHoursKey) private var activeWindowHours = SessionActivityPreferences.defaultWindowHours
     @AppStorage("displayTimestamp") private var displayTimestamp = true
     @AppStorage("reduceMotion") private var reduceMotion = false
     @AppStorage("hoverToExpandPanel") private var hoverToExpandPanel = false
@@ -104,7 +105,6 @@ struct PreferencesView: View {
     @AppStorage("hapticIntensity") private var hapticIntensity = IslandHapticIntensity.defaultValue.rawValue
     @AppStorage("symbolEffectsEnabled") private var symbolEffectsEnabled = true
     @AppStorage("cascadeEntranceEnabled") private var cascadeEntranceEnabled = true
-    @AppStorage("proximityLiftEnabled") private var proximityLiftEnabled = false
     @AppStorage("quietHoursEnabled") private var quietHoursEnabled = false
     @AppStorage("quietHoursStart") private var quietHoursStart = "22:00"
     @AppStorage("quietHoursEnd") private var quietHoursEnd = "07:00"
@@ -504,6 +504,18 @@ struct PreferencesView: View {
                         Toggle("", isOn: $recapOnlyCards).labelsHidden()
                     }
                     dividerLine
+                    settingRow(L10n.activeWindow, id: "activeWindow", description: L10n.activeWindowDesc) {
+                        Picker("", selection: $activeWindowHours) {
+                            Text("6h").tag(6)
+                            Text("12h").tag(12)
+                            Text("24h").tag(24)
+                            Text("72h").tag(72)
+                            Text(L10n.allSessions).tag(0)
+                        }
+                        .labelsHidden()
+                        .frame(width: 96)
+                    }
+                    dividerLine
                     settingRow(L10n.showTimestamps, id: "showTimestamps", description: L10n.showTimestampsDesc) {
                         Toggle("", isOn: $displayTimestamp).labelsHidden()
                     }
@@ -616,10 +628,6 @@ struct PreferencesView: View {
                     dividerLine
                     settingRow(L10n.cascadeEntranceEnabled, id: "cascadeEntranceEnabled", description: L10n.cascadeEntranceEnabledDesc) {
                         Toggle("", isOn: $cascadeEntranceEnabled).labelsHidden()
-                    }
-                    dividerLine
-                    settingRow(L10n.proximityLiftEnabled, id: "proximityLiftEnabled", description: L10n.proximityLiftEnabledDesc) {
-                        Toggle("", isOn: $proximityLiftEnabled).labelsHidden()
                     }
                 }
             }
