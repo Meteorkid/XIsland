@@ -104,7 +104,6 @@ struct PreferencesView: View {
     @AppStorage("tickerContentMode") private var tickerContentMode = CollapsedTickerContentMode.defaultValue.rawValue
     @AppStorage("hapticIntensity") private var hapticIntensity = IslandHapticIntensity.defaultValue.rawValue
     @AppStorage("symbolEffectsEnabled") private var symbolEffectsEnabled = true
-    @AppStorage("cascadeEntranceEnabled") private var cascadeEntranceEnabled = true
     @AppStorage("quietHoursEnabled") private var quietHoursEnabled = false
     @AppStorage("quietHoursStart") private var quietHoursStart = "22:00"
     @AppStorage("quietHoursEnd") private var quietHoursEnd = "07:00"
@@ -546,16 +545,6 @@ struct PreferencesView: View {
                         .frame(width: 180)
                         .disabled(reduceMotion)
                     }
-                    dividerLine
-                    settingRow(L10n.jellyIntensity, id: "jellyIntensity", description: L10n.jellyIntensityDesc) {
-                        Picker("", selection: $jellyIntensity) {
-                            ForEach(IslandJellyIntensity.allCases, id: \.rawValue) { intensity in
-                                Text(intensity.localizedTitle).tag(intensity.rawValue)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 180)
-                    }
                 }
             }
 
@@ -624,10 +613,6 @@ struct PreferencesView: View {
                 card {
                     settingRow(L10n.symbolEffectsEnabled, id: "symbolEffectsEnabled", description: L10n.symbolEffectsEnabledDesc) {
                         Toggle("", isOn: $symbolEffectsEnabled).labelsHidden()
-                    }
-                    dividerLine
-                    settingRow(L10n.cascadeEntranceEnabled, id: "cascadeEntranceEnabled", description: L10n.cascadeEntranceEnabledDesc) {
-                        Toggle("", isOn: $cascadeEntranceEnabled).labelsHidden()
                     }
                 }
             }

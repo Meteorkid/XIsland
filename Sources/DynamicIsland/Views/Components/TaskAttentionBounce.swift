@@ -17,6 +17,8 @@ struct TaskAttentionBounce: ViewModifier {
     let token: String?
     let size: CGFloat
     let enabled: Bool
+    /// 未查看时持续提醒：跳完停一会儿再来一次；单次模式（默认）只跳一次。
+    var repeats: Bool = false
     @State private var progress = 1.0
 
     private var shouldAnimate: Bool { enabled && token != nil }
@@ -32,12 +34,17 @@ struct TaskAttentionBounce: ViewModifier {
             }
             .task(id: enabled ? token : nil) {
                 guard shouldAnimate else { return }
-                var transaction = Transaction(animation: nil)
-                transaction.disablesAnimations = true
-                withTransaction(transaction) { progress = 0 }
-                await Task.yield()
-                guard !Task.isCancelled else { return }
-                withAnimation(.linear(duration: TaskAttentionBounceFrame.duration)) { progress = 1 }
+                while !Task.isCancelled {
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { progress = 0 }
+                    await Task.yield()
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.linear(duration: TaskAttentionBounceFrame.duration)) { progress = 1 }
+                    guard repeats else { return }
+                    // 跳完停顿，避免变成连续抖动。
+                    try? await Task.sleep(nanoseconds: 2_400_000_000)
+                }
             }
     }
 }

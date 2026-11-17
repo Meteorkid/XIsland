@@ -1100,6 +1100,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 提醒只争取岛的显示权，不激活应用或替用户打开/确认任务详情。
     func presentTaskAttention(_ event: TaskAttentionEvent) {
+        // 诊断：排查「完成不展开」时可直接从统一日志读取各闸门状态。
+        let licensed = allowsFeatureActions
+        let enabled = TaskAttentionSettings.shouldPresent(for: event.kind)
+        let current = sessionManager.isCurrentTaskAttention(event)
+        NSLog("[XIsland] attention present kind=%@ licensed=%d enabled=%d current=%d window=%d",
+              String(describing: event.kind), licensed ? 1 : 0, enabled ? 1 : 0,
+              current ? 1 : 0, notchWindow != nil ? 1 : 0)
         guard !isTerminating, allowsFeatureActions,
               TaskAttentionSettings.shouldPresent(for: event.kind),
               sessionManager.isCurrentTaskAttention(event), let window = notchWindow else { return }
@@ -1112,6 +1119,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if TaskAttentionSettings.forcesAcrossSpaces() { window.presentAcrossSpaces() }
         if NSApp.isHidden, !testConfiguration.isEnabled { NSApp.unhideWithoutActivation() }
         window.showAtActiveScreen(pinUntilCollapse: event.kind != .completion || sessionManager.hasInteraction)
+        // 提醒优先于隐藏与让位：应用刚被隐藏、或另一个岛刚接管时，普通 orderFront 可能不生效。
+        // 测试环境使用注入的窗口桩，不能触碰真实窗口。
+        if !testConfiguration.isEnabled { window.orderFrontRegardless() }
         requestOtherIslandsToHide()
         NotificationCenter.default.post(name: .xislandTaskAttention, object: window,
                                         userInfo: ["event": event])
@@ -1119,7 +1129,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 窗口显示与展开是两步：等窗口真正可见后再请求展开，避免 expand 被 expandPending 拦下。
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self, weak window] in
             guard let self, let window, window.isVisible,
-                  self.sessionManager.isCurrentTaskAttention(event) else { return }
+                  self.sessionManager.isCurrentTaskAttention(event) else {
+                NSLog("[XIsland] attention expand skipped visible=%d current=%d",
+                      window?.isVisible == true ? 1 : 0,
+                      self?.sessionManager.isCurrentTaskAttention(event) == true ? 1 : 0)
+                return
+            }
             NotificationCenter.default.post(name: .xislandRequestExpand, object: window,
                                             userInfo: ["event": event])
         }

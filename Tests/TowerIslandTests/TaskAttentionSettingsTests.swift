@@ -49,4 +49,14 @@ final class TaskAttentionSettingsTests: XCTestCase {
         defaults.set(true, forKey: TaskAttentionSettings.forceAcrossSpacesKey)
         XCTAssertTrue(TaskAttentionSettings.forcesAcrossSpaces(defaults: defaults))
     }
+
+    /// 减少动态效果、禁用动画只能影响动效，不能阻止提醒展开。
+    func testMotionPreferencesDoNotBlockPresentation() {
+        defaults.set(true, forKey: "reduceMotion")
+        defaults.set(true, forKey: "disableAnimations")
+        XCTAssertTrue(TaskAttentionSettings.shouldPresent(for: .completion, defaults: defaults))
+        XCTAssertTrue(TaskAttentionSettings.shouldPresent(for: .permission, defaults: defaults))
+        XCTAssertTrue(TaskAttentionSettings.shouldPresent(for: .question, defaults: defaults))
+        XCTAssertTrue(TaskAttentionSettings.shouldPresent(for: .planReview, defaults: defaults))
+    }
 }

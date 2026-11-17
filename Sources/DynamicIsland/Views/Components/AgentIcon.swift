@@ -121,7 +121,8 @@ struct AgentIcon: View {
             }
         }
         .modifier(TaskAttentionBounce(token: attentionToken, size: size,
-                                      enabled: showMascot && taskAttentionEnabled && taskAttentionPresented && !reduceMotion))
+                                      enabled: showMascot && taskAttentionEnabled && taskAttentionPresented && !reduceMotion,
+                                      repeats: completionNeedsReview))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription)
         .accessibilityAddTraits(.isImage)

@@ -4,23 +4,15 @@ struct SessionListView: View {
     @Environment(SessionManager.self) private var manager
     @Environment(ThemeManager.self) private var themeManager
     var onJump: (() -> Void)?
-    /// 上报列表内容的真实高度（含内边距），用于让窗口跟随 SwiftUI 布局而不是估算。
-    var onContentHeightChange: ((CGFloat) -> Void)?
     @State private var showFilterBar = false
     @AppStorage("reduceMotion") private var appReduceMotion = false
     @AppStorage("disableAnimations") private var disableAnimations = false
-    @AppStorage("cascadeEntranceEnabled") private var cascadeEntranceEnabled = true
     @AppStorage(SessionActivityPreferences.windowHoursKey) private var activeWindowHours = SessionActivityPreferences.defaultWindowHours
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     private var reduceMotion: Bool {
         !IslandMotionPolicy(reduceMotion: appReduceMotion, systemReduceMotion: systemReduceMotion,
                             disableAnimations: disableAnimations).allowsContinuousAnimation
     }
-
-    private let cardTransition = AnyTransition.asymmetric(
-        insertion: .move(edge: .trailing).combined(with: .opacity),
-        removal: .move(edge: .leading).combined(with: .opacity)
-    )
 
     var body: some View {
         VStack(spacing: 0) {
@@ -73,25 +65,13 @@ struct SessionListView: View {
                     }
 
                     // 待处理任务置顶区域
-                    ForEach(Array(manager.pendingInteractionSessions.enumerated()), id: \.element.id) { index, session in
+                    ForEach(Array(manager.pendingInteractionSessions.enumerated()), id: \.element.id) { _, session in
                         PendingTaskCardView(session: session)
-                            .modifier(CardEntranceCascade(
-                                index: index,
-                                reduceMotion: reduceMotion,
-                                isEnabled: cascadeEntranceEnabled
-                            ))
-                            .transition(reduceMotion ? .identity : .move(edge: .top).combined(with: .opacity))
                     }
 
                     if manager.grouping == .none {
-                        ForEach(Array(Self.regularSessions(in: manager.filteredSessions).enumerated()), id: \.element.id) { index, session in
+                        ForEach(Array(Self.regularSessions(in: manager.filteredSessions).enumerated()), id: \.element.id) { _, session in
                             SessionCardView(session: session, onJump: onJump)
-                                .modifier(CardEntranceCascade(
-                                    index: index + manager.pendingInteractionSessions.count,
-                                    reduceMotion: reduceMotion,
-                                    isEnabled: cascadeEntranceEnabled
-                                ))
-                                .transition(reduceMotion ? .identity : cardTransition)
                         }
                     } else {
                         ForEach(manager.groupedSessions) { group in
@@ -105,14 +85,8 @@ struct SessionListView: View {
                                         .padding(.horizontal, 14)
                                         .padding(.top, 8)
                                 ) {
-                                    ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
+                                    ForEach(sessions, id: \.id) { session in
                                         SessionCardView(session: session, onJump: onJump)
-                                            .modifier(CardEntranceCascade(
-                                                index: index,
-                                                reduceMotion: reduceMotion,
-                                                isEnabled: cascadeEntranceEnabled
-                                            ))
-                                            .transition(reduceMotion ? .identity : cardTransition)
                                     }
                                 }
                             }
@@ -122,14 +96,7 @@ struct SessionListView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
-                .onGeometryChange(for: CGFloat.self) { proxy in
-                    proxy.size.height
-                } action: { height in
-                    onContentHeightChange?(height)
-                }
             }
-            .animation(reduceMotion ? nil : IslandMotionTokens.elementTransition, value: manager.filteredSessions.count)
-            .animation(reduceMotion ? nil : IslandMotionTokens.elementTransition, value: manager.grouping)
         }
         .accessibilityIdentifier(TestAccessibility.sessionList)
         .onReceive(NotificationCenter.default.publisher(for: .xislandToggleSearch)) { _ in
@@ -304,6 +271,28 @@ struct SessionCardView: View {
                         .padding(.vertical, 8)
                 }
             }
+
+            // 继续下一步：复制指令、激活会话窗口并尝试自动粘贴；发送仍由用户按回车确认。
+            if showsContinueBadge {
+                Divider()
+                    .background(IslandStyle.divider(for: themeManager.resolvedScheme).opacity(IslandStyle.dividerOpacity(for: themeManager.resolvedScheme)))
+                    .padding(.horizontal, 12)
+                Button {
+                    jumpState.requestContinue(session, manager: manager)
+                } label: {
+                    Label(L10n.continueNextStep, systemImage: "arrow.right.circle.fill")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.cyan)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.cyan.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(.leading, session.isSubagent ? 24 : 0)
         .background(
@@ -433,9 +422,8 @@ struct SessionCardView: View {
 
             HStack(spacing: 5) {
                 let identity = MascotTaskIdentityRegistry.shared.identity(for: session)
-                TagBadge(text: "\(session.agentType.shortName) · \(identity.shortLabel)", color: identity.color)
+                TagBadge(text: primaryBadgeText, color: identity.color)
                     .fixedSize(horizontal: true, vertical: false)
-                TagBadge(text: sourceBadgeText, color: IslandStyle.secondaryText)
 
                 if displayTimestamp {
                     Text(session.formattedDuration)
@@ -447,23 +435,25 @@ struct SessionCardView: View {
                         .padding(.vertical, 2)
                         .background(IslandStyle.insetFill(for: themeManager.resolvedScheme))
                         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .fixedSize(horizontal: true, vertical: false)
                 }
 
-                if isHovered {
-                    Button {
-                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
-                            manager.dismissSession(session)
-                        }
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
-                            .frame(width: 18, height: 18)
-                            .background(IslandStyle.insetFill(for: themeManager.resolvedScheme))
-                            .clipShape(Circle())
+                // 关闭按钮始终占位，只切换透明度：插入/移除会挤压徽章导致逐字换行、卡片变高。
+                Button {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                        manager.dismissSession(session)
                     }
-                    .buttonStyle(.plain)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(IslandStyle.tertiaryText(for: themeManager.resolvedScheme))
+                        .frame(width: 18, height: 18)
+                        .background(IslandStyle.insetFill(for: themeManager.resolvedScheme))
+                        .clipShape(Circle())
                 }
+                .buttonStyle(.plain)
+                .opacity(isHovered ? 1 : 0)
+                .allowsHitTesting(isHovered)
             }
         }
     }
@@ -611,6 +601,25 @@ struct SessionCardView: View {
         .padding(.vertical, 6)
         .background(.cyan.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
+    /// 只有已结束或空闲的顶层会话显示「继续下一步」；子代理不单独发送。
+    private var showsContinueBadge: Bool {
+        !session.isSubagent
+            && (session.status == .completed || session.status == .idle
+                || session.status == .completionUnconfirmed)
+    }
+
+    /// 单一徽章：Agent 类型 + 任务编号；来源与类型不同才追加，避免出现两个「WorkBuddy」。
+    private var primaryBadgeText: String {
+        let identity = MascotTaskIdentityRegistry.shared.identity(for: session)
+        let base = "\(session.agentType.shortName) · \(identity.shortLabel)"
+        let source = sourceBadgeText.trimmingCharacters(in: .whitespaces)
+        guard !source.isEmpty else { return base }
+        let agent = session.agentType.shortName.lowercased()
+        let lowered = source.lowercased()
+        guard lowered != agent, lowered != "\(agent) cli" else { return base }
+        return base + " · " + source
     }
 
     private var sourceBadgeText: String {

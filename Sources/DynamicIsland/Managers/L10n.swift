@@ -1041,6 +1041,32 @@ enum L10n {
                   en: "Show all sessions")
     }
 
+    static var continueNextStep: String {
+        localized("continueNextStep", zh: "继续下一步", ko: "다음 단계 계속",
+                  ja: "次のステップへ", fr: "Continuer", en: "Continue")
+    }
+
+    static var continuePasted: String {
+        localized("continuePasted", zh: "已粘贴，按回车发送", ko: "붙여넣었습니다. Enter로 전송하세요",
+                  ja: "貼り付けました。Enter で送信", fr: "Collé — appuyez sur Entrée pour envoyer",
+                  en: "Pasted — press Return to send")
+    }
+
+    static var continueCopied: String {
+        localized("continueCopied", zh: "已复制，请按 ⌘V 粘贴后回车", ko: "복사했습니다. ⌘V로 붙여넣고 Enter",
+                  ja: "コピーしました。⌘V で貼り付けて Enter", fr: "Copié — collez avec ⌘V puis Entrée",
+                  en: "Copied — paste with ⌘V, then Return")
+    }
+
+    static var continueNeedsAccessibility: String {
+        localized("continueNeedsAccessibility",
+                  zh: "已复制；请在「隐私与安全性 → 辅助功能」允许 X Island 后重试",
+                  ko: "복사했습니다. '개인정보 보호 및 보안 → 손쉬운 사용'에서 X Island를 허용한 뒤 다시 시도하세요",
+                  ja: "コピーしました。「プライバシーとセキュリティ → アクセシビリティ」で X Island を許可して再試行してください",
+                  fr: "Copié ; autorisez X Island dans « Confidentialité et sécurité → Accessibilité » puis réessayez",
+                  en: "Copied — allow X Island in Privacy & Security → Accessibility, then retry")
+    }
+
     static var localSummary: String {
         localized("localSummary",
             zh: "摘要（本地）", ko: "요약(로컬)", ja: "要約(ローカル)",
