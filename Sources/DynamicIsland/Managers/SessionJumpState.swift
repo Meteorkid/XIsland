@@ -72,7 +72,7 @@ final class SessionJumpState {
                 } else {
                     self.noticeMessage = String(format: L10n.continueNeedsAccessibilityPath,
                                                 Bundle.main.bundlePath)
-                    Self.revealForAccessibility()
+                    AccessibilityDragHelper.shared.present()
                 }
             }
         }
@@ -93,13 +93,7 @@ final class SessionJumpState {
         return true
     }
 
-    /// 同时打开系统设置的辅助功能页，并在 Finder 中选中 App，方便直接拖入授权列表。
-    private static func revealForAccessibility() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
-        }
-        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
-    }
+    /// 同时打开系统设置的辅助功能页，并在系统设置旁浮起可拖拽的 App 图标。
 
     static func targetSession(_ session: AgentSession,
                               lookup: (String) -> AgentSession?) -> AgentSession? {

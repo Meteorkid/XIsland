@@ -1078,6 +1078,34 @@ enum L10n {
 
     // MARK: - Permissions
 
+    static var panePermissions: String {
+        localized("panePermissions", zh: "权限", ko: "권한", ja: "権限",
+                  fr: "Autorisations", en: "Permissions")
+    }
+
+    static var permissionsMovedTitle: String {
+        localized("permissionsMovedTitle",
+                  zh: "权限已集中到「权限」页",
+                  ko: "권한이 '권한' 탭으로 모였습니다",
+                  ja: "権限は「権限」タブにまとまりました",
+                  fr: "Les autorisations sont regroupées dans l'onglet « Autorisations »",
+                  en: "Permissions are grouped in the Permissions tab")
+    }
+
+    static var permissionsMovedDetail: String {
+        localized("permissionsMovedDetail",
+                  zh: "辅助功能、自动化、通知的状态与授权入口都在那里，并支持把应用图标直接拖进系统设置。",
+                  ko: "손쉬운 사용, 자동화, 알림의 상태와 허용 항목이 모두 그곳에 있으며 앱 아이콘을 시스템 설정으로 끌어다 놓을 수 있습니다.",
+                  ja: "アクセシビリティ、オートメーション、通知の状態と許可の入口がそこにあり、アプリアイコンをシステム設定へ直接ドラッグできます。",
+                  fr: "Les états et entrées d'autorisation pour Accessibilité, Automatisation et Notifications s'y trouvent, avec glisser-déposer de l'icône dans Réglages Système.",
+                  en: "Accessibility, Automation and Notifications status and authorization entries live there, with drag-and-drop of the app icon into System Settings.")
+    }
+
+    static var permissionsGo: String {
+        localized("permissionsGo", zh: "前往", ko: "이동", ja: "移動",
+                  fr: "Aller", en: "Go")
+    }
+
     static var permissionAccessibility: String {
         localized("permissionAccessibility", zh: "辅助功能", ko: "손쉬운 사용", ja: "アクセシビリティ",
                   fr: "Accessibilité", en: "Accessibility")
@@ -1138,6 +1166,26 @@ enum L10n {
     static var permissionOpenSettings: String {
         localized("permissionOpenSettings", zh: "打开设置", ko: "설정 열기", ja: "設定を開く",
                   fr: "Ouvrir les réglages", en: "Open Settings")
+    }
+
+    static var permissionOpenAndFloat: String {
+        localized("permissionOpenAndFloat", zh: "打开并浮起图标", ko: "설정 열고 아이콘 띄우기",
+                  ja: "設定を開いてアイコンを表示", fr: "Ouvrir et afficher l'icône",
+                  en: "Open & float icon")
+    }
+
+    static var permissionDragHint: String {
+        localized("permissionDragHint",
+                  zh: "拖到右侧「%@」列表",
+                  ko: "오른쪽 '%@' 목록으로 끌어다 놓으세요",
+                  ja: "右側の「%@」リストへドラッグ",
+                  fr: "Glissez dans la liste « %@ » à droite",
+                  en: "Drag into “%@” on the right")
+    }
+
+    static var permissionDragClose: String {
+        localized("permissionDragClose", zh: "关闭", ko: "닫기", ja: "閉じる",
+                  fr: "Fermer", en: "Close")
     }
 
     static var permissionRevealApp: String {

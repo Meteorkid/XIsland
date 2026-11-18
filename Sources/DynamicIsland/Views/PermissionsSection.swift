@@ -15,8 +15,9 @@ struct PermissionsSection: View {
                 title: L10n.permissionAccessibility,
                 detail: L10n.permissionAccessibilityDetail,
                 state: accessibilityGranted ? .granted : .missing,
-                open: { SystemPrivacySettings.openAccessibility() },
-                reveal: { NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL]) }
+                open: { AccessibilityDragHelper.shared.present() },
+                reveal: { NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL]) },
+                openTitle: L10n.permissionOpenAndFloat
             )
             divider
             row(
@@ -63,7 +64,8 @@ struct PermissionsSection: View {
     }
 
     private func row(title: String, detail: String, state: State,
-                     open: @escaping () -> Void, reveal: (() -> Void)?) -> some View {
+                     open: @escaping () -> Void, reveal: (() -> Void)?,
+                     openTitle: String = L10n.permissionOpenSettings) -> some View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -84,7 +86,7 @@ struct PermissionsSection: View {
             }
             Spacer(minLength: 6)
             VStack(alignment: .trailing, spacing: 4) {
-                Button(L10n.permissionOpenSettings, action: open)
+                Button(openTitle, action: open)
                     .buttonStyle(.plain)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.cyan)

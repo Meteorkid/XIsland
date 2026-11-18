@@ -4,6 +4,7 @@ import ServiceManagement
 
 private enum PreferencesPane: String, CaseIterable, Identifiable {
     case general
+    case permissions
     case display
     case integration
     case agents
@@ -19,6 +20,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: L10n.paneGeneral
+        case .permissions: L10n.panePermissions
         case .display: L10n.paneDisplay
         case .integration: L10n.paneIntegration
         case .agents: L10n.paneAgents
@@ -34,6 +36,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .general: "gearshape.fill"
+        case .permissions: "hand.raised.fill"
         case .display: "paintbrush.fill"
         case .integration: "rectangle.connected.to.line.below"
         case .agents: "terminal.fill"
@@ -218,8 +221,11 @@ struct PreferencesView: View {
                         }
                         Text(pane.title)
                             .font(.system(size: 10, weight: .medium))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
-                    .frame(width: 72, height: 44)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
                     // Plain buttons only hit-test non-transparent subviews by default; include label + padding.
                     .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .foregroundStyle(selection == pane ? .primary : .secondary)
@@ -229,7 +235,7 @@ struct PreferencesView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .disabled(!licensedFeaturesAvailable && ![.license, .history, .about, .automation].contains(pane))
+                .disabled(!licensedFeaturesAvailable && ![.license, .history, .about, .automation, .permissions].contains(pane))
             }
         }
         .padding(.horizontal, 16)
@@ -246,6 +252,7 @@ struct PreferencesView: View {
     private var paneContent: some View {
         switch selection {
         case .general: generalPane
+        case .permissions: permissionsPane
         case .display: displayPane
         case .integration: integrationPane
         case .agents: agentsPane
@@ -255,6 +262,18 @@ struct PreferencesView: View {
         case .statistics: StatisticsView()
         case .license: SoftwareLicenseView()
         case .about: aboutPane
+        }
+    }
+
+    // MARK: - Permissions
+
+    private var permissionsPane: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            section(L10n.panePermissions) {
+                card {
+                    PermissionsSection()
+                }
+            }
         }
     }
 
@@ -300,7 +319,24 @@ struct PreferencesView: View {
 
             section(L10n.sectionMacPrivacy) {
                 card {
-                    PermissionsSection()
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "hand.raised.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(L10n.permissionsMovedTitle)
+                                .font(.system(size: 12, weight: .medium))
+                            Text(L10n.permissionsMovedDetail)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 8)
+                        Button(L10n.permissionsGo) { selection = .permissions }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.cyan)
+                    }
                 }
             }
 

@@ -1299,7 +1299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
 
         let w = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -1307,11 +1307,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         w.isFloatingPanel = true
         w.hidesOnDeactivate = false
         w.title = "X Island Settings"
+        w.minSize = NSSize(width: 900, height: 560)
         w.identifier = NSUserInterfaceItemIdentifier("xisland.preferences")
         if let screen = notchWindow?.screen ?? NSScreen.main {
             let sf = screen.visibleFrame
-            let x = sf.origin.x + (sf.width - 760) / 2
-            let y = sf.origin.y + (sf.height - 520) / 2
+            let x = sf.origin.x + (sf.width - 1000) / 2
+            let y = sf.origin.y + (sf.height - 700) / 2
             w.setFrameOrigin(NSPoint(x: x, y: y))
         } else {
             w.center()
