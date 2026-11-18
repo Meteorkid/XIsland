@@ -47,7 +47,7 @@ final class AccessibilityDragHelper {
         ))
         host.layoutSubtreeIfNeeded()
         let fitted = host.fittingSize
-        let size = CGSize(width: 132, height: max(150, min(240, fitted.height)))
+        let size = CGSize(width: 560, height: max(96, min(170, fitted.height)))
         let frame = CGRect(origin: Self.origin(near: settingsFrame, size: size), size: size)
 
         let panel: NSPanel
@@ -107,55 +107,64 @@ final class AccessibilityDragHelper {
         guard let settingsFrame else {
             return CGPoint(x: screen.maxX - size.width - 24, y: screen.maxY - size.height - 120)
         }
-        // 贴在系统设置左侧、顶部对齐；屏幕放不下时退到边缘。
-        let x = max(screen.minX + 12, settingsFrame.minX - size.width - 12)
-        let y = min(max(screen.minY + 12, settingsFrame.maxY - size.height - 28),
-                    screen.maxY - size.height - 12)
-        return CGPoint(x: x, y: y)
+        // 横向条放在系统设置下方居中，提示语指向“上方列表”；下方放不下时改放上方。
+        let x = min(max(screen.minX + 12, settingsFrame.midX - size.width / 2),
+                    screen.maxX - size.width - 12)
+        let below = settingsFrame.minY - size.height - 12
+        if below >= screen.minY + 12 {
+            return CGPoint(x: x, y: below)
+        }
+        return CGPoint(x: x, y: min(settingsFrame.maxY + 12, screen.maxY - size.height - 12))
     }
 }
 
-/// 浮动在系统设置旁边的小拖拽板：一个图标、一句提示、一个关闭按钮。
+/// 浮动在系统设置旁边的拖拽条：一行说明 + 一条可拖动的应用条目。
 struct PermissionDragChip: View {
     let target: String
     let onDragEnded: () -> Void
     let onClose: () -> Void
 
+    private var appName: String { Bundle.main.bundleURL.lastPathComponent }
+
     var body: some View {
-        VStack(spacing: 6) {
-            HStack {
-                Spacer()
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.blue)
+                Text(String(format: L10n.permissionDragBannerHint, appName))
+                    .font(.system(size: 12, weight: .medium))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
                 Button(action: onClose) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 13))
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
                 .help(L10n.permissionDragClose)
             }
-            .padding(.top, 8)
-            .padding(.trailing, 8)
 
-            DraggableAppIcon(side: 56, onDragEnded: onDragEnded)
-                .padding(6)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                        .foregroundStyle(.secondary.opacity(0.5))
-                )
-
-            Text(String(format: L10n.permissionDragHint, target))
-                .font(.system(size: 10, weight: .medium))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("X Island")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 10)
+            HStack(spacing: 10) {
+                DraggableAppIcon(side: 26, onDragEnded: onDragEnded)
+                Text(String(format: L10n.permissionDragBarTitle, appName))
+                    .font(.system(size: 13, weight: .medium))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.08)))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            // 整条都可拖，拖出的是 .app 文件本身。
+            .onDrag { NSItemProvider(contentsOf: Bundle.main.bundleURL) ?? NSItemProvider() }
         }
-        .padding(.horizontal, 8)
-        .frame(width: 132)
+        .padding(14)
+        .frame(width: 560)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)

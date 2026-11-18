@@ -38,6 +38,8 @@ struct NotchContentView: View {
     @State private var autoCollapseCountdown = ExpandedAutoCollapseCountdown()
     /// 程序化展开（完成提醒）后的自动收起；与鼠标离开触发的倒计时分开。
     @State private var attentionCollapseWorkItem: DispatchWorkItem?
+    /// 提醒展开的保持窗口：在此期间不使用「鼠标离开」的短计时，避免两套倒计时竞争导致提前收起。
+    @State private var attentionHoldUntil: Date?
     @State private var lastExpandedInteractionMarkAt: Date = .distantPast
     /// Last known expanded `shapeHeight` (black panel), used to interpolate notch corner radii with `shapeHeight` during spring (avoids boolean snap).
     @State private var cachedExpandedShapeHeight: CGFloat = 220
@@ -904,25 +906,40 @@ struct NotchContentView: View {
         expand(to: .expanded)
     }
 
-    /// 完成提醒的停留时间：默认 6 秒；用户仍把指针放在面板上时顺延，离开后再收。
+    /// 完成提醒的停留时间：默认 6 秒。到时若指针在面板上，把收起交回鼠标离开计时，
+    /// 按设置里的「指针离开延迟」执行（可设为 0 秒立即收起），不再固定顺延。
     private func scheduleAttentionAutoCollapse(after seconds: TimeInterval = 6) {
         attentionCollapseWorkItem?.cancel()
-        let work = DispatchWorkItem {
-            guard self.state != .collapsed else { return }
-            if self.isHovering || self.expandPending || self.collapseAnimating {
-                self.scheduleAttentionAutoCollapse(after: 3)
-                return
-            }
-            guard self.notchWindow?.isInteractiveSwitchPreviewActive != true else { return }
-            self.collapse()
-        }
+        // 提醒计时期间禁用鼠标离开的短计时，否则面板展开后几秒就会被另一套倒计时收起。
+        attentionHoldUntil = Date().addingTimeInterval(seconds + 0.5)
+        let work = DispatchWorkItem { self.handleAttentionTimeout() }
         attentionCollapseWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    private func handleAttentionTimeout() {
+        guard state != .collapsed else { return }
+        // 展开/收起动画尚未结束时只重试判定，不重置保持窗口。
+        if expandPending || collapseAnimating {
+            let work = DispatchWorkItem { self.handleAttentionTimeout() }
+            attentionCollapseWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+            return
+        }
+        if isHovering {
+            // 指针仍在面板上：把收起交回鼠标离开计时，遵循设置里的延迟（含 0 秒）。
+            attentionHoldUntil = nil
+            return
+        }
+        guard notchWindow?.isInteractiveSwitchPreviewActive != true else { return }
+        attentionHoldUntil = nil
+        collapse()
     }
 
     private func cancelAttentionAutoCollapse() {
         attentionCollapseWorkItem?.cancel()
         attentionCollapseWorkItem = nil
+        attentionHoldUntil = nil
     }
 
     private func expand(to newState: IslandState) {
@@ -1390,6 +1407,8 @@ struct NotchContentView: View {
 
     private func markExpandedInteraction(throttled: Bool = false) {
         guard isExpanded else { return }
+        // 用户开始操作后由鼠标离开计时接管，提醒保持窗口立即失效。
+        attentionHoldUntil = nil
 
         let now = Date()
         if throttled, now.timeIntervalSince(lastExpandedInteractionMarkAt) < 0.4 {
@@ -1400,6 +1419,11 @@ struct NotchContentView: View {
     }
 
     private func shouldAutoCollapse(isPointerInside: Bool, now: Date) -> Bool {
+        // 提醒刚展开时由 attention 计时负责收起，这里不参与，避免两套倒计时互相打断。
+        if let until = attentionHoldUntil {
+            if now < until { return false }
+            attentionHoldUntil = nil
+        }
         let delay = ExpandedAutoCollapsePolicy.delay(
             state: state,
             protectsInteraction: manager.protectsInteraction || expandPending || collapseAnimating,
@@ -1575,6 +1599,8 @@ struct NotchContentView: View {
                     expand(to: target)
                 }
             } else if !isHovering {
+                // 指针进入后由用户接管，提醒保持窗口立即失效，离开时按设置里的延迟收起。
+                attentionHoldUntil = nil
                 if disableAnimations {
                     isHovering = true
                 } else {

@@ -1183,6 +1183,24 @@ enum L10n {
                   en: "Drag into “%@” on the right")
     }
 
+    static var permissionDragBannerHint: String {
+        localized("permissionDragBannerHint",
+                  zh: "将 %@ 拖到上方列表以允许「辅助功能」",
+                  ko: "%@ 를 위쪽 목록으로 끌어 '손쉬운 사용'을 허용하세요",
+                  ja: "%@ を上のリストへドラッグして「アクセシビリティ」を許可",
+                  fr: "Glissez %@ dans la liste ci-dessus pour autoriser « Accessibilité »",
+                  en: "Drag %@ into the list above to allow Accessibility")
+    }
+
+    static var permissionDragBarTitle: String {
+        localized("permissionDragBarTitle",
+                  zh: "%@（点我拖动）",
+                  ko: "%@ (끌어서 이동)",
+                  ja: "%@ (ドラッグして移動)",
+                  fr: "%@ (glisser)",
+                  en: "%@ (drag me)")
+    }
+
     static var permissionDragClose: String {
         localized("permissionDragClose", zh: "关闭", ko: "닫기", ja: "閉じる",
                   fr: "Fermer", en: "Close")
