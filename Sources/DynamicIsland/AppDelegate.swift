@@ -162,6 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.shared = self
         NSApp.setActivationPolicy(.accessory)
 
+        resetAccessibilityPermissionOnVersionChange()
         AutoCollapseSettings.migrate(AppPreferences.defaults, domainName: AppPreferences.persistentDomainName)
         AppPreferences.defaults.register(defaults: [
             "showOnAllSpaces": true,
@@ -469,6 +470,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             && !window.isHandoffLayoutLocked && !window.isPreviewingIslandSwitch && !window.isDragging
             && !window.swipeRecognizer.isActive && window.handoffState.pendingPreparation == nil
             && window.handoffState.pendingPresentation == nil
+    }
+
+    /// 版本变化时清掉旧的辅助功能授权条目。
+    ///
+    /// adhoc 签名的身份是代码哈希，新版本的哈希与旧条目不一致：系统会保留旧条目，
+    /// 用户以为「已经授权过」，实际当前进程仍未被授权。清空后列表里只会留下当前版本这一条。
+    private func resetAccessibilityPermissionOnVersionChange() {
+        guard !AppPreferences.isIsolated else { return }
+        let key = "lastAccessibilityResetToken"
+        let version = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? ""
+        guard !version.isEmpty else { return }
+        // 用「版本号 + 可执行文件修改时间」作为构建指纹：本地反复构建时版本号常不变，
+        // 只按版本号判断会漏清理，导致旧条目的哈希与当前进程不匹配、勾选后仍显示未允许。
+        let modified = (try? Bundle.main.executableURL?
+            .resourceValues(forKeys: [.contentModificationDateKey]))??
+            .contentModificationDate?.timeIntervalSince1970 ?? 0
+        let token = "\(version)-\(Int(modified))"
+        guard AppPreferences.defaults.string(forKey: key) != token else { return }
+        AppPreferences.defaults.set(token, forKey: key)
+        // 清空后授权必然是失效状态，标记出来让权限页明确提示重新授权。
+        AppPreferences.defaults.set(true, forKey: "accessibilityNeedsReauth")
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        process.arguments = ["reset", "Accessibility",
+                             Bundle.main.bundleIdentifier ?? "dev.xisland.app"]
+        try? process.run()
+        process.waitUntilExit()
     }
 
     private func setupNotchWindow() {

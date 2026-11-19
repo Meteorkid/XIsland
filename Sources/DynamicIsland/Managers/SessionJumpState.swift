@@ -16,19 +16,31 @@ final class SessionJumpState {
     func request(_ session: AgentSession, manager: SessionManager,
                  perform: Performer = TerminalJumpManager.jump,
                  onAccepted: @escaping () -> Void = {}) {
-        guard !isRunning else { return }
         guard let target = Self.targetSession(session, lookup: manager.sessionForNavigation) else {
             errorMessage = SessionJumpResult.missingIdentity.message
             return
         }
+        // 允许重复点击：上一次跳转尚未回调时直接作废，而不是把这次点击吞掉。
+        if isRunning {
+            isRunning = false
+            generation += 1
+        }
         isRunning = true
         errorMessage = nil
+        noticeMessage = L10n.jumpInProgress
         generation += 1
         let requestGeneration = generation
         let completedAt = session.completedAt
+        // LaunchServices 偶发不回调：2.5 秒后复位，避免后续点击被永久忽略。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            guard let self, self.generation == requestGeneration, self.isRunning else { return }
+            self.isRunning = false
+            self.noticeMessage = nil
+        }
         perform(target) { [weak self, weak session, weak manager] result in
             guard let self, self.isRunning, self.generation == requestGeneration else { return }
             self.isRunning = false
+            self.noticeMessage = nil
             guard result.accepted else {
                 self.errorMessage = result.message
                 return

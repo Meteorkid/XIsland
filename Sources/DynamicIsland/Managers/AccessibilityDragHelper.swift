@@ -62,7 +62,8 @@ final class AccessibilityDragHelper {
             panel.isFloatingPanel = true
             panel.becomesKeyOnlyIfNeeded = true
             panel.hidesOnDeactivate = false
-            panel.isMovableByWindowBackground = true
+            // 关闭整窗拖动：否则按在条目上会被系统当成拖窗口，应用文件反而拖不出去。
+            panel.isMovableByWindowBackground = false
             panel.backgroundColor = .clear
             panel.isOpaque = false
             panel.hasShadow = true
@@ -132,9 +133,14 @@ struct PermissionDragChip: View {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.blue)
-                Text(String(format: L10n.permissionDragBannerHint, appName))
-                    .font(.system(size: 12, weight: .medium))
-                    .fixedSize(horizontal: false, vertical: true)
+            Text(String(format: L10n.permissionDragBannerHint, appName))
+                .font(.system(size: 12, weight: .medium))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(L10n.permissionDragFallbackHint)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
                 Button(action: onClose) {
                     Image(systemName: "xmark")
@@ -145,23 +151,11 @@ struct PermissionDragChip: View {
                 .help(L10n.permissionDragClose)
             }
 
-            HStack(spacing: 10) {
-                DraggableAppIcon(side: 26, onDragEnded: onDragEnded)
-                Text(String(format: L10n.permissionDragBarTitle, appName))
-                    .font(.system(size: 13, weight: .medium))
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.primary.opacity(0.08)))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            // 整条都可拖，拖出的是 .app 文件本身。
-            .onDrag { NSItemProvider(contentsOf: Bundle.main.bundleURL) ?? NSItemProvider() }
+            DraggableAppBar(bundleURL: Bundle.main.bundleURL,
+                            title: String(format: L10n.permissionDragBarTitle, appName),
+                            height: 44,
+                            onDragEnded: onDragEnded)
+                .frame(height: 44)
         }
         .padding(14)
         .frame(width: 560)
@@ -259,6 +253,131 @@ final class AppIconDragView: NSView, NSDraggingSource {
                          operation: NSDragOperation) {
         hasStartedDrag = false
         // 只有真正被接收才收起浮窗；拖到空白处取消时保留，方便再试一次。
+        if operation != [] { onDragEnded?() }
+    }
+}
+
+/// 整条可拖的应用条目：自定义 NSView 持有拖拽会话，避免被窗口背景拖动抢走事件。
+struct DraggableAppBar: NSViewRepresentable {
+    var bundleURL: URL = Bundle.main.bundleURL
+    var title: String
+    var height: CGFloat = 44
+    var onDragEnded: (() -> Void)?
+
+    func makeNSView(context: Context) -> AppDragBarView {
+        let view = AppDragBarView(frame: NSRect(x: 0, y: 0, width: 400, height: height))
+        view.bundleURL = bundleURL
+        view.title = title
+        view.onDragEnded = onDragEnded
+        return view
+    }
+
+    func updateNSView(_ nsView: AppDragBarView, context: Context) {
+        nsView.bundleURL = bundleURL
+        nsView.title = title
+        nsView.onDragEnded = onDragEnded
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: AppDragBarView, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? 400, height: height)
+    }
+}
+
+final class AppDragBarView: NSView, NSDraggingSource {
+    var bundleURL: URL = Bundle.main.bundleURL {
+        didSet { needsDisplay = true }
+    }
+    var title: String = "" {
+        didSet { needsDisplay = true }
+    }
+    var onDragEnded: (() -> Void)?
+
+    private var mouseDownEvent: NSEvent?
+    private var hasStartedDrag = false
+    private var isHovered = false
+    private var trackingAreaRef: NSTrackingArea?
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .openHand)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingAreaRef { removeTrackingArea(trackingAreaRef) }
+        let area = NSTrackingArea(rect: bounds,
+                                  options: [.mouseEnteredAndExited, .activeAlways],
+                                  owner: self)
+        addTrackingArea(area)
+        trackingAreaRef = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        needsDisplay = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: rect, xRadius: 10, yRadius: 10)
+        NSColor.labelColor.withAlphaComponent(isHovered ? 0.12 : 0.08).setFill()
+        path.fill()
+        NSColor.labelColor.withAlphaComponent(0.12).setStroke()
+        path.lineWidth = 1
+        path.stroke()
+
+        let side: CGFloat = 26
+        let iconRect = NSRect(x: 12, y: (bounds.height - side) / 2, width: side, height: side)
+        NSWorkspace.shared.icon(forFile: bundleURL.path).draw(in: iconRect)
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 13, weight: .medium),
+            .foregroundColor: NSColor.labelColor
+        ]
+        let text = title as NSString
+        let textSize = text.size(withAttributes: attributes)
+        text.draw(at: NSPoint(x: iconRect.maxX + 10, y: bounds.midY - textSize.height / 2),
+                  withAttributes: attributes)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        mouseDownEvent = event
+        hasStartedDrag = false
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard !hasStartedDrag, let down = mouseDownEvent else { return }
+        let dx = event.locationInWindow.x - down.locationInWindow.x
+        let dy = event.locationInWindow.y - down.locationInWindow.y
+        guard (dx * dx + dy * dy).squareRoot() > 3 else { return }
+        hasStartedDrag = true
+
+        let item = NSDraggingItem(pasteboardWriter: bundleURL as NSURL)
+        item.setDraggingFrame(bounds, contents: NSWorkspace.shared.icon(forFile: bundleURL.path))
+        beginDraggingSession(with: [item], event: event, source: self)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        mouseDownEvent = nil
+        hasStartedDrag = false
+    }
+
+    func draggingSession(_ session: NSDraggingSession,
+                         sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        .copy
+    }
+
+    func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { true }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint,
+                         operation: NSDragOperation) {
+        hasStartedDrag = false
         if operation != [] { onDragEnded?() }
     }
 }

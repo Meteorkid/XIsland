@@ -121,9 +121,11 @@ These are the intended integration routes. See the [compatibility matrix](docs/c
 
 The **Continue** action sends ⌘V to the terminal window, which macOS only allows for apps holding the Accessibility permission.
 
-- On first use, X Island opens **System Settings → Privacy & Security → Accessibility** and reveals the app in Finder.
-- Drag **X Island** from Finder into the Accessibility list (or click `+` and choose `/Applications/X Island.app`).
-- **Re-authorize after every update**: X Island is adhoc-signed, so macOS treats each new build as a different app and drops the previous grant.
+- On first use, X Island opens **System Settings → Privacy & Security → Accessibility** and floats a draggable app icon next to System Settings.
+- Drag the icon into the Accessibility list (or click `+` and choose `/Applications/X Island.app`).
+- **Re-authorize after every update**: X Island is adhoc-signed, so macOS treats each new build as a different app.
+- On the first launch after an update, the app **clears its old Accessibility entries** automatically — stale entries record the previous build's code hash, which makes macOS believe the app is still authorized. The Permissions page shows "Version updated — old entries were cleared"; drag the app in once.
+- If the status still shows "Not allowed", the Permissions page offers **Reset** (`tccutil reset Accessibility dev.xisland.app`) and **Relaunch**; resetting then re-adding usually fixes it.
 - Without the permission nothing breaks: the command is still copied to the clipboard, and you can paste it manually with ⌘V before pressing Return.
 
 See [Accessibility permission](docs/accessibility-permission.md) for details.

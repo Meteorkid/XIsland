@@ -1041,6 +1041,11 @@ enum L10n {
                   en: "Show all sessions")
     }
 
+    static var jumpInProgress: String {
+        localized("jumpInProgress", zh: "正在跳转…", ko: "이동 중…", ja: "移動中…",
+                  fr: "Ouverture…", en: "Opening…")
+    }
+
     static var continueNextStep: String {
         localized("continueNextStep", zh: "继续下一步", ko: "다음 단계 계속",
                   ja: "次のステップへ", fr: "Continuer", en: "Continue")
@@ -1067,8 +1072,7 @@ enum L10n {
                   en: "Copied — allow X Island in Privacy & Security → Accessibility, then retry")
     }
 
-    static var continueNeedsAccessibilityPath: String {
-        localized("continueNeedsAccessibilityPath",
+    static var continueNeedsAccessibilityPath: String {        localized("continueNeedsAccessibilityPath",
                   zh: "已复制；把 %@ 拖入「辅助功能」列表即可（设置与 Finder 已打开）",
                   ko: "복사했습니다. %@ 를 '손쉬운 사용' 목록으로 끌어다 놓으세요(설정과 Finder를 열었습니다)",
                   ja: "コピーしました。%@ を「アクセシビリティ」リストへドラッグしてください(設定と Finder を開きました)",
@@ -1109,6 +1113,43 @@ enum L10n {
     static var permissionAccessibility: String {
         localized("permissionAccessibility", zh: "辅助功能", ko: "손쉬운 사용", ja: "アクセシビリティ",
                   fr: "Accessibilité", en: "Accessibility")
+    }
+
+    static var permissionAccessibilityDetailPath: String {
+        localized("permissionAccessibilityDetailPath",
+                  zh: "「继续下一步」自动粘贴需要。当前运行：%@",
+                  ko: "'다음 단계 계속' 자동 붙여넣기에 필요합니다. 현재 실행: %@",
+                  ja: "「次のステップへ」の自動貼り付けに必要です。現在の実行: %@",
+                  fr: "Requis pour le collage automatique. Exécution actuelle : %@",
+                  en: "Required for Continue auto-paste. Running from: %@")
+    }
+
+    static var permissionReauthAfterUpdate: String {
+        localized("permissionReauthAfterUpdate",
+                  zh: "版本已更新，旧授权条目已清理。请把 X Island 重新拖入列表。",
+                  ko: "버전이 업데이트되어 이전 권한 항목을 정리했습니다. X Island를 목록에 다시 추가하세요.",
+                  ja: "バージョン更新に伴い古い権限項目を整理しました。X Island を再度リストへ追加してください。",
+                  fr: "Version mise à jour : les anciennes entrées ont été nettoyées. Ajoutez à nouveau X Island.",
+                  en: "Version updated — old entries were cleared. Drag X Island into the list again.")
+    }
+
+    static var permissionResetAccessibility: String {
+        localized("permissionResetAccessibility", zh: "重置授权", ko: "권한 초기화",
+                  ja: "権限をリセット", fr: "Réinitialiser", en: "Reset")
+    }
+
+    static var permissionRelaunch: String {
+        localized("permissionRelaunch", zh: "重启应用", ko: "앱 재시작",
+                  ja: "アプリを再起動", fr: "Relancer l'app", en: "Relaunch")
+    }
+
+    static var permissionResetDone: String {
+        localized("permissionResetDone",
+                  zh: "已重置。请重新拖入 X Island，若仍未生效请重启应用。",
+                  ko: "초기화되었습니다. X Island를 다시 추가하세요. 그래도 안 되면 앱을 재시작하세요.",
+                  ja: "リセットしました。X Island を再度追加してください。改善しない場合はアプリを再起動してください。",
+                  fr: "Réinitialisé. Ajoutez à nouveau X Island ; redémarrez l'app si nécessaire.",
+                  en: "Reset. Drag X Island in again; restart the app if it still fails.")
     }
 
     static var permissionAccessibilityDetail: String {
@@ -1192,8 +1233,16 @@ enum L10n {
                   en: "Drag %@ into the list above to allow Accessibility")
     }
 
-    static var permissionDragBarTitle: String {
-        localized("permissionDragBarTitle",
+    static var permissionDragFallbackHint: String {
+        localized("permissionDragFallbackHint",
+                  zh: "若拖拽无效，点列表下方的 + 选择该 App",
+                  ko: "끌어다 놓기가 안 되면 목록 아래 + 를 눌러 앱을 선택하세요",
+                  ja: "ドラッグできない場合はリスト下の + からアプリを選択してください",
+                  fr: "Si le glisser ne fonctionne pas, cliquez sur + sous la liste",
+                  en: "If dragging fails, click + under the list to choose the app")
+    }
+
+    static var permissionDragBarTitle: String {        localized("permissionDragBarTitle",
                   zh: "%@（点我拖动）",
                   ko: "%@ (끌어서 이동)",
                   ja: "%@ (ドラッグして移動)",
@@ -1218,11 +1267,11 @@ enum L10n {
 
     static var permissionHint: String {
         localized("permissionHint",
-                  zh: "授权后如状态未更新，请重启应用。",
-                  ko: "허용 후 상태가 갱신되지 않으면 앱을 다시 시작하세요.",
-                  ja: "許可後に状態が更新されない場合はアプリを再起動してください。",
-                  fr: "Redémarrez l'app si l'état ne se met pas à jour.",
-                  en: "Restart the app if the status does not update.")
+                  zh: "授权后会自动刷新，无需重启应用。",
+                  ko: "허용 후 자동으로 새로고침되며 앱을 다시 시작할 필요가 없습니다.",
+                  ja: "許可後は自動で更新されます。アプリの再起動は不要です。",
+                  fr: "L'état se met à jour automatiquement, sans redémarrer l'app.",
+                  en: "Status refreshes automatically — no need to restart the app.")
     }
 
     static var localSummary: String {
