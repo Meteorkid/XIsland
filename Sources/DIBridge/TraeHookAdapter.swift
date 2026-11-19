@@ -17,6 +17,8 @@ enum TraeHookAdapter {
         var message = DIMessage(type: type, sessionId: "trae-\(id)")
         message.agentType = "trae"
         message.workingDir = try text(data, "cwd")
+        // 区分 Trae 与 Trae CN：hook 只提供 cwd，来源客户端由父进程链确定。
+        if let client = ParentApp.name() { message.terminal = client }
         message.statusIsAssistantReply = false
         switch hookType {
         case "UserPromptSubmit": message.prompt = try text(data, "prompt", allowingEmpty: true)

@@ -2853,6 +2853,10 @@ extension L10n {
     static func sessionJumpMessage(_ result: SessionJumpResult) -> String {
         switch result {
         case .conversationRequested, .terminalFocused: return ""
+        case .conversationFocused:
+            return localized("jumpConversationFocused", zh: "已在客户端中定位并打开对应会话。", ko: "클라이언트에서 해당 대화를 찾아 열었습니다.", ja: "クライアント内で該当する会話を開きました。", fr: "Conversation localisée et ouverte dans le client.", en: "Located and opened the matching conversation in the client.")
+        case .projectOpened:
+            return localized("jumpProjectOpened", zh: "已切换到客户端并打开项目目录；该客户端不支持直达会话，请在聊天列表中选择。", ko: "클라이언트를 열고 프로젝트 폴더를 열었습니다. 이 클라이언트는 대화로 바로 이동할 수 없습니다.", ja: "クライアントを開きプロジェクトを表示しました。このクライアントは会話への直接移動に対応していません。", fr: "Client ouvert sur le dossier du projet ; la navigation directe vers la conversation n'est pas prise en charge.", en: "Client opened on the project folder; this client does not support jumping straight to a conversation.")
         case .missingIdentity:
             return localized("jumpMissingIdentity", zh: "缺少对应聊天或终端标签的定位标识，请从原客户端重新运行一次任务。", ko: "정확한 세션 식별자가 없습니다. 클라이언트에서 작업을 다시 실행하세요.", ja: "会話やタブの識別子がありません。元のクライアントでタスクを再実行してください。", fr: "Identifiant de conversation ou d’onglet manquant. Relancez une tâche dans le client.", en: "The conversation or terminal tab identifier is missing. Run a task again in the original client.")
         case .unavailable:

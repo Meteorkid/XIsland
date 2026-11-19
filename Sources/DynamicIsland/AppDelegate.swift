@@ -764,6 +764,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func performLicensedStartup() {
         if notchWindow == nil { setupNotchWindow() }
+        ViewedSessionObserver.shared.start(manager: sessionManager)
         if testConfiguration.isEnabled {
             // fixture窗口不监听全局输入、不隐藏其他岛体，也不访问真实Agent配置。
             audioEngine.isMuted = true

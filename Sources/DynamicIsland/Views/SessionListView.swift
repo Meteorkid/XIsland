@@ -331,6 +331,9 @@ struct SessionCardView: View {
                 isHovered = hovering
             }
         }
+        // 整卡兜底：未被内部按钮消费的点击（摘要、留白、分隔线）都触发跳转。
+        .contentShape(Rectangle())
+        .onTapGesture { jumpToSession() }
         .contextMenu {
             if session.status == .completed && session.completionNeedsReview {
                 Button(L10n.markCompletionReviewed) { manager.markCompletionReviewed(sessionID: session.id) }

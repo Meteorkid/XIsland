@@ -320,11 +320,11 @@ final class SessionManager {
             }
         }
 
-        // 按状态优先级排序，同优先级按最近活动时间降序
+        // 排序：待审批 > 完成待查看 > 运行中 > 静止；同档按最近活动时间降序。
         result.sort { a, b in
-            if a.status.statusPriority != b.status.statusPriority {
-                return a.status.statusPriority < b.status.statusPriority
-            }
+            let rankA = Self.sortRank(a)
+            let rankB = Self.sortRank(b)
+            if rankA != rankB { return rankA < rankB }
             return a.lastActivityTime > b.lastActivityTime
         }
 
@@ -550,8 +550,25 @@ final class SessionManager {
         purgeOrphanedCacheEntries()
     }
 
-    var selectedSession: AgentSession? {
-        guard let id = selectedSessionId else { return activeSessions.first }
+    /// 面板排序档位：0 出错、1–3 待审批、4 完成待查看、5–7 运行中、8–9 静止。
+    /// `completed` 需按 `completionNeedsReview` 区分「待查看」与「已看完」，不能只看状态枚举。
+    private static func sortRank(_ session: AgentSession) -> Int {
+        switch session.status {
+        case .error: return 0
+        case .waitingPermission: return 1
+        case .waitingAnswer: return 2
+        case .waitingPlanReview: return 3
+        case .completionUnconfirmed: return 4
+        case .completed: return session.completionNeedsReview ? 4 : 9
+        case .active: return 5
+        case .thinking: return 6
+        case .compacting: return 7
+        case .idle: return 8
+        case .observationUnavailable: return 10
+        }
+    }
+
+    var selectedSession: AgentSession? {        guard let id = selectedSessionId else { return activeSessions.first }
         return sessions.first { $0.id == id }
     }
 
@@ -1923,7 +1940,16 @@ final class SessionManager {
             refreshCheckpoint = resumeSession(session)
             session.statusText = message.status ?? ""
         }
-        if let t = message.terminal, !t.isEmpty { session.terminal = t }
+        if let t = message.terminal, !t.isEmpty {
+            session.terminal = t
+        } else if session.terminal.isEmpty, session.agentType == .trae,
+                  let frontBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+                  let app = TerminalApp.detect(from: frontBundle),
+                  app == .trae || app == .traeCn || app == .traeWorkCn {
+            // Trae 系 hook 不含来源客户端：消息到达瞬间的前台应用几乎必然是发消息的那个发行版。
+            // 不补这一层，跳转会一律落到 forAgent(.trae) 的默认国际版。
+            session.terminal = app.rawValue
+        }
         if let w = message.workingDir, !w.isEmpty { session.workingDirectory = w }
         if let p = message.prompt, !p.isEmpty {
             session.prompt = p

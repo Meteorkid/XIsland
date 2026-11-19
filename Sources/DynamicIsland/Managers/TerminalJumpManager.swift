@@ -161,6 +161,10 @@ enum SessionJumpResult: Equatable {
     /// 客户端已接收带会话 ID 的链接；不将系统回调表述为已验证客户端渲染。
     case conversationRequested
     case terminalFocused
+    /// 客户端没有会话级链接：已切换到该客户端并打开会话所在目录。
+    case projectOpened
+    /// 无 deeplink，但通过辅助功能在界面里定位并点击了会话条目。
+    case conversationFocused
     case unavailable
     case missingIdentity
     case applicationUnavailable
@@ -168,7 +172,10 @@ enum SessionJumpResult: Equatable {
     case targetNotFound
     case commandFailed
 
-    var accepted: Bool { self == .conversationRequested || self == .terminalFocused }
+    var accepted: Bool {
+        self == .conversationRequested || self == .terminalFocused
+            || self == .projectOpened || self == .conversationFocused
+    }
 
     var message: String { L10n.sessionJumpMessage(self) }
 }
@@ -176,6 +183,8 @@ enum SessionJumpResult: Equatable {
 enum SessionJumpPlan: Equatable {
     case conversation(TerminalApp, URL)
     case terminal(TerminalSessionTarget)
+    /// 无会话级 deeplink 的客户端：打开项目目录并前置应用；title 用于尝试在界面里定位会话。
+    case project(TerminalApp, URL, String)
     case failure(SessionJumpResult)
 }
 
@@ -197,12 +206,13 @@ enum TerminalJumpManager {
         let workingDirectory: String
         let termSessionId: String?
         let windowNumber: Int?
+        let title: String
     }
 
     static func snapshot(_ session: AgentSession) -> SessionSnapshot {
         SessionSnapshot(id: session.id, agentType: session.agentType, terminal: session.terminal,
                         workingDirectory: session.workingDirectory, termSessionId: session.termSessionId,
-                        windowNumber: session.windowNumber)
+                        windowNumber: session.windowNumber, title: session.displayTitle)
     }
 
     static func plan(for snap: SessionSnapshot) -> SessionJumpPlan {
@@ -242,6 +252,11 @@ enum TerminalJumpManager {
             components.percentEncodedQuery = "id=" + encodedID(id)
             guard let url = components.url else { return .failure(.missingIdentity) }
             return .conversation(app, url)
+        case .trae, .traeCn, .traeWorkCn, .vscode, .windsurf, .zed, .antigravity:
+            // 这些 IDE 只注册登录/文件 scheme，没有会话级 deeplink，也没有可脚本化的窗口定位。
+            // 退化为打开会话所在目录并前置客户端，由用户在聊天列表中继续。
+            guard !snap.workingDirectory.isEmpty else { return .failure(.missingIdentity) }
+            return .project(app, URL(fileURLWithPath: snap.workingDirectory), snap.title)
         default:
             // 工作目录、窗口标题与曾经的前台窗口都不能唯一标识聊天或标签页。
             return .failure(.unavailable)
@@ -295,6 +310,27 @@ enum TerminalJumpManager {
             NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: NSWorkspace.OpenConfiguration()) { application, error in
                 DispatchQueue.main.async {
                     completion(error == nil && application?.bundleIdentifier == bundleID ? .conversationRequested : .applicationUnavailable)
+                }
+            }
+        case .project(let app, let url, let title):
+            guard let bundleID = app.bundleId,
+                  let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+                completion(.applicationUnavailable); return
+            }
+            // 客户端已运行时只前置：不要传 .activateAllWindows，它会把窗口整体提到当前 Space，
+            // 表现为“窗口被搬到当前位置”。空选项交给系统切换到该应用窗口所在的桌面。
+            if let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first,
+               !running.isTerminated {
+                running.activate(options: [])
+                // 进一步尝试在界面里点开对应会话；客户端未暴露条目时保持窗口级结果。
+                let focused = AXConversationFocus.focus(title: title, in: running)
+                completion(focused ? .conversationFocused : .projectOpened)
+                return
+            }
+            NSWorkspace.shared.open([url], withApplicationAt: appURL,
+                                    configuration: NSWorkspace.OpenConfiguration()) { application, error in
+                DispatchQueue.main.async {
+                    completion(error == nil && application != nil ? .projectOpened : .applicationUnavailable)
                 }
             }
         case .terminal(let target):
