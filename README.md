@@ -74,7 +74,7 @@ These are the intended integration routes. See the [compatibility matrix](docs/c
 | Codex CLI／桌面核心 | Native hooks.json | Contract tests passed; real client verification pending |
 | Gemini CLI | Native settings hooks; ACP planned | Contract tests passed; real client verification pending |
 | Cursor | Native Cursor hooks | Contract tests passed; real client verification pending |
-| Trae／Trae CN／Solo | Hooks per IDE edition | CN contract tests passed; other editions and real clients pending |
+| Trae／Trae CN／Solo | Hooks per IDE edition ([setup guide](docs/integrations/trae-hooks.md)) | CN and international paths supported; real-client verification in progress |
 | OpenCode | Plugin and same-instance SDK | Contract tests passed; client and remaining interaction verification pending |
 | Factory Droid | Native hooks.json or settings fallback | Contract tests passed; real client verification pending |
 | Qoder CLI／IDE | Native settings hooks | Contract tests passed; real client verification pending |

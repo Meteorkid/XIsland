@@ -72,7 +72,7 @@ X Island 以一个紧凑的药丸形状悬浮在屏幕顶部。当 AI Agent 工�
 | Codex CLI／桌面核心 | 原生 hooks.json | 契约测试通过，待真实客户端联调 |
 | Gemini CLI | 原生 settings hooks；后续 ACP | 契约测试通过，待真实客户端联调 |
 | Cursor | Cursor 原生 hooks | 契约测试通过，待真实客户端联调 |
-| Trae／Trae CN／Solo | 各发行版原生 hooks | CN契约测试通过，其他发行版与实机待验收 |
+| Trae／Trae CN／Solo | 各发行版原生 hooks（[配置指南](docs/integrations/trae-hooks.md)） | CN 与国际版双路径已支持；实机验收中 |
 | OpenCode | 专用插件／实例 SDK | 契约测试通过，待实机及剩余交互验收 |
 | Factory Droid | 原生 hooks.json 或 settings 回退 | 契约测试通过，待真实客户端联调 |
 | Qoder CLI／IDE | 原生 settings hooks | 契约测试通过，待真实客户端联调 |

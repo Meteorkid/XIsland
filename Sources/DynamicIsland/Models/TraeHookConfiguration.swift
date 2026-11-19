@@ -1,9 +1,12 @@
 import Foundation
 import CoreFoundation
 
-/// 已核实的 Trae CN 配置；国际版与其他发行形态需要独立验收。
+/// 已核实的 Trae hooks 配置：国内版读写 `~/.trae-cn/hooks.json`，国际版为 `~/.trae/hooks.json`。
+/// 两版共用同一套 `version: 1` + 六个事件的新协议。
 enum TraeHookConfiguration {
     static let relativeConfigPath = ".trae-cn/hooks.json"
+    /// 国内版在前，国际版在后；写入时只为已安装（目录存在）的发行版创建配置。
+    static let relativeConfigPaths = [relativeConfigPath, ".trae/hooks.json"]
     static let events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification"]
     enum ConfigurationError: Error { case invalidVersion, unsupportedLegacyEntry }
 
@@ -39,16 +42,18 @@ enum TraeHookConfiguration {
                             "beforeReadFile": "PreToolUse --tool Read", "afterFileEdit": "PostToolUse --tool FileEdit",
                             "beforeShellExecution": "PreToolUse --tool Shell", "afterShellExecution": "PostToolUse --tool Shell",
                             "beforeMCPExecution": "PreToolUse --tool MCP", "afterMCPExecution": "PostToolUse --tool MCP", "stop": "session_end"]
-        for (event, arguments) in oldArguments {
+        for event in oldArguments.keys {
             guard let entries = hooks[event] as? [[String: Any]] else { continue }
-            let suffix = " --agent trae --hook \(arguments)"
             let retained = try entries.filter { entry in
                 // 已合法使用新分组形式的未知事件保持原样；仅认领旧版完整命令形状。
                 if entry["hooks"] != nil { return true }
-                guard let command = entry["command"] as? String, command.hasSuffix(suffix) else {
+                // 旧版各事件的 --hook 参数并不统一（例如 stop 曾写 notification），
+                // 只要命令确实指向本桥接的 trae agent 就认领，避免迁移因参数差异整体失败。
+                guard let command = entry["command"] as? String,
+                      let range = command.range(of: " --agent trae --hook") else {
                     throw ConfigurationError.unsupportedLegacyEntry
                 }
-                let path = String(command.dropLast(suffix.count))
+                let path = String(command[..<range.lowerBound])
                 let forbidden = CharacterSet(charactersIn: "\n\r\0;|&$`<>\\\"'")
                 guard path.hasPrefix("/"), (path as NSString).lastPathComponent == "di-bridge",
                       path.rangeOfCharacter(from: forbidden) == nil else { throw ConfigurationError.unsupportedLegacyEntry }
