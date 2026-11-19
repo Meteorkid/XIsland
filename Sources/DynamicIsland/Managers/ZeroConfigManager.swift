@@ -98,15 +98,11 @@ enum ZeroConfigManager {
             return
         }
         if agent == .trae {
-            for relativePath in TraeHookConfiguration.relativeConfigPaths {
-                let url = URL(fileURLWithPath: home).appendingPathComponent(relativePath)
-                // 只为已安装的发行版写配置，避免给未安装的版本凭空创建目录。
-                guard FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path) else { continue }
-                do {
-                    try HookConfigurationFile.update(at: url) { try TraeHookConfiguration.merging(into: $0, bridgePath: bridgePath) }
-                } catch {
-                    print("[ZeroConfig] Trae hook configuration failed at \(relativePath): \(error.localizedDescription)")
-                }
+            let url = URL(fileURLWithPath: home).appendingPathComponent(TraeHookConfiguration.relativeConfigPath)
+            do {
+                try HookConfigurationFile.update(at: url) { try TraeHookConfiguration.merging(into: $0, bridgePath: bridgePath) }
+            } catch {
+                print("[ZeroConfig] Trae hook configuration failed: \(error.localizedDescription)")
             }
             return
         }

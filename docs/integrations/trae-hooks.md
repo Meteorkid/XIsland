@@ -4,20 +4,22 @@ Trae 通过全局 `hooks.json` 把会话事件交给 X Island。本文说明自�
 
 ## 支持的发行版
 
-| 发行版 | 全局配置路径 |
-|---|---|
-| Trae CN | `~/.trae-cn/hooks.json` |
-| Trae（国际版） | `~/.trae/hooks.json` |
+国内版与国际版的**全局** Hook 读取同一个文件：
+
+| 类型 | 路径 | 生效范围 |
+|---|---|---|
+| 全局 Hook | `~/.trae-cn/hooks.json` | 本机所有工作区（国内版与国际版共用） |
+| 项目 Hook | `<项目>/.trae/hooks.json` | 仅该项目/工作区 |
+
+> `~/.trae/hooks.json` 看起来像"国际版全局配置"，但它实际是**项目级**路径——只有当那个目录本身作为工作区打开时才生效。不要把全局配置写在这里。
 
 两版共用同一套 `version: 1` 协议与六个事件：SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、Stop、Notification。
-
-> 项目级配置是 `<项目>/.trae/hooks.json`，与全局配置互不影响。X Island 只写全局配置。
 
 ## 方式一：让 X Island 自动写入
 
 1. 打开 X Island **设置 → 集成**
 2. 找到 Trae，点「配置」
-3. 若两个发行版都已安装，会分别写入各自的全局配置
+3. 写入的是两版共用的全局配置 `~/.trae-cn/hooks.json`，国内版与国际版都会读取它
 
 写入内容形如：
 

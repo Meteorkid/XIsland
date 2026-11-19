@@ -1,12 +1,13 @@
 import Foundation
 import CoreFoundation
 
-/// 已核实的 Trae hooks 配置：国内版读写 `~/.trae-cn/hooks.json`，国际版为 `~/.trae/hooks.json`。
-/// 两版共用同一套 `version: 1` + 六个事件的新协议。
+/// Trae hooks 配置。
+///
+/// 官方文档（docs.trae.ai/ide/hook-configuration-reference）说明：国内版与国际版的**全局**
+/// Hook 都读取 `~/.trae-cn/hooks.json`；`~/.trae/hooks.json` 是项目级路径
+/// （`$PROJECT/.trae/hooks.json`），只在对应目录作为工作区时生效，不作为全局配置写入。
 enum TraeHookConfiguration {
     static let relativeConfigPath = ".trae-cn/hooks.json"
-    /// 国内版在前，国际版在后；写入时只为已安装（目录存在）的发行版创建配置。
-    static let relativeConfigPaths = [relativeConfigPath, ".trae/hooks.json"]
     static let events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification"]
     enum ConfigurationError: Error { case invalidVersion, unsupportedLegacyEntry }
 
