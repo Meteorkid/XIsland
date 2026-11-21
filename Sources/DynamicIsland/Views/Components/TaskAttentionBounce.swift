@@ -60,22 +60,24 @@ struct TaskAttentionBounceFrame: AnimatableModifier {
     }
 
     struct Pose: Equatable {
+        var scale: CGFloat = 1
         var lift: CGFloat = 0
-        var rotation: Double = 0
     }
 
     static func pose(progress: Double, size: CGFloat) -> Pose {
         guard progress.isFinite, size.isFinite, size > 0, progress > 0, progress < 1 else { return Pose() }
+        let bounce = abs(sin(progress * .pi * 2))
         let amplitude = min(size * 0.16, 5)
+        // 整体缩放 + 轻微上抛：读起来是图标自己在弹跳，而不是被平移或旋转。
         let envelope = 1 - 0.35 * progress
-        return Pose(lift: -abs(sin(progress * .pi * 2)) * amplitude * envelope,
-                    rotation: sin(progress * .pi * 4) * 5 * (1 - progress))
+        return Pose(scale: 1 + bounce * 0.18,
+                    lift: -bounce * amplitude * envelope)
     }
 
     func body(content: Content) -> some View {
         let pose = Self.pose(progress: progress, size: size)
         content
-            .rotationEffect(.degrees(pose.rotation), anchor: .bottom)
+            .scaleEffect(pose.scale, anchor: .bottom)
             .offset(y: pose.lift)
     }
 }

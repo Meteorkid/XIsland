@@ -209,8 +209,15 @@ enum TerminalJumpManager {
         let title: String
     }
 
-    static func snapshot(_ session: AgentSession) -> SessionSnapshot {
-        SessionSnapshot(id: session.id, agentType: session.agentType, terminal: session.terminal,
+    /// Codex 的 deeplink 只对本机存在的 thread 有效；索引缺失时放行，交给客户端判断。
+    private static func codexThreadExists(_ id: String) -> Bool {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/session_index.jsonl")
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return true }
+        return text.contains(id)
+    }
+
+    static func snapshot(_ session: AgentSession) -> SessionSnapshot {        SessionSnapshot(id: session.id, agentType: session.agentType, terminal: session.terminal,
                         workingDirectory: session.workingDirectory, termSessionId: session.termSessionId,
                         windowNumber: session.windowNumber, title: session.displayTitle)
     }
@@ -236,6 +243,14 @@ enum TerminalJumpManager {
         case .codex:
             guard snap.agentType == .codex, let id = nativeID(snap.id, prefix: "codex-"),
                   UUID(uuidString: id) != nil, id.count == 36 else { return .failure(.missingIdentity) }
+            // codex://threads/<id> 只对本机存在的 thread 有效，否则 ChatGPT 会显示
+            // 「Chat unavailable on this computer」。先用本地索引校验，再决定是否跳转。
+            guard codexThreadExists(id) else {
+                if !snap.workingDirectory.isEmpty {
+                    return .project(.codex, URL(fileURLWithPath: snap.workingDirectory), snap.title)
+                }
+                return .failure(.targetNotFound)
+            }
             return conversation(app: app, host: "threads", id: id)
         case .workBuddy:
             guard snap.agentType == .workBuddy, snap.id.hasPrefix("workbuddy-"),

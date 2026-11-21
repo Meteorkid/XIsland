@@ -943,6 +943,8 @@ struct NotchContentView: View {
     }
 
     private func expand(to newState: IslandState) {
+        manager.freezeSessionOrder()
+        manager.backfillRecaps()
         guard !expandPending, notchWindow?.isSwitchingApps != true else { return }
         EnergyGovernor.shared.notePanelExpanded(newState != .collapsed)
         notchWindow?.isCollapsedPreviewReady = false
@@ -996,6 +998,7 @@ struct NotchContentView: View {
     }
 
     private func collapse() {
+        manager.unfreezeSessionOrder()
         cancelAttentionAutoCollapse()
         if notchWindow?.isInteractiveSwitchPreviewActive == true {
             notchWindow?.cancelIslandSwitchPreview()

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct AgentIcon: View {
@@ -15,6 +16,11 @@ struct AgentIcon: View {
     @AppStorage("reduceMotion") private var appReduceMotion = false
     @AppStorage("disableAnimations") private var disableAnimations = false
     @AppStorage("taskAttentionEnabled") private var taskAttentionEnabled = true
+    @AppStorage("mascotIconStyle") private var iconStyleRaw = MascotIconStyle.mascot.rawValue
+
+    private var iconStyle: MascotIconStyle {
+        MascotIconStyle(rawValue: iconStyleRaw) ?? .mascot
+    }
 
     init(agentType: AgentType, size: CGFloat = 24, status: SessionStatus = .active,
          showMascot: Bool = true, taskIdentity: MascotTaskIdentity? = nil, completionNeedsReview: Bool = false) {
@@ -82,25 +88,79 @@ struct AgentIcon: View {
         }
     }
 
+    @ViewBuilder
+    private var mascotContent: some View {
+        if shouldPulse && !reduceMotion {
+            AgentMascotShape(family: family)
+                .fill(tint.opacity(0.25))
+                .padding(-2)
+                .phaseAnimator([false, true]) { content, phase in
+                    content.opacity(phase ? 0.6 : 0.2)
+                } animation: { _ in .easeInOut(duration: 1.5) }
+        }
+        AgentMascotShape(family: family)
+            .fill(tint.opacity(colorScheme == .dark ? 0.18 : 0.15))
+            .overlay { AgentMascotShape(family: family).stroke(tint, lineWidth: 1.35) }
+            .padding(0.8)
+        MascotView(status: status, size: size * family.faceScale, tint: tint,
+                   completionNeedsReview: completionNeedsReview, showsDecorations: false)
+            .offset(x: family.faceOffset.width * size, y: family.faceOffset.height * size)
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var appLogoContent: some View {
+        if let url = appURL {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+        } else {
+            mascotContent
+        }
+    }
+
+    @ViewBuilder
+    private var customIconContent: some View {
+        if let image = CustomMascotStore.image {
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fill)
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+        } else {
+            mascotContent
+        }
+    }
+
+    private var appURL: URL? {
+        for identifier in agentType.meta.bundleIds {
+            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier) {
+                return url
+            }
+        }
+        return nil
+    }
+
     var body: some View {
         ZStack {
+            // 非吉祥物模式补一层呼吸光晕，保持运行中的视觉提示一致。
+            if iconStyle != .mascot, shouldPulse, !reduceMotion {
+                RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
+                    .fill(tint.opacity(0.25))
+                    .padding(-2)
+                    .phaseAnimator([false, true]) { content, phase in
+                        content.opacity(phase ? 0.6 : 0.2)
+                    } animation: { _ in .easeInOut(duration: 1.5) }
+            }
             if showMascot {
-                if shouldPulse && !reduceMotion {
-                    AgentMascotShape(family: family)
-                        .fill(tint.opacity(0.25))
-                        .padding(-2)
-                        .phaseAnimator([false, true]) { content, phase in
-                            content.opacity(phase ? 0.6 : 0.2)
-                        } animation: { _ in .easeInOut(duration: 1.5) }
+                switch iconStyle {
+                case .appLogo: appLogoContent
+                case .custom: customIconContent
+                case .mascot: mascotContent
                 }
-                AgentMascotShape(family: family)
-                    .fill(tint.opacity(colorScheme == .dark ? 0.18 : 0.15))
-                    .overlay { AgentMascotShape(family: family).stroke(tint, lineWidth: 1.35) }
-                    .padding(0.8)
-                MascotView(status: status, size: size * family.faceScale, tint: tint,
-                           completionNeedsReview: completionNeedsReview, showsDecorations: false)
-                    .offset(x: family.faceOffset.width * size, y: family.faceOffset.height * size)
-                    .accessibilityHidden(true)
             } else {
                 Image(systemName: agentType.iconSymbol)
                     .font(.system(size: size * 0.55, weight: .semibold))
@@ -108,7 +168,7 @@ struct AgentIcon: View {
             }
         }
         .frame(width: size, height: size)
-        .colorMultiply(colorScheme == .light ? Color(white: 0.68) : .white)
+        .colorMultiply(iconStyle == .mascot && colorScheme == .light ? Color(white: 0.68) : .white)
         .overlay(alignment: .topTrailing) {
             if let stateSymbol {
                 Image(systemName: stateSymbol)

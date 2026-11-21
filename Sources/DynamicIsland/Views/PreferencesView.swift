@@ -483,11 +483,191 @@ struct PreferencesView: View {
 
     // MARK: - Display
 
+    @AppStorage("mascotIconStyle") private var mascotIconStyle: MascotIconStyle = .mascot
+    @AppStorage("llmRecapEnabled") private var llmRecapEnabled = true
+    @AppStorage("summaryProvider") private var summaryProvider = "zhipu"
+    @AppStorage("summaryModel") private var summaryModel = ""
+    @AppStorage("ollamaKeepAlive") private var ollamaKeepAlive = "30s"
+    @State private var summaryKeyInput = ""
+    @StateObject private var ollama = OllamaManager()
+
+    private func saveSummaryKey() {
+        let trimmed = summaryKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        APIKeyStore.save(trimmed, account: summaryProvider)
+        summaryKeyInput = ""
+    }
+
+    private var modelRowDescription: String {
+        summaryProvider == "ollama" ? L10n.ollamaModelDesc : L10n.summaryModelDesc
+    }
+
+    private var ollamaStatusText: String {
+        switch ollama.status {
+        case .missing: return L10n.ollamaMissing
+        case .noModel: return L10n.ollamaNoModel
+        case .ready(let name): return L10n.ollamaReady(name)
+        case .pulling: return L10n.ollamaPulling
+        }
+    }
+
+    private var ollamaStatusColor: Color {
+        switch ollama.status {
+        case .missing: return .orange
+        case .noModel: return .yellow
+        case .ready: return .green
+        case .pulling: return .cyan
+        }
+    }
+
+    private func chooseMascotImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = L10n.mascotChooseImage
+        guard panel.runModal() == .OK, let url = panel.url,
+              let image = NSImage(contentsOf: url) else { return }
+        try? CustomMascotStore.save(image)
+    }
+
     private var displayPane: some View {
         VStack(alignment: .leading, spacing: 20) {
             section(L10n.appearanceSection) {
                 card {
                     ThemePickerView()
+                    dividerLine
+                    settingRow(L10n.mascotIconStyle, id: "mascotIconStyle", description: L10n.mascotIconStyleDesc) {
+                        Picker("", selection: $mascotIconStyle) {
+                            Text(L10n.mascotStyleMascot).tag(MascotIconStyle.mascot)
+                            Text(L10n.mascotStyleAppLogo).tag(MascotIconStyle.appLogo)
+                            Text(L10n.mascotStyleCustom).tag(MascotIconStyle.custom)
+                        }
+                        .labelsHidden()
+                        .frame(width: 150)
+                    }
+                    if mascotIconStyle == .custom {
+                        dividerLine
+                        HStack(spacing: 12) {
+                            Button(L10n.mascotChooseImage) { chooseMascotImage() }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.cyan)
+                            Spacer(minLength: 8)
+                            Button(L10n.mascotClearImage) { CustomMascotStore.clear() }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            section(L10n.sectionSummary) {
+                card {
+                    settingRow(L10n.llmRecapTitle, id: "llmRecap", description: L10n.llmRecapDesc) {
+                        Toggle("", isOn: $llmRecapEnabled).labelsHidden()
+                    }
+                    dividerLine
+                    settingRow(L10n.summaryProvider, id: "summaryProvider",
+                               description: SummaryProviderPreset.preset(summaryProvider).note ?? L10n.summaryProviderDesc) {
+                        Picker("", selection: $summaryProvider) {
+                            ForEach(SummaryProviderPreset.all) { preset in
+                                Text(preset.title).tag(preset.id)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 210)
+                    }
+                    dividerLine
+                    settingRow(L10n.summaryAPIKey, id: "summaryAPIKey", description: L10n.summaryAPIKeyDesc) {
+                        HStack(spacing: 6) {
+                            SecureField("sk-…", text: $summaryKeyInput)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 170)
+                            Button(L10n.save) { saveSummaryKey() }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.cyan)
+                        }
+                    }
+                    dividerLine
+                    settingRow(L10n.summaryModel, id: "summaryModel", description: modelRowDescription) {
+                        if summaryProvider == "ollama" {
+                            HStack(spacing: 6) {
+                                Picker("", selection: $summaryModel) {
+                                    Text(L10n.ollamaFirstModel).tag("")
+                                    ForEach(ollama.installedModels, id: \.self) { name in
+                                        Text(name).tag(name)
+                                    }
+                                }
+                                .labelsHidden()
+                                .frame(width: 150)
+                                Menu {
+                                    ForEach(OllamaManager.recommended) { item in
+                                        Button("\(item.id) · \(item.size) — \(item.note)") {
+                                            ollama.pull(model: item.id)
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: "arrow.down.circle")
+                                        .font(.system(size: 12))
+                                }
+                                .menuStyle(.borderlessButton)
+                                .frame(width: 22)
+                                .help(L10n.ollamaPullHelp)
+                            }
+                        } else {
+                            TextField("gpt-4o-mini", text: $summaryModel)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 170)
+                        }
+                    }
+                    if summaryProvider == "ollama" {
+                        dividerLine
+                        settingRow(L10n.ollamaKeepAlive, id: "ollamaKeepAlive", description: L10n.ollamaKeepAliveDesc) {
+                            Picker("", selection: $ollamaKeepAlive) {
+                                Text("30s").tag("30s")
+                                Text("2m").tag("2m")
+                                Text("5m").tag("5m")
+                                Text(L10n.ollamaKeepForever).tag("-1")
+                            }
+                            .labelsHidden()
+                            .frame(width: 110)
+                        }
+                        dividerLine
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(ollamaStatusColor)
+                                .frame(width: 6, height: 6)
+                            Text(ollamaStatusText)
+                                .font(.system(size: 11))
+                                .foregroundStyle(IslandStyle.secondaryText)
+                                .lineLimit(1)
+                            Spacer(minLength: 8)
+                            switch ollama.status {
+                            case .missing:
+                                Button(L10n.ollamaGet) { ollama.openDownloadPage() }
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.cyan)
+                            case .noModel:
+                                Button(L10n.ollamaPull) { ollama.pull() }
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.cyan)
+                            case .pulling:
+                                Text(ollama.progress)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .frame(width: 150, alignment: .trailing)
+                            case .ready:
+                                EmptyView()
+                            }
+                        }
+                        .task { await ollama.refresh() }
+                    }
                 }
             }
 

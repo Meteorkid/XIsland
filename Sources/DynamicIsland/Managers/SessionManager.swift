@@ -328,10 +328,26 @@ final class SessionManager {
             return a.lastActivityTime > b.lastActivityTime
         }
 
+        // 面板展开期间使用冻结顺序：状态/时间变化不再重排，避免点击瞬间列表位移导致点错会话。
+        if let frozen = frozenSessionOrder {
+            let positions = Dictionary(uniqueKeysWithValues: frozen.enumerated().map { ($0.element, $0.offset) })
+            result.sort { (positions[$0.id] ?? Int.max) < (positions[$1.id] ?? Int.max) }
+        }
+
         return result
     }
 
-    /// 按当前 grouping 分组后的会话
+    private var frozenSessionOrder: [String]?
+
+    /// 面板展开时锁定列表顺序；新出现的会话排在末尾，已有会话保持原位。
+    func freezeSessionOrder() {
+        guard frozenSessionOrder == nil else { return }
+        frozenSessionOrder = filteredSessions.map(\.id)
+    }
+
+    func unfreezeSessionOrder() {
+        frozenSessionOrder = nil
+    }
     var groupedSessions: [SessionGroup] {
         let sessions = filteredSessions
         switch grouping {
@@ -2048,6 +2064,7 @@ final class SessionManager {
             session.completionNeedsReview = true
             session.completedAt = Date()
             recordApprovalMapSnapshot(for: session)
+            scheduleLLMRecap(for: session)
         }
         session.status = .completed
         session.currentTool = nil
@@ -2534,6 +2551,9 @@ final class SessionManager {
     private func handleRecap(_ message: DIMessage) {
         let session = findOrCreateSession(message)
         session.recapText = message.recapText
+        if let recap = message.recapText, !recap.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            SessionSummarizer.markClientReported(session.id)
+        }
         if session.status != .completed, session.status != .observationUnavailable,
            !(message.recapText ?? "").isEmpty { reportIntegrationActivity(message, session: session) }
     }
@@ -2721,6 +2741,86 @@ final class SessionManager {
     private func removeIndexForSession(_ sessionId: String) {
         sessionIndex.removeValue(forKey: sessionId)
         suffixCache.removeValue(forKey: sessionId)
+    }
+
+    /// 会话完成时异步生成一次 LLM 摘要；无密钥或失败时静默跳过，卡片回退本地归纳。
+    private func scheduleLLMRecap(for session: AgentSession) {
+        guard SessionSummarizer.isAvailable else { return }
+        let sessionID = session.id
+        Task { @MainActor [weak self] in
+            guard let self, let target = self.sessionById(sessionID),
+                  let recap = await SessionSummarizer.summarize(target) else { return }
+            target.recapText = recap
+            self.persistSession(target)
+        }
+    }
+
+    /// 手动生成摘要：用于已完成但没有摘要的旧会话。
+    func generateRecap(for session: AgentSession) {
+        guard SessionSummarizer.isEnabled else { return }
+        let sessionID = session.id
+        Task { @MainActor [weak self] in
+            guard let self, let target = self.sessionById(sessionID) else { return }
+            if let recap = await SessionSummarizer.summarize(target, force: true) {
+                target.recapText = recap
+                self.persistSession(target)
+            }
+        }
+    }
+
+    /// 后台静默回填：启动后先等一会儿，再串行把历史会话的摘要补齐。
+    private var recapSchedulerTask: Task<Void, Never>?
+    private var recapBackfillTask: Task<Void, Never>?
+
+    func startRecapBackfillScheduler() {
+        guard recapSchedulerTask == nil else { return }
+        recapSchedulerTask = Task { @MainActor [weak self] in
+            // 避开冷启动与首屏渲染。
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            while !Task.isCancelled {
+                await self?.backfillAllRecaps()
+                try? await Task.sleep(nanoseconds: 600_000_000_000)
+            }
+        }
+    }
+
+    /// 串行处理，每次最多 20 个，避免长时间占满模型与 GPU。
+    private func backfillAllRecaps() async {
+        guard SessionSummarizer.isEnabled else { return }
+        let pending = sessions.filter {
+            SessionSummarizer.shouldSummarize($0)
+        }.sorted { $0.lastActivityTime > $1.lastActivityTime }.prefix(20)
+        guard !pending.isEmpty else { return }
+
+        for session in pending {
+            if Task.isCancelled { return }
+            if let recap = await SessionSummarizer.summarize(session) {
+                session.recapText = recap
+                persistSession(session)
+            }
+            try? await Task.sleep(nanoseconds: 800_000_000)
+        }
+    }
+
+    /// 面板展开时的即时补位：只补最近一个，其余交给后台调度。
+    func backfillRecaps(limit: Int = 1) {
+        guard SessionSummarizer.isEnabled, recapBackfillTask == nil else { return }
+        let candidates = sessions.filter {
+            ($0.recapText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && ($0.status == .completed || $0.status == .completionUnconfirmed)
+                && !$0.events.isEmpty
+        }.sorted { $0.lastActivityTime > $1.lastActivityTime }.prefix(limit)
+        guard !candidates.isEmpty else { return }
+        recapBackfillTask = Task { @MainActor [weak self] in
+            for session in candidates {
+                if let recap = await SessionSummarizer.summarize(session) {
+                    session.recapText = recap
+                    self?.persistSession(session)
+                }
+                try? await Task.sleep(nanoseconds: 600_000_000)
+            }
+            self?.recapBackfillTask = nil
+        }
     }
 
     private func sessionById(_ sessionId: String) -> AgentSession? {

@@ -94,6 +94,181 @@ enum L10n {
                   en: "Return to X Island when a task finishes, with a gentle mascot bounce to request review. Expand approvals and questions automatically. Opening details or jumping to the chat marks the result viewed. Turn off to stop automatic switching.")
     }
 
+    static var summaryGenerated: String {
+        localized("summaryGenerated", zh: "摘要", ko: "요약", ja: "要約", fr: "Résumé", en: "Summary")
+    }
+
+    static var generateSummary: String {
+        localized("generateSummary", zh: "生成摘要", ko: "요약 생성", ja: "要約を生成",
+                  fr: "Générer un résumé", en: "Generate summary")
+    }
+
+    static var ollamaKeepAlive: String {
+        localized("ollamaKeepAlive", zh: "模型驻留", ko: "모델 유지", ja: "モデルの保持",
+                  fr: "Maintien du modèle", en: "Model residency")
+    }
+
+    static var ollamaKeepAliveDesc: String {
+        localized("ollamaKeepAliveDesc",
+                  zh: "生成后模型在内存中保留多久：越短越省资源，越长下次加载越快。",
+                  ko: "생성 후 모델을 메모리에 유지하는 시간입니다.",
+                  ja: "生成後にモデルをメモリに保持する時間です。",
+                  fr: "Durée de maintien du modèle en mémoire après génération.",
+                  en: "How long the model stays in memory after generating.")
+    }
+
+    static var ollamaKeepForever: String {
+        localized("ollamaKeepForever", zh: "一直保留", ko: "계속 유지", ja: "常に保持",
+                  fr: "Toujours garder", en: "Keep always")
+    }
+
+    static var ollamaFirstModel: String {
+        localized("ollamaFirstModel", zh: "第一个已安装模型", ko: "첫 번째 설치된 모델",
+                  ja: "最初のインストール済みモデル", fr: "Premier modèle installé",
+                  en: "First installed model")
+    }
+
+    static var ollamaPullHelp: String {
+        localized("ollamaPullHelp", zh: "下载推荐模型", ko: "추천 모델 다운로드",
+                  ja: "おすすめモデルをダウンロード", fr: "Télécharger un modèle recommandé",
+                  en: "Download a recommended model")
+    }
+
+    static var ollamaModelDesc: String {
+        localized("ollamaModelDesc", zh: "留空则使用第一个已安装模型；右侧按钮可下载推荐模型。",
+                  ko: "비우면 첫 번째 설치된 모델을 사용합니다.",
+                  ja: "空欄なら最初のインストール済みモデルを使います。",
+                  fr: "Vide = premier modèle installé ; le bouton à droite permet d'en télécharger un.",
+                  en: "Empty uses the first installed model; the button on the right downloads a recommended one.")
+    }
+
+    static var ollamaMissing: String {
+        localized("ollamaMissing", zh: "未检测到 Ollama", ko: "Ollama를 찾을 수 없습니다",
+                  ja: "Ollama が見つかりません", fr: "Ollama introuvable", en: "Ollama not found")
+    }
+
+    static var ollamaNoModel: String {
+        localized("ollamaNoModel", zh: "已安装 Ollama，尚未下载模型", ko: "Ollama는 있지만 모델이 없습니다",
+                  ja: "Ollama はありますがモデルがありません", fr: "Ollama installé, aucun modèle",
+                  en: "Ollama installed, no model yet")
+    }
+
+    static var ollamaPulling: String {
+        localized("ollamaPulling", zh: "正在下载模型…", ko: "모델 다운로드 중…", ja: "モデルをダウンロード中…",
+                  fr: "Téléchargement du modèle…", en: "Downloading model…")
+    }
+
+    static var ollamaGet: String {
+        localized("ollamaGet", zh: "获取 Ollama", ko: "Ollama 받기", ja: "Ollama を入手",
+                  fr: "Obtenir Ollama", en: "Get Ollama")
+    }
+
+    static var ollamaPull: String {
+        localized("ollamaPull", zh: "下载 qwen2.5:3b", ko: "qwen2.5:3b 다운로드", ja: "qwen2.5:3b をダウンロード",
+                  fr: "Télécharger qwen2.5:3b", en: "Download qwen2.5:3b")
+    }
+
+    static func ollamaReady(_ name: String) -> String {
+        String(format: localized("ollamaReady", zh: "已就绪：%@", ko: "준비됨: %@", ja: "準備完了: %@",
+                                 fr: "Prêt : %@", en: "Ready: %@"), name)
+    }
+
+    static var sectionSummary: String {
+        localized("sectionSummary", zh: "任务摘要", ko: "작업 요약", ja: "タスク要約",
+                  fr: "Résumé de tâche", en: "Task summary")
+    }
+
+    static var llmRecapTitle: String {
+        localized("llmRecapTitle", zh: "LLM 摘要", ko: "LLM 요약", ja: "LLM 要約",
+                  fr: "Résumé LLM", en: "LLM summary")
+    }
+
+    static var llmRecapDesc: String {
+        localized("llmRecapDesc",
+                  zh: "会话完成时用模型归纳做了什么、完成到哪一步；未配置时使用事件归纳。",
+                  ko: "작업 완료 시 모델로 요약합니다. 미설정 시 이벤트 요약을 사용합니다.",
+                  ja: "タスク完了時にモデルで要約します。未設定時はイベント要約を使います。",
+                  fr: "Résume la tâche avec un modèle à la fin ; sinon résumé par événements.",
+                  en: "Summarize the task with a model on completion; falls back to event summary.")
+    }
+
+    static var summaryProvider: String {
+        localized("summaryProvider", zh: "服务商", ko: "제공자", ja: "プロバイダ",
+                  fr: "Fournisseur", en: "Provider")
+    }
+
+    static var summaryProviderDesc: String {
+        localized("summaryProviderDesc", zh: "使用哪家的 API。", ko: "사용할 API 제공자입니다.",
+                  ja: "使用する API プロバイダです。", fr: "Fournisseur d'API utilisé.",
+                  en: "Which API provider to use.")
+    }
+
+    static var summaryAPIKey: String {
+        localized("summaryAPIKey", zh: "API Key", ko: "API 키", ja: "API キー",
+                  fr: "Clé API", en: "API key")
+    }
+
+    static var summaryAPIKeyDesc: String {
+        localized("summaryAPIKeyDesc", zh: "保存在钥匙串；留空表示不启用云端摘要。",
+                  ko: "키체인에 저장됩니다. 비우면 클라우드 요약을 사용하지 않습니다.",
+                  ja: "キーチェーンに保存します。空欄ならクラウド要約は無効です。",
+                  fr: "Stockée dans le trousseau ; vide = résumé cloud désactivé.",
+                  en: "Stored in Keychain; leave empty to disable cloud summaries.")
+    }
+
+    static var summaryModel: String {
+        localized("summaryModel", zh: "模型", ko: "모델", ja: "モデル",
+                  fr: "Modèle", en: "Model")
+    }
+
+    static var summaryModelDesc: String {
+        localized("summaryModelDesc", zh: "留空使用默认模型。", ko: "비우면 기본 모델을 사용합니다.",
+                  ja: "空欄なら既定モデルを使います。", fr: "Vide = modèle par défaut.",
+                  en: "Leave empty for the default model.")
+    }
+
+    static var save: String {
+        localized("save", zh: "保存", ko: "저장", ja: "保存", fr: "Enregistrer", en: "Save")
+    }
+
+    static var mascotIconStyle: String {        localized("mascotIconStyle", zh: "图标风格", ko: "아이콘 스타일", ja: "アイコンのスタイル",
+                  fr: "Style d'icône", en: "Icon style")
+    }
+
+    static var mascotIconStyleDesc: String {
+        localized("mascotIconStyleDesc",
+                  zh: "收起状态与卡片上的图标来源：自绘吉祥物、对应软件的真实 Logo，或自定义图片。",
+                  ko: "접힌 상태와 카드에 표시할 아이콘 소스입니다.",
+                  ja: "収納時とカードに表示するアイコンの種類です。",
+                  fr: "Source de l'icône affichée sur la pilule et les cartes.",
+                  en: "Where the icon on the pill and cards comes from.")
+    }
+
+    static var mascotStyleMascot: String {
+        localized("mascotStyleMascot", zh: "吉祥物", ko: "마스코트", ja: "マスコット",
+                  fr: "Mascotte", en: "Mascot")
+    }
+
+    static var mascotStyleAppLogo: String {
+        localized("mascotStyleAppLogo", zh: "软件 Logo", ko: "앱 로고", ja: "アプリのロゴ",
+                  fr: "Logo de l'app", en: "App logo")
+    }
+
+    static var mascotStyleCustom: String {
+        localized("mascotStyleCustom", zh: "自定义图片", ko: "사용자 이미지", ja: "カスタム画像",
+                  fr: "Image personnalisée", en: "Custom image")
+    }
+
+    static var mascotChooseImage: String {
+        localized("mascotChooseImage", zh: "选择图片…", ko: "이미지 선택…", ja: "画像を選択…",
+                  fr: "Choisir une image…", en: "Choose image…")
+    }
+
+    static var mascotClearImage: String {
+        localized("mascotClearImage", zh: "清除", ko: "지우기", ja: "クリア",
+                  fr: "Effacer", en: "Clear")
+    }
+
     static func mascotTask(_ number: Int) -> String {
         String(format: localized("mascotTask", zh: "任务 %d", ko: "작업 %d", ja: "タスク %d", fr: "Tâche %d", en: "Task %d"), number)
     }

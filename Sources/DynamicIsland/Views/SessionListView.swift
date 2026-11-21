@@ -232,12 +232,12 @@ struct SessionCardView: View {
                 .padding(.vertical, 8)
             }
 
-            // 摘要区（独立于跳转 Button）
-            if let recap = session.recapText, !recap.isEmpty {
+            // 摘要区（独立于跳转 Button）：优先用客户端上报，缺省时按事件本地归纳。
+            if let recap = displayedRecap, !recap.isEmpty {
                 Divider()
                     .background(IslandStyle.divider(for: themeManager.resolvedScheme).opacity(IslandStyle.dividerOpacity(for: themeManager.resolvedScheme)))
                     .padding(.horizontal, 12)
-                recapSection(recap)
+                recapSection(recap, isGenerated: !(session.recapText ?? "").isEmpty)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
                     .contentShape(Rectangle())
@@ -276,26 +276,47 @@ struct SessionCardView: View {
                 }
             }
 
-            // 继续下一步：复制指令、激活会话窗口并尝试自动粘贴；发送仍由用户按回车确认。
-            if showsContinueBadge {
+            // 底部操作行：摘要展开/收起（左）+ 继续下一步。
+            if showsContinueBadge || canExpandRecap {
                 Divider()
                     .background(IslandStyle.divider(for: themeManager.resolvedScheme).opacity(IslandStyle.dividerOpacity(for: themeManager.resolvedScheme)))
                     .padding(.horizontal, 12)
-                Button {
-                    jumpState.requestContinue(session, manager: manager)
-                } label: {
-                    Label(L10n.continueNextStep, systemImage: "arrow.right.circle.fill")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.cyan)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.cyan.opacity(0.12))
-                        .clipShape(Capsule())
+                HStack(spacing: 8) {
+                    if canExpandRecap {
+                        Button {
+                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                                recapExpanded.toggle()
+                            }
+                        } label: {
+                            Label(recapExpanded ? L10n.showLess : L10n.showMore,
+                                  systemImage: recapExpanded ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.primary.opacity(0.06))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if showsContinueBadge {
+                        Button {
+                            jumpState.requestContinue(session, manager: manager)
+                        } label: {
+                            Label(L10n.continueNextStep, systemImage: "arrow.right.circle.fill")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.cyan)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.cyan.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.plain)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(.leading, session.isSubagent ? 24 : 0)
@@ -332,11 +353,16 @@ struct SessionCardView: View {
             }
         }
         // 整卡兜底：未被内部按钮消费的点击（摘要、留白、分隔线）都触发跳转。
+        // 这里必须用 onTapGesture 而非 simultaneousGesture，否则「关闭 ×」「子代理折叠」会同时触发跳转。
         .contentShape(Rectangle())
         .onTapGesture { jumpToSession() }
         .contextMenu {
             if session.status == .completed && session.completionNeedsReview {
                 Button(L10n.markCompletionReviewed) { manager.markCompletionReviewed(sessionID: session.id) }
+            }
+            if (session.recapText ?? "").isEmpty,
+               session.status == .completed || session.status == .completionUnconfirmed {
+                Button(L10n.generateSummary) { manager.generateRecap(for: session) }
             }
             Button(SessionActivityPreferences.isPinned(session.id) ? L10n.unpinActiveSession : L10n.pinActiveSession) {
                 manager.togglePinnedActive(sessionID: session.id)
@@ -566,47 +592,29 @@ struct SessionCardView: View {
         }
     }
 
-    private func recapSection(_ text: String) -> some View {
+    private func recapSection(_ text: String, isGenerated: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            // Recap 标题
+            // 标题反映来源：客户端上报或模型生成显示「摘要」，事件归纳显示「回顾」。
             HStack(spacing: 4) {
                 Image(systemName: "text.document")
                     .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.cyan.opacity(0.6))
-                Text(L10n.recap)
+                    .foregroundStyle(.cyan.opacity(0.9))
+                Text(isGenerated ? L10n.summaryGenerated : L10n.recap)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.cyan.opacity(0.6))
+                    .foregroundStyle(.cyan.opacity(0.9))
             }
 
-            // 直接显示摘要内容
+            // 摘要默认三行，展开按钮位于底部操作行左侧。
             Text(text)
-                .font(.system(size: 11))
-                .foregroundStyle(IslandStyle.secondaryText)
+                .font(.system(size: 11.5))
+                .foregroundStyle(IslandStyle.primaryText)
                 .lineLimit(recapExpanded ? nil : 3)
                 .multilineTextAlignment(.leading)
                 .padding(.top, 2)
-
-            // 展开/收起（仅在内容超过3行时显示）
-            if text.components(separatedBy: "\n").count > 3 || text.count > 120 {
-                HStack(spacing: 2) {
-                    Text(recapExpanded ? L10n.showLess : L10n.showMore)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.cyan.opacity(0.4))
-                    Image(systemName: recapExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(.cyan.opacity(0.4))
-                }
-                .onTapGesture {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
-                        if !recapExpanded { manager.markCompletionReviewed(sessionID: session.id) }
-                        recapExpanded.toggle()
-                    }
-                }
-            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(.cyan.opacity(0.04))
+        .background(.cyan.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
@@ -620,6 +628,25 @@ struct SessionCardView: View {
         !session.isSubagent
             && (session.status == .completed || session.status == .idle
                 || session.status == .completionUnconfirmed)
+    }
+
+    /// 摘要超过三行或 120 字时才提供展开控件。
+    private var canExpandRecap: Bool {
+        guard let recap = displayedRecap, !recap.isEmpty else { return false }
+        return recap.components(separatedBy: "\n").count > 3 || recap.count > 120
+    }
+
+    /// 客户端上报的摘要优先；没有上报时由工具事件归纳出「做了什么 / 进度」。
+    private var displayedRecap: String? {
+        if let reported = session.recapText?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !reported.isEmpty {
+            return reported
+        }
+        guard let recap = LocalRecapGenerator.make(for: session) else { return nil }
+        var lines = [recap.headline]
+        lines.append(contentsOf: recap.bullets)
+        lines.append(recap.progress)
+        return lines.joined(separator: "\n")
     }
 
     /// 单一徽章：Agent 类型 + 任务编号；来源与类型不同才追加，避免出现两个「WorkBuddy」。
