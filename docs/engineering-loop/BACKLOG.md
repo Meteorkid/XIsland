@@ -7,10 +7,10 @@
 - [x] 新增 `Scripts/check-docs.py`，检查 Markdown 围栏、仓库内相对链接、发行说明必需章节、VERSION/Cask 一致性和 LLM 提示覆盖。
 - [x] 新增 `.github/workflows/docs.yml`，在 push / PR 上运行文档检查。
 
-## G2 — 发布预检脚本
+## G2 — 发布预检脚本（已完成）
 
-- [ ] 新增 `Scripts/preflight-release.sh`：只读检查 `VERSION`、Cask 版本、发行说明章节和 `SHA256SUMS.txt`；可选运行 `swift build -c release --product XIsland -j 2`。失败时非零退出，不发布、不修改文件。
-- [ ] 用一个故意不匹配的临时版本测试失败路径；确认正常版本通过。
+- [x] 新增 `Scripts/preflight-release.sh`：只读检查 `VERSION`、Cask 版本、发行说明章节和 `SHA256SUMS.txt`；可选运行 `swift build -c release --product XIsland -j 2`。失败时非零退出，不发布、不修改文件。
+- [x] 用一个故意不匹配的临时版本测试失败路径；确认正常版本通过。新增 `Scripts/test-preflight-release.sh` 覆盖版本不匹配和缺少 DMG 两条失败路径，并接入 `docs.yml`。
 
 ## G3 — ACP 配置强制转换硬化
 
