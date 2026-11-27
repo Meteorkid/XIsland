@@ -22,10 +22,10 @@
 - [x] 给 `Scripts/check-docs.py` 增加可注入根目录的参数或可测试函数；用临时 fixture 验证缺失链接、未闭合围栏、缺失发行说明章节会失败。
 - [x] 保留当前仓库的正常路径测试；CI 同时跑正负两条路径。新增 `Scripts/test-check-docs.py` 并接入 `docs.yml`。
 
-## G5 — 发布说明与校验和一致性
+## G5 — 发布说明与校验和一致性（已完成）
 
-- [ ] 增加一个仓库内检查：`docs/releases/<VERSION>.md` 中的 DMG SHA256 与 `SHA256SUMS.txt` 一致（仅在文件存在时检查）；同时验证 Cask sha256 与校验和一致。
-- [ ] 把检查接入 `docs.yml` 或现有测试脚本，避免发布时人工抄错。
+- [x] 增加一个仓库内检查：`docs/releases/<VERSION>.md` 中的 DMG SHA256 与 `SHA256SUMS.txt` 一致（仅在文件存在时检查）；同时验证 Cask sha256 与校验和一致。`preflight-release.sh` 已覆盖这三项，并新增 Cask 对 `SHA256SUMS.txt` 的直接交叉检查。
+- [x] 把检查接入 `docs.yml` 或现有测试脚本，避免发布时人工抄错。`test-preflight-release.sh` 增加 Cask、发行说明、`SHA256SUMS.txt` 三类校验和漂移失败路径，CI 已调用。
 
 ## G6 — Swift 测试基线审计
 

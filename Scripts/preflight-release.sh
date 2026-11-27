@@ -103,6 +103,9 @@ fi
 if [[ -n "${RELEASE_SHA:-}" && -n "$SUMS_SHA" && "$RELEASE_SHA" != "$SUMS_SHA" ]]; then
     fail "release-note checksum does not match SHA256SUMS.txt"
 fi
+if [[ -n "${CASK_SHA:-}" && -n "$SUMS_SHA" && "$CASK_SHA" != "$SUMS_SHA" ]]; then
+    fail "Cask sha256 does not match SHA256SUMS.txt"
+fi
 
 if [[ -f "$DMG" ]]; then
     ACTUAL_SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
