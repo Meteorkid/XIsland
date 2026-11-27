@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.3.1 (2026-11-27)
+
+### 新增
+
+- **LLM 接入配置提示库**：新增 33 段可直接复制给本机 LLM Agent 的完整提示，覆盖 30 个可接入来源、5 个停用/合并来源，以及审批图 MCP、VS Code 伴生扩展和 GLM 模型接入。Agent 会先检查版本、备份、打印 diff，只合并 X Island 自己的条目，保留第三方 hooks、MCP、模型、JSONC 注释和凭据。
+- **每份专项指南的复制提示**：ACP、Aider/Codewhale、Amazon Q、Cody、Continue、豆包工作、Kilo、Kiro、WorkBuddy、Trae、审批图 MCP 和 VS Code 伴生扩展都在文末增加「复制给 LLM」章节。
+- **手动确认边界**：提示明确不自动批准权限、不代替用户确认客户端信任；Codex 的 Review hooks、Trae 的 Hooks 开关、WorkBuddy 的市场导入、豆包工作的连接器创建等步骤仍由用户完成。
+
+### 变更
+
+- `README.md`、`README_zh.md` 和 `docs/compatibility/README.md` 增加提示库入口；接入总览更新日期改为 2026-11-27。
+- 文档中的提示要求以真实只读任务验证事件到达 X Island，不以“配置文件存在”作为接通证据。
+
+### 修复
+
+- 本补丁不修改 Swift 运行时代码，不包含运行时修复。
+
+详细内容、限制与验证边界见 [2.3.1 更新说明](docs/releases/2.3.1.md)。
+
 ## v2.3.0 (2026-11-27)
 
 ### 新增
