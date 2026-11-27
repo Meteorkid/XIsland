@@ -17,10 +17,10 @@
 - [x] 检查 `Sources/DIShared/ACPCustomAgentConfiguration.swift` 的 `result["command"] as! String`；改为显式校验/安全转换，不改变合法输入行为。
 - [x] 在 `Tests/TowerIslandTests` 补 malformed / 非字符串 `command` 的回归测试，运行相关测试类。
 
-## G4 — 文档检查器的负向测试
+## G4 — 文档检查器的负向测试（已完成）
 
-- [ ] 给 `Scripts/check-docs.py` 增加可注入根目录的参数或可测试函数；用临时 fixture 验证缺失链接、未闭合围栏、缺失发行说明章节会失败。
-- [ ] 保留当前仓库的正常路径测试；CI 同时跑正负两条路径。
+- [x] 给 `Scripts/check-docs.py` 增加可注入根目录的参数或可测试函数；用临时 fixture 验证缺失链接、未闭合围栏、缺失发行说明章节会失败。
+- [x] 保留当前仓库的正常路径测试；CI 同时跑正负两条路径。新增 `Scripts/test-check-docs.py` 并接入 `docs.yml`。
 
 ## G5 — 发布说明与校验和一致性
 

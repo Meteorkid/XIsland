@@ -23,6 +23,8 @@ jobs:
           python-version: '3.12'
       - name: Check documentation links, fences and release invariants
         run: python3 Scripts/check-docs.py
+      - name: Test documentation checker failure paths
+        run: python3 Scripts/test-check-docs.py
       - name: Check release metadata
         run: bash Scripts/preflight-release.sh
       - name: Test release preflight failure paths
