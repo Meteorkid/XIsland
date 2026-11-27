@@ -5,7 +5,6 @@ import Foundation
 /// 密钥来自环境变量（OPENAI_API_KEY / ANTHROPIC_API_KEY）；没有密钥时静默跳过，
 /// 卡片继续使用 `LocalRecapGenerator` 的事件归纳。每个会话只总结一次。
 enum SessionSummarizer {
-    private static var generatedSessionIDs = Set<String>()
     /// 记录生成时的工具事件数量：会话再次完成且事件增加时，摘要需要重做。
     private static var lastEventCount: [String: Int] = [:]
     /// 客户端自己上报过摘要的会话，不覆盖其内容。
@@ -17,17 +16,31 @@ enum SessionSummarizer {
         clientReported.insert(sessionID)
     }
 
-    static var isEnabled: Bool {
-        (UserDefaults.standard.object(forKey: "llmRecapEnabled") as? Bool) ?? true
+    /// 会话从列表移除后清理静态状态，避免长期运行时无限增长。
+    static func forget(_ sessionID: String) {
+        lock.lock(); defer { lock.unlock() }
+        lastEventCount.removeValue(forKey: sessionID)
+        clientReported.remove(sessionID)
     }
 
-    /// 有云端密钥或本地 Ollama 时才值得尝试。
+    static var isEnabled: Bool {
+        SummaryConsent.isEnabled()
+    }
+
+    /// 云端 provider 需要 Key；Ollama 需要用户已选择一个模型。
+    /// 不再因为本机装了 Ollama 就自动尝试“第一个模型”。
     static var isAvailable: Bool {
-        isEnabled
+        guard isEnabled else { return false }
+        switch preset.kind {
+        case .ollama:
+            return !SummaryModelStore.model(for: preset.id).isEmpty
+        case .openAICompatible, .anthropic:
+            return configuredKey != nil
+        }
     }
 
     static func shouldSummarize(_ session: AgentSession) -> Bool {
-        guard isEnabled, !session.events.isEmpty else { return false }
+        guard isAvailable, !session.events.isEmpty else { return false }
         lock.lock(); defer { lock.unlock() }
         if clientReported.contains(session.id) { return false }
         if let last = lastEventCount[session.id] {
@@ -42,7 +55,6 @@ enum SessionSummarizer {
             guard isEnabled, !session.events.isEmpty else { return nil }
         } else {
             guard shouldSummarize(session) else { return nil }
-            lock.lock(); generatedSessionIDs.insert(session.id); lock.unlock()
         }
 
         let prompt = makePrompt(session)
@@ -57,19 +69,12 @@ enum SessionSummarizer {
                 raw = await callChatCompletions(prompt: prompt, key: key, base: base, model: modelName)
             }
         case .ollama:
-            if let model = await ollamaModel() {
+            if let model = selectedOllamaModel() {
                 raw = await callOllama(prompt: prompt, model: model)
             }
         }
-        // 选的是云端服务但没填 key 时，退回本机 Ollama。
-        if raw == nil, preset.kind != .ollama, let model = await ollamaModel() {
-            raw = await callOllama(prompt: prompt, model: model)
-        }
-        guard let text = raw else {
-            // 失败时允许下次重试，否则该会话会被永久跳过。
-            lock.lock(); generatedSessionIDs.remove(session.id); lock.unlock()
-            return nil
-        }
+        // 云端失败时不再静默回退到本地模型：用户选择的后端与实际结果必须一致。
+        guard let text = raw else { return nil }
         lock.lock(); lastEventCount[session.id] = session.events.count; lock.unlock()
         return postProcess(text, status: session.status.displayName)
     }
@@ -84,16 +89,20 @@ enum SessionSummarizer {
             $0.replacingOccurrences(of: "^第[一二三四1-4]行[：:]\\s*", with: "", options: .regularExpression)
                 .replacingOccurrences(of: "^中间行[：:]\\s*", with: "", options: .regularExpression)
                 .replacingOccurrences(of: "^最后一行[：:]\\s*", with: "", options: .regularExpression)
+                .replacingOccurrences(of: "^(Line|Row)\\s*[1-4][:：]\\s*", with: "", options: [.regularExpression, .caseInsensitive])
+                .replacingOccurrences(of: "^(Middle|Last)\\s+line[:：]\\s*", with: "", options: [.regularExpression, .caseInsensitive])
         }
-        if !lines.contains(where: { $0.hasPrefix("状态") }) {
-            lines.append("状态：\(status)")
+        let prefix = L10n.summaryStatusPrefix
+        if !lines.contains(where: { $0.hasPrefix(prefix) }) {
+            let separator = L10n.effectiveLanguage == "zh" ? "：" : ": "
+            lines.append("\(prefix)\(separator)\(status)")
         }
         return lines.joined(separator: "\n")
     }
 
     /// 模型驻留时长：30s / 2m / 5m，-1 表示一直保留。
     private static var keepAliveValue: Any {
-        let saved = UserDefaults.standard.string(forKey: "ollamaKeepAlive") ?? "30s"
+        let saved = AppPreferences.defaults.string(forKey: "ollamaKeepAlive") ?? "30s"
         return saved == "-1" ? -1 : saved
     }
 
@@ -119,24 +128,19 @@ enum SessionSummarizer {
         return normalize(text)
     }
 
-    /// 取本地 Ollama 已下载的第一个模型；没有模型或服务未启动时返回 nil。
-    private static func ollamaModel() async -> String? {
-        guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else { return nil }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 2
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let models = json["models"] as? [[String: Any]],
-              let name = models.first?["name"] as? String, !name.isEmpty else { return nil }
-        return name
+    /// 只使用用户在设置里明确选择的 Ollama 模型；未选择时返回 nil。
+    private static func selectedOllamaModel() -> String? {
+        let model = SummaryModelStore.model(for: preset.id)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return model.isEmpty ? nil : model
     }
 
     private static var preset: SummaryProviderPreset {
-        SummaryProviderPreset.preset(UserDefaults.standard.string(forKey: "summaryProvider") ?? "zhipu")
+        SummaryProviderPreset.preset(AppPreferences.defaults.string(forKey: "summaryProvider") ?? "zhipu")
     }
 
     private static var modelName: String {
-        let saved = (UserDefaults.standard.string(forKey: "summaryModel") ?? "")
+        let saved = SummaryModelStore.model(for: preset.id)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if !saved.isEmpty { return saved }
         return preset.defaultModel
@@ -169,17 +173,42 @@ enum SessionSummarizer {
             return line
         }.joined(separator: "\n")
 
+        let outputLanguage: String
+        switch L10n.effectiveLanguage {
+        case "zh": outputLanguage = "中文"
+        case "ko": outputLanguage = "한국어"
+        case "ja": outputLanguage = "日本語"
+        case "fr": outputLanguage = "français"
+        default: outputLanguage = "English"
+        }
+
+        if L10n.effectiveLanguage == "zh" {
+            return """
+            根据下面的任务与工具记录，用 3-5 行中文总结。直接输出内容，不要写「第 1 行」「中间行」之类的标签，不要解释你在做什么。
+
+            示例写法：
+            检查并修复了会话跳转的点击命中问题
+            - 移除摘要区展开按钮，改到底部操作行
+            - 面板展开期间冻结列表顺序
+            状态：已完成，构建通过
+
+            任务：\(session.prompt.prefix(200))
+            记录：
+            \(actions)
+            """
+        }
+
         return """
-        根据下面的任务与工具记录，用 3-5 行中文总结。直接输出内容，不要写「第 1 行」「中间行」之类的标签，不要解释你在做什么。
+        Summarize the task and tool log below in 3-5 lines in \(outputLanguage). Output only the summary. Do not add labels such as "Line 1", "Middle line", or explain what you are doing.
 
-        示例写法：
-        检查并修复了会话跳转的点击命中问题
-        - 移除摘要区展开按钮，改到底部操作行
-        - 面板展开期间冻结列表顺序
-        状态：已完成，构建通过
+        Example:
+        Fixed the click target for session jumping
+        - Removed the expand button from the summary and moved it to the bottom action row
+        - Froze the list order while the panel is expanded
+        Status: completed, build passed
 
-        任务：\(session.prompt.prefix(200))
-        记录：
+        Task: \(session.prompt.prefix(200))
+        Log:
         \(actions)
         """
     }

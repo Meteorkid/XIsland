@@ -193,6 +193,7 @@ final class UITestScenarioTests: XCTestCase {
             "--ui-test-mode",
             "--fixture", "update-available",
             "--open-preferences",
+            "--preferences-pane", "about",
         ])
         XCTAssertEqual(request.environment["X_ISLAND_TEST_MODE"], "1")
         XCTAssertEqual(request.environment["X_ISLAND_TEST_FIXTURE"], "update-available")

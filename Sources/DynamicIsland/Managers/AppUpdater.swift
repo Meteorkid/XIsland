@@ -50,14 +50,17 @@ enum AppUpdaterError: LocalizedError, Equatable {
 
 struct AppUpdater {
 
-    /// 期望的 Developer ID 团队标识（Team ID）。
-    ///
-    /// 当前发布包为 ad-hoc 签名（`TeamIdentifier=not set`），因此这里保持 `nil`：
-    /// 身份校验代码已就位但不启用，避免在没有证书的情况下让所有用户的自动更新失败。
-    ///
-    /// 取得 Developer ID 证书后，把 Team ID 填入此处即可切换为强制身份校验 ——
-    /// 任何未提供该 Team ID 的下载包都会被拒绝安装（由 `verifySignature` 与安装脚本双重执行）。
-    static let expectedTeamIdentifier: String? = nil
+    /// Info.plist 中可选的 Developer ID Team ID。发布构建由
+    /// `X_ISLAND_UPDATE_TEAM_ID` 写入；未配置时回退到当前运行 App 的 Team ID。
+    static let teamIdentifierInfoKey = "XIslandUpdateTeamIdentifier"
+
+    static var expectedTeamIdentifier: String? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: teamIdentifierInfoKey) as? String else {
+            return nil
+        }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 
     /// 代码签名校验结果。
     enum SignatureVerification {
@@ -328,30 +331,42 @@ struct AppUpdater {
         return nil
     }
 
-    /// 校验待安装应用的代码签名。
+    /// 校验待安装应用的代码签名与签名者身份。
     ///
-    /// `codesign --verify` 只验证签名自洽（资源封印与签名匹配），ad-hoc 自签名同样能通过，
-    /// 因此它只能拦截下载损坏或篡改，无法拦截伪造发布。签名者身份由 `TeamIdentifier` 比对承担，
-    /// 且仅在 `expectedTeamIdentifier` 已配置时启用。
-    func verifySignature(at path: String) -> SignatureVerification {
+    /// `codesign --verify` 只验证签名自洽（资源封印与签名匹配），ad-hoc 自签名同样能通过。
+    /// 因此更新包必须带有 Team ID，且与 Info.plist 配置或当前运行 App 的 Team ID 一致；
+    /// 当前 App 为 ad-hoc 且没有配置可信 Team ID 时拒绝自动更新（fail closed）。
+    func verifySignature(at path: String, expectedTeamIdentifier: String? = nil) -> SignatureVerification {
         do {
             _ = try runCommand("/usr/bin/codesign", ["--verify", "--deep", "--strict", path])
         } catch {
             return .rejected(reason: "codesign --verify failed for \(path)")
         }
 
-        guard let expected = Self.expectedTeamIdentifier, !expected.isEmpty else {
-            return .accepted(teamIdentifier: nil)
+        let trustedTeam = expectedTeamIdentifier
+            ?? Self.expectedTeamIdentifier
+            ?? currentApplicationTeamIdentifier()
+        guard let trustedTeam, !trustedTeam.isEmpty else {
+            return .rejected(reason: "no trusted TeamIdentifier configured or present on the running app; refusing ad-hoc update")
         }
 
         guard let output = try? runCommand("/usr/bin/codesign", ["-dv", "--verbose=4", path]),
               let actual = Self.parseTeamIdentifier(from: output) else {
-            return .rejected(reason: "downloaded app carries no TeamIdentifier; expected \(expected)")
+            return .rejected(reason: "downloaded app carries no TeamIdentifier; expected \(trustedTeam)")
         }
-        guard actual == expected else {
-            return .rejected(reason: "TeamIdentifier mismatch: expected \(expected), got \(actual)")
+        guard actual == trustedTeam else {
+            return .rejected(reason: "TeamIdentifier mismatch: expected \(trustedTeam), got \(actual)")
         }
         return .accepted(teamIdentifier: actual)
+    }
+
+    /// 读取当前运行 App 的 Team ID；ad-hoc 包返回 nil。
+    func currentApplicationTeamIdentifier() -> String? {
+        let bundlePath = Bundle.main.bundleURL.path
+        guard let output = try? runCommand("/usr/bin/codesign", ["-dv", "--verbose=4", bundlePath]) else {
+            return nil
+        }
+        return Self.parseTeamIdentifier(from: output)
     }
 }
 
@@ -430,11 +445,7 @@ extension AppUpdater {
         // 校验挂载应用的代码签名与（若已配置）签名者身份
         switch verifySignature(at: mountedAppPath) {
         case .accepted(let teamIdentifier):
-            if let teamIdentifier {
-                NSLog("XIsland update: signature verified, TeamIdentifier=%@", teamIdentifier)
-            } else {
-                NSLog("XIsland update: expectedTeamIdentifier is unset; only signature self-consistency was verified.")
-            }
+            NSLog("XIsland update: signature verified, TeamIdentifier=%@", teamIdentifier ?? "unknown")
         case .rejected(let reason):
             NSLog("XIsland update: signature rejected — %@", reason)
             throw AppUpdaterError.codeSigningFailed
@@ -450,7 +461,7 @@ extension AppUpdater {
                 appPath: appPath,
                 mountDirectory: mountDirectory,
                 tempDirectory: tempDirectory.path,
-                expectedTeamIdentifier: Self.expectedTeamIdentifier
+                expectedTeamIdentifier: Self.expectedTeamIdentifier ?? currentApplicationTeamIdentifier()
             )
         } catch {
             throw AppUpdaterError.installFailed
@@ -571,18 +582,20 @@ extension AppUpdater {
         xattr -cr "$STAGED_APP" || true
         codesign --verify --deep --strict "$STAGED_APP"
 
-        # 签名者身份校验：仅在 EXPECTED_TEAM 非空时启用。
+        # 签名者身份校验：ad-hoc 包一律拒绝，Team ID 必须与可信值一致。
         # codesign --verify 只验证签名自洽，ad-hoc 自签名同样能通过，不能作为防伪造发布的依据。
-        if [ -n "$EXPECTED_TEAM" ]; then
-          ACTUAL_TEAM=$(codesign -dv --verbose=4 "$STAGED_APP" 2>&1 | awk -F= '$1 ~ /TeamIdentifier/ {print $2; exit}')
-          if [ -z "$ACTUAL_TEAM" ] || [ "$ACTUAL_TEAM" = "not set" ]; then
-            echo "Update rejected: downloaded app carries no TeamIdentifier (expected $EXPECTED_TEAM)" >&2
-            exit 1
-          fi
-          if [ "$ACTUAL_TEAM" != "$EXPECTED_TEAM" ]; then
-            echo "Update rejected: TeamIdentifier mismatch (expected $EXPECTED_TEAM, got $ACTUAL_TEAM)" >&2
-            exit 1
-          fi
+        ACTUAL_TEAM=$(codesign -dv --verbose=4 "$STAGED_APP" 2>&1 | awk -F= '$1 ~ /TeamIdentifier/ {print $2; exit}')
+        if [ -z "$ACTUAL_TEAM" ] || [ "$ACTUAL_TEAM" = "not set" ]; then
+          echo "Update rejected: downloaded app carries no TeamIdentifier (expected ${EXPECTED_TEAM:-a Developer ID})" >&2
+          exit 1
+        fi
+        if [ -z "$EXPECTED_TEAM" ]; then
+          echo "Update rejected: no trusted TeamIdentifier configured" >&2
+          exit 1
+        fi
+        if [ "$ACTUAL_TEAM" != "$EXPECTED_TEAM" ]; then
+          echo "Update rejected: TeamIdentifier mismatch (expected $EXPECTED_TEAM, got $ACTUAL_TEAM)" >&2
+          exit 1
         fi
 
         if [ -e "$APP_PATH" ] || [ -L "$APP_PATH" ]; then

@@ -44,6 +44,27 @@ final class SocketResponseChannel: @unchecked Sendable {
         case .permission(let approved):
             response = DIMessage(type: .permissionResponse, sessionId: sessionID)
             response.approved = approved
+        case .permissionDenial(let message):
+            response = DIMessage(type: .permissionResponse, sessionId: sessionID)
+            response.approved = false
+            response.denyMessage = message
+        case .permissionEdited(let input):
+            response = DIMessage(type: .permissionResponse, sessionId: sessionID)
+            response.approved = true
+            response.updatedInput = input
+        case .permissionInterrupted(let message):
+            response = DIMessage(type: .permissionResponse, sessionId: sessionID)
+            response.approved = false
+            response.denyMessage = message
+            response.interrupt = true
+        case .permissionRemembered(let permissions):
+            response = DIMessage(type: .permissionResponse, sessionId: sessionID)
+            response.approved = true
+            response.updatedPermissions = permissions
+        case .permissionDeferred:
+            response = DIMessage(type: .permissionResponse, sessionId: sessionID)
+            // nil 不是拒绝：bridge 会按来源输出空决策或 Cursor 的 permission: ask。
+            response.approved = nil
         case .question(let answer):
             response = DIMessage(type: .questionResponse, sessionId: sessionID)
             response.answer = answer

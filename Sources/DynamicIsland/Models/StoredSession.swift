@@ -40,6 +40,11 @@ final class StoredSession {
         SessionStatus(rawValue: statusRaw) ?? .completed
     }
 
+    /// 长时间没有结束时间的活动/空闲/错误会话视为僵尸记录；等待交互的会话被排除。
+    var isStaleUnendedCandidate: Bool {
+        [.active, .idle, .error].contains(status)
+    }
+
     var duration: TimeInterval {
         (completedAt ?? observationEndedAt ?? Date()).timeIntervalSince(startTime)
     }

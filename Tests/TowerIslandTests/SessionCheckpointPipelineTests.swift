@@ -202,7 +202,7 @@ final class SessionCheckpointPipelineTests: XCTestCase {
         XCTAssertNil(session.pendingPermission)
     }
 
-    func testQueuedReplacementInvalidatesAnOlderReservedApprovalClick() async throws {
+    func testQueuedReplacementKeepsTheEarlierRequestAndPromotesAfterApproval() async throws {
         let entered = expectation(description: "Original approval checkpoint reached commit")
         let gate = CheckpointCommitGate(entered: entered)
         defer { gate.release() }
@@ -226,18 +226,22 @@ final class SessionCheckpointPipelineTests: XCTestCase {
             XCTFail("Replacement must wait for its own user decision")
         })
 
+        XCTAssertEqual(session.pendingPermission?.id, old.id)
+
         manager.approvePermission(session: session, requestID: old.id)
         XCTAssertEqual(old.state.phase, .sending)
         gate.release()
         let saved = await manager.drainPersistenceOperations()
 
         XCTAssertTrue(saved)
-        XCTAssertEqual(oldDeliveries.count, 0)
+        XCTAssertEqual(oldDeliveries.count, 1)
         XCTAssertEqual(replacementDeliveries.count, 0)
         let replacement = try XCTUnwrap(session.pendingPermission)
         XCTAssertNotEqual(replacement.id, old.id)
         XCTAssertEqual(replacement.nativeRequestId, "replacement-request")
         XCTAssertEqual(replacement.state.phase, .pending)
+        XCTAssertTrue(session.pendingPermissionQueue.isEmpty)
+        XCTAssertEqual(session.status, .waitingPermission)
     }
 
     func testHiddenKimiTaskSaveFailureRetainsFactsForBackgroundRetry() async throws {

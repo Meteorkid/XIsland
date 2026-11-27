@@ -30,7 +30,8 @@ final class TerminalAppDetectionTests: XCTestCase {
                 terminal: app.rawValue,
                 workingDirectory: "/tmp/project",
                 termSessionId: nil,
-                windowNumber: nil
+                windowNumber: nil,
+                title: ""
             )
             XCTAssertEqual(TerminalJumpManager.resolveTargetApp(snap: snap), app)
             XCTAssertNil(TerminalJumpManager.resolveTargetApp(snap: snap)?.bundleId)
@@ -55,7 +56,9 @@ final class TerminalAppDetectionTests: XCTestCase {
 
     func testAgentTypeMapsCursorFamilyBundleIds() {
         XCTAssertEqual(AgentType.fromBundleId("com.todesktop.230313mzl4w4u92"), .cursor)
-        XCTAssertEqual(AgentType.fromBundleId("com.codeium.windsurf"), .windsurf)
+        // 2026-06-02 起 Windsurf 应用由 Cognition 接管并改名为 Devin Desktop，同一 bundle 落到 .devin。
+        XCTAssertEqual(AgentType.fromBundleId("com.codeium.windsurf"), .devin)
+        XCTAssertEqual(AgentType.fromBundleId("com.google.antigravity"), .antigravity)
         XCTAssertEqual(AgentType.fromBundleId("com.trae.app"), .trae)
         XCTAssertEqual(AgentType.fromBundleId("cn.trae.app"), .trae)
         XCTAssertEqual(AgentType.fromBundleId("cn.trae.solo.app"), .trae)
@@ -68,7 +71,8 @@ final class TerminalAppDetectionTests: XCTestCase {
             terminal: "Terminal",
             workingDirectory: "/tmp/project",
             termSessionId: nil,
-            windowNumber: nil
+            windowNumber: nil,
+            title: ""
         )
         XCTAssertEqual(TerminalJumpManager.resolveTargetApp(snap: snap), .cursor)
     }
@@ -80,7 +84,8 @@ final class TerminalAppDetectionTests: XCTestCase {
             terminal: "Trae CN",
             workingDirectory: "/tmp/project",
             termSessionId: nil,
-            windowNumber: nil
+            windowNumber: nil,
+            title: ""
         )
         XCTAssertEqual(TerminalJumpManager.resolveTargetApp(snap: snap), .cursor)
     }
@@ -92,7 +97,8 @@ final class TerminalAppDetectionTests: XCTestCase {
             terminal: "TRAE SOLO CN",
             workingDirectory: "/tmp/project",
             termSessionId: nil,
-            windowNumber: nil
+            windowNumber: nil,
+            title: ""
         )
         XCTAssertEqual(TerminalJumpManager.resolveTargetApp(snap: snap), .traeWorkCn)
     }
@@ -104,7 +110,8 @@ final class TerminalAppDetectionTests: XCTestCase {
             terminal: "Windsurf",
             workingDirectory: "/tmp/project",
             termSessionId: nil,
-            windowNumber: nil
+            windowNumber: nil,
+            title: ""
         )
         XCTAssertEqual(TerminalJumpManager.resolveTargetApp(snap: snap), .windsurf)
     }
@@ -116,7 +123,8 @@ final class TerminalAppDetectionTests: XCTestCase {
             terminal: "iTerm2",
             workingDirectory: "/tmp/project",
             termSessionId: nil,
-            windowNumber: nil
+            windowNumber: nil,
+            title: ""
         )
         XCTAssertEqual(TerminalJumpManager.resolveTargetApp(snap: snap), .iterm2)
     }
@@ -128,7 +136,8 @@ final class TerminalAppDetectionTests: XCTestCase {
             terminal: "Terminal",
             workingDirectory: "/tmp/project",
             termSessionId: "tty:/dev/ttys001",
-            windowNumber: nil
+            windowNumber: nil,
+            title: ""
         )
         XCTAssertEqual(TerminalJumpManager.resolveTargetApp(snap: snap), .terminal)
     }
@@ -140,7 +149,8 @@ final class TerminalAppDetectionTests: XCTestCase {
             terminal: "Terminal",
             workingDirectory: "/tmp/project",
             termSessionId: nil,
-            windowNumber: nil
+            windowNumber: nil,
+            title: ""
         )
         XCTAssertEqual(TerminalJumpManager.resolveTargetApp(snap: snap), .terminal)
     }
@@ -152,7 +162,8 @@ final class TerminalAppDetectionTests: XCTestCase {
             terminal: "Terminal",
             workingDirectory: "/tmp/project",
             termSessionId: nil,
-            windowNumber: nil
+            windowNumber: nil,
+            title: ""
         )
         XCTAssertEqual(TerminalJumpManager.resolveTargetApp(snap: snap), .terminal)
     }
@@ -164,7 +175,8 @@ final class TerminalAppDetectionTests: XCTestCase {
             terminal: "Terminal",
             workingDirectory: "/tmp/project",
             termSessionId: nil,
-            windowNumber: nil
+            windowNumber: nil,
+            title: ""
         )
         XCTAssertEqual(TerminalJumpManager.resolveTargetApp(snap: snap), .codex)
     }

@@ -6,6 +6,7 @@ final class GeneratedPluginOwnershipTests: XCTestCase {
         ("OpenCode", OpenCodePluginConfiguration.source, OpenCodePluginConfiguration.isOwnedSource),
         ("Amp", AmpPluginConfiguration.source, AmpPluginConfiguration.isOwnedSource),
         ("Pi", PiPluginConfiguration.source, PiPluginConfiguration.isOwnedSource),
+        ("Kilo", KiloPluginConfiguration.source, KiloPluginConfiguration.isOwnedSource),
     ]
 
     func testCompleteGeneratedSourcesRemainOwnedAfterBridgeRelocationAndCRLFConversion() throws {

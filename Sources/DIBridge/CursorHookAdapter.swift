@@ -13,6 +13,7 @@ enum CursorHookAdapter {
         case "sessionEnd": type = .sessionEnd
         case "preToolUse": type = .toolStart
         case "postToolUse", "postToolUseFailure": type = .toolComplete
+        case "beforeShellExecution", "beforeMCPExecution": type = .permissionRequest
         case "preCompact": type = .contextCompact
         case "afterAgentResponse", "stop": type = .statusUpdate
         default: throw DIBridge.NativePayloadError.invalidField("event")
@@ -28,6 +29,25 @@ enum CursorHookAdapter {
         case "sessionStart", "sessionEnd":
             if let session = data["session_id"] as? String, session != id { throw DIBridge.NativePayloadError.invalidField("session_id") }
             if hookType == "sessionEnd" { message.observedState = "completed" }
+        case "beforeShellExecution":
+            // Cursor 的 shell 门禁只提供 command/cwd，没有工具调用 ID；不能用 generation_id 冒充。
+            let command = try text(data, "command")
+            message.tool = "Shell"
+            message.toolInput = DIBridge.outputText(["command": command])
+            message.permDescription = command
+        case "beforeMCPExecution":
+            message.tool = try text(data, "tool_name")
+            let input = data["tool_input"] ?? [:]
+            guard input is String || JSONSerialization.isValidJSONObject(input) else {
+                throw DIBridge.NativePayloadError.invalidField("tool_input")
+            }
+            let inputText = DIBridge.outputText(input) ?? ""
+            message.toolInput = inputText.isEmpty ? nil : inputText
+            let server = (data["mcp_server_name"] as? String) ?? (data["mcp_server_url"] as? String)
+            message.permDescription = [message.tool, server, inputText]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n\n")
         case "preToolUse", "postToolUse", "postToolUseFailure":
             message.tool = try text(data, "tool_name")
             message.toolCallId = try text(data, "tool_use_id")
@@ -52,11 +72,16 @@ enum CursorHookAdapter {
         return message
     }
 
+    /// Cursor 的 shell/MCP/文件读取门禁使用顶层 `permission`，不是 preToolUse 的 `decision`。
+    ///
+    /// Cursor 3.15.6 的 `cursor-agent-exec` 只消费 `deny` 和 `ask`：
+    /// `allow` 能通过校验，但调用点不会据此跳过原生确认。因此这里的 approved
+    /// 也映射为 `ask`，避免 X Island 的按钮声称批准、Cursor 却继续弹窗。
     static func permissionResponse(hookType: String, approved: Bool) throws -> DIBridge.PermissionHookResponse {
-        guard ["preToolUse", "beforeShellExecution", "beforeMCPExecution", "beforeReadFile", "beforeTabFileRead", "subagentStart"].contains(hookType) else {
+        guard ["beforeShellExecution", "beforeMCPExecution", "beforeReadFile", "beforeTabFileRead", "subagentStart"].contains(hookType) else {
             throw DIBridge.NativePayloadError.invalidField("permission hook")
         }
-        return .init(stdout: approved ? "{\"permission\":\"allow\"}" : "{\"permission\":\"deny\"}", exitCode: 0)
+        return .init(stdout: approved ? "{\"permission\":\"ask\"}" : "{\"permission\":\"deny\"}", exitCode: 0)
     }
 
     private static func text(_ data: [String: Any], _ key: String, allowingEmpty: Bool = false) throws -> String {

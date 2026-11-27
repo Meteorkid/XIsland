@@ -129,8 +129,11 @@ public struct AppDiagnosticsSnapshot: Codable, Equatable {
             identifiers += bases.map { TestAccessibility.interactionControl($0, sessionID: session.id, requestID: requestID) }
         }
         if let permission = session.pendingPermission {
-            append([TestAccessibility.permissionPanel, TestAccessibility.permissionDenyButton,
-                    TestAccessibility.permissionApproveButton, "island.permission-details"], requestID: permission.id)
+            var bases = [TestAccessibility.permissionPanel, TestAccessibility.permissionDenyButton]
+            bases.append(permission.canApprove ? TestAccessibility.permissionApproveButton
+                                               : TestAccessibility.permissionDeferButton)
+            bases.append("island.permission-details")
+            append(bases, requestID: permission.id)
         }
         if let question = session.pendingQuestion {
             append([TestAccessibility.questionPanel] + question.options.indices.map(TestAccessibility.questionOption(index:)),

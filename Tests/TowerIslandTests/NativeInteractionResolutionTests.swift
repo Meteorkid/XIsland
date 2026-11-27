@@ -19,7 +19,7 @@ final class NativeInteractionResolutionTests: XCTestCase {
         XCTAssertNil(legacy.nativeRequestKind)
     }
 
-    func testOldNativeIDCannotCancelReplacementPermissionOrQuestion() throws {
+    func testOldNativeIDCannotCancelTheReplacementOrQueuedRequest() throws {
         for kind in ["permission", "question"] {
             let manager = SessionManager()
             let cancellations = NativeInteractionRecorder()
@@ -32,7 +32,12 @@ final class NativeInteractionResolutionTests: XCTestCase {
 
             XCTAssertEqual(cancellations.values, ["old"])
             XCTAssertEqual(session.pendingPermission?.nativeRequestId ?? session.pendingQuestion?.nativeRequestId, "new")
-            XCTAssertEqual(manager.focusedInteraction, focus)
+            if kind == "permission" {
+                // 权限请求现在排队而不是被替换；旧请求解决后新请求晋级，焦点随之移动。
+                XCTAssertNotEqual(manager.focusedInteraction, focus)
+            } else {
+                XCTAssertEqual(manager.focusedInteraction, focus)
+            }
             XCTAssertTrue(manager.hasInteraction)
         }
     }

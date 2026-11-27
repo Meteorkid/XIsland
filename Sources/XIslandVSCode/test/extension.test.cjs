@@ -50,7 +50,7 @@ test('host discovery is version gated, passive, isolated and disposable', { skip
 
 function host({ sessionId, Transport } = {}) {
     const settings = new EventEmitter(), roo = new EventEmitter(), pear = new EventEmitter();
-    const received = [], operations = [], subscriptions = [];
+    const received = [], operations = [], subscriptions = [], handlers = [];
     const enabled = { observeRooCode: true, observePearAIExperimental: true };
     const peers = new Map([
         ['RooVeterinaryInc.roo-cline', { isActive: true, packageJSON: { version: '3.54.0' }, exports: roo }],
@@ -61,7 +61,10 @@ function host({ sessionId, Transport } = {}) {
         workspace: { isTrusted: true, getConfiguration: () => ({ get: key => enabled[key] }),
             onDidChangeConfiguration: listener => { settings.on('change', listener); return { dispose: () => settings.removeListener('change', listener) }; } },
         extensions: { getExtension: id => peers.get(id), onDidChange: () => ({ dispose() {} }) },
-        window: { createStatusBarItem: () => ({ show() {}, dispose() {} }) }, StatusBarAlignment: { Right: 1 },
+        window: {
+            createStatusBarItem: () => ({ show() {}, dispose() {} }),
+            registerUriHandler: handler => { handlers.push(handler); return { dispose() { handlers.length = 0; } }; },
+        }, StatusBarAlignment: { Right: 1 },
     };
     class RecordingTransport {
         send(message) { received.push(message); operations.push(message.type); }
@@ -81,10 +84,18 @@ function host({ sessionId, Transport } = {}) {
         extension = require('../out/extension');
     } finally { Module._load = load; }
     const context = { globalStorageUri: { toString: () => 'file:///same-profile/storage' }, subscriptions };
-    return { roo, pear, enabled, received, operations,
+    return { roo, pear, enabled, received, operations, handlers,
         refresh: () => settings.emit('change', { affectsConfiguration: () => true }),
         activate: () => extension.activate(context), stop: () => extension.deactivate() };
 }
+
+test('registers and disposes the exact-terminal focus URI handler', { skip: process.platform !== 'darwin' }, async () => {
+    const h = host();
+    h.activate();
+    assert.equal(h.handlers.length, 1);
+    await h.stop();
+    assert.equal(h.handlers.length, 0);
+});
 
 for (const sessionId of [undefined, 'shared-vscode-session']) {
     test(`activate isolates same-profile windows with ${sessionId === undefined ? 'missing' : 'fixed'} env.sessionId`, { skip: process.platform !== 'darwin' }, async () => {

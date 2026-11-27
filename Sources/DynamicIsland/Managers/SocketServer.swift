@@ -63,6 +63,12 @@ final class SocketServer: @unchecked Sendable {
             return
         }
 
+        guard DISocketConfig.isValidSocketPath(DISocketConfig.socketPath) else {
+            NSLog("XIsland socket: path is too long for sockaddr_un: %@", DISocketConfig.socketPath)
+            close(fd)
+            return
+        }
+
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
         let pathBytes = DISocketConfig.socketPath.utf8CString

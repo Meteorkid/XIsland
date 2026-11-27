@@ -7,6 +7,15 @@ struct PendingTaskCardView: View {
     @Environment(SessionManager.self) private var manager
     @Environment(ThemeManager.self) private var themeManager
     @FocusState private var feedbackFocused: Bool
+    @FocusState private var denyReasonFocused: Bool
+    @FocusState private var inputEditorFocused: Bool
+    @State private var denyReason = ""
+    @State private var isDenyingWithReason = false
+    @State private var stopAfterDeny = false
+    @State private var editedInput = ""
+    @State private var editedCommand = ""
+    @State private var isEditingInput = false
+    @State private var inputEditError: String?
     @AppStorage("reduceMotion") private var appReduceMotion = false
     @AppStorage("disableAnimations") private var disableAnimations = false
     @AppStorage("symbolEffectsEnabled") private var symbolEffectsEnabled = true
@@ -82,11 +91,96 @@ struct PendingTaskCardView: View {
                     lineWidth: 0.5
                 )
         }
+        .onChange(of: session.pendingPermission?.id) { _, _ in
+            isDenyingWithReason = false
+            denyReason = ""
+            stopAfterDeny = false
+            isEditingInput = false
+            editedInput = ""
+            editedCommand = ""
+            inputEditError = nil
+        }
+    }
+
+    private func submitDeny(_ permission: PendingPermission) {
+        let reason = denyReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stop = stopAfterDeny
+        isDenyingWithReason = false
+        isEditingInput = false
+        stopAfterDeny = false
+        denyReason = ""
+        manager.focusInteraction(session: session, kind: .permission)
+        manager.denyPermission(session: session, requestID: permission.id,
+                               message: reason.isEmpty ? nil : reason,
+                               interrupt: stop)
+    }
+
+    private func beginEditingInput(_ permission: PendingPermission) {
+        isDenyingWithReason = false
+        denyReason = ""
+        inputEditError = nil
+        if let command = PermissionInputEditing.command(tool: permission.tool,
+                                                        toolInput: permission.toolInput) {
+            editedCommand = command
+            editedInput = ""
+        } else {
+            editedCommand = ""
+            editedInput = PermissionInputEditing.prettyJSON(toolInput: permission.toolInput)
+        }
+        isEditingInput = true
+        inputEditorFocused = true
+    }
+
+    private func submitEditedInput(_ permission: PendingPermission) {
+        let raw: String
+        if PermissionInputEditing.command(tool: permission.tool,
+                                          toolInput: permission.toolInput) != nil {
+            let command = editedCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !command.isEmpty else {
+                inputEditError = L10n.permissionEmptyCommand
+                return
+            }
+            guard let replaced = PermissionInputEditing.replacingCommand(
+                toolInput: permission.toolInput, command: command) else {
+                inputEditError = L10n.permissionInvalidInput
+                return
+            }
+            raw = replaced
+        } else {
+            let trimmed = editedInput.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard PermissionInputEditing.parsedObject(trimmed) != nil else {
+                inputEditError = L10n.permissionInvalidInput
+                return
+            }
+            raw = trimmed
+        }
+        guard manager.approvePermission(session: session, requestID: permission.id,
+                                        updatedInput: raw) else {
+            inputEditError = L10n.permissionInvalidInput
+            return
+        }
+        isEditingInput = false
+        editedInput = ""
+        editedCommand = ""
+        inputEditError = nil
     }
 
     private func permissionContent(_ permission: PendingPermission) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let diffPreview = permission.diffPreview
+        return VStack(alignment: .leading, spacing: 8) {
             requestHeading(L10n.permission, symbol: "exclamationmark.triangle.fill", color: .orange)
+            if let origin = permission.originAgentID, !origin.isEmpty {
+                Text(L10n.subagentPermission(origin))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(IslandStyle.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            if session.pendingPermissionDepth > 1 {
+                Text(L10n.permissionQueueCount(session.pendingPermissionDepth - 1))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(IslandStyle.secondaryText)
+            }
             Text(permission.tool)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(IslandStyle.primaryText)
@@ -137,13 +231,19 @@ struct PendingTaskCardView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
-                if let diff = permission.diff, !diff.isEmpty {
+                if let diff = permission.diff, !diff.isEmpty, diffPreview == nil {
                     Text(L10n.permissionDiffAvailable)
                         .font(.system(size: 10))
                         .foregroundStyle(IslandStyle.secondaryText)
                 }
             }
 
+            if let diffPreview {
+                PermissionDiffPreviewView(preview: diffPreview,
+                                          expanded: permission.state.isExpanded,
+                                          scheme: scheme,
+                                          requestID: permission.id)
+            }
             detailsButton(
                 title: L10n.viewPermissionDetails,
                 state: permission.state,
@@ -152,16 +252,207 @@ struct PendingTaskCardView: View {
                 base: "island.permission-details"
             )
             ApprovalContextMapView(session: session, pendingKind: .permission)
+            ApprovalAuditHistoryView(records: manager.approvalAuditRecords(for: session))
             HStack(spacing: 8) {
                 decisionButton(L10n.denyTitle, color: .red, enabled: permission.state.canSubmit,
                                base: TestAccessibility.permissionDenyButton, requestID: permission.id) {
+                    isDenyingWithReason = false
+                    isEditingInput = false
+                    stopAfterDeny = false
                     manager.focusInteraction(session: session, kind: .permission)
                     manager.denyPermission(session: session, requestID: permission.id)
                 }
-                decisionButton(L10n.approveTitle, color: .green, enabled: permission.state.canSubmit,
-                               base: TestAccessibility.permissionApproveButton, requestID: permission.id) {
+                if permission.requestingAgent == .claudeCode, permission.state.canSubmit {
+                    Button {
+                        denyReason = ""
+                        stopAfterDeny = false
+                        isEditingInput = false
+                        isDenyingWithReason = true
+                        denyReasonFocused = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "text.bubble")
+                                .font(.system(size: 10))
+                            Text(L10n.permissionDenyWithReason)
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                        .foregroundStyle(IslandStyle.secondaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 8)
+                        .background(IslandStyle.insetFill(for: scheme))
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                    }
+                    .buttonStyle(.plain)
+                    .help(L10n.permissionDenyWithReason)
+                    .accessibilityIdentifier("island.permission-deny-with-reason")
+                }
+                if permission.canApprove {
+                    decisionButton(L10n.approveTitle, color: .green, enabled: permission.state.canSubmit,
+                                   base: TestAccessibility.permissionApproveButton, requestID: permission.id) {
+                        isDenyingWithReason = false
+                        isEditingInput = false
+                        manager.focusInteraction(session: session, kind: .permission)
+                        manager.approvePermission(session: session, requestID: permission.id)
+                    }
+                } else {
+                    decisionButton(L10n.permissionDeferToNative, color: .orange,
+                                   enabled: permission.state.canSubmit,
+                                   base: TestAccessibility.permissionDeferButton, requestID: permission.id) {
+                        isDenyingWithReason = false
+                        isEditingInput = false
+                        manager.focusInteraction(session: session, kind: .permission)
+                        manager.deferPermission(session: session, requestID: permission.id)
+                    }
+                }
+            }
+            if permission.requestingAgent == .claudeCode, permission.state.canSubmit {
+                Button {
+                    isDenyingWithReason = false
+                    isEditingInput = false
+                    stopAfterDeny = false
                     manager.focusInteraction(session: session, kind: .permission)
-                    manager.approvePermission(session: session, requestID: permission.id)
+                    manager.denyPermission(session: session, requestID: permission.id,
+                                           interrupt: true)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "stop.circle.fill")
+                            .font(.system(size: 10))
+                        Text(L10n.permissionDenyAndStop)
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, minHeight: 28)
+                    .background(Color.red.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+                .help(L10n.permissionStopHint)
+                .accessibilityIdentifier("island.permission-deny-and-stop")
+            }
+            if permission.requestingAgent == .claudeCode, permission.tool == "Bash",
+               permission.originAgentID == nil,
+               permission.state.canSubmit, permission.canApprove,
+               PermissionInputEditing.exactBashCommand(toolInput: permission.toolInput) != nil {
+                Button {
+                    isDenyingWithReason = false
+                    isEditingInput = false
+                    stopAfterDeny = false
+                    manager.focusInteraction(session: session, kind: .permission)
+                    manager.approvePermissionForSession(session: session, requestID: permission.id)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.shield")
+                            .font(.system(size: 10))
+                        Text(L10n.permissionAllowForSession)
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundStyle(.green)
+                    .frame(maxWidth: .infinity, minHeight: 28)
+                    .background(Color.green.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+                .help(L10n.permissionAllowForSessionHint)
+                .accessibilityIdentifier("island.permission-allow-for-session")
+            }
+            if permission.requestingAgent == .claudeCode, permission.canApprove,
+               permission.state.canSubmit, permission.toolInput != nil {
+                Button {
+                    beginEditingInput(permission)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 10))
+                        Text(L10n.permissionEditInput)
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundStyle(IslandStyle.secondaryText)
+                    .frame(maxWidth: .infinity, minHeight: 28)
+                    .background(IslandStyle.insetFill(for: scheme))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+                .help(L10n.permissionEditHint)
+                .accessibilityIdentifier("island.permission-edit-input")
+            }
+            if isEditingInput {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.permissionEditHint)
+                        .font(.system(size: 10))
+                        .foregroundStyle(IslandStyle.secondaryText)
+                    if PermissionInputEditing.command(tool: permission.tool,
+                                                      toolInput: permission.toolInput) != nil {
+                        TextField(L10n.permissionEditCommandLabel, text: $editedCommand, axis: .vertical)
+                            .lineLimit(2...5)
+                            .textFieldStyle(.roundedBorder)
+                            .focused($inputEditorFocused)
+                            .accessibilityIdentifier("island.permission-edit-command")
+                    } else {
+                        TextEditor(text: $editedInput)
+                            .font(.system(size: 10, design: .monospaced))
+                            .frame(minHeight: 72, maxHeight: 110)
+                            .padding(4)
+                            .background(IslandStyle.codeWell(for: scheme))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .focused($inputEditorFocused)
+                            .accessibilityIdentifier("island.permission-edit-json")
+                    }
+                    if let inputEditError {
+                        Text(inputEditError)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.red)
+                    }
+                    HStack(spacing: 8) {
+                        Button(L10n.permissionCancel) {
+                            isEditingInput = false
+                            editedInput = ""
+                            editedCommand = ""
+                            inputEditError = nil
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10))
+                        .foregroundStyle(IslandStyle.secondaryText)
+                        Spacer()
+                        Button(L10n.permissionApproveEdited) {
+                            submitEditedInput(permission)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .tint(.green)
+                        .accessibilityIdentifier("island.permission-approve-edited")
+                    }
+                }
+            }
+            if isDenyingWithReason {
+                VStack(alignment: .leading, spacing: 6) {
+                    TextField(L10n.permissionDenyReasonPlaceholder, text: $denyReason, axis: .vertical)
+                        .lineLimit(2...4)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($denyReasonFocused)
+                        .accessibilityIdentifier("island.permission-deny-reason")
+                    Toggle(L10n.permissionStopThisTurn, isOn: $stopAfterDeny)
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 10))
+                        .foregroundStyle(IslandStyle.secondaryText)
+                        .accessibilityIdentifier("island.permission-deny-stop")
+                    HStack(spacing: 8) {
+                        Button(L10n.permissionCancel) {
+                            isDenyingWithReason = false
+                            denyReason = ""
+                            stopAfterDeny = false
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10))
+                        .foregroundStyle(IslandStyle.secondaryText)
+                        Spacer()
+                        Button(L10n.permissionSubmitDeny) {
+                            submitDeny(permission)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .tint(.red)
+                        .accessibilityIdentifier("island.permission-submit-deny")
+                    }
                 }
             }
             deliveryStatus(permission.state, kind: .permission, requestID: permission.id)

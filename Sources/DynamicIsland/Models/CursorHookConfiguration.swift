@@ -3,8 +3,9 @@ import CoreFoundation
 
 enum CursorHookConfiguration {
     static let relativeConfigPath = ".cursor/hooks.json"
+    static let permissionEvents = ["beforeShellExecution", "beforeMCPExecution"]
     static let events = ["sessionStart", "beforeSubmitPrompt", "preToolUse", "postToolUse", "postToolUseFailure",
-                         "afterAgentResponse", "stop", "preCompact", "sessionEnd"]
+                         "afterAgentResponse", "stop", "preCompact", "sessionEnd"] + permissionEvents
     enum ConfigurationError: Error { case invalidPath, invalidStructure(String) }
 
     static func merging(into configuration: [String: Any], bridgePath: String) throws -> [String: Any] {
@@ -50,10 +51,16 @@ enum CursorHookConfiguration {
     }
 
     private static func handler(event: String, bridgePath: String) -> [String: Any] {
-        ["command": quote(bridgePath) + suffix(event), "timeout": 5]
+        var result: [String: Any] = ["command": quote(bridgePath) + suffix(event)]
+        result["timeout"] = permissionEvents.contains(event) ? 300 : 5
+        return result
     }
 
     private static func suffix(_ event: String) -> String {
+        // 权限 hook 必须保留 bridge 的等待与 JSON 决策，不能像观察 hook 一样丢弃输出并固定放行。
+        if permissionEvents.contains(event) {
+            return " --agent cursor --hook \(event) # XIsland:Cursor:\(event)"
+        }
         let output = event == "preToolUse" ? "{\"permission\":\"allow\"}"
             : event == "beforeSubmitPrompt" ? "{\"continue\":true}" : "{}"
         // Cursor 对权限hook的空JSON会阻断。观察命令丢弃bridge输出并返回固定的本hook放行结果。

@@ -1,6 +1,31 @@
 import Foundation
 import SwiftData
 
+/// 工具输入/结果入库前的硬上限。
+///
+/// 工具输出可能是整段构建日志、图片 base64 或数 MB 的 JSON；这些内容只需要在历史里
+/// 作为预览出现。完整结果仍保留在内存中的活动会话里，超出部分不会写进 SwiftData。
+enum ToolEventPersistencePolicy {
+    static let maxInputUTF8Bytes = 8 * 1024
+    static let maxResultUTF8Bytes = 32 * 1024
+
+    static func storedInput(_ value: String?) -> String? {
+        truncated(value, limit: maxInputUTF8Bytes)
+    }
+
+    static func storedResult(_ value: String?) -> String? {
+        truncated(value, limit: maxResultUTF8Bytes)
+    }
+
+    private static func truncated(_ value: String?, limit: Int) -> String? {
+        guard let value else { return nil }
+        let bytes = value.utf8.count
+        guard bytes > limit else { return value }
+        let prefix = String(decoding: value.utf8.prefix(limit), as: UTF8.self)
+        return "\(prefix)\n…[truncated; original \(bytes) bytes]"
+    }
+}
+
 @Model
 final class StoredToolEvent {
     // 可选字段让旧历史库兼容升级；旧记录在存储初始化时补齐一次。
@@ -26,8 +51,8 @@ final class StoredToolEvent {
     init(from event: ToolEvent) {
         self.eventId = event.id
         self.tool = event.tool
-        self.input = event.input
-        self.result = event.result
+        self.input = ToolEventPersistencePolicy.storedInput(event.input)
+        self.result = ToolEventPersistencePolicy.storedResult(event.result)
         self.timestamp = event.timestamp
         self.linesAdded = event.linesAdded
         self.linesRemoved = event.linesRemoved
@@ -44,8 +69,8 @@ final class StoredToolEvent {
     func update(from event: ToolEvent) {
         eventId = event.id
         tool = event.tool
-        input = event.input
-        result = event.result
+        input = ToolEventPersistencePolicy.storedInput(event.input)
+        result = ToolEventPersistencePolicy.storedResult(event.result)
         timestamp = event.timestamp
         linesAdded = event.linesAdded
         linesRemoved = event.linesRemoved

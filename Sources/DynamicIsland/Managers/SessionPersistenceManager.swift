@@ -80,7 +80,10 @@ final class SessionPersistenceManager {
         do {
             // ModelContainer 打开磁盘库时即可迁移 schema，恢复点必须在此之前完成。
             if !isStoredInMemoryOnly {
+                // 删除历史后 SQLite 不会自动缩小文件；启动前有空闲页时再做一次压缩。
+                HistoryStoreMaintenance.vacuumIfNeeded(storeURL: config.url)
                 try HistoryStoreBackup.prepareBackupIfNeeded(storeURL: config.url)
+                HistoryStoreBackup.pruneBackups(storeURL: config.url)
             }
             let container = try ModelContainer(for: schema, configurations: [config])
             try backfillLegacyIdentifiers(in: container.mainContext)
@@ -510,6 +513,9 @@ final class SessionPersistenceManager {
             lastSaveError = "Invalid history retention period."
             return
         }
+        let staleCutoff = days == 0 ? nil : Calendar.current.date(
+            byAdding: .day, value: -max(days * 3, 90), to: Date()
+        )
         let context = ModelContext(modelContainer)
         context.autosaveEnabled = false
         do {
@@ -530,6 +536,10 @@ final class SessionPersistenceManager {
                     // 可选日期在 Swift 中判断，兼容不支持可选 Date 解包谓词的旧存储。
                     if ended, let endDate = record.completedAt ?? record.observationEndedAt,
                        days == 0 || endDate < cutoff {
+                        expiredIDs.insert(record.sessionId)
+                        context.delete(record)
+                    } else if let staleCutoff, record.isStaleUnendedCandidate,
+                              record.startTime < staleCutoff {
                         expiredIDs.insert(record.sessionId)
                         context.delete(record)
                     } else {

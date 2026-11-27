@@ -34,9 +34,21 @@ extension AgentType {
             displayName: "Gemini CLI", shortName: "Gemini",
             color: Color(red: 0.3, green: 0.5, blue: 0.95),
             iconSymbol: "sparkles",
+            // 2026-06-18 起个人版停止服务，仅企业 Gemini Code Assist 与付费 API Key 仍可用；
+            // 个人用户的继任者是 Antigravity CLI（agy）。
             bundleIds: [], processNames: ["gemini"],
             isDesktopApp: false, sendsSessionEnd: true,
             aliases: ["gemini", "gemini-cli", "gemini_cli"]
+        ),
+        .antigravity: AgentMeta(
+            displayName: "Antigravity", shortName: "Antigravity",
+            color: Color(red: 0.30, green: 0.72, blue: 0.90),
+            iconSymbol: "atom",
+            // 2026-05-19 起 Google 将 Gemini CLI 的个人版迁到 Antigravity CLI（agy）。
+            bundleIds: ["com.google.antigravity"],
+            processNames: ["Antigravity", "agy"],
+            isDesktopApp: true, sendsSessionEnd: false,
+            aliases: ["antigravity", "antigravity-cli", "antigravity cli", "agy"]
         ),
         .cursor: AgentMeta(
             displayName: "Cursor", shortName: "Cursor",
@@ -51,10 +63,24 @@ extension AgentType {
             displayName: "Trae", shortName: "Trae",
             color: Color(red: 0.2, green: 0.7, blue: 0.95),
             iconSymbol: "sparkle.magnifyingglass",
-            bundleIds: ["com.trae.app", "cn.trae.app", "cn.trae.solo.app", "cn.trae.work.app"],
-            processNames: ["Trae", "Trae CN", "TRAE SOLO CN", "TRAE WORK CN"],
+            // TRAE Work 已于 2026-08 并入豆包工作，由 .doubaoWork 接管。
+            bundleIds: ["com.trae.app", "cn.trae.app", "cn.trae.solo.app"],
+            processNames: ["Trae", "Trae CN", "TRAE SOLO CN"],
             isDesktopApp: true, sendsSessionEnd: true,
-            aliases: ["trae", "trae cn", "trae-cn", "traecn", "trae work cn", "trae solo cn", "trae-aicc", "trae work"]
+            aliases: ["trae", "trae cn", "trae-cn", "traecn", "trae solo cn", "trae-aicc"]
+        ),
+        .doubaoWork: AgentMeta(
+            displayName: "豆包工作", shortName: "豆包",
+            color: Color(red: 0.18, green: 0.49, blue: 0.98),
+            iconSymbol: "bubble.left.fill",
+            // 已核实：豆包电脑版 com.bot.pc.doubao 内的「工作」入口。
+            // 独立客户端安装为 /Applications/DoubaoWork.app（可执行文件 DoubaoWork），
+            // 官方帮助中心未公布 bundle id，故只按应用名与进程名识别，不虚构标识。
+            bundleIds: ["com.bot.pc.doubao"],
+            processNames: ["Doubao", "DoubaoWork", "豆包", "豆包工作"],
+            isDesktopApp: true, sendsSessionEnd: false,
+            aliases: ["doubao work", "doubao_work", "doubao-work", "豆包", "豆包工作",
+                      "trae work", "trae work cn", "traework"]
         ),
         .openCode: AgentMeta(
             displayName: "OpenCode", shortName: "OpenCode",
@@ -73,12 +99,14 @@ extension AgentType {
             aliases: []
         ),
         .qoder: AgentMeta(
-            displayName: "Qoder", shortName: "Qoder",
+            displayName: "Qoder CN", shortName: "Qoder",
             color: Color(red: 0.9, green: 0.3, blue: 0.5),
             iconSymbol: "qrcode",
+            // 通义灵码于 2026-05-20 更名为 Qoder CN 系列；IDE/CLI 仍独立存在，
+            // QoderWork 那一支已并入千问办公，不与本入口混用。
             bundleIds: [], processNames: [],
             isDesktopApp: false, sendsSessionEnd: true,
-            aliases: []
+            aliases: ["qoder", "qoder cn", "qoder-cn", "lingma", "通义灵码"]
         ),
         .copilot: AgentMeta(
             displayName: "Copilot", shortName: "Copilot",
@@ -132,9 +160,10 @@ extension AgentType {
             displayName: "Kiro", shortName: "Kiro",
             color: Color(red: 0.6, green: 0.5, blue: 0.85),
             iconSymbol: "k.square",
+            // Amazon Q Developer CLI 于 2025-11-17 更名为 Kiro CLI，2026 起旧入口只保留历史记录。
             bundleIds: [], processNames: [],
             isDesktopApp: false, sendsSessionEnd: false,
-            aliases: ["kiro"]
+            aliases: ["kiro", "kiro-cli", "amazon q", "amazon-q", "q developer", "qchat"]
         ),
         .amp: AgentMeta(
             displayName: "Amp", shortName: "Amp",
@@ -151,6 +180,16 @@ extension AgentType {
             bundleIds: [], processNames: ["pi"],
             isDesktopApp: false, sendsSessionEnd: true,
             aliases: ["pi", "pi-agent", "pi_agent"]
+        ),
+        .kiloCode: AgentMeta(
+            displayName: "Kilo Code", shortName: "Kilo",
+            color: Color(red: 0.05, green: 0.80, blue: 0.55),
+            iconSymbol: "k.circle.fill",
+            bundleIds: [], processNames: ["kilo"],
+            isDesktopApp: false, sendsSessionEnd: false,
+            // 2026 年从 Roo Code 分支重建为 OpenCode 内核；CLI 与 VS Code 扩展
+            // 共用 ~/.config/kilo/plugin 的原生插件，不虚构 hooks 通道。
+            aliases: ["kilo", "kilo code", "kilo-code", "kilocode", "kilo_code"]
         ),
         .hermes: AgentMeta(
             displayName: "Hermes", shortName: "Hermes",
@@ -180,38 +219,46 @@ extension AgentType {
             displayName: "Windsurf", shortName: "Windsurf",
             color: Color(red: 0.2, green: 0.6, blue: 0.9),
             iconSymbol: "wind",
-            bundleIds: ["com.codeium.windsurf"], processNames: ["Windsurf"],
-            isDesktopApp: true, sendsSessionEnd: true,
-            aliases: ["windsurf"]
+            // 仅保留历史身份：产品已于 2026-06-02 自动更新为 Cognition 的 Devin Desktop。
+            bundleIds: [], processNames: [],
+            isDesktopApp: false, sendsSessionEnd: false,
+            aliases: []
         ),
         .devin: AgentMeta(
-            displayName: "Devin", shortName: "Devin",
+            displayName: "Devin Desktop", shortName: "Devin",
             color: Color(red: 0.4, green: 0.4, blue: 0.9),
             iconSymbol: "person.fill.checkmark",
-            bundleIds: [], processNames: ["devin"],
-            isDesktopApp: false, sendsSessionEnd: true,
-            aliases: ["devin", "cognition"]
+            // 沿用原 Windsurf 应用的 bundle id（Cognition 的自动更新会保留同一应用身份），
+            // CLI 仍是 devin；Cascade 品牌已退役。
+            bundleIds: ["com.codeium.windsurf"], processNames: ["Devin", "Devin Desktop", "Windsurf"],
+            isDesktopApp: true, sendsSessionEnd: true,
+            aliases: ["devin", "cognition", "devin desktop", "devin-desktop", "windsurf desktop"]
         ),
         .amazonQ: AgentMeta(
             displayName: "Amazon Q", shortName: "Q",
             color: Color(red: 0.95, green: 0.6, blue: 0.1),
             iconSymbol: "q.square",
+            // Q Developer CLI 已更名为 Kiro CLI；旧 qchat 1.19.7 包装器只保留历史会话。
             bundleIds: [], processNames: [],
             isDesktopApp: false, sendsSessionEnd: true,
-            aliases: ["amazon q", "q developer", "codewhisperer", "amazon-q"]
+            aliases: ["amazon q cli", "codewhisperer", "amazon-q"]
         ),
         .tabnine: AgentMeta(
             displayName: "Tabnine", shortName: "Tabnine",
             color: Color(red: 0.3, green: 0.3, blue: 0.9),
             iconSymbol: "t.circle",
+            // 2026-07-30 被 Tricentis 收购；6.x CLI 已改为 OpenCode 托管分支。
+            // 现有自动配置仅覆盖旧版 Tabnine CLI 的 settings.json。
             bundleIds: [], processNames: ["tabnine"],
             isDesktopApp: false, sendsSessionEnd: true,
-            aliases: ["tabnine"]
+            aliases: ["tabnine", "tricentis tabnine"]
         ),
         .cody: AgentMeta(
             displayName: "Cody", shortName: "Cody",
             color: Color(red: 0.8, green: 0.3, blue: 0.5),
             iconSymbol: "c.circle",
+            // 2026-11-09 Sourcegraph 宣布 Cody 于 2027-01-31 停止支持，仅企业版可用；
+            // Amp 已拆分为独立公司，不是 Cody 的续任入口。
             bundleIds: [], processNames: [],
             isDesktopApp: false, sendsSessionEnd: false,
             aliases: ["cody", "sourcegraph"]
@@ -229,10 +276,10 @@ extension AgentType {
             displayName: "Continue", shortName: "Continue",
             color: Color(red: 0.5, green: 0.5, blue: 0.9),
             iconSymbol: "arrow.right.circle",
-            // cn serve 由 Node 承载；观察连接结束不代表原生会话结束。
+            // 2026-06 被 Cursor 收购，仓库只读，最后版本 v2.0.0-vscode（2026-06-19）。
             bundleIds: [], processNames: [],
             isDesktopApp: false, sendsSessionEnd: false,
-            aliases: ["continue"]
+            aliases: []
         ),
         .copilotCli: AgentMeta(
             displayName: "Copilot CLI", shortName: "Copilot",
@@ -246,6 +293,7 @@ extension AgentType {
             displayName: "Roo Code", shortName: "Roo",
             color: Color(red: 0.85, green: 0.3, blue: 0.5),
             iconSymbol: "r.circle",
+            // 2026-05-15 全部产品停运，仓库归档；团队转向 Roomote，社区继任者是 Cline / Kilo Code。
             bundleIds: [], processNames: [],
             isDesktopApp: false, sendsSessionEnd: false,
             aliases: ["roo", "roo-code", "roo_code", "roo-cline", "roocline", "roo code"]

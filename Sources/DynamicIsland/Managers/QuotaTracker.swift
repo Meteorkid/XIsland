@@ -7,7 +7,7 @@ import SQLite3
 @MainActor
 final class QuotaTracker {
     var quotas: [QuotaInfo] = []
-    nonisolated(unsafe) private var timer: Timer?
+    @ObservationIgnored nonisolated(unsafe) private var timer: Timer?
     private let updateInterval: TimeInterval = 60
     private let allowsLiveAccess: Bool
     private var isSuspended = false
@@ -37,7 +37,7 @@ final class QuotaTracker {
         fetchTask = nil
     }
 
-    deinit {
+    isolated deinit {
         timer?.invalidate()
     }
 

@@ -87,6 +87,7 @@ struct AppTestConfiguration: Equatable {
     let diagnosticsPath: String?
     let disableAnimations: Bool
     let opensPreferencesOnLaunch: Bool
+    let initialPreferencesPane: String?
     let runtimeDirectory: String?
     let defaultsSuiteName: String?
     let animationProfile: String
@@ -98,6 +99,7 @@ struct AppTestConfiguration: Equatable {
         diagnosticsPath: String?,
         disableAnimations: Bool,
         opensPreferencesOnLaunch: Bool = false,
+        initialPreferencesPane: String? = nil,
         runtimeDirectory: String? = nil,
         defaultsSuiteName: String? = nil,
         animationProfile: String = "deterministic"
@@ -108,6 +110,7 @@ struct AppTestConfiguration: Equatable {
         self.diagnosticsPath = isEnabled ? diagnosticsPath : nil
         self.disableAnimations = isEnabled && animationProfile != "normal" && disableAnimations
         self.opensPreferencesOnLaunch = isEnabled && opensPreferencesOnLaunch
+        self.initialPreferencesPane = isEnabled ? initialPreferencesPane : nil
         self.runtimeDirectory = isEnabled ? (runtimeDirectory ?? DISocketConfig.defaultTestRuntimeDirectory) : nil
         self.defaultsSuiteName = isEnabled
             ? (defaultsSuiteName ?? "dev.xisland.tests.\(ProcessInfo.processInfo.processIdentifier)")
@@ -135,6 +138,8 @@ struct AppTestConfiguration: Equatable {
             disableAnimations: environment["X_ISLAND_DISABLE_ANIMATIONS"] == "1",
             opensPreferencesOnLaunch: arguments.contains("--open-preferences")
                 || environment["X_ISLAND_TEST_OPEN_PREFERENCES"] == "1",
+            initialPreferencesPane: argumentValue(for: "--preferences-pane", in: arguments)
+                ?? environment["X_ISLAND_TEST_PREFERENCES_PANE"],
             runtimeDirectory: environment["X_ISLAND_TEST_RUNTIME_DIR"],
             defaultsSuiteName: environment["X_ISLAND_TEST_DEFAULTS_SUITE"],
             animationProfile: environment["X_ISLAND_TEST_ANIMATION_PROFILE"] ?? "deterministic"

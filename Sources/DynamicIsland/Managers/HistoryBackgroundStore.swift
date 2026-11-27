@@ -242,6 +242,9 @@ actor HistoryBackgroundStore {
         guard days >= 0, let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) else {
             throw CocoaError(.validationNumberTooSmall, userInfo: [NSLocalizedDescriptionKey: "Invalid history retention period."])
         }
+        let staleCutoff = days == 0 ? nil : Calendar.current.date(
+            byAdding: .day, value: -max(days * 3, 90), to: Date()
+        )
         let context = makeContext()
         do {
             var cursor: String?
@@ -260,6 +263,10 @@ actor HistoryBackgroundStore {
                         || record.statusRaw == SessionStatus.observationUnavailable.rawValue
                     if ended, let endDate = record.completedAt ?? record.observationEndedAt,
                        days == 0 || endDate < cutoff {
+                        expiredIDs.insert(record.sessionId)
+                        context.delete(record)
+                    } else if let staleCutoff, record.isStaleUnendedCandidate,
+                              record.startTime < staleCutoff {
                         expiredIDs.insert(record.sessionId)
                         context.delete(record)
                     } else {

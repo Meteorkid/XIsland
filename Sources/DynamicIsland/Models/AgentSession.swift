@@ -230,10 +230,22 @@ final class AgentSession: Identifiable {
     var kimiCodeApprovalObservation: KimiCodeApprovalObservation?
     var windowNumber: Int?
     var termSessionId: String?
+    /// Hook bridge 的父进程；仅用于运行时诊断，不写入历史。
+    var processId: Int32?
+    /// tmux 等复用器外层宿主的终端身份；`termSessionId` 仍表示内层 pane。
+    var hostTermSessionId: String?
+    var tmuxSocketPath: String?
 
     var pendingPermission: PendingPermission?
+    /// 同一会话中并发到达、尚未轮到展示的权限请求。参考 AgentBar 的审批队列：
+    /// 后来者不再取消前一个阻塞 hook，当前请求处理完后再晋级。
+    var pendingPermissionQueue: [PendingPermission] = []
     var pendingQuestion: PendingQuestion?
     var pendingPlanReview: PendingPlanReview?
+
+    var pendingPermissionDepth: Int {
+        (pendingPermission == nil ? 0 : 1) + pendingPermissionQueue.count
+    }
 
     var hasPendingInteraction: Bool {
         pendingPermission != nil || pendingQuestion != nil || pendingPlanReview != nil
@@ -320,6 +332,23 @@ struct PendingPermission {
     var cancel: (@Sendable () -> Void)? = nil
     var nativeRequestId: String? = nil
     var toolInput: String? = nil
+    /// 从 tool_input 派生的只读文件改动预览；不读取目标文件，也不参与决策。
+    var diffPreview: PermissionDiffPreview? = nil
+    /// Claude 子代理发起请求时携带的 `agent_id`；请求仍归属父会话展示。
+    var originAgentID: String? = nil
+    /// 与 hook 的 300 秒超时对齐；bridge 退出后不能把卡片无限期留在岛上。
+    var expiresAt: Date = Date().addingTimeInterval(PendingPermission.defaultLease)
+    /// Cursor 的 shell/MCP hook 只在 deny 分支生效；allow 会被宿主丢弃后继续弹原生确认。
+    /// 这类来源只提供「拒绝」和「交回原生确认」，不能在岛上伪造批准。
+    var canApprove: Bool = true
+    /// 请求到达时间；只用于审计延迟，不参与租约判断。
+    var createdAt: Date = Date()
+    /// `tool_input` 的规范化哈希；用于与 PreToolUse 的 tool_use_id 对齐。
+    var toolInputHash: String? = nil
+    /// 从 PreToolUse 关联到的原生 tool_use_id；客户端回传 PostToolUse 时据此精确清卡。
+    var nativeToolCallID: String? = nil
+
+    static let defaultLease: TimeInterval = 310
 
     var operationText: String {
         guard let input = toolInput, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return description }

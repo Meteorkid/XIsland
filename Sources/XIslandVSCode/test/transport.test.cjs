@@ -51,7 +51,7 @@ test('an unavailable native executable retains unwritten events for retry', asyn
 }));
 
 test('a native process failure after taking stdin never replays either frame', async () => fixture(async f => {
-    fs.writeFileSync(f.bridgePath, `#!${process.execPath}
+    fs.writeFileSync(f.bridgePath, `#!/usr/bin/env node
 const fs = require('node:fs');
 process.stdout.write('ready\\n');
 let frame = '';

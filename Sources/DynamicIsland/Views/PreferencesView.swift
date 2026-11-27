@@ -11,6 +11,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
     case sound
     case automation
     case history
+    case approvalHistory
     case statistics
     case license
     case about
@@ -27,6 +28,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
         case .sound: L10n.sectionSound
         case .automation: ASuiteL10n.paneTitle
         case .history: L10n.sectionHistory
+        case .approvalHistory: L10n.paneApprovalHistory
         case .statistics: L10n.paneStatistics
         case .license: L10n.isChinese ? "软件授权" : "License"
         case .about: L10n.sectionAbout
@@ -43,6 +45,7 @@ private enum PreferencesPane: String, CaseIterable, Identifiable {
         case .sound: "speaker.wave.2.fill"
         case .automation: "bell.badge.fill"
         case .history: "clock.arrow.circlepath"
+        case .approvalHistory: "checkmark.seal.fill"
         case .statistics: "chart.bar.fill"
         case .license: "key.fill"
         case .about: "info.circle.fill"
@@ -58,6 +61,7 @@ struct PreferencesView: View {
     @Environment(SessionPersistenceManager.self) private var persistenceManager
     @State private var sshManager = SSHRemoteManager()
     @State private var showMascotGuide = false
+    @State private var mascotSaveError: String?
     @State private var selection: PreferencesPane = .general
     @State private var historyBrowser = HistoryBrowserState()
     @State private var historyQuery = ""
@@ -175,7 +179,7 @@ struct PreferencesView: View {
         }
         .onAppear {
             applyPendingPaneSelectionIfNeeded()
-            if !licensedFeaturesAvailable, ![.license, .history, .about, .automation].contains(selection) { selection = .license }
+            if !licensedFeaturesAvailable, ![.license, .history, .approvalHistory, .about, .automation].contains(selection) { selection = .license }
         }
         .onChange(of: licensedFeaturesAvailable) { _, allowed in
             if !allowed {
@@ -235,7 +239,7 @@ struct PreferencesView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .disabled(!licensedFeaturesAvailable && ![.license, .history, .about, .automation, .permissions].contains(pane))
+                .disabled(!licensedFeaturesAvailable && ![.license, .history, .approvalHistory, .about, .automation, .permissions].contains(pane))
             }
         }
         .padding(.horizontal, 16)
@@ -259,6 +263,7 @@ struct PreferencesView: View {
         case .sound: soundPane
         case .automation: ASuiteSettingsView()
         case .history: historyPane
+        case .approvalHistory: ApprovalHistoryPane()
         case .statistics: StatisticsView()
         case .license: SoftwareLicenseView()
         case .about: aboutPane
@@ -484,18 +489,50 @@ struct PreferencesView: View {
     // MARK: - Display
 
     @AppStorage("mascotIconStyle") private var mascotIconStyle: MascotIconStyle = .mascot
-    @AppStorage("llmRecapEnabled") private var llmRecapEnabled = true
+    @AppStorage("llmRecapEnabled") private var llmRecapEnabled = false
+    @AppStorage("llmRecapConsentVersion") private var llmRecapConsentVersion = 0
     @AppStorage("summaryProvider") private var summaryProvider = "zhipu"
-    @AppStorage("summaryModel") private var summaryModel = ""
     @AppStorage("ollamaKeepAlive") private var ollamaKeepAlive = "30s"
     @State private var summaryKeyInput = ""
+    @State private var summaryKeyStatus: String?
+    @State private var isSummaryConsentPresented = false
     @StateObject private var ollama = OllamaManager()
+
+    private var summaryModelBinding: Binding<String> {
+        Binding(
+            get: { SummaryModelStore.model(for: summaryProvider) },
+            set: { SummaryModelStore.set($0, for: summaryProvider) }
+        )
+    }
+
+    private var recapEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { llmRecapEnabled && llmRecapConsentVersion >= SummaryConsent.consentVersion },
+            set: { enabled in
+                if enabled {
+                    if llmRecapConsentVersion >= SummaryConsent.consentVersion {
+                        llmRecapEnabled = true
+                        sessionManager.startRecapBackfillScheduler()
+                    } else {
+                        isSummaryConsentPresented = true
+                    }
+                } else {
+                    llmRecapEnabled = false
+                    sessionManager.stopRecapBackfillScheduler()
+                }
+            }
+        )
+    }
 
     private func saveSummaryKey() {
         let trimmed = summaryKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        APIKeyStore.save(trimmed, account: summaryProvider)
-        summaryKeyInput = ""
+        if APIKeyStore.save(trimmed, account: summaryProvider) {
+            summaryKeyInput = ""
+            summaryKeyStatus = L10n.summaryKeySaved
+        } else {
+            summaryKeyStatus = L10n.summaryKeySaveFailed
+        }
     }
 
     private var modelRowDescription: String {
@@ -528,7 +565,12 @@ struct PreferencesView: View {
         panel.message = L10n.mascotChooseImage
         guard panel.runModal() == .OK, let url = panel.url,
               let image = NSImage(contentsOf: url) else { return }
-        try? CustomMascotStore.save(image)
+        do {
+            try CustomMascotStore.save(image)
+            mascotSaveError = nil
+        } catch {
+            mascotSaveError = "\(L10n.mascotSaveFailed): \(error.localizedDescription)"
+        }
     }
 
     private var displayPane: some View {
@@ -554,10 +596,18 @@ struct PreferencesView: View {
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.cyan)
                             Spacer(minLength: 8)
-                            Button(L10n.mascotClearImage) { CustomMascotStore.clear() }
-                                .buttonStyle(.plain)
+                            Button(L10n.mascotClearImage) {
+                                CustomMascotStore.clear()
+                                mascotSaveError = nil
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        }
+                        if let mascotSaveError {
+                            Text(mascotSaveError)
                                 .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.red)
                         }
                     }
                 }
@@ -566,7 +616,22 @@ struct PreferencesView: View {
             section(L10n.sectionSummary) {
                 card {
                     settingRow(L10n.llmRecapTitle, id: "llmRecap", description: L10n.llmRecapDesc) {
-                        Toggle("", isOn: $llmRecapEnabled).labelsHidden()
+                        Toggle("", isOn: recapEnabledBinding).labelsHidden()
+                            .confirmationDialog(
+                                L10n.summaryConsentTitle,
+                                isPresented: $isSummaryConsentPresented,
+                                titleVisibility: .visible
+                            ) {
+                                Button(L10n.summaryConsentConfirm) {
+                                    SummaryConsent.accept()
+                                    llmRecapConsentVersion = SummaryConsent.consentVersion
+                                    llmRecapEnabled = true
+                                    sessionManager.startRecapBackfillScheduler()
+                                }
+                                Button(L10n.isChinese ? "取消" : "Cancel", role: .cancel) { }
+                            } message: {
+                                Text(L10n.summaryConsentMessage)
+                            }
                     }
                     dividerLine
                     settingRow(L10n.summaryProvider, id: "summaryProvider",
@@ -579,23 +644,30 @@ struct PreferencesView: View {
                         .labelsHidden()
                         .frame(width: 210)
                     }
-                    dividerLine
-                    settingRow(L10n.summaryAPIKey, id: "summaryAPIKey", description: L10n.summaryAPIKeyDesc) {
-                        HStack(spacing: 6) {
-                            SecureField("sk-…", text: $summaryKeyInput)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 170)
-                            Button(L10n.save) { saveSummaryKey() }
-                                .buttonStyle(.plain)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.cyan)
+                    if summaryProvider != "ollama" {
+                        dividerLine
+                        settingRow(L10n.summaryAPIKey, id: "summaryAPIKey", description: L10n.summaryAPIKeyDesc) {
+                            HStack(spacing: 6) {
+                                SecureField("sk-…", text: $summaryKeyInput)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 170)
+                                Button(L10n.save) { saveSummaryKey() }
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.cyan)
+                            }
+                            if let summaryKeyStatus {
+                                Text(summaryKeyStatus)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(summaryKeyStatus == L10n.summaryKeySaved ? .green : .orange)
+                            }
                         }
                     }
                     dividerLine
                     settingRow(L10n.summaryModel, id: "summaryModel", description: modelRowDescription) {
                         if summaryProvider == "ollama" {
                             HStack(spacing: 6) {
-                                Picker("", selection: $summaryModel) {
+                                Picker("", selection: summaryModelBinding) {
                                     Text(L10n.ollamaFirstModel).tag("")
                                     ForEach(ollama.installedModels, id: \.self) { name in
                                         Text(name).tag(name)
@@ -618,7 +690,7 @@ struct PreferencesView: View {
                                 .help(L10n.ollamaPullHelp)
                             }
                         } else {
-                            TextField("gpt-4o-mini", text: $summaryModel)
+                            TextField("gpt-4o-mini", text: summaryModelBinding)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 170)
                         }
@@ -1439,20 +1511,20 @@ struct PreferencesView: View {
         VStack(alignment: .leading, spacing: 20) {
             section(L10n.sectionApplication) {
                 card {
-                    row("Version") {
+                    row(L10n.aboutVersion) {
                         Text(appVersionText)
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
                     dividerLine
-                    row("Socket") {
+                    row(L10n.aboutSocket) {
                         Text("~/.xisland/di.sock")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
                     dividerLine
-                    row("Bridge") {
+                    row(L10n.aboutBridge) {
                         Text("~/.xisland/bin/di-bridge")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
@@ -1463,25 +1535,25 @@ struct PreferencesView: View {
 
             section(L10n.sectionUpdates) {
                 card {
-                    row("Current Version") {
+                    row(L10n.aboutCurrentVersion) {
                         Text(updateManager.currentVersion)
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
                     dividerLine
-                    row("Latest Release") {
+                    row(L10n.aboutLatestRelease) {
                         Text(updateLatestReleaseText)
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
                     dividerLine
-                    row("Last Checked") {
+                    row(L10n.aboutLastChecked) {
                         Text(updateLastCheckedText)
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
                     dividerLine
-                    row("Status", subtitle: updateStatusDetailText) {
+                    row(L10n.aboutStatus, subtitle: updateStatusDetailText) {
                         Text(updateStatusText)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(updateStatusColor)
@@ -1489,7 +1561,7 @@ struct PreferencesView: View {
                             .accessibilityIdentifier(TestAccessibility.updateStatusLabel)
                     }
                     dividerLine
-                    row("Auto Check") {
+                    row(L10n.aboutAutoCheck) {
                         Toggle("", isOn: Binding(
                             get: { updateManager.autoCheckForUpdates },
                             set: { newValue in
@@ -1505,7 +1577,7 @@ struct PreferencesView: View {
                         .controlSize(.small)
                     }
                     dividerLine
-                    row("Actions") {
+                    row(L10n.aboutActions) {
                         HStack(spacing: 8) {
                             Button(updateCheckButtonTitle) {
                                 Task { @MainActor in

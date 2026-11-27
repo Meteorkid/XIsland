@@ -1,15 +1,16 @@
 {
     "name": "xisland-vscode",
     "displayName": "X Island Bridge",
-    "description": "Observe verified Roo Code and experimental PearAI task events in X Island",
-    "version": "1.0.1",
+    "description": "Observe verified Roo Code events and focus existing VS Code terminals for X Island",
+    "version": "1.1.0",
     "publisher": "meteorkid",
     "license": "SEE LICENSE IN LICENSE.md",
     "engines": {
         "vscode": "^1.84.0"
     },
     "activationEvents": [
-        "onStartupFinished"
+        "onStartupFinished",
+        "onUri"
     ],
     "main": "./out/extension.js",
     "categories": [

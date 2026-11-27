@@ -14,6 +14,8 @@ enum MCPApprovalGraphServer {
     static func run(arguments: [String]) -> Int32 {
         var agentType: String?
         var explicitSession: String?
+        var observeAgent: String?
+        var observeSession: String?
         var index = 0
         while index < arguments.count {
             switch arguments[index] {
@@ -22,6 +24,12 @@ enum MCPApprovalGraphServer {
                 index += 2
             case "--session" where index + 1 < arguments.count:
                 explicitSession = arguments[index + 1]
+                index += 2
+            case "--observe-agent" where index + 1 < arguments.count:
+                observeAgent = arguments[index + 1]
+                index += 2
+            case "--observe-session" where index + 1 < arguments.count:
+                observeSession = arguments[index + 1]
                 index += 2
             default:
                 fputs("[di-bridge mcp-server] Unknown argument: \(arguments[index])\n", stderr)
@@ -38,22 +46,49 @@ enum MCPApprovalGraphServer {
                 ?? environment["ITERM_SESSION_ID"]
                 ?? environment["WEZTERM_PANE"]
         )
+        // 观察模式没有客户端会话 ID：一个连接器进程就是一个观察会话，结束时关闭它。
+        var observation = observeAgent.map {
+            ObservationContext(agentType: $0,
+                               sessionID: observeSession ?? "doubao-\(UUID().uuidString.prefix(8).lowercased())")
+        }
 
         while let line = readLine(strippingNewline: true) {
             guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
-            handleLine(line, target: target)
+            handleLine(line, target: target, observation: &observation)
+        }
+        if var context = observation, context.started {
+            context.started = false
+            let message = observationMessage(type: .sessionEnd, context: context, event: "connector_closed")
+            ObservationSender.send(message, socketPath: DIBridge.socketPath())
         }
         return 0
     }
 
-    private static func handleLine(_ line: String, target: ApprovalGraphTarget) {
+    private struct ObservationContext {
+        let agentType: String
+        let sessionID: String
+        var started = false
+    }
+
+    private static func observationMessage(type: DIMessageType, context: ObservationContext,
+                                           event: String) -> DIMessage {
+        var message = DIMessage(type: type, sessionId: context.sessionID)
+        message.agentType = context.agentType
+        message.nativeEvent = event
+        message.statusIsAssistantReply = false
+        return message
+    }
+
+    private static func handleLine(_ line: String, target: ApprovalGraphTarget,
+                                   observation: inout ObservationContext?) {
         guard line.utf8.count <= 128 * 1024 else { return }
         guard let data = line.data(using: .utf8),
               let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let method = request["method"] as? String else { return }
         let isNotification = request["id"] == nil
         do {
-            let result = try dispatch(method: method, params: request["params"] as? [String: Any] ?? [:], target: target)
+            let result = try dispatch(method: method, params: request["params"] as? [String: Any] ?? [:],
+                                      target: target, observation: &observation)
             if !isNotification {
                 writeResponse(id: request["id"], result: result)
             }
@@ -64,8 +99,8 @@ enum MCPApprovalGraphServer {
         }
     }
 
-    private static func dispatch(method: String, params: [String: Any],
-                                 target: ApprovalGraphTarget) throws -> Any {
+    private static func dispatch(method: String, params: [String: Any], target: ApprovalGraphTarget,
+                                 observation: inout ObservationContext?) throws -> Any {
         switch method {
         case "initialize":
             sendHandshake(target: target)
@@ -74,7 +109,7 @@ enum MCPApprovalGraphServer {
             return [
                 "protocolVersion": version,
                 "capabilities": ["tools": [:] as [String: Any]],
-                "serverInfo": ["name": "xisland-approval-graph", "version": "1.0.0"]
+                "serverInfo": ["name": observation == nil ? "xisland-approval-graph" : "xisland-activity", "version": "1.0.0"]
             ]
         case "notifications/initialized", "notifications/cancelled":
             return [:]
@@ -83,7 +118,7 @@ enum MCPApprovalGraphServer {
             return [:]
         case "tools/list":
             sendHandshake(target: target)
-            return ["tools": toolDefinitions]
+            return ["tools": toolDefinitions(observation: observation)]
         case "tools/call":
             guard let name = params["name"] as? String else {
                 throw MCPError(code: -32602, message: "tools/call requires a tool name")
@@ -92,6 +127,12 @@ enum MCPApprovalGraphServer {
                 throw MCPError(code: -32602, message: "tools/call arguments must be an object when provided")
             }
             let arguments = params["arguments"] as? [String: Any] ?? [:]
+            if observation != nil {
+                guard name == "xisland_activity" else {
+                    throw MCPError(code: -32602, message: "Unknown tool: \(name)")
+                }
+                return try reportActivity(arguments: arguments, observation: &observation)
+            }
             let request: ApprovalGraphRequest
             switch name {
             case "approval_graph_get":
@@ -117,7 +158,23 @@ enum MCPApprovalGraphServer {
         }
     }
 
-    private static var toolDefinitions: [[String: Any]] {
+    private static func toolDefinitions(observation: ObservationContext?) -> [[String: Any]] {
+        // 观察模式只暴露活动上报：豆包工作没有可用的审批图会话，列出审批工具只会误导。
+        if observation != nil {
+            return [[
+                "name": "xisland_activity",
+                "description": "Report a short activity note to X Island while working. Call it when a task starts and whenever a notable step finishes. X Island only displays the note; it never grants approvals or permissions.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "summary": ["type": "string", "description": "One-line activity summary shown in the island (1-512 bytes)."],
+                        "detail": ["type": "string", "description": "Optional longer detail, e.g. the command or file being worked on."]
+                    ],
+                    "required": ["summary"],
+                    "additionalProperties": false
+                ]
+            ]]
+        }
         let targetProperties: [String: Any] = [
             "session_id": ["type": "string", "description": "Optional exact X Island session ID. Omit to auto-bind by agent, terminal, or working directory."]
         ]
@@ -163,6 +220,52 @@ enum MCPApprovalGraphServer {
                     "additionalProperties": false
                 ]
             ]
+        ]
+    }
+
+    /// 豆包工作连接器上报的活动：开启或复用本次连接器会话，并记录一次工具级事件。
+    /// 只做单向观察；不等待 UI，也不参与审批。
+    private static func reportActivity(arguments: [String: Any],
+                                       observation: inout ObservationContext?) throws -> Any {
+        guard var context = observation else {
+            throw MCPError(code: -32603, message: "Observation context unavailable")
+        }
+        guard let summary = (arguments["summary"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !summary.isEmpty, summary.utf8.count <= 512, !summary.utf8.contains(0) else {
+            throw MCPError(code: -32602, message: "summary is required (1...512 bytes)")
+        }
+        var detail = (arguments["detail"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if detail?.isEmpty == true { detail = nil }
+        if let detail, detail.utf8.count > 2048 || detail.utf8.contains(0) {
+            throw MCPError(code: -32602, message: "detail must be at most 2048 bytes")
+        }
+
+        let socketPath = DIBridge.socketPath()
+        if !context.started {
+            var start = observationMessage(type: .sessionStart, context: context, event: "xisland_activity")
+            start.prompt = summary
+            ObservationSender.send(start, socketPath: socketPath)
+            context.started = true
+            observation = context
+        }
+
+        let callID = "activity-\(Int(Date().timeIntervalSince1970 * 1000))"
+        var toolStart = observationMessage(type: .toolStart, context: context, event: "xisland_activity")
+        toolStart.tool = "xisland_activity"
+        toolStart.toolCallId = callID
+        toolStart.toolInput = detail ?? summary
+        ObservationSender.send(toolStart, socketPath: socketPath)
+
+        var complete = observationMessage(type: .toolComplete, context: context, event: "xisland_activity")
+        complete.tool = "xisland_activity"
+        complete.toolCallId = callID
+        complete.toolResult = summary
+        ObservationSender.send(complete, socketPath: socketPath)
+
+        return [
+            "content": [["type": "text", "text": "已记录到 X Island；这只是活动上报，不代表审批或授权。"]],
+            "isError": false
         ]
     }
 

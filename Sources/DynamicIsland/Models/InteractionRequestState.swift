@@ -7,6 +7,18 @@ enum InteractionKind: String, Sendable {
 
 enum InteractionDecision: Sendable {
     case permission(Bool)
+    /// 带原因的拒绝；只用于支持 PermissionRequest `decision.message` 的来源。
+    /// 它不是“交回原生”，客户端必须真正拒绝。
+    case permissionDenial(String)
+    /// 修改工具参数后批准；只用于支持 PermissionRequest `decision.updatedInput` 的来源。
+    case permissionEdited(String)
+    /// 拒绝并停止本轮；只用于支持 PermissionRequest `decision.interrupt` 的来源。
+    case permissionInterrupted(String?)
+    /// 允许并为本次会话写入精确规则；只用于支持 `decision.updatedPermissions` 的来源。
+    case permissionRemembered(String)
+    /// 不替用户裁决，把请求交回客户端原生确认。Claude 兼容 hook 对应空输出，
+    /// Cursor 对应 `{"permission":"ask"}`；绝不能降级成默认批准或默认拒绝。
+    case permissionDeferred
     case question(String)
     case questionSelections([String])
     case plan(Bool, String?)

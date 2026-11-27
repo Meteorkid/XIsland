@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "checkedAt": "2026-10-17",
-  "goal": "全部30项真实适配，逐项保留未完成与能力限制",
+  "checkedAt": "2026-11-26",
+  "goal": "全部30项原定目标 + 额外客户端：30项可接入、5项已停用保留历史；逐项保留未完成与能力限制",
   "verificationRule": "只有协议证据、契约测试和真实版本验收均通过，才能标记该目标已完成。接口缺口不等于完成。",
   "targets": [
     {
@@ -11,12 +11,12 @@
       "protocolEvidence": "verified",
       "implementation": "implemented_contract_tested",
       "component": "NativeHookProfile",
-      "contractTests": "Release 2.0.0: 1017 Swift tests including all opt-in rendering, 122 compiled bridge scenarios; isolated native Read with pre-response prompt history and island denial passed",
+      "contractTests": "Release 2.0.0: 1017 Swift tests including all opt-in rendering, 122 compiled bridge scenarios; isolated native Read with pre-response prompt history and island denial passed; permission queue, subagent attribution, 310s lease and approval audit ledger in Swift tests; native tool receipt correlation (PreToolUse tool_use_id + tool_input hash -> PostToolUse nativeResolved); Claude Stop/SubagentStop turn-end cleanup by originAgentID -> nativeTurnEnded with subagent isolation; global approval history + SHA-256 chain verification + raw JSONL export; Claude deny.message feedback through Protocol/socket/bridge and card editor; Claude updatedInput approve-with-changes through Protocol/socket/bridge with Bash command / JSON card editor and executed-payload audit hash; Claude interrupt deny-and-stop through Protocol/socket/bridge with one-click card button and reason-toggle, never emitted on allow; Claude session-scoped exact Bash allow through updatedPermissions, restricted to one addRules / allow / session / Bash rule with no wildcard, newline or command over 2,000 bytes; Claude Edit/Write/MultiEdit/NotebookEdit tool_input is parsed into a cached read-only inline diff preview before approval, without reading target files",
       "runtimeVerification": "Claude Code 2.1.234 with local mock model on release App 66b5dbbaf3a5: Read, early prompt history and XIsland denial; 12 hooks / 7 event types / 6 App snapshots / 2 final full-history checkpoints",
       "verifiedVersions": [],
       "complete": false,
-      "limits": "2.1.234真实Read和岛上拒绝已通过；明确SessionEnd将未决调用保留为完成未确认，不再显示运行中。原生权限hook缺tool_use_id，不能猜测逐调用拒绝归属；运行中会话与首提示现已即时保存，失败可重试；最终发行构建的原生复验另列。允许/取消/超时、并发权限、子代理、执行失败、TUI、前置问答、真实服务商与其他版本仍待验收。",
-      "lastCheckedAt": "2026-10-16",
+      "limits": "2.1.234真实Read和岛上拒绝已通过；明确SessionEnd将未决调用保留为完成未确认，不再显示运行中。ExitPlanMode 的 PermissionRequest 已在岛上映射为计划审查，allow 回传 updatedInput；原生权限hook缺tool_use_id，不能猜测逐调用拒绝归属；运行中会话与首提示现已即时保存，失败可重试；最终发行构建的原生复验另列。并发权限已改为同会话队列、子代理来源标记与 310 秒租约并通过单元测试；允许/取消/真实超时、子代理、执行失败、TUI、前置问答、真实服务商与其他版本仍待验收。拒绝原因仅对 Claude Code 的已核实 message 合同回传，Cursor 仍 deny-only，原因不写入审计账本。修改参数后批准只对 Claude Code 的 updatedInput 合同开放；非法 JSON、NUL、超过 64,000 字节或非对象时保持卡片，不降级为批准原始命令；真实 TUI 端到端未验。拒绝并停止只对 Claude Code 的 interrupt 合同开放，只在 deny 分支写字段；它只停止当前回合，不承诺终止后台子代理、后台 Bash 任务或已脱离 shell 的进程，其他来源不接受中断并保持卡片。本会话允许精确 Bash 命令只对 Claude Code 的 updatedPermissions 合同开放，只生成主代理请求的单条 addRules、allow、session、Bash 精确规则；含通配符/换行/超长、非 Bash、非 Claude 或子代理请求时保持卡片，不写 settings 文件，不跨会话，真实 TUI 端到端未验。文件改动预览只解析 Edit/Write/MultiEdit/NotebookEdit 的 tool_input，不读取目标文件，不改变 allow/deny；没有真实行号、未修改上下文或完整 unified diff，Write 显示完整写入内容并提示可能覆盖现有文件；真实 TUI 端到端未验。",
+      "lastCheckedAt": "2026-11-27",
       "mainStopVerification": {
         "state": "completionUnconfirmed",
         "scope": "synthetic vendor events; no native client launch"
@@ -86,7 +86,7 @@
     },
     {
       "id": "gemini_cli",
-      "product": "Gemini CLI",
+      "product": "Gemini CLI (enterprise / paid API key)",
       "route": "原生 settings hooks；后续 ACP",
       "protocolEvidence": "verified",
       "implementation": "implemented_contract_tested",
@@ -95,13 +95,14 @@
       "runtimeVerification": "bridge_fixture_passed_client_pending",
       "verifiedVersions": [],
       "complete": false,
-      "limits": "AfterAgent可要求自动重试，现显示完成未确认；Notification仅核实ToolPermission，不从未知idle_prompt制造空闲。原生最终轮次、审批及真实客户端仍待验收",
+      "limits": "2026-06-18 起个人版与 Gemini Code Assist 个人版停止服务；仅企业版与付费 API Key 可用。个人继任入口是 antigravity",
       "lastCheckedAt": "2026-10-11",
       "mainStopVerification": {
         "state": "completionUnconfirmed",
         "scope": "synthetic vendor events; no native client launch"
       },
-      "publicVerification": "release-verification-2.0.0.json"
+      "publicVerification": "release-verification-2.0.0.json",
+      "status": "limited"
     },
     {
       "id": "cursor",
@@ -110,11 +111,11 @@
       "protocolEvidence": "verified",
       "implementation": "implemented_contract_tested",
       "component": "CursorHookConfiguration / CursorHookAdapter",
-      "contractTests": "swift_passed_2026-09-24",
+      "contractTests": "swift_passed_2026-11-26: 11 events, shell/MCP permission JSON, ask fallback, legacy migration, permission queue and approval audit ledger",
       "runtimeVerification": "bridge_fixture_passed_client_pending",
       "verifiedVersions": [],
       "complete": false,
-      "limits": "9个原生观察事件与旧命令迁移已通过契约；真实版本、原生审批问答和其他hooks组合仍待验收",
+      "limits": "11个原生事件与旧命令迁移已通过契约；beforeShellExecution / beforeMCPExecution 只消费 deny/ask，岛上只提供拒绝与交回原生确认，不伪造 allow；并发审批队列与超时 ask 回退已通过单元测试；真实版本、文件读取审批、问答和其他hooks组合仍待验收",
       "publicVerification": "release-verification-2.0.0.json"
     },
     {
@@ -128,7 +129,7 @@
       "runtimeVerification": "bridge_fixture_passed_client_pending",
       "verifiedVersions": [],
       "complete": false,
-      "limits": "CN六事件契约通过；Stop仅准备结束，idle_prompt才空闲。CN/SOLO CN默认共用.trae-cn；三发行版公开资源已静态核对，国际版/SOLO、子代理归属和完整原生交互仍未验收",
+      "limits": "当前固定范围是 Trae CN 协议；国际版与 Solo 不借用 CN 验收结果。Claude Code hooks 路径的权限与 ExitPlanMode 计划审查已接入，独立 hooks 仍只观察。TRAE Work 已于 2026-08-25 并入豆包工作",
       "lastCheckedAt": "2026-10-11",
       "observedVersions": [
         {
@@ -188,7 +189,7 @@
     },
     {
       "id": "qoder",
-      "product": "Qoder CLI／IDE",
+      "product": "Qoder CN (formerly Lingma)",
       "route": "原生 settings hooks",
       "protocolEvidence": "verified",
       "implementation": "implemented_contract_tested",
@@ -197,7 +198,7 @@
       "runtimeVerification": "bridge_fixture_passed_client_pending",
       "verifiedVersions": [],
       "complete": false,
-      "limits": "CLI审批需hookEventName；按session_id/agent_id关联，不补造父ID，agent_type缺省仍接收；Stop/SubagentStop非最终。真实父子关系、恢复、原生交互与IDE/JetBrains独立语义仍未验收",
+      "limits": "2026-05-20 通义灵码更名 Qoder CN；QoderWork 一支并入千问办公，不共用本入口。ExitPlanMode 计划审查路径已实现；IDE、完整问答及真实版本待验",
       "lastCheckedAt": "2026-10-11",
       "mainStopVerification": {
         "state": "completionUnconfirmed",
@@ -254,7 +255,7 @@
       "runtimeVerification": "bridge_fixture_passed_client_pending",
       "verifiedVersions": [],
       "complete": false,
-      "limits": "审批JSON契约已核实；固定源码确认agent_id/agent_type，按原生会话与子ID关联，Stop非最终，同ID新Start恢复运行。直接父代理树、真实CLI版本/启用/工具审批及完整问答仍待实机验收",
+      "limits": "审批JSON契约已核实；固定源码确认agent_id/agent_type，按原生会话与子ID关联，Stop非最终，同ID新Start恢复运行。ExitPlanMode 计划审查路径已实现。直接父代理树、真实CLI版本/启用/工具审批及完整问答仍待实机验收",
       "lastCheckedAt": "2026-10-11",
       "mainStopVerification": {
         "state": "completionUnconfirmed",
@@ -419,18 +420,20 @@
       "product": "Windsurf／Cascade",
       "route": "原生snake_case hooks",
       "protocolEvidence": "verified",
-      "implementation": "implemented_contract_tested",
+      "implementation": "retired",
       "component": "WindsurfHookConfiguration / WindsurfHookAdapter",
       "contractTests": "swift_passed_2026-09-24",
       "runtimeVerification": "bridge_fixture_passed_client_pending",
       "verifiedVersions": [],
       "complete": false,
-      "limits": "以trajectory_id关联；pre-hook阻断不等于原生批准",
-      "publicVerification": "release-verification-2.0.0.json"
+      "limits": "2026-06-02 Cognition 将 Windsurf 自动更新为 Devin Desktop，Cascade 退役；同一应用身份改由 devin 接管，旧轨迹按 windsurf 保留",
+      "publicVerification": "release-verification-2.0.0.json",
+      "status": "retired",
+      "successor": "devin"
     },
     {
       "id": "devin",
-      "product": "Devin CLI；云端另列",
+      "product": "Devin Desktop (formerly Windsurf) / Devin CLI",
       "route": "原生hooks；云API只读状态",
       "protocolEvidence": "verified",
       "implementation": "implemented_contract_tested",
@@ -439,7 +442,7 @@
       "runtimeVerification": "bridge_fixture_passed_client_pending",
       "verifiedVersions": [],
       "complete": false,
-      "limits": "本地审批与云会话不能混称；完整问答未核实",
+      "limits": "沿用原 Windsurf 应用的 bundle id；桌面端改名后的真实加载、云端会话、完整问答与真实版本仍待验",
       "publicVerification": "release-verification-2.0.0.json"
     },
     {
@@ -447,7 +450,7 @@
       "product": "Amazon Q CLI／IDE",
       "route": "显式 qchat 1.19.7 包装器与选定 agent hooks",
       "protocolEvidence": "partial",
-      "implementation": "implemented_contract_tested",
+      "implementation": "retired",
       "component": "AmazonQLauncher / AmazonQHookAdapter / AmazonQSessionLease / AmazonQAgentConfiguration",
       "contractTests": "13 Swift tests; 9 offline wrapper checks; full suite 764 passed",
       "runtimeVerification": "offline_process_passed_client_pending",
@@ -455,13 +458,15 @@
         "Q CLI v1.19.7 source contract; qchat binary acceptance pending"
       ],
       "complete": false,
-      "limits": "仅包装进程身份；原生会话切换/恢复不能独立映射；无工具调用ID和回复正文；原生配置加载与真实客户端待验，不覆盖Q IDE/Kiro",
+      "limits": "2025-11-17 Q Developer CLI 更名为 Kiro CLI；旧 qchat 1.19.7 包装器只保留历史会话",
       "automaticConfiguration": "disabled_manual_agent_merge",
-      "publicVerification": "release-verification-2.0.0.json"
+      "publicVerification": "release-verification-2.0.0.json",
+      "status": "retired",
+      "successor": "kiro"
     },
     {
       "id": "tabnine",
-      "product": "Tabnine CLI／IDE／OpenCode插件",
+      "product": "Tabnine (Tricentis)",
       "route": "当前JSON hooks；后继宿主插件",
       "protocolEvidence": "verified",
       "implementation": "implemented_contract_tested",
@@ -470,7 +475,7 @@
       "runtimeVerification": "bridge_fixture_passed_client_pending",
       "verifiedVersions": [],
       "complete": false,
-      "limits": "CLI settings hooks与毫秒超时已核实；AfterAgent可重试，现显示完成未确认；保留原有总开关，不推断未知空闲通知。真实CLI、IDE及OpenCode继任插件仍待验收",
+      "limits": "2026-07-30 被 Tricentis 收购，6.x CLI 改为 OpenCode 托管分支；自动配置只覆盖旧版 Tabnine CLI 的 settings.json，IDE 与 6.x 待验",
       "lastCheckedAt": "2026-10-11",
       "mainStopVerification": {
         "state": "completionUnconfirmed",
@@ -491,9 +496,10 @@
         "@sourcegraph/cody 5.5.26 published source map; client pending"
       ],
       "complete": false,
-      "limits": "仅显式 Agent：无已打开IDE接管；工具/审批/累计用量未覆盖；消息无稳定ID仅预览；真实客户端待验",
+      "limits": "Sourcegraph 宣布 2027-01-31 停止支持，新注册自 2025 年起仅企业版；Amp 已拆分为独立公司，不共享本通道",
       "automaticConfiguration": "disabled_manual_agent_wrapper",
-      "publicVerification": "release-verification-2.0.0.json"
+      "publicVerification": "release-verification-2.0.0.json",
+      "status": "eol_scheduled"
     },
     {
       "id": "cline",
@@ -514,7 +520,7 @@
       "product": "Continue IDE／cn CLI",
       "route": "显式 cn serve /state 限时只读观察",
       "protocolEvidence": "partial",
-      "implementation": "implemented_contract_tested",
+      "implementation": "retired",
       "component": "ContinueStateObserver / ContinueStateWatcher",
       "contractTests": "9 Swift tests + 6 offline HTTP process scenarios",
       "runtimeVerification": "offline_http_fixture_passed_client_pending",
@@ -522,9 +528,11 @@
         "@continuedev/cli 1.5.47 source contract; real client pending"
       ],
       "complete": false,
-      "limits": "仅 cn serve：轮询可能遗漏瞬时状态；审批在 Continue 完成；消息无稳定ID，仅回复预览；普通TUI/IDE和真实客户端验收待完成",
+      "limits": "2026-06 被 Cursor 收购，仓库只读，最后版本 v2.0.0-vscode (2026-06-19)",
       "automaticConfiguration": "disabled_manual_observer",
-      "publicVerification": "release-verification-2.0.0.json"
+      "publicVerification": "release-verification-2.0.0.json",
+      "status": "retired",
+      "successor": "cursor"
     },
     {
       "id": "copilot_cli",
@@ -550,16 +558,18 @@
       "product": "Roo Code",
       "route": "Roo 3.54.0公开任务API观察扩展",
       "protocolEvidence": "partial",
-      "implementation": "implemented_contract_tested",
+      "implementation": "retired",
       "component": "XIslandVSCode observer/transport; ObservationLease; source-scoped history and cumulative usage",
       "contractTests": "42 Node tests; Swift lease/history regressions; 849-test whole suite + 36 final focused tests passed 2026-10-09",
       "runtimeVerification": "Compiled TS observer/transport -> isolated XIsland app: same-task windows, reload, graceful exit, crash expiry and four persisted records passed; vendor client pending",
       "verifiedVersions": [],
       "complete": false,
-      "limits": "只读观察，审批/回答在原应用处理；多窗口身份与失联语义已实现，但真实Roo窗口、普通新标签页、晚接入历史及精确窗口定位仍未验收",
+      "limits": "2026-05-15 停运并归档，团队转向 Roomote；社区继任者为 Cline / Kilo Code",
       "automaticConfiguration": "companion_extension_required",
       "lastCheckedAt": "2026-10-09",
-      "publicVerification": "release-verification-2.0.0.json"
+      "publicVerification": "release-verification-2.0.0.json",
+      "status": "retired",
+      "successor": "cline"
     },
     {
       "id": "pearai",
@@ -633,6 +643,52 @@
         "scope": "synthetic vendor events; no native client launch"
       },
       "publicVerification": "release-verification-2.0.0.json"
+    },
+    {
+      "id": "antigravity",
+      "product": "Antigravity App / CLI (agy) / IDE",
+      "relationToOriginalScope": "2026-05-19 起承接 Gemini CLI 个人版；本项作为原 gemini_cli 目标的继任客户端单列",
+      "route": "命名分组全局 hooks：~/.gemini/config/hooks.json，hook 名 xisland",
+      "protocolEvidence": "verified_official_hooks_docs_2026-11-25",
+      "implementation": "implemented_contract_tested",
+      "component": "AntigravityHookConfiguration / AntigravityHookAdapter",
+      "contractTests": "Swift: 7 tests for hooks.json structure, merge/remove, five-event mapping, Stop never claims completion",
+      "runtimeVerification": "client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "五类官方事件（SessionStart / PreInvocation / PreToolUse / PostToolUse / Stop）已按文档核对；PreToolUse 只回中性 allow，不做岛上审批；App、CLI、IDE 三形态的真实加载仍待验收"
+    },
+    {
+      "id": "doubao_work",
+      "product": "豆包工作 (Doubao Work)",
+      "relationToOriginalScope": "2026-08-25 公开发布，TRAE Work 与 Coze 并入；本项替代原 Trae Work 桌面入口",
+      "route": "本地电脑模式的 STDIO 自定义连接器 → di-bridge doubao-work-mcp（MCP 活动上报）",
+      "protocolEvidence": "official_plugin_and_connector_docs_2026-11-25",
+      "implementation": "implemented_contract_tested",
+      "component": "DoubaoWorkConnectorConfiguration / MCPApprovalGraphServer observe mode",
+      "contractTests": "Swift: connector files, path validation, activity tool contract; synthetic events reach isolated app",
+      "runtimeVerification": "client_pending",
+      "verifiedVersions": [],
+      "complete": false,
+      "limits": "没有公开原生 hooks；只观察显式调用 xisland_activity 的活动，不接管审批、问答与取消；连接器断开即结束，不推断任务完成；真实客户端加载未验证"
+    },
+    {
+      "id": "kilo_code",
+      "product": "Kilo Code（VS Code 扩展 + CLI）",
+      "relationToOriginalScope": "Roo Code 停运后的延续分支，2026 年重建为 OpenCode 内核，2026-07-15 被 Anaconda 收购；作为额外客户端单列，不计入原定 30 项",
+      "route": "原生全局插件 ~/.config/kilo/plugin/xisland.js，CLI 与 VS Code 扩展共用；插件调用 di-bridge --agent kilo_code --adapter kilo_plugin",
+      "protocolEvidence": "official_plugin_docs_and_generated_source_2026-11-25",
+      "implementation": "implemented_contract_tested",
+      "component": "KiloPluginConfiguration / OpenCodeHookAdapter (kilo_plugin)",
+      "contractTests": "Swift: 5 plugin-source tests + 3 adapter tests; generated plugin parsed by node --check",
+      "runtimeVerification": "plugin_source_and_adapter_contract_passed; native CLI/extension load pending",
+      "verifiedVersions": [
+        "VS Code marketplace 7.8.32 metadata only; not installed or run"
+      ],
+      "complete": false,
+      "automaticConfiguration": "writes owned ~/.config/kilo/plugin/xisland.js; host restart or window reload required",
+      "limits": "只观察会话、提示、工具、助手文本与等待状态；权限、问答、计划审阅和取消留在 Kilo；会话删除/归档才结束；KILO_PURE=1、企业禁用插件与 JetBrains 插件不在覆盖内",
+      "lastCheckedAt": "2026-11-25"
     }
   ],
   "remainingAppLifecycleChecks": [
@@ -655,7 +711,7 @@
   "releaseVersion": "2.0.1",
   "integrationOnboarding": {
     "release": "2.0.1",
-    "catalogEntries": 31,
+    "catalogEntries": 30,
     "configurationIsNotConnection": true,
     "codexTrustProbe": "read-only hooks/list for exact XIsland commands; user grants trust in Codex",
     "reminders": "persisted per configuration fingerprint; changed definitions and revoked trust prompt again",

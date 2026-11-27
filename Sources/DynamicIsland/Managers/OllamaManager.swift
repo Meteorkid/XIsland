@@ -18,7 +18,7 @@ final class OllamaManager: ObservableObject {
     @Published private(set) var progress: String = ""
     @Published private(set) var installedModels: [String] = []
 
-    static let suggestedModel = "qwen2.5:3b"
+    nonisolated static let suggestedModel = "qwen2.5:3b"
 
     struct Recommendation: Identifiable {
         let id: String
@@ -28,12 +28,21 @@ final class OllamaManager: ObservableObject {
 
     /// 摘要任务只需要短文本，优先列小模型；体积为 Ollama 上的量化版本。
     static let recommended: [Recommendation] = [
-        Recommendation(id: "qwen2.5:3b", size: "1.9GB", note: "中文摘要稳定，推荐"),
-        Recommendation(id: "qwen2.5:1.5b", size: "1.0GB", note: "更快、体积更小"),
-        Recommendation(id: "qwen3:1.7b", size: "1.4GB", note: "新架构，指令跟随更好"),
-        Recommendation(id: "llama3.2:3b", size: "2.0GB", note: "英文强，中文一般"),
-        Recommendation(id: "gemma3:1b", size: "0.8GB", note: "最轻量，质量有限"),
+        Recommendation(id: "qwen2.5:3b", size: "1.9GB",
+                       note: L10n.isChinese ? "中文摘要稳定，推荐" : "Stable Chinese summaries; recommended"),
+        Recommendation(id: "qwen2.5:1.5b", size: "1.0GB",
+                       note: L10n.isChinese ? "更快、体积更小" : "Faster and smaller"),
+        Recommendation(id: "qwen3:1.7b", size: "1.4GB",
+                       note: L10n.isChinese ? "新架构，指令跟随更好" : "Newer architecture; better instruction following"),
+        Recommendation(id: "llama3.2:3b", size: "2.0GB",
+                       note: L10n.isChinese ? "英文强，中文一般" : "Strong English, average Chinese"),
+        Recommendation(id: "gemma3:1b", size: "0.8GB",
+                       note: L10n.isChinese ? "最轻量，质量有限" : "Lightest; limited quality"),
     ]
+
+    private var pullProcess: Process?
+    private var pullPipe: Pipe?
+    private var pullTimeoutTask: Task<Void, Never>?
 
     var executablePath: String? {
         ["/opt/homebrew/bin/ollama", "/usr/local/bin/ollama", "/usr/bin/ollama"]
@@ -67,7 +76,7 @@ final class OllamaManager: ObservableObject {
     func pull(model: String = OllamaManager.suggestedModel) {
         guard status != .pulling, isInstalled, let path = executablePath else { return }
         status = .pulling
-        progress = "准备下载…"
+        progress = L10n.isChinese ? "准备下载…" : "Preparing download…"
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
@@ -93,6 +102,12 @@ final class OllamaManager: ObservableObject {
             pipe.fileHandleForReading.readabilityHandler = nil
             Task { @MainActor in
                 guard let self else { return }
+                if self.pullProcess === process {
+                    self.pullProcess = nil
+                    self.pullPipe = nil
+                    self.pullTimeoutTask?.cancel()
+                    self.pullTimeoutTask = nil
+                }
                 self.progress = ""
                 await self.refresh()
             }
@@ -100,10 +115,28 @@ final class OllamaManager: ObservableObject {
 
         do {
             try process.run()
+            pullProcess = process
+            pullPipe = pipe
+            // 防止网络卡住时永远停留在“下载中”；超时后终止子进程并由 terminationHandler 收尾。
+            pullTimeoutTask = Task { @MainActor [weak self, weak process] in
+                try? await Task.sleep(for: .seconds(900))
+                guard !Task.isCancelled, let self, self.pullProcess === process else { return }
+                process?.terminate()
+            }
         } catch {
             progress = ""
             status = .noModel
+            pullProcess = nil
+            pullPipe = nil
         }
+    }
+
+    /// 用户取消下载。
+    func cancelPull() {
+        guard let process = pullProcess else { return }
+        pullTimeoutTask?.cancel()
+        pullTimeoutTask = nil
+        process.terminate()
     }
 
     func openDownloadPage() {

@@ -6,6 +6,7 @@ enum AgentMascotFamily: String, CaseIterable, Identifiable, Sendable {
     case goggles, bear, briefcase, cloud, crescent, whale, ghost, bolt
     case pi, wingedEnvelope, crystal, glove, wave, helmet, bubble, cat
     case dog, tent, chevron, paperPlane, kangaroo, pear, zebra, octopus
+    case duo, orbit, kilo
     case unknown
 
     var id: String { rawValue }
@@ -30,6 +31,7 @@ enum AgentMascotFamily: String, CaseIterable, Identifiable, Sendable {
         case .kiro: return .ghost
         case .amp: return .bolt
         case .pi: return .pi
+        case .kiloCode: return .kilo
         case .hermes: return .wingedEnvelope
         case .glm: return .crystal
         case .aider: return .glove
@@ -45,6 +47,8 @@ enum AgentMascotFamily: String, CaseIterable, Identifiable, Sendable {
         case .pearai: return .pear
         case .zed: return .zebra
         case .jetbrainsAi: return .octopus
+        case .doubaoWork: return .duo
+        case .antigravity: return .orbit
         }
     }
 
@@ -88,6 +92,9 @@ enum AgentMascotFamily: String, CaseIterable, Identifiable, Sendable {
         case .pear: layout = (0.67, 0, 0.10)
         case .zebra: layout = (0.64, 0, 0.07)
         case .octopus: layout = (0.68, 0, -0.04)
+        case .duo: layout = (0.70, 0, 0.06)
+        case .orbit: layout = (0.66, 0, 0.02)
+        case .kilo: layout = (0.68, 0, 0.04)
         case .unknown: layout = (0.75, 0, 0)
         }
         return (layout.0, CGSize(width: layout.1, height: layout.2))

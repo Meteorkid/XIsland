@@ -156,3 +156,49 @@ final class HistoryStoreBackupTests: XCTestCase {
         return String(cString: result)
     }
 }
+
+final class HistoryStoreBackupPruneTests: XCTestCase {
+    func testPruneKeepsNewestBackupsWithinBudget() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("xisland-prune-\(UUID().uuidString)")
+        let storeURL = directory.appendingPathComponent("XIsland.store")
+        let backups = directory.appendingPathComponent("HistoryBackups")
+        try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let oldest = backups.appendingPathComponent("XIsland.store.pre-old.sqlite")
+        let middle = backups.appendingPathComponent("XIsland.store.pre-middle.sqlite")
+        let newest = backups.appendingPathComponent("XIsland.store.pre-new.sqlite")
+        try Data(repeating: 0, count: 100).write(to: oldest)
+        try Data(repeating: 0, count: 100).write(to: middle)
+        try Data(repeating: 0, count: 100).write(to: newest)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 100)], ofItemAtPath: oldest.path)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 200)], ofItemAtPath: middle.path)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 300)], ofItemAtPath: newest.path)
+
+        HistoryStoreBackup.pruneBackups(storeURL: storeURL, maxTotalBytes: 250)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: oldest.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: middle.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: newest.path))
+    }
+
+    func testPruneKeepsNewestEvenWhenItExceedsBudget() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("xisland-prune-\(UUID().uuidString)")
+        let storeURL = directory.appendingPathComponent("XIsland.store")
+        let backups = directory.appendingPathComponent("HistoryBackups")
+        try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let old = backups.appendingPathComponent("XIsland.store.pre-old.sqlite")
+        let newest = backups.appendingPathComponent("XIsland.store.pre-new.sqlite")
+        try Data(repeating: 0, count: 300).write(to: newest)
+        try Data(repeating: 0, count: 100).write(to: old)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 100)], ofItemAtPath: old.path)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 300)], ofItemAtPath: newest.path)
+
+        HistoryStoreBackup.pruneBackups(storeURL: storeURL, maxTotalBytes: 150)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: newest.path))
+    }
+}

@@ -126,6 +126,7 @@ final class AppUpdaterTests: XCTestCase {
         let updater = AppUpdater(
             runCommand: { launchPath, arguments in
                 commands.append(launchPath, arguments)
+                if arguments.contains("-dv") { return "TeamIdentifier=ABC123DEF\n" }
                 return "/dev/disk16\tGUID_partition_scheme\t\n/dev/disk16s1\tApple_HFS\t/Volumes/X Island"
             },
             downloadFile: { sourceURL, destinationURL in
@@ -204,19 +205,43 @@ final class AppUpdaterTests: XCTestCase {
         XCTAssertNil(AppUpdater.parseTeamIdentifier(from: "Executable=/tmp/x\nIdentifier=dev.xisland.app\n"))
     }
 
-    /// 未配置期望 Team ID 时只验证签名自洽，不应阻断当前 ad-hoc 发布包。
-    func testSignatureAcceptedWithoutExpectedTeamIdentifier() {
+    /// 没有可信 Team ID 时 fail closed，不能仅凭 ad-hoc 自洽签名接受更新。
+    func testSignatureRejectsWhenNoTrustedTeamIdentifier() {
         let updater = AppUpdater(runCommand: { _, _ in "" })
-        if case .accepted(let team) = updater.verifySignature(at: "/tmp/X Island.app") {
-            XCTAssertNil(team)
-        } else {
-            XCTFail("未配置期望 Team ID 时应接受仅通过自洽校验的包")
+        guard case .rejected(let reason) = updater.verifySignature(at: "/tmp/X Island.app") else {
+            return XCTFail("没有可信 Team ID 时应拒绝更新")
         }
+        XCTAssertTrue(reason.contains("no trusted TeamIdentifier"))
     }
 
-    /// 未配置期望 Team ID 时，脚本虽含身份校验代码，但守卫为空 —— 运行时不执行，
-    /// 因此当前 ad-hoc 发布流程不受影响。
-    func testInstallerScriptOmitsTeamCheckWhenNoTeamConfigured() {
+    func testSignatureAcceptsMatchingTeamIdentifier() {
+        let updater = AppUpdater(runCommand: { _, arguments in
+            arguments.contains("-dv") ? "TeamIdentifier=ABC123DEF\n" : ""
+        })
+        guard case .accepted(let team) = updater.verifySignature(
+            at: "/tmp/X Island.app",
+            expectedTeamIdentifier: "ABC123DEF"
+        ) else {
+            return XCTFail("匹配的 Team ID 应通过签名校验")
+        }
+        XCTAssertEqual(team, "ABC123DEF")
+    }
+
+    func testSignatureRejectsMismatchedTeamIdentifier() {
+        let updater = AppUpdater(runCommand: { _, arguments in
+            arguments.contains("-dv") ? "TeamIdentifier=OTHER999\n" : ""
+        })
+        guard case .rejected(let reason) = updater.verifySignature(
+            at: "/tmp/X Island.app",
+            expectedTeamIdentifier: "ABC123DEF"
+        ) else {
+            return XCTFail("不匹配的 Team ID 应拒绝")
+        }
+        XCTAssertTrue(reason.contains("TeamIdentifier mismatch"))
+    }
+
+    /// 安装脚本同样必须 fail closed，不能给 ad-hoc 包留下空守卫绕过路径。
+    func testInstallerScriptRejectsMissingTeamIdentifier() {
         let script = AppUpdater.makeInstallerScript(
             currentPID: 4242,
             mountedAppPath: "/Volumes/X/X Island.app",
@@ -224,8 +249,8 @@ final class AppUpdaterTests: XCTestCase {
             mountDirectory: "/Volumes/X",
             tempDirectory: "/tmp/xi"
         )
-        XCTAssertTrue(script.contains(#"EXPECTED_TEAM=''"#), "未配置时应生成空的 EXPECTED_TEAM 守卫")
-        XCTAssertFalse(script.contains("EXPECTED_TEAM='ABC"), "不应携带任何 Team ID 值")
+        XCTAssertTrue(script.contains("no trusted TeamIdentifier configured"))
+        XCTAssertTrue(script.contains("downloaded app carries no TeamIdentifier"))
     }
 
     func testInstallerScriptIncludesTeamCheckWhenTeamConfigured() {

@@ -89,6 +89,142 @@ final class DIBridgeQuestionResponseTests: XCTestCase {
         XCTAssertEqual(denyDecision["behavior"] as? String, "deny")
     }
 
+    func testClaudeDenyMessageIsAttachedOnlyToDenyAndSanitized() throws {
+        let denyJSON = DIBridge.buildClaudeCodePermissionResponse(
+            approved: false, denyMessage: "  Use rg instead of grep  ")
+        let denyOut = try hookOutput(from: decodeJSON(denyJSON))
+        let denyDecision = try XCTUnwrap(denyOut["decision"] as? [String: Any])
+        XCTAssertEqual(denyDecision["behavior"] as? String, "deny")
+        XCTAssertEqual(denyDecision["message"] as? String, "Use rg instead of grep")
+
+        let allowJSON = DIBridge.buildClaudeCodePermissionResponse(
+            approved: true, denyMessage: "must be ignored")
+        let allowDecision = try XCTUnwrap(try hookOutput(from: decodeJSON(allowJSON))["decision"] as? [String: Any])
+        XCTAssertNil(allowDecision["message"])
+
+        let blankJSON = DIBridge.buildClaudeCodePermissionResponse(
+            approved: false, denyMessage: " \n ")
+        let blankDecision = try XCTUnwrap(try hookOutput(from: decodeJSON(blankJSON))["decision"] as? [String: Any])
+        XCTAssertNil(blankDecision["message"])
+
+        let nulJSON = DIBridge.buildClaudeCodePermissionResponse(
+            approved: false, denyMessage: "bad\u{0}message")
+        let nulDecision = try XCTUnwrap(try hookOutput(from: decodeJSON(nulJSON))["decision"] as? [String: Any])
+        XCTAssertNil(nulDecision["message"])
+    }
+
+    func testNonClaudePermissionSourcesDoNotEmitDenyMessage() throws {
+        let response = DIBridge.permissionHookResponse(
+            agentType: "trae", approved: false, hookType: "PermissionRequest",
+            stdinData: ["tool_name": "Bash"], denyMessage: "not supported")
+        let output = try XCTUnwrap(response.stdout)
+        let decision = try XCTUnwrap(try hookOutput(from: decodeJSON(output))["decision"] as? [String: Any])
+        XCTAssertNil(decision["message"])
+    }
+
+    func testClaudePermissionUpdatedInputIsAppliedOnlyOnAllow() throws {
+        let editedJSON = DIBridge.buildClaudeCodePermissionResponse(
+            approved: true,
+            updatedInput: #"{"command":"npm run lint","description":"lint only"}"#)
+        let editedDecision = try XCTUnwrap(
+            try hookOutput(from: decodeJSON(editedJSON))["decision"] as? [String: Any])
+        XCTAssertEqual(editedDecision["behavior"] as? String, "allow")
+        let updated = try XCTUnwrap(editedDecision["updatedInput"] as? [String: Any])
+        XCTAssertEqual(updated["command"] as? String, "npm run lint")
+        XCTAssertEqual(updated["description"] as? String, "lint only")
+
+        let denyJSON = DIBridge.buildClaudeCodePermissionResponse(
+            approved: false, updatedInput: #"{"command":"ignored"}"#)
+        let denyDecision = try XCTUnwrap(
+            try hookOutput(from: decodeJSON(denyJSON))["decision"] as? [String: Any])
+        XCTAssertEqual(denyDecision["behavior"] as? String, "deny")
+        XCTAssertNil(denyDecision["updatedInput"])
+    }
+
+    func testClaudeInvalidUpdatedInputFailsClosedToDeny() throws {
+        let json = DIBridge.buildClaudeCodePermissionResponse(
+            approved: true, updatedInput: #"{"command":"#)
+        let decision = try XCTUnwrap(
+            try hookOutput(from: decodeJSON(json))["decision"] as? [String: Any])
+        XCTAssertEqual(decision["behavior"] as? String, "deny")
+        XCTAssertNil(decision["updatedInput"])
+        XCTAssertNotNil(decision["message"])
+    }
+
+    func testNonClaudePermissionSourcesDoNotEmitUpdatedInput() throws {
+        let response = DIBridge.permissionHookResponse(
+            agentType: "trae", approved: true, hookType: "PermissionRequest",
+            stdinData: ["tool_name": "Bash"], updatedInput: #"{"command":"npm run lint"}"#)
+        let output = try XCTUnwrap(response.stdout)
+        let decision = try XCTUnwrap(try hookOutput(from: decodeJSON(output))["decision"] as? [String: Any])
+        XCTAssertNil(decision["updatedInput"])
+    }
+
+    func testClaudeInterruptIsOnlyWrittenOnDeny() throws {
+        let deniedJSON = DIBridge.buildClaudeCodePermissionResponse(
+            approved: false, denyMessage: "stop this", interrupt: true)
+        let deniedDecision = try XCTUnwrap(
+            try hookOutput(from: decodeJSON(deniedJSON))["decision"] as? [String: Any])
+        XCTAssertEqual(deniedDecision["behavior"] as? String, "deny")
+        XCTAssertEqual(deniedDecision["interrupt"] as? Bool, true)
+        XCTAssertEqual(deniedDecision["message"] as? String, "stop this")
+
+        let allowedJSON = DIBridge.buildClaudeCodePermissionResponse(
+            approved: true, interrupt: true)
+        let allowedDecision = try XCTUnwrap(
+            try hookOutput(from: decodeJSON(allowedJSON))["decision"] as? [String: Any])
+        XCTAssertEqual(allowedDecision["behavior"] as? String, "allow")
+        XCTAssertNil(allowedDecision["interrupt"])
+    }
+
+    func testNonClaudePermissionSourcesDoNotEmitInterrupt() throws {
+        let response = DIBridge.permissionHookResponse(
+            agentType: "trae", approved: false, hookType: "PermissionRequest",
+            stdinData: ["tool_name": "Bash"], interrupt: true)
+        let output = try XCTUnwrap(response.stdout)
+        let decision = try XCTUnwrap(try hookOutput(from: decodeJSON(output))["decision"] as? [String: Any])
+        XCTAssertNil(decision["interrupt"])
+    }
+
+    func testClaudeUpdatedPermissionsOnlyOnAllow() throws {
+        let permissions = #"[{"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"npm test"}],"behavior":"allow","destination":"session"}]"#
+        let allowedJSON = DIBridge.buildClaudeCodePermissionResponse(
+            approved: true, updatedPermissions: permissions)
+        let allowedDecision = try XCTUnwrap(
+            try hookOutput(from: decodeJSON(allowedJSON))["decision"] as? [String: Any])
+        XCTAssertEqual(allowedDecision["behavior"] as? String, "allow")
+        let entries = try XCTUnwrap(allowedDecision["updatedPermissions"] as? [[String: Any]])
+        XCTAssertEqual(entries.first?["destination"] as? String, "session")
+
+        let deniedJSON = DIBridge.buildClaudeCodePermissionResponse(
+            approved: false, updatedPermissions: permissions)
+        let deniedDecision = try XCTUnwrap(
+            try hookOutput(from: decodeJSON(deniedJSON))["decision"] as? [String: Any])
+        XCTAssertNil(deniedDecision["updatedPermissions"])
+    }
+
+    func testClaudeInvalidUpdatedPermissionsFailsClosedToDeny() throws {
+        let json = DIBridge.buildClaudeCodePermissionResponse(
+            approved: true, updatedInput: #"{"command":"npm test"}"#,
+            updatedPermissions: #"{"type":"addRules"}"#)
+        let decision = try XCTUnwrap(
+            try hookOutput(from: decodeJSON(json))["decision"] as? [String: Any])
+        XCTAssertEqual(decision["behavior"] as? String, "deny")
+        XCTAssertNil(decision["updatedPermissions"])
+        XCTAssertNil(decision["updatedInput"])
+        XCTAssertNotNil(decision["message"])
+    }
+
+    func testNonClaudePermissionSourcesDoNotEmitUpdatedPermissions() throws {
+        let response = DIBridge.permissionHookResponse(
+            agentType: "trae", approved: true, hookType: "PermissionRequest",
+            stdinData: ["tool_name": "Bash"],
+            updatedPermissions: #"[{"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"npm test"}],"behavior":"allow","destination":"session"}]"#)
+        let output = try XCTUnwrap(response.stdout)
+        let decision = try XCTUnwrap(try hookOutput(from: decodeJSON(output))["decision"] as? [String: Any])
+        XCTAssertNil(decision["updatedPermissions"])
+    }
+
     func testTraePermissionRequestsUseClaudeCompatibleStdout() {
         XCTAssertTrue(DIBridge.usesClaudeCodePermissionStdout(agentType: "claude_code"))
         XCTAssertTrue(DIBridge.usesClaudeCodePermissionStdout(agentType: "trae"))
@@ -109,8 +245,17 @@ final class DIBridgeQuestionResponseTests: XCTestCase {
         }
     }
 
-    func testNativeExitCodePermissionAdapterKeepsItsExistingContract() {
-        let response = DIBridge.permissionHookResponse(agentType: "cursor", approved: false)
+    func testCursorPermissionHookUsesStructuredPermissionJSON() throws {
+        for event in ["beforeShellExecution", "beforeMCPExecution"] {
+            let response = DIBridge.permissionHookResponse(agentType: "cursor", approved: false, hookType: event)
+            XCTAssertEqual(response.exitCode, 0)
+            let root = try decodeJSON(try XCTUnwrap(response.stdout))
+            XCTAssertEqual(root["permission"] as? String, "deny")
+        }
+    }
+
+    func testUnknownPermissionAdapterKeepsExitCodeContract() {
+        let response = DIBridge.permissionHookResponse(agentType: "aider", approved: false)
         XCTAssertNil(response.stdout)
         XCTAssertEqual(response.exitCode, 1)
     }

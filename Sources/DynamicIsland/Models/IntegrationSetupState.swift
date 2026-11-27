@@ -43,23 +43,39 @@ struct IntegrationSetupDescriptor: Sendable {
         let guidance: String
 
         switch agent {
-        case .claudeCode, .geminiCli, .cursor, .droid, .qoder, .qwen, .amp,
-             .windsurf, .devin, .copilotCli:
+        case .claudeCode, .cursor, .droid, .qoder, .qwen, .amp,
+             .devin, .copilotCli, .antigravity:
             guidance = text(
                 "配置后请在原客户端开始一条任务。若客户端要求启用或信任 X Island hooks，请先审阅命令，再由你确认。",
                 "Start a task in the original client after configuration. If it asks you to enable or trust X Island hooks, review the commands and confirm there.")
+        case .geminiCli:
+            guidance = text(
+                "Gemini CLI 自 2026-06-18 起已停止为个人版与 Gemini Code Assist 个人版提供服务，仅企业 Gemini Code Assist 与付费 API Key 仍可使用。个人用户请改用 Antigravity（agy）接入。",
+                "Since 2026-06-18 Gemini CLI no longer serves individuals or Gemini Code Assist for individuals; only enterprise Gemini Code Assist and paid API keys remain. Individual users should use Antigravity (agy) instead.")
+        case .doubaoWork:
+            manual = true
+            automatic = false
+            guide = "docs/compatibility/doubao-work-setup.md"
+            guidance = text(
+                "豆包工作没有公开的原生 hooks。当前接入是“自定义连接器 + 活动上报”：在豆包工作（本地电脑模式）的插件页新建 STDIO 连接器，命令填 ~/.xisland/bin/di-bridge、参数填 doubao-work-mcp。连接器连接期间，显式调用 xisland_activity 的动作会显示在岛上；完整任务、审批和问答仍在豆包工作内完成。",
+                "Doubao Work has no public native hooks. This route is a custom connector plus activity reporting: add a STDIO connector in Doubao Work (Local Computer mode) with command ~/.xisland/bin/di-bridge and arguments doubao-work-mcp. While attached, explicit xisland_activity calls appear in the island. Task control, approvals and questions stay in Doubao Work.")
         case .codex:
             guidance = text(
                 "在 Codex 输入区（Composer）打开 Review hooks，核对命令并仅勾选 X Island 项，点击 Allow selected 一次确认。X Island 自动回查授权，收到真实活动后才显示已接入；配置未变且授权有效时无需重复确认。配置改变或授权撤销后按提示重新审阅。",
                 "In the Codex Composer, open Review hooks, review the commands and select only the X Island entries, then click Allow selected once. X Island checks authorization automatically and shows Connected after real activity. Unchanged, authorized hooks need no repeat confirmation; review them again after configuration changes or revoked authorization.")
         case .trae:
             guidance = text(
-                "当前自动配置面向 Trae CN。请在对应客户端开始一条任务；国际版和 Solo 需分别核对接入，不能沿用 CN 的连接结果。",
-                "Automatic configuration currently targets Trae CN. Start a task there; international and Solo editions need their own integration checks.")
+                "当前自动配置面向 Trae CN。请在对应客户端开始一条任务；国际版和 Solo 需分别核对接入，不能沿用 CN 的连接结果。TRAE Work 已于 2026-08 并入豆包工作，请改用豆包工作入口。",
+                "Automatic configuration currently targets Trae CN. Start a task there; international and Solo editions need their own integration checks. TRAE Work was merged into Doubao Work in 2026-08; use the Doubao Work route instead.")
         case .openCode, .pi:
             guidance = text(
                 "配置后请让客户端重新加载 X Island 插件或扩展，再开始一条任务。若出现启用或信任提示，请在原客户端审阅确认。",
                 "Reload the X Island plugin or extension in the client, then start a task. Review any enablement or trust prompt in that client.")
+        case .kiloCode:
+            guide = "docs/compatibility/kilo-setup.md"
+            guidance = text(
+                "配置会写入 ~/.config/kilo/plugin/xisland.js，CLI 与 VS Code 扩展共用。请重启 Kilo 或重新加载窗口再开始任务；插件只观察会话与工具活动，权限确认、回答和取消仍在 Kilo 内完成。",
+                "Configuration writes ~/.config/kilo/plugin/xisland.js, shared by the CLI and VS Code extension. Restart Kilo or reload the window, then start a task. The plugin only observes sessions and tool activity; approvals, answers and cancellation stay in Kilo.")
         case .copilot:
             guidance = text(
                 "当前入口为 VS Code Copilot Local hooks。请在 Local 会话开始任务；Agent Host、Remote 和自定义目录需要另行核对。",
@@ -85,8 +101,8 @@ struct IntegrationSetupDescriptor: Sendable {
                 "X Island can prepare the launcher. Start Aider with ~/.xisland/bin/xisland-aider and your usual arguments; a regular aider launch does not use this route.")
         case .tabnine:
             guidance = text(
-                "当前自动配置面向 Tabnine CLI hooks。请在 CLI 开始任务；IDE 和后继宿主插件需要分别核对。",
-                "Automatic configuration targets Tabnine CLI hooks. Start a CLI task; IDE and successor host plugins require separate checks.")
+                "Tabnine 已于 2026-07-30 被 Tricentis 收购，6.x CLI 改为 OpenCode 托管分支，公开价目页已下线。当前自动配置仅覆盖旧版 Tabnine CLI 的 settings.json；6.x 请按 OpenCode 插件方式核对。",
+                "Tabnine was acquired by Tricentis on 2026-07-30 and its 6.x CLI is a managed OpenCode branch. Automatic configuration covers the legacy Tabnine CLI settings only; check the OpenCode plugin route for 6.x.")
         case .cline:
             guidance = text(
                 "请在 Cline VS Code 扩展中核对 X Island 事件脚本，并按客户端提示启用或信任，再开始任务。独立 CLI 与 SDK 需另行核对。",
@@ -105,15 +121,20 @@ struct IntegrationSetupDescriptor: Sendable {
             guidance = text(
                 "点击“查看接入文件”取得 Kiro CLI 2.31.0 V3 模板；该版本是模板基线，请自行核对实际版本。按说明放置独立 hooks 文件，用 kiro-cli chat --v3 启动，在 /config 核对来源后提交任务。",
                 "Choose Show setup files to get the Kiro CLI 2.31.0 V3 template. This is the template baseline; verify your installed version. Place the standalone hooks file as instructed, start kiro-cli chat --v3, check its source in /config, then submit a task.")
-        case .rooCode, .pearai:
+        case .rooCode:
+            manual = true
+            automatic = false
+            guide = "docs/compatibility/README.md"
+            guidance = text(
+                "Roo Code 已于 2026-05-15 停运并归档仓库，原团队转向 Roomote；开源替代可选 Cline 或 Kilo Code，仍有社区分支 Zoo Code。旧会话仍在历史中保留。",
+                "Roo Code shut down on 2026-05-15 and its repository is archived; the team moved to Roomote. Cline, Kilo Code, or the community fork Zoo Code are the practical alternatives; existing sessions stay in history.")
+        case .pearai:
             manual = true
             automatic = false
             guide = "Sources/XIslandVSCode/README.md"
-            guidance = agent == .pearai ? text(
+            guidance = text(
                 "在对应编辑器安装 X Island Bridge，并显式启用 PearAI 实验观察来源。仅覆盖已核对的 Roo fork；Continue fork 不属于此入口。随后开始一条任务。",
-                "Install X Island Bridge in the editor and explicitly enable the experimental PearAI observer. It covers the verified Roo fork, not the Continue fork. Then start a task.") : text(
-                "在对应编辑器安装 X Island Bridge，并启用 Roo Code 观察来源，再开始一条任务。原客户端继续处理权限和问答。",
-                "Install X Island Bridge in the editor, enable the Roo Code observer, then start a task. Permissions and questions stay in the original client.")
+                "Install X Island Bridge in the editor and explicitly enable the experimental PearAI observer. It covers the verified Roo fork, not the Continue fork. Then start a task.")
         case .zed, .jetbrainsAi:
             manual = true
             automatic = false
@@ -126,22 +147,29 @@ struct IntegrationSetupDescriptor: Sendable {
             automatic = false
             guide = "docs/compatibility/cody-setup.md"
             guidance = text(
-                "在能选择 Agent 启动命令的客户端中，按说明使用 Cody JSON-RPC 包装器。它不能接管已打开的 VS Code 会话；登录与交互仍在原客户端完成。",
-                "Use the Cody JSON-RPC wrapper in a client that lets you select the agent launch command. It cannot attach to an existing VS Code session; sign-in and interactions stay in the original client.")
+                "Sourcegraph 已宣布 Cody 于 2027-01-31 停止支持，新注册自 2025 年起仅限企业版。可按说明继续使用 JSON-RPC 包装器至停止支持；面向个人的继任产品 Amp 已拆分为独立公司，需另行接入。",
+                "Sourcegraph will end of life Cody on 2027-01-31; new sign-ups have been enterprise-only since 2025. The JSON-RPC wrapper remains usable until then. Amp, the individual-focused successor, is now a separate company and needs its own integration.")
         case .`continue`:
             manual = true
             automatic = false
-            guide = "docs/compatibility/continue-setup.md"
+            guide = "docs/compatibility/README.md"
             guidance = text(
-                "先自行启动 cn serve，再按说明对它的本机地址运行状态观察命令。此入口不启动服务，也不覆盖普通 TUI 或 IDE 插件；审批仍在 Continue 完成。",
-                "Start cn serve yourself, then run the state observer for its local address as described in the guide. This route does not start the service or cover ordinary TUI or IDE sessions; approvals stay in Continue.")
+                "Continue 已于 2026-06 被 Cursor 收购，仓库转为只读，最后版本 v2.0.0-vscode（2026-06-19）。请改用 Cursor 接入；旧 cn serve 观察路线不再维护。",
+                "Continue was acquired by Cursor in 2026-06; its repository is read-only and the final build is v2.0.0-vscode (2026-06-19). Use the Cursor integration instead; the cn serve observer is no longer maintained.")
         case .amazonQ:
             manual = true
             automatic = false
-            guide = "docs/compatibility/amazonq-setup.md"
+            guide = "docs/compatibility/kiro-setup.md"
             guidance = text(
-                "仅限 qchat 1.19.7。按说明审阅并合并选定 agent 的观察 hooks，再通过专用包装器启动。Kiro、q 前端与 IDE 不共用此入口。",
-                "This route is limited to qchat 1.19.7. Review and merge the observer hooks for your selected agent, then use the dedicated launcher. Kiro, the q frontend and IDE integrations use different routes.")
+                "Amazon Q Developer CLI 已于 2025-11-17 更名为 Kiro CLI，旧 qchat 1.19.7 包装器仅保留历史会话。请改用 Kiro 接入；Q IDE 插件将于 2027-04-30 停止支持。",
+                "Amazon Q Developer CLI was rebranded to Kiro CLI on 2025-11-17; the old qchat 1.19.7 wrapper only remains for history. Use the Kiro integration instead; Q IDE plugins reach end of support on 2027-04-30.")
+        case .windsurf:
+            manual = true
+            automatic = false
+            guide = "docs/compatibility/README.md"
+            guidance = text(
+                "Windsurf 已于 2026-06-02 由 Cognition 自动更新为 Devin Desktop，Cascade 品牌退役。请使用 Devin Desktop 接入；旧 Windsurf 会话仍可在历史中查看。",
+                "Windsurf was renamed to Devin Desktop by Cognition on 2026-06-02 and the Cascade brand retired. Use the Devin Desktop integration; existing Windsurf sessions remain in history.")
         case .glm:
             manual = true
             automatic = false

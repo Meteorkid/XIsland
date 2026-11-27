@@ -155,6 +155,62 @@ final class SocketResponseChannelTests: XCTestCase {
         XCTAssertFalse(sentAgain)
     }
 
+    func testPermissionDenialResponseIncludesReason() async throws {
+        let fds = try pair()
+        defer { close(fds[1]) }
+        let channel = SocketResponseChannel(fd: fds[0])
+        let sent = await channel.send(.permissionDenial("Use rg instead of grep"), sessionID: "deny-reason")
+        XCTAssertTrue(sent)
+        let data = try XCTUnwrap(SocketServer.readMessage(from: fds[1]))
+        let response = try DIProtocol.decode(data)
+        XCTAssertEqual(response.type, .permissionResponse)
+        XCTAssertEqual(response.approved, false)
+        XCTAssertEqual(response.denyMessage, "Use rg instead of grep")
+    }
+
+    func testPermissionEditedResponseIncludesUpdatedInput() async throws {
+        let fds = try pair()
+        defer { close(fds[1]) }
+        let channel = SocketResponseChannel(fd: fds[0])
+        let sent = await channel.send(.permissionEdited(#"{"command":"npm run lint"}"#),
+                                      sessionID: "edited-input")
+        XCTAssertTrue(sent)
+        let data = try XCTUnwrap(SocketServer.readMessage(from: fds[1]))
+        let response = try DIProtocol.decode(data)
+        XCTAssertEqual(response.type, .permissionResponse)
+        XCTAssertEqual(response.approved, true)
+        XCTAssertEqual(response.updatedInput, #"{"command":"npm run lint"}"#)
+    }
+
+    func testPermissionInterruptedResponseIncludesInterruptAndReason() async throws {
+        let fds = try pair()
+        defer { close(fds[1]) }
+        let channel = SocketResponseChannel(fd: fds[0])
+        let sent = await channel.send(.permissionInterrupted("stop this turn"),
+                                      sessionID: "interrupted")
+        XCTAssertTrue(sent)
+        let data = try XCTUnwrap(SocketServer.readMessage(from: fds[1]))
+        let response = try DIProtocol.decode(data)
+        XCTAssertEqual(response.type, .permissionResponse)
+        XCTAssertEqual(response.approved, false)
+        XCTAssertEqual(response.denyMessage, "stop this turn")
+        XCTAssertEqual(response.interrupt, true)
+    }
+
+    func testPermissionRememberedResponseIncludesSessionRule() async throws {
+        let fds = try pair()
+        defer { close(fds[1]) }
+        let channel = SocketResponseChannel(fd: fds[0])
+        let rule = #"[{"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"npm test"}],"behavior":"allow","destination":"session"}]"#
+        let sent = await channel.send(.permissionRemembered(rule), sessionID: "remembered")
+        XCTAssertTrue(sent)
+        let data = try XCTUnwrap(SocketServer.readMessage(from: fds[1]))
+        let response = try DIProtocol.decode(data)
+        XCTAssertEqual(response.type, .permissionResponse)
+        XCTAssertEqual(response.approved, true)
+        XCTAssertEqual(response.updatedPermissions, rule)
+    }
+
     func testClosedPeerReportsFailureWithoutSIGPIPE() async throws {
         let fds = try pair()
         close(fds[1])

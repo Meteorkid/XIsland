@@ -341,7 +341,7 @@ final class IntegrationActivityTests: XCTestCase {
         let manager = SessionManager()
         var sources: [AgentType] = []
         manager.onIntegrationActivity = { sources.append($0) }
-        var observed = message(.observationHeartbeat, agent: .rooCode, id: "")
+        var observed = message(.observationHeartbeat, agent: .pearai, id: "")
         observed.sourceNamespace = String(repeating: "a", count: 24)
         observed.sourceInstanceId = "00000000-0000-4000-8000-000000000001"
         observed.observationSequence = 1
@@ -354,10 +354,10 @@ final class IntegrationActivityTests: XCTestCase {
         observed.sessionId = source.sessionID(task: "task")
         observed.observationSequence = 2
         manager.handleMessage(observed)
-        XCTAssertEqual(sources, [.rooCode])
+        XCTAssertEqual(sources, [.pearai])
         manager.handleMessage(observed)
         observed.observationSequence = 1
         manager.handleMessage(observed)
-        XCTAssertEqual(sources, [.rooCode])
+        XCTAssertEqual(sources, [.pearai])
     }
 }

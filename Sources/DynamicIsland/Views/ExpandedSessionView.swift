@@ -16,6 +16,7 @@ struct ExpandedSessionView: View {
             headerBar
             separator
             promptSection
+            auditSection
             separator
             activityFeed
         }
@@ -99,6 +100,17 @@ struct ExpandedSessionView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var auditSection: some View {
+        let records = manager.approvalAuditRecords(for: session, limit: 5)
+        if !records.isEmpty {
+            ApprovalAuditHistoryView(records: records, maxRows: 5)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+            separator
+        }
     }
 
     // MARK: - 活动流

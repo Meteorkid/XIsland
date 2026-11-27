@@ -36,15 +36,16 @@ X Island sits at the top of your screen as a compact pill. When your AI agents a
 - **Unified dashboard** — See all AI coding agents in one place, regardless of which terminal or IDE they run in
 - **Real-time status** — Live status dots (blue = working, green = done, orange = needs input, red = error)
 - **Native agent hooks** — Writes a hook into each agent's own config on first launch (Claude Code settings hooks, Codex hooks.json, Cursor native hooks, Kimi TOML hooks); no manual wiring
-- **Permission approval** — Approve or deny file/command permissions directly from the island, no need to switch windows
+- **Permission approval** — Approve or deny file/command permissions directly from the island, no need to switch windows; Claude Code denials can include a short reason that the agent receives through `decision.message`, Claude Code permissions can be approved with an edited command or JSON input via `decision.updatedInput`, Claude Code can deny and stop the current turn via `decision.interrupt`, an exact wildcard-free Bash command can be allowed for the current Claude session only via `decision.updatedPermissions`, and Claude `Edit` / `Write` / `MultiEdit` / `NotebookEdit` requests show an inline read-only diff preview before approval
 - **Approval context map** — Review the task, plan, file changes and reason before approval, with node annotations and round-to-round diffs
+- **Approval audit ledger** — Local append-only JSONL records every allow/deny/defer/expiry/native-resolution decision with a SHA-256 chain; Claude `Stop` / `SubagentStop` also clears the matching native prompt with a `native_turn_ended` record; a global Approvals pane verifies the chain, filters recent decisions and exports the raw JSONL; payloads are hashed, not copied
 - **Approval graph MCP** — Agents can propose local task/step nodes while the user keeps or discards each node; no command, file or approval authority is granted
 - **Guided MCP setup** — One review prompt configures supported local clients, while each client's own trust decision remains separate
 - **Question answering** — Answer agent questions from the island UI
 - **Plan review** — Review and approve agent plans inline
 - **Smart notifications** — 8-bit sound effects for session events (configurable per event)
 - **Multi-session support** — Multiple conversations per agent, each tracked independently
-- **Window jumping** — Click a session to jump to the exact terminal tab or IDE window (iTerm2 tab-level precision)
+- **Window jumping** — Click a session to focus its exact terminal tab, IDE window, or chat. Terminal tabs are exact for iTerm2/Terminal/WezTerm/Kitty when the session reports an ID, for Ghostty by TTY when its AppleScript exposes it (otherwise a unique CWD), and for tmux by switching the client to the pane’s session/window, selecting the pane, then the outer tab. Warp uses its local pane database plus `Cmd+1…9`; it refuses ambiguous panes, multiple windows, or a tab without a dedicated shortcut rather than guessing. Claude Desktop Code/Cowork uses its local `local_*` session index and `claude://` link; Claude Code VS Code uses the official session link only for completed sessions (upstream does not yet focus an already-open busy tab), and VS Code integrated terminals use the 1.1.0+ companion extension to reveal the exact TTY. Other IDE windows use project-level routing, then a strict unique AX row/tab match; duplicate titles fail closed.
 - **Horizontal dragging** — Drag the island left/right along the top edge
 - **Session titles** — Shows first user prompt as title, workspace folder as subtitle
 - **Multi-language** — Supports English, Chinese, Korean, Japanese, French
@@ -70,14 +71,16 @@ These are the intended integration routes. See the [compatibility matrix](docs/c
 
 | Agent | Target integration route | Current status |
 |---|---|---|
-| Claude Code | Native settings hooks | 2.1.234 isolated native Read and island denial verified with a local mock model; full client acceptance pending |
+| Claude Code | Native settings hooks | 2.1.234 isolated native Read and island denial verified with a local mock model; deny.message, updatedInput, interrupt, session-scoped exact Bash updatedPermissions and inline file-edit diff preview contracts tested, full client acceptance pending |
 | Codex CLI／桌面核心 | Native hooks.json | Contract tests passed; real client verification pending |
-| Gemini CLI | Native settings hooks; ACP planned | Contract tests passed; real client verification pending |
-| Cursor | Native Cursor hooks | Contract tests passed; real client verification pending |
-| Trae／Trae CN／Solo | Hooks per IDE edition ([setup guide](docs/integrations/trae-hooks.md)) | CN and international paths supported; real-client verification in progress |
+| Gemini CLI (enterprise / paid API key) | Native settings hooks; ACP planned | Individual plans ended 2026-06-18; enterprise and paid-key contracts passed, client verification pending |
+| Antigravity (App / CLI / IDE) | Named global hooks in `~/.gemini/config/hooks.json` | Five official events contract-tested; PreToolUse returns neutral allow only; real-client loading pending |
+| Cursor | Native Cursor hooks | 11 event contracts passed; shell/MCP only supports deny and native-confirmation handoff (no fake allow); same-session approval queue tested, real client verification pending |
+| Trae／Trae CN／Solo | Hooks per IDE edition ([setup guide](docs/integrations/trae-hooks.md)) | CN and international paths supported; TRAE Work merged into Doubao Work in 2026-08 |
+| Doubao Work | STDIO custom connector → MCP activity reporting ([guide](docs/compatibility/doubao-work-setup.md)) | Observation only; no native hooks, no approvals; real-client loading pending |
 | OpenCode | Plugin and same-instance SDK | Contract tests passed; client and remaining interaction verification pending |
 | Factory Droid | Native hooks.json or settings fallback | Contract tests passed; real client verification pending |
-| Qoder CLI／IDE | Native settings hooks | Contract tests passed; real client verification pending |
+| Qoder CN (formerly Lingma) | Native settings hooks | Renamed 2026-05-20; contracts passed, real client verification pending |
 | VS Code Copilot | Local-specific hooks; Agent Host separately | Local contracts passed; clients and other harnesses pending |
 | CodeBuddy Code | CLI native settings hooks | CLI contracts passed; IDE/WorkBuddy and clients pending |
 | Qwen Code | Native settings hooks | Contract tests passed; real client verification pending |
@@ -88,15 +91,16 @@ These are the intended integration routes. See the [compatibility matrix](docs/c
 | Pi | TypeScript extensions | Contract tests passed; real client verification pending |
 | GLM models | Metadata via Claude Code, OpenCode, Cline and Pi | Model display, filtering and history contracts passed; provider acceptance pending |
 | Aider | Explicit xisland-aider launcher and native notifications | Offline/PTY contracts passed; real client and full interactions pending |
-| Windsurf／Cascade | Native Cascade hooks | Contract tests passed; real client verification pending |
-| Devin CLI；云端另列 | Native CLI hooks; cloud API separately | Contract tests passed; real client verification pending |
-| Amazon Q CLI／IDE | Explicit qchat 1.19.7 wrapper observation | Contract tested; native config/client acceptance pending |
-| Tabnine CLI／IDE／OpenCode插件 | JSON hooks; successor host plugin | CLI contract tests passed; real clients and other surfaces pending |
-| Cody IDE／experimental CLI | Explicit jsonrpc-stdio Agent observation | Contract tested; native clients and ordinary IDE sessions pending |
+| Windsurf (retired) | Former Cascade hooks | Renamed to Devin Desktop on 2026-06-02; sessions kept, use Devin Desktop for new setups |
+| Devin Desktop / Devin CLI；cloud separately | Native hooks; cloud API separately | Renamed desktop app reuses the Windsurf bundle id; real-client loading pending |
+| Amazon Q CLI (merged into Kiro) | Former qchat 1.19.7 wrapper observation | Rebranded to Kiro CLI on 2025-11-17; history only |
+| Tabnine (Tricentis) | Legacy CLI JSON hooks | Acquired 2026-07-30; 6.x CLI is an OpenCode branch, auto-config covers the legacy CLI only |
+| Cody (EOL 2027-01-31) | Explicit jsonrpc-stdio Agent observation | Enterprise-only until EOL; Amp is a separate company |
 | Cline VS Code／SDK CLI | VS Code event files; SDK plugins separately | Extension contracts passed; standalone CLI/SDK and clients pending |
-| Continue IDE／cn CLI | Explicit, time-limited cn serve observation | Contract tested; real client, TUI and IDE pending |
+| Continue (retired) | Former time-limited cn serve observation | Acquired by Cursor in 2026-06; use Cursor, sessions kept |
 | GitHub Copilot CLI | Native JSON hooks | CLI contract tests passed; real clients and other surfaces pending |
-| Roo Code | Pinned 3.54.0 native task API companion | Observation contracts passed; client and full interactions pending |
+| Roo Code (retired) | Former pinned 3.54.0 task API companion | Shut down 2026-05-15; use Cline or Kilo Code |
+| Kilo Code CLI / VS Code | Native global plugin on the OpenCode core | Plugin source and adapter contracts passed; real CLI/extension load, permission status and full interaction pending |
 | PearAI Agent／Continue fork | Experimental Roo-fork observer companion | Off by default; contracts passed, shipped host and other variants pending |
 | Zed external and built-in agents | Explicit external ACP v1/v2 wrapper | External observation contracts passed; built-in AI and clients pending |
 | JetBrains AI / Junie / external agents | Explicit external ACP v1/v2 wrapper | External observation contracts passed; built-in variants and clients pending |

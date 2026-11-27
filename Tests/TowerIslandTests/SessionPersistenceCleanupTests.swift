@@ -114,7 +114,7 @@ final class SessionPersistenceCleanupTests: XCTestCase {
         XCTAssertEqual(try freshContext.fetchCount(FetchDescriptor<StoredChatMessage>()), 0)
     }
 
-    func testCleanupPreservesActiveSessionsWithLegacyEndDatesAndTheirOldOrphans() throws {
+    func testCleanupRemovesStaleUnendedSessionsAndTheirOldOrphans() throws {
         let manager = try makeManager()
         let container = try XCTUnwrap(manager.modelContainer)
         let old = Date(timeIntervalSinceNow: -90 * 86400)
@@ -124,9 +124,9 @@ final class SessionPersistenceCleanupTests: XCTestCase {
 
         manager.cleanup(olderThanDays: 30)
 
-        XCTAssertEqual(manager.totalCount(), 1)
-        XCTAssertEqual(try orphanIDs(in: container), ["active"])
-        XCTAssertEqual(manager.revision, 0)
+        XCTAssertEqual(manager.totalCount(), 0)
+        XCTAssertEqual(try orphanIDs(in: container), [])
+        XCTAssertEqual(manager.revision, 1)
     }
 
     func testCleanupOrphansFollowTheirRetainedOrExpiredParentsBeforeAge() throws {

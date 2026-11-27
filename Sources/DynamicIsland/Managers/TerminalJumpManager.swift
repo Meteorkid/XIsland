@@ -17,6 +17,9 @@ enum TerminalApp: String, CaseIterable, Sendable {
     case traeWorkCn = "TRAE SOLO CN"
     case codex = "Codex"
     case workBuddy = "WorkBuddy"
+    /// Claude Desktop 的 Code / Cowork 标签页；不是终端，也不应该作为
+    /// Claude Code CLI 的默认宿主。
+    case claudeDesktop = "Claude Desktop"
     case wezTerm = "WezTerm"
     case zellij = "Zellij"
     case antigravity = "Antigravity"
@@ -42,9 +45,10 @@ enum TerminalApp: String, CaseIterable, Sendable {
         case .traeWorkCn: ["cn.trae.solo.app"]
         case .codex: ["com.openai.codex"]
         case .workBuddy: ["com.tencent.workbuddy.mac"]
+        case .claudeDesktop: ["com.anthropic.claudefordesktop"]
         case .wezTerm: ["org.wezfurlong.wezterm"]
         case .zellij: ["no.bundle.id.zellij"] // multiplexer, runs inside another terminal
-        case .antigravity: ["com.antigravity.Antigravity"] // Antigravity IDE terminal
+        case .antigravity: ["com.google.antigravity"] // 已核实的 App bundle：com.google.antigravity
         case .hyper: ["co.zeit.hyper"]
         case .zed: ["dev.zed.Zed", "dev.zed.Zed-Preview"]
         case .cmux: [] // cmux runs inside another terminal — no macOS bundle
@@ -73,6 +77,7 @@ enum TerminalApp: String, CaseIterable, Sendable {
         case .traeWorkCn: ["trae work cn", "trae solo cn", "trae-work-cn", "trae-solo-cn", "traeworkcn", "traesolocn", "trae aicc", "trae-aicc"]
         case .codex: ["codex"]
         case .workBuddy: ["workbuddy", "work-buddy"]
+        case .claudeDesktop: ["claude desktop", "claude.app"]
         case .wezTerm: ["wezterm"]
         case .zellij: ["zellij"]
         case .antigravity: ["antigravity"]
@@ -141,6 +146,7 @@ enum TerminalApp: String, CaseIterable, Sendable {
         switch agentType {
         case .cursor: return .cursor
         case .trae: return .trae
+        case .antigravity: return .antigravity
         case .codex: return .codex
         case .workBuddy: return .workBuddy
         case .copilot: return .vscode
@@ -151,30 +157,39 @@ enum TerminalApp: String, CaseIterable, Sendable {
         case .claudeCode, .geminiCli, .openCode, .droid, .qoder, .codeBuddy,
              .qwen, .kimi, .deepseek, .kiro, .amp, .pi, .hermes, .glm, .aider,
              .devin, .amazonQ, .tabnine, .cody, .cline, .`continue`, .copilotCli,
-             .rooCode, .pearai, .jetbrainsAi:
+             .rooCode, .pearai, .jetbrainsAi, .doubaoWork, .kiloCode:
+            // 豆包工作与 Kilo 没有已核实的会话级跳转链接，跳转目标交给会话上报的 terminal。
             return nil
         }
     }
 }
 
 enum SessionJumpResult: Equatable {
-    /// 客户端已接收带会话 ID 的链接；不将系统回调表述为已验证客户端渲染。
+    /// 客户端接收了带会话 ID 的链接；不将系统回调表述为已验证客户端渲染。
     case conversationRequested
+    /// IDE 伴生扩展已接收终端聚焦请求；扩展是否真的匹配到终端由扩展侧决定。
+    case companionRequested
     case terminalFocused
     /// 客户端没有会话级链接：已切换到该客户端并打开会话所在目录。
     case projectOpened
+    /// 客户端已在运行：只前置了窗口，但没有打开目录，也未唯一定位会话行。
+    case applicationRaised
     /// 无 deeplink，但通过辅助功能在界面里定位并点击了会话条目。
     case conversationFocused
     case unavailable
     case missingIdentity
     case applicationUnavailable
     case automationDenied
+    /// AX 兜底需要“辅助功能”权限；与 AppleScript 的“自动化”权限不是同一项。
+    case accessibilityDenied
     case targetNotFound
+    /// AX 兜底找到多个同名会话行/标签，刻意不点击任何一个。
+    case conversationAmbiguous
     case commandFailed
 
     var accepted: Bool {
-        self == .conversationRequested || self == .terminalFocused
-            || self == .projectOpened || self == .conversationFocused
+        self == .conversationRequested || self == .companionRequested || self == .terminalFocused
+            || self == .projectOpened || self == .applicationRaised || self == .conversationFocused
     }
 
     var message: String { L10n.sessionJumpMessage(self) }
@@ -182,6 +197,8 @@ enum SessionJumpResult: Equatable {
 
 enum SessionJumpPlan: Equatable {
     case conversation(TerminalApp, URL)
+    /// IDE 伴生扩展：只请求它显示已存在的终端/标签，不新建、不写内容。
+    case companion(TerminalApp, URL)
     case terminal(TerminalSessionTarget)
     /// 无会话级 deeplink 的客户端：打开项目目录并前置应用；title 用于尝试在界面里定位会话。
     case project(TerminalApp, URL, String)
@@ -207,39 +224,105 @@ enum TerminalJumpManager {
         let termSessionId: String?
         let windowNumber: Int?
         let title: String
+        let hostTermSessionId: String?
+        let processId: Int32?
+        let tmuxSocketPath: String?
+        let status: SessionStatus
+
+        init(id: String, agentType: AgentType, terminal: String, workingDirectory: String,
+             termSessionId: String?, windowNumber: Int?, title: String,
+             hostTermSessionId: String? = nil, processId: Int32? = nil,
+             tmuxSocketPath: String? = nil, status: SessionStatus = .idle) {
+            self.id = id
+            self.agentType = agentType
+            self.terminal = terminal
+            self.workingDirectory = workingDirectory
+            self.termSessionId = termSessionId
+            self.windowNumber = windowNumber
+            self.title = title
+            self.hostTermSessionId = hostTermSessionId
+            self.processId = processId
+            self.tmuxSocketPath = tmuxSocketPath
+            self.status = status
+        }
     }
 
     /// Codex 的 deeplink 只对本机存在的 thread 有效；索引缺失时放行，交给客户端判断。
+    /// 也遵循官方 `CODEX_HOME`，否则自定义配置目录的用户会被错误降级为打开项目。
     private static func codexThreadExists(_ id: String) -> Bool {
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".codex/session_index.jsonl")
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let override = (ProcessInfo.processInfo.environment["CODEX_HOME"] ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let directory = override.hasPrefix("/") ? URL(fileURLWithPath: override) : home.appendingPathComponent(".codex")
+        let url = directory.appendingPathComponent("session_index.jsonl")
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return true }
         return text.contains(id)
     }
 
-    static func snapshot(_ session: AgentSession) -> SessionSnapshot {        SessionSnapshot(id: session.id, agentType: session.agentType, terminal: session.terminal,
+    static func snapshot(_ session: AgentSession) -> SessionSnapshot {
+        SessionSnapshot(id: session.id, agentType: session.agentType, terminal: session.terminal,
                         workingDirectory: session.workingDirectory, termSessionId: session.termSessionId,
-                        windowNumber: session.windowNumber, title: session.displayTitle)
+                        windowNumber: session.windowNumber, title: session.displayTitle,
+                        hostTermSessionId: session.hostTermSessionId, processId: session.processId,
+                        tmuxSocketPath: session.tmuxSocketPath, status: session.status)
     }
 
     static func plan(for snap: SessionSnapshot) -> SessionJumpPlan {
-        guard let app = resolveTargetApp(snap: snap) else { return .failure(.unavailable) }
+        let app = resolveTargetApp(snap: snap)
         let terminalID = snap.termSessionId ?? ""
-        if terminalID.hasPrefix("tmux:") { return .failure(.unavailable) }
+        let cwd = snap.workingDirectory
+
+        // tmux 的 `termSessionId` 是 pane，不是外层标签页；先选 pane，再按
+        // 已捕获的宿主身份（或运行时 client_tty）聚焦外层标签页。tmux 会把
+        // TERM_PROGRAM 改成 "tmux"，因此这里不要求提前解析出宿主应用。
+        if terminalID.hasPrefix("tmux:") {
+            let pane = String(terminalID.dropFirst("tmux:".count))
+            guard validTmuxPane(pane), !cwd.isEmpty || snap.hostTermSessionId != nil else {
+                return .failure(.missingIdentity)
+            }
+            let host = app.flatMap { hostTarget(app: $0, identity: snap.hostTermSessionId, cwd: cwd) }
+            let socketPath = snap.tmuxSocketPath.flatMap(validTmuxSocketPath)
+            return .terminal(.tmux(pane: pane, socketPath: socketPath, host: host, app: app, cwd: cwd))
+        }
+
+        guard let app else { return .failure(.unavailable) }
         switch app {
         case .iterm2:
-            guard !terminalID.hasPrefix("tmux:"),
-                  TerminalSessionNavigator.appleScript(for: .iTerm(id: terminalID)) != nil else { return .failure(.missingIdentity) }
-            return .terminal(.iTerm(id: terminalID))
+            let candidates = [snap.hostTermSessionId, terminalID].compactMap { $0 }
+            // The host identity can be a Terminal.app `ts:` token even when the
+            // inner session is iTerm; only an iTerm/tty token belongs here.
+            let identity = candidates.first {
+                $0.hasPrefix("iterm:") || $0.hasPrefix("tty:")
+            } ?? snap.hostTermSessionId ?? terminalID
+            guard TerminalSessionNavigator.appleScript(for: .iTerm(id: identity)) != nil else {
+                return .failure(.missingIdentity)
+            }
+            return .terminal(.iTerm(id: identity))
         case .terminal:
-            guard TerminalSessionNavigator.appleScript(for: .appleTerminalTTY(terminalID)) != nil else { return .failure(.missingIdentity) }
-            return .terminal(.appleTerminalTTY(terminalID))
+            let candidates = [snap.hostTermSessionId, terminalID].compactMap { $0 }
+            // `TERM_SESSION_ID` is a Terminal session token, not the tab's tty;
+            // prefer any candidate that actually maps to a tty.
+            let identity = candidates.first {
+                TerminalSessionNavigator.ttyPath(from: $0) != nil
+            } ?? snap.hostTermSessionId ?? terminalID
+            guard TerminalSessionNavigator.appleScript(for: .appleTerminalTTY(identity)) != nil else {
+                return .failure(.missingIdentity)
+            }
+            return .terminal(.appleTerminalTTY(identity))
         case .wezTerm:
             guard let id = paneID(terminalID, prefix: "wezterm:") else { return .failure(.missingIdentity) }
             return .terminal(.wezTermPane(id))
         case .kitty:
             guard let id = paneID(terminalID, prefix: "kitty:") else { return .failure(.missingIdentity) }
             return .terminal(.kittyWindow(id))
+        case .ghostty:
+            let identity: String? = snap.hostTermSessionId ?? (terminalID.isEmpty ? nil : terminalID)
+            let tty = identity.flatMap(ghosttyTTY)
+            guard tty != nil || !cwd.isEmpty else { return .failure(.missingIdentity) }
+            return .terminal(.ghostty(tty: tty, cwd: cwd))
+        case .warp:
+            guard !cwd.isEmpty else { return .failure(.missingIdentity) }
+            return .terminal(.warp(cwd: cwd))
         case .codex:
             guard snap.agentType == .codex, let id = nativeID(snap.id, prefix: "codex-"),
                   UUID(uuidString: id) != nil, id.count == 36 else { return .failure(.missingIdentity) }
@@ -267,11 +350,43 @@ enum TerminalJumpManager {
             components.percentEncodedQuery = "id=" + encodedID(id)
             guard let url = components.url else { return .failure(.missingIdentity) }
             return .conversation(app, url)
-        case .trae, .traeCn, .traeWorkCn, .vscode, .windsurf, .zed, .antigravity:
+        case .claudeDesktop:
+            // Claude 桌面 App 同时承载 Code 与 Cowork。hook 拿到的是 CLI
+            // session id，必须用应用自己的 local_* 元数据换成桌面标签 id；
+            // 找不到映射就只打开项目，绝不把 CLI id 直接塞进 claude://。
+            guard snap.agentType == .claudeCode,
+                  let native = nativeID(snap.id, prefix: "claude-"),
+                  let match = ClaudeDesktopSessionIndex().match(cliSessionID: native),
+                  let url = ClaudeDesktopSessionIndex.deepLink(for: match) else {
+                guard !cwd.isEmpty else { return .failure(.missingIdentity) }
+                return .project(app, URL(fileURLWithPath: cwd), snap.title)
+            }
+            return .conversation(app, url)
+        case .vscode:
+            let tty = TerminalSessionNavigator.ttyPath(from: terminalID)
+            // 扩展聊天页由 Electron 宿主触发 hook，没有控制 TTY；集成终端
+            // 则有 P0 解析出的 tty。前者用官方会话恢复链接，后者用伴生扩展
+            // 只聚焦那个已存在的终端，避免把“聚焦终端”误报成“打开会话”。
+            // 上游 open?session= 对“已打开且忙碌”的会话会新建空白对话
+            // （anthropics/claude-code#65542），所以只在已完成状态使用；
+            // 活动/等待中的会话继续交给项目级打开 + AX 行定位。
+            if snap.agentType == .claudeCode, tty == nil, snap.status == .completed,
+               VSCodeHostRoutes.isClaudeCodeExtensionInstalled(),
+               let native = nativeID(snap.id, prefix: "claude-"),
+               let url = VSCodeHostRoutes.claudeCodeSessionURL(sessionID: native) {
+                return .conversation(app, url)
+            }
+            if let tty, VSCodeHostRoutes.isCompanionInstalled(),
+               let url = VSCodeHostRoutes.companionFocusURL(tty: tty, cwd: cwd) {
+                return .companion(app, url)
+            }
+            guard !cwd.isEmpty else { return .failure(.missingIdentity) }
+            return .project(app, URL(fileURLWithPath: cwd), snap.title)
+        case .trae, .traeCn, .traeWorkCn, .windsurf, .zed, .antigravity:
             // 这些 IDE 只注册登录/文件 scheme，没有会话级 deeplink，也没有可脚本化的窗口定位。
             // 退化为打开会话所在目录并前置客户端，由用户在聊天列表中继续。
-            guard !snap.workingDirectory.isEmpty else { return .failure(.missingIdentity) }
-            return .project(app, URL(fileURLWithPath: snap.workingDirectory), snap.title)
+            guard !cwd.isEmpty else { return .failure(.missingIdentity) }
+            return .project(app, URL(fileURLWithPath: cwd), snap.title)
         default:
             // 工作目录、窗口标题与曾经的前台窗口都不能唯一标识聊天或标签页。
             return .failure(.unavailable)
@@ -303,6 +418,29 @@ enum TerminalJumpManager {
         id.addingPercentEncoding(withAllowedCharacters: CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"))!
     }
 
+    private static func hostTarget(app: TerminalApp, identity: String?, cwd: String) -> TerminalSessionTarget? {
+        guard let identity, !identity.isEmpty else { return nil }
+        return TerminalSessionNavigator.target(for: app, identifier: identity, cwd: cwd)
+    }
+
+    private static func ghosttyTTY(_ value: String) -> String? {
+        TerminalSessionNavigator.ttyPath(from: value)
+    }
+
+    private static func validTmuxSocketPath(_ path: String) -> String? {
+        guard path.hasPrefix("/"), !path.isEmpty, path.utf8.count <= 1024,
+              !path.unicodeScalars.contains(where: {
+                  CharacterSet.controlCharacters.contains($0) || CharacterSet.whitespacesAndNewlines.contains($0)
+              }) else { return nil }
+        return path
+    }
+
+    private static func validTmuxPane(_ pane: String) -> Bool {
+        guard pane.hasPrefix("%") else { return false }
+        let digits = pane.dropFirst()
+        return !digits.isEmpty && digits.utf8.allSatisfy({ (48...57).contains($0) })
+    }
+
     private static func paneID(_ value: String, prefix: String) -> Int? {
         guard value.hasPrefix(prefix) else { return nil }
         let suffix = value.dropFirst(prefix.count)
@@ -327,6 +465,17 @@ enum TerminalJumpManager {
                     completion(error == nil && application?.bundleIdentifier == bundleID ? .conversationRequested : .applicationUnavailable)
                 }
             }
+        case .companion(let app, let url):
+            guard let bundleID = app.bundleId,
+                  let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID),
+                  Bundle(url: appURL)?.bundleIdentifier == bundleID else {
+                completion(.applicationUnavailable); return
+            }
+            NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: NSWorkspace.OpenConfiguration()) { application, error in
+                DispatchQueue.main.async {
+                    completion(error == nil && application?.bundleIdentifier == bundleID ? .companionRequested : .applicationUnavailable)
+                }
+            }
         case .project(let app, let url, let title):
             guard let bundleID = app.bundleId,
                   let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
@@ -337,9 +486,27 @@ enum TerminalJumpManager {
             if let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first,
                !running.isTerminated {
                 running.activate(options: [])
-                // 进一步尝试在界面里点开对应会话；客户端未暴露条目时保持窗口级结果。
-                let focused = AXConversationFocus.focus(title: title, in: running)
-                completion(focused ? .conversationFocused : .projectOpened)
+                // 进一步尝试在界面里点开对应会话；Electron 客户端可能在前置后
+                // 才把侧栏行挂进 AX 树，所以在 notFound 时短暂重试两次。歧义
+                // 不重试：同名行出现多次时绝不能靠时间差点中其中一个。
+                func focusAttempt(_ attempt: Int) {
+                    let outcome = AXConversationFocus.focus(title: title, in: running)
+                    switch outcome {
+                    case .notFound where attempt < 2:
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                            focusAttempt(attempt + 1)
+                        }
+                    case .focused:
+                        completion(.conversationFocused)
+                    case .permissionDenied:
+                        completion(.accessibilityDenied)
+                    case .ambiguous:
+                        completion(.conversationAmbiguous)
+                    case .notFound, .notActionable:
+                        completion(.applicationRaised)
+                    }
+                }
+                focusAttempt(0)
                 return
             }
             NSWorkspace.shared.open([url], withApplicationAt: appURL,
@@ -365,8 +532,19 @@ enum TerminalJumpManager {
     /// 保留初始化注入接口；hook 到达时的前台窗口并不能证明会话来自该窗口。
     static func captureFrontWindowNumber(for agentType: AgentType, terminal: String) -> Int? { nil }
 
+    static func hostApp(from identity: String?) -> TerminalApp? {
+        guard let identity else { return nil }
+        if identity.hasPrefix("iterm:") { return .iterm2 }
+        if identity.hasPrefix("wezterm:") { return .wezTerm }
+        if identity.hasPrefix("kitty:") { return .kitty }
+        if identity.hasPrefix("ts:") || identity.hasPrefix("tty:") { return .terminal }
+        return nil
+    }
+
     static func resolveTargetApp(snap: SessionSnapshot) -> TerminalApp? {
-        let appFromTerminal: TerminalApp? = snap.terminal.isEmpty ? nil : TerminalApp.detect(from: snap.terminal)
+        let appFromTerminal: TerminalApp? = snap.terminal.isEmpty
+            ? hostApp(from: snap.hostTermSessionId)
+            : TerminalApp.detect(from: snap.terminal)
         let appFromAgent = TerminalApp.forAgent(snap.agentType)
 
         guard snap.terminal.isEmpty || appFromTerminal != nil else { return nil }

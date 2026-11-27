@@ -9,6 +9,7 @@ public enum TestAccessibility {
     public static let sessionList = "island.session-list"
     public static let permissionPanel = "island.permission-panel"
     public static let permissionApproveButton = "island.permission-approve"
+    public static let permissionDeferButton = "island.permission-defer"
     public static let permissionDenyButton = "island.permission-deny"
     public static let questionPanel = "island.question-panel"
     public static let customAnswerField = "island.question-custom-input"

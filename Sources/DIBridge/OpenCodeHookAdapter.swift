@@ -3,7 +3,8 @@ import CoreFoundation
 import DIShared
 
 enum OpenCodeHookAdapter {
-    static func normalize(hookType: String, stdinData: [String: Any]?) throws -> DIMessage {
+    static func normalize(hookType: String, stdinData: [String: Any]?,
+                         agentType: String = "opencode", sessionPrefix: String? = nil) throws -> DIMessage {
         guard let data = stdinData, JSONSerialization.isValidJSONObject(data), data["native_event"] as? String == hookType else {
             throw DIBridge.NativePayloadError.invalidField("native_event")
         }
@@ -18,13 +19,21 @@ enum OpenCodeHookAdapter {
         case "question.asked": type = .question
         case "interaction.resolved": type = .interactionResolved
         case "session.compacted": type = .recap
-        case "session.idle", "session.busy", "session.error", "assistant.message", "interaction.unavailable": type = .statusUpdate
+        case "session.idle", "session.busy", "session.error", "assistant.message", "interaction.unavailable",
+             "status.update": type = .statusUpdate
         default: throw DIBridge.NativePayloadError.invalidField("native_event")
         }
-        var message = DIMessage(type: type, sessionId: "opencode-\(id)")
-        message.agentType = "opencode"
+        let prefix = sessionPrefix ?? (agentType == "kilo_code" ? "kilo" : agentType)
+        var message = DIMessage(type: type, sessionId: "\(prefix)-\(id)")
+        message.agentType = agentType
         message.workingDir = data["cwd"] as? String
-        message.terminal = data["terminal"] as? String
+        let terminalFromData = (data["terminal"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        message.terminal = (terminalFromData?.isEmpty == false ? terminalFromData : nil)
+            ?? ProcessInfo.processInfo.environment["TERM_PROGRAM"]
+        let termSessionFromData = (data["term_session_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let termSession = (termSessionFromData?.isEmpty == false ? termSessionFromData : nil)
+            ?? DIBridge.currentTermSessionId
+        if !termSession.isEmpty { message.termSessionId = termSession }
         message.model = data["model"] as? String
         message.statusIsAssistantReply = false
         if ["permission.asked", "question.asked", "interaction.resolved", "interaction.unavailable"].contains(hookType) {
@@ -74,6 +83,13 @@ enum OpenCodeHookAdapter {
         case "session.idle": message.observedState = "idle"
         case "session.busy": message.observedState = "active"
         case "session.error": message.observedState = "error"; message.status = data["error"] as? String
+        case "status.update":
+            let state = try text(data, "state")
+            guard ["active", "idle", "error", "waitingPermission", "waitingAnswer", "completionUnconfirmed"].contains(state) else {
+                throw DIBridge.NativePayloadError.invalidField("state")
+            }
+            message.observedState = state
+            message.status = data["status"] as? String
         case "assistant.message": message.status = data["message"] as? String; message.statusIsAssistantReply = true
         case "interaction.unavailable":
             message.observedState = message.nativeRequestKind == "permission" ? "waitingPermission" : "waitingAnswer"

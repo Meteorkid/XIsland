@@ -20,6 +20,13 @@ esac
 
 cd "$PROJECT_DIR"
 
+if [[ "${X_ISLAND_UI_TEST_ALLOW_RUNNING_APP:-0}" != "1" ]] && pgrep -f "/Applications/X Island.app/Contents/MacOS/XIsland" >/dev/null 2>&1; then
+    echo "ERROR: X Island is running. Quit the production app before UI tests."
+    echo "       The UI test instance shares the notch/island window and will otherwise time out."
+    echo "       Set X_ISLAND_UI_TEST_ALLOW_RUNNING_APP=1 only if you accept that conflict."
+    exit 1
+fi
+
 mkdir -p "$TEST_BIN_DIR"
 
 env \

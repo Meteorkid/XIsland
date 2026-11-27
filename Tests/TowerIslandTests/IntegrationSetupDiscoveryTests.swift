@@ -66,11 +66,26 @@ final class IntegrationSetupDiscoveryTests: XCTestCase {
     }
 
     func testOnlyTraeCNIsAutomaticallyConfigured() throws {
-        for id in ["com.trae.app", "cn.trae.solo.app", "cn.trae.work.app", "cn.trae.app"] {
+        for id in ["com.trae.app", "cn.trae.solo.app", "cn.trae.app"] {
             let entry = try find(.trae, in: environment(applications: [id: URL(fileURLWithPath: "/Applications/Trae.app")]))
             XCTAssertTrue(entry.installed)
             XCTAssertEqual(entry.canAutoConfigure, id == "cn.trae.app")
         }
+    }
+
+    func testDoubaoWorkIsDetectedButNeverAutoConfigured() throws {
+        let bundle = try find(.doubaoWork, in: environment(applications: [
+            "com.bot.pc.doubao": URL(fileURLWithPath: "/Applications/Doubao.app")
+        ]))
+        XCTAssertTrue(bundle.installed)
+        XCTAssertFalse(bundle.canAutoConfigure)
+
+        // 独立端 /Applications/DoubaoWork.app 未公布 bundle id，按应用名识别。
+        let standalone = try find(.doubaoWork, in: environment(
+            namedApplications: ["DoubaoWork": URL(fileURLWithPath: "/Applications/DoubaoWork.app")]
+        ))
+        XCTAssertTrue(standalone.installed)
+        XCTAssertFalse(standalone.canAutoConfigure)
     }
 
     func testManualIntegrationsNeedRealInstallationEvidence() throws {
@@ -91,15 +106,15 @@ final class IntegrationSetupDiscoveryTests: XCTestCase {
         XCTAssertFalse(international.canAutoConfigure)
     }
 
-    func testContinueServeAndQchatAreDetectedAsManualRoutes() throws {
+    func testRetiredSourcesAreNotOfferedEvenWhenTheirBinariesExist() throws {
         let environment = environment(executablePaths: ["/fixture/bin/cn", "/fixture/bin/qchat"])
-        for agent in [AgentType.continue, .amazonQ] {
-            let entry = try find(agent, in: environment)
-            XCTAssertTrue(entry.installed)
-            XCTAssertFalse(entry.canAutoConfigure)
+        let offered = Set(IntegrationSetupDiscovery.scan(environment: environment).map(\.agent))
+        for agent in [AgentType.continue, .amazonQ, .windsurf, .rooCode] {
+            XCTAssertFalse(offered.contains(agent), "\(agent.rawValue) 已停用，不应出现在接入列表")
+            XCTAssertNotNil(agent.successor, "\(agent.rawValue) 应指向继任入口")
         }
-        let legacy = try find(.amazonQ, in: self.environment(executablePaths: ["/fixture/bin/q"]))
-        XCTAssertTrue(legacy.detail?.contains("qchat 1.19.7") ?? false)
+        XCTAssertEqual(AgentType(rawValue: "continue"), .continue)
+        XCTAssertEqual(AgentType(rawValue: "amazon_q"), .amazonQ)
     }
 
     func testVSCodeNeedsCopilotExtensionAndProvidesHostForExtensions() throws {
@@ -113,6 +128,22 @@ final class IntegrationSetupDiscoveryTests: XCTestCase {
             XCTAssertTrue(entry.canAutoConfigure)
             XCTAssertEqual(entry.appURL, app)
         }
+    }
+
+    func testKiloExtensionAndCLIShareThePluginRoute() throws {
+        let app = URL(fileURLWithPath: "/Applications/Visual Studio Code.app")
+        let extensionEntry = try find(.kiloCode, in: environment(
+            applications: ["com.microsoft.VSCode": app],
+            extensions: ["kilocode.kilo-code"]
+        ))
+        XCTAssertTrue(extensionEntry.installed)
+        XCTAssertTrue(extensionEntry.canAutoConfigure)
+        XCTAssertEqual(extensionEntry.appURL, app)
+
+        let cliEntry = try find(.kiloCode, in: environment(executablePaths: ["/fixture/bin/kilo"]))
+        XCTAssertTrue(cliEntry.installed)
+        XCTAssertTrue(cliEntry.canAutoConfigure)
+        XCTAssertNil(cliEntry.appURL)
     }
 
     func testTabnineExtensionAndOldDeepseekAreNotAutomaticallyConfigured() throws {
@@ -185,9 +216,11 @@ final class IntegrationSetupDiscoveryTests: XCTestCase {
     }
 
     private func environment(home: URL = URL(fileURLWithPath: "/fixture/home"), path: String = "/fixture/bin",
-                             applications: [String: URL] = [:], executablePaths: Set<String> = [],
+                             applications: [String: URL] = [:], namedApplications: [String: URL] = [:],
+                             executablePaths: Set<String> = [],
                              extensions: Set<String> = [], configured: @escaping @Sendable (AgentType) -> Bool = { _ in false }) -> IntegrationSetupDiscovery.Environment {
         .init(homeDirectory: home, path: path, applicationURL: { applications[$0] },
+              applicationNamedURL: { namedApplications[$0] },
               isExecutable: { executablePaths.contains($0.path) }, extensionIDs: extensions, hasConfiguration: configured)
     }
 

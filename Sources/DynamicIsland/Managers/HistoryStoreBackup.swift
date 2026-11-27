@@ -52,7 +52,77 @@ enum HistoryStoreBackup {
         }
     }
 
-    private static func makeSnapshot(from sourceURL: URL, to destinationURL: URL) throws {
+    /// 把旧版根目录下的 `HistoryBackups` 合并到应用目录；已存在的同名文件不覆盖。
+    /// 旧文件名 `default.store.pre-*` 同步改为 `XIsland.store.pre-*`。
+    static func migrateLegacyBackupsIfNeeded(
+        in baseDirectory: URL = HistoryStoreLocation.applicationSupportDirectory(),
+        fileManager: FileManager = .default
+    ) {
+        let legacyBackups = baseDirectory.appendingPathComponent(HistoryStoreLocation.backupDirectoryName, isDirectory: true)
+        let destinationBackups = HistoryStoreLocation.applicationDirectory(in: baseDirectory, fileManager: fileManager)
+            .appendingPathComponent(HistoryStoreLocation.backupDirectoryName, isDirectory: true)
+        guard fileManager.fileExists(atPath: legacyBackups.path) else { return }
+
+        try? fileManager.createDirectory(at: destinationBackups, withIntermediateDirectories: true,
+                                         attributes: [.posixPermissions: 0o700])
+        if let names = try? fileManager.contentsOfDirectory(atPath: legacyBackups.path) {
+            for name in names {
+                let source = legacyBackups.appendingPathComponent(name)
+                let target = destinationBackups.appendingPathComponent(name)
+                guard !fileManager.fileExists(atPath: target.path) else { continue }
+                try? fileManager.moveItem(at: source, to: target)
+            }
+        }
+        // 只有所有文件都成功移走（或目标已存在）才删除旧目录，避免移动失败丢备份。
+        if let remaining = try? fileManager.contentsOfDirectory(atPath: legacyBackups.path), remaining.isEmpty {
+            try? fileManager.removeItem(at: legacyBackups)
+        }
+
+        if let names = try? fileManager.contentsOfDirectory(atPath: destinationBackups.path) {
+            for name in names where name.hasPrefix("\(HistoryStoreLocation.legacyStoreFileName).pre-") {
+                let targetName = name.replacingOccurrences(
+                    of: "\(HistoryStoreLocation.legacyStoreFileName).pre-",
+                    with: "\(HistoryStoreLocation.storeFileName).pre-"
+                )
+                let source = destinationBackups.appendingPathComponent(name)
+                let target = destinationBackups.appendingPathComponent(targetName)
+                if !fileManager.fileExists(atPath: target.path) {
+                    try? fileManager.moveItem(at: source, to: target)
+                }
+            }
+        }
+    }
+
+    /// 按总大小保留最近的历史恢复点，避免多个 1.9GB 级快照无限堆积。
+    /// 最新一份无论多大都会保留；其余按修改时间从旧到新删除，直到低于预算。
+    static func pruneBackups(
+        storeURL: URL,
+        maxTotalBytes: Int64 = 2 * 1024 * 1024 * 1024,
+        fileManager: FileManager = .default
+    ) {
+        let directory = backupURL(for: storeURL).deletingLastPathComponent()
+        guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return }
+        let backups = names
+            .filter { $0.hasSuffix(".sqlite") }
+            .compactMap { name -> (URL, Int64, Date)? in
+                let url = directory.appendingPathComponent(name)
+                guard let attributes = try? fileManager.attributesOfItem(atPath: url.path),
+                      let size = attributes[.size] as? NSNumber else { return nil }
+                let date = attributes[.modificationDate] as? Date ?? .distantPast
+                return (url, size.int64Value, date)
+            }
+            .sorted { $0.2 > $1.2 }
+
+        var total = backups.reduce(Int64(0)) { $0 + $1.1 }
+        guard total > maxTotalBytes else { return }
+        for backup in backups.reversed().dropLast(1) {
+            try? fileManager.removeItem(at: backup.0)
+            total -= backup.1
+            if total <= maxTotalBytes { break }
+        }
+    }
+
+    static func makeSnapshot(from sourceURL: URL, to destinationURL: URL) throws {
         let source = try open(sourceURL, flags: SQLITE_OPEN_READONLY)
         defer { sqlite3_close(source) }
         let destination = try open(destinationURL, flags: SQLITE_OPEN_READWRITE)
@@ -74,7 +144,7 @@ enum HistoryStoreBackup {
         }
     }
 
-    private static func validate(at url: URL) throws {
+    static func validate(at url: URL) throws {
         let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size >= 100 else { throw CocoaError(.fileReadCorruptFile) }
         let database = try open(url, flags: SQLITE_OPEN_READONLY)

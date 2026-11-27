@@ -677,12 +677,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func performInitialStartup() {
         sessionManager.audioEngine = audioEngine
-        persistenceManager.setupContainer(storeURL: testConfiguration.storageURL)
+        persistenceManager.setupContainer(storeURL: testConfiguration.storageURL ?? productionHistoryStoreURL())
         sessionManager.persistenceManager = persistenceManager
         setupMenuBarItem()
         DispatchQueue.main.async { [weak self] in self?.installApplicationMenuItems() }
         observeUpdateState()
         if !testConfiguration.isEnabled { updateManager.startAutoCheck() }
+    }
+
+    /// 把旧版通用 `default.store` 一次性迁入应用专属目录。
+    /// 迁移失败时优先继续使用旧库，避免在旧数据仍存在时创建一个空的新库。
+    private func productionHistoryStoreURL() -> URL {
+        do {
+            return try HistoryStoreLocation.migrateLegacyStoreIfNeeded()
+        } catch {
+            NSLog("XIsland history migration failed: %@", error.localizedDescription)
+            return HistoryStoreLocation.existingStoreAfterFailedMigration()
+        }
     }
 
     /// 菜单、授权与历史导出始终可用；监控服务只在有效租约期间启动。
@@ -732,7 +743,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                   let pending = session.pendingPermission,
                   pending.id.uuidString == requestId else { return }
             if action == .allow {
-                sessionManager.approvePermission(session: session, requestID: pending.id)
+                if pending.canApprove {
+                    sessionManager.approvePermission(session: session, requestID: pending.id)
+                } else {
+                    // Cursor 的 allow 不会跳过原生确认；通知上的「允许」也只能把请求交回 Cursor。
+                    sessionManager.deferPermission(session: session, requestID: pending.id)
+                }
             } else {
                 sessionManager.denyPermission(session: session, requestID: pending.id)
             }
@@ -1351,7 +1367,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         w.isReleasedWhenClosed = false
         w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         w.contentView = NSHostingView(
-            rootView: PreferencesView()
+            rootView: PreferencesView(initialPane: testConfiguration.initialPreferencesPane ?? "general")
                 .environment(sessionManager)
                 .environment(audioEngine)
                 .environment(updateManager)

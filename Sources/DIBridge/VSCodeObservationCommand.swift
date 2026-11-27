@@ -105,13 +105,25 @@ enum VSCodeObservationCommand {
         guard sendFrame(fd: fd, frame: frame, deadline: deadline) else { return 74 }
         shutdown(fd, SHUT_WR)
         // 等接收端处理完并关闭，再让队列发送下一帧；观察入口不接受任何应答内容。
+        return waitForPeerClose(fd, deadline: deadline) ? 0 : 74
+    }
+
+    /// 用 poll 等待对端关闭。不能在短连接上依赖 SO_RCVTIMEO：对端已关闭时
+    /// macOS 的 setsockopt 会返回 EINVAL，旧实现因此把已送达的帧误报为失败。
+    static func waitForPeerClose(_ fd: Int32, deadline: TimeInterval) -> Bool {
         var byte: UInt8 = 0
-        while setTimeout(fd, option: SO_RCVTIMEO, deadline: deadline) {
-            let count = recv(fd, &byte, 1, 0)
-            if count < 0, errno == EINTR { continue }
-            return count == 0 ? 0 : 74
+        while true {
+            let remaining = deadline - ProcessInfo.processInfo.systemUptime
+            guard remaining > 0 else { return false }
+            var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&descriptor, 1, Int32(min(remaining * 1000 + 1, 2000)))
+            if ready < 0, errno == EINTR { continue }
+            guard ready > 0 else { return false }
+            let count = recv(fd, &byte, 1, MSG_DONTWAIT)
+            if count < 0, errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK { continue }
+            guard count >= 0 else { return false }
+            return count == 0
         }
-        return 74
     }
 
     static func sendFrame(fd: Int32, frame: Data, deadline: TimeInterval) -> Bool {

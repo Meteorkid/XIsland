@@ -554,6 +554,10 @@ struct UITestScenarioRunner {
         if scenario.opensPreferencesOnLaunch {
             arguments.append("--open-preferences")
         }
+        if scenario.name == "preferences-update" {
+            arguments.append("--preferences-pane")
+            arguments.append("about")
+        }
         return arguments
     }
 

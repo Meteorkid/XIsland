@@ -34,15 +34,16 @@ X Island 以一个紧凑的药丸形状悬浮在屏幕顶部。当 AI Agent 工�
 - **统一面板** — 在一个地方查看所有 AI 编程助手的状态，无论它们运行在哪个终端或 IDE 中
 - **实时状态** — 状态指示灯（蓝色 = 工作中，绿色 = 已完成，橙色 = 等待输入，红色 = 出错）
 - **原生 Agent hooks** — 首次启动即把 hook 写进各代理自己的配置（Claude Code 的 settings hooks、Codex 的 hooks.json、Cursor 原生 hooks、Kimi 的 TOML hooks），不需要手工接线
-- **权限审批** — 直接在灵动岛中批准或拒绝文件/命令权限，无需切换窗口
+- **权限审批** — 直接在灵动岛中批准或拒绝文件/命令权限，无需切换窗口；Claude Code 的拒绝可附一段原因，经 `decision.message` 回传给 Agent；Claude Code 还支持先修改命令或 JSON 参数，再经 `decision.updatedInput` 批准；经 `decision.interrupt` 拒绝并停止当前回合；经 `decision.updatedPermissions` 仅为本会话允许一条完全相同、无通配符的 Bash 命令；`Edit` / `Write` / `MultiEdit` / `NotebookEdit` 请求会在批准前显示只读内联 diff 预览
 - **审批上下文地图** — 审批前速览任务、计划、文件变更与原因范围，并支持节点批注和较上一轮差异
+- **审批审计账本** — 本地 append-only JSONL 记录每次允许/拒绝/交回原生/超时/原生已处理决定，并带 SHA-256 前序哈希；Claude `Stop` / `SubagentStop` 还会按子代理来源清卡并记 `native_turn_ended`；偏好设置「审批记录」可校验链完整性、筛选最近决定并导出原始 JSONL；只存 payload 哈希，不复制命令内容
 - **审批任务图 MCP** — 智能体可在本地提交任务/步骤节点，用户逐节点保留或撤回；不授予命令、文件或审批权限
 - **引导式 MCP 配置** — 首次统一确认后自动配置支持的本地客户端；各客户端自己的信任确认仍独立保留
 - **问题回答** — 在灵动岛中直接回答 Agent 提出的问题
 - **计划审查** — 内联审查和批准 Agent 的执行计划
 - **音效通知** — 8-bit 风格的音效提醒（可按事件类型单独配置）
 - **多会话支持** — 同一 Agent 的多个对话窗口独立追踪
-- **窗口跳转** — 点击会话卡片直接跳转到对应的终端标签页或 IDE 窗口（支持 iTerm2 标签级精确跳转）
+- **窗口跳转** — 点击会话卡片跳到终端标签页、IDE 窗口或聊天；终端标签在 iTerm2/Terminal/WezTerm/Kitty 且会话带 ID 时精确，Ghostty 在 AppleScript 暴露 TTY 时按 TTY，否则只用唯一 CWD，tmux 先切换 client 到 pane 所在 session/window、选中 pane，再聚焦外层标签页。Warp 读取本地 pane 数据库并用 `Cmd+1…9` 切标签；遇到歧义 pane、多窗口或没有对应快捷键的标签时直接拒绝，不做猜测。Claude Desktop 的 Code/Cowork 用应用自己的 `local_*` 会话索引换 `claude://` 链接；Claude Code VS Code 仅在已完成状态使用官方会话链接（上游尚不能聚焦已打开的忙碌标签），VS Code 集成终端由 1.1.0+ 伴生扩展按精确 TTY 显示。其他 IDE 先打开项目，再按标题做严格的唯一 AX 行/标签匹配；同名多个直接放弃。
 - **水平拖动** — 可沿屏幕顶部左右拖动灵动岛位置
 - **智能标题** — 显示首条用户提问作为标题，工作目录文件夹名作为副标题
 - **多语言** — 支持简体中文、英文、韩文、日文、法文
@@ -68,14 +69,16 @@ X Island 以一个紧凑的药丸形状悬浮在屏幕顶部。当 AI Agent 工�
 
 | 软件 | 接入路线 | 当前状态 |
 |---|---|---|
-| Claude Code | 原生 settings hooks | 2.1.234 隔离真实读取与岛上拒绝通过（本地模拟模型）；完整客户端验收待完成 |
+| Claude Code | 原生 settings hooks | 2.1.234 隔离真实读取与岛上拒绝通过（本地模拟模型）；deny.message、updatedInput、interrupt、会话级精确 Bash updatedPermissions 与内联文件 diff 预览契约已测，完整客户端验收待完成 |
 | Codex CLI／桌面核心 | 原生 hooks.json | 契约测试通过，待真实客户端联调 |
-| Gemini CLI | 原生 settings hooks；后续 ACP | 契约测试通过，待真实客户端联调 |
-| Cursor | Cursor 原生 hooks | 契约测试通过，待真实客户端联调 |
-| Trae／Trae CN／Solo | 各发行版原生 hooks（[配置指南](docs/integrations/trae-hooks.md)） | CN 与国际版双路径已支持；实机验收中 |
+| Gemini CLI（企业版/付费 API Key） | 原生 settings hooks；后续 ACP | 个人版已于 2026-06-18 停止服务；企业版与付费 Key 契约通过，待真实客户端联调 |
+| Antigravity（App / CLI / IDE） | `~/.gemini/config/hooks.json` 命名分组全局 hooks | 五类官方事件契约已测；PreToolUse 只回中性 allow；真实客户端加载待验 |
+| Cursor | Cursor 原生 hooks | 11 类事件契约通过；shell/MCP 只支持 deny 与交回原生确认，不伪造 allow；同会话审批队列已过测试，待真实客户端联调 |
+| Trae／Trae CN／Solo | 各发行版原生 hooks（[配置指南](docs/integrations/trae-hooks.md)） | CN 与国际版双路径已支持；TRAE Work 已于 2026-08 并入豆包工作 |
+| 豆包工作 | STDIO 自定义连接器 → MCP 活动上报（[指南](docs/compatibility/doubao-work-setup.md)） | 仅观察；无原生 hooks、不接管审批；真实客户端加载待验 |
 | OpenCode | 专用插件／实例 SDK | 契约测试通过，待实机及剩余交互验收 |
 | Factory Droid | 原生 hooks.json 或 settings 回退 | 契约测试通过，待真实客户端联调 |
-| Qoder CLI／IDE | 原生 settings hooks | 契约测试通过，待真实客户端联调 |
+| Qoder CN（原通义灵码） | 原生 settings hooks | 2026-05-20 更名；契约通过，待真实客户端联调 |
 | VS Code Copilot | Local专用hooks；Agent Host另验 | Local契约测试通过，待实机与其他载体验收 |
 | CodeBuddy Code | CLI原生settings hooks | CLI契约测试通过，IDE/WorkBuddy及实机待验收 |
 | Qwen Code | 原生 settings hooks | 契约测试通过，待真实客户端联调 |
@@ -86,15 +89,16 @@ X Island 以一个紧凑的药丸形状悬浮在屏幕顶部。当 AI Agent 工�
 | Pi | 专用TypeScript extensions | 契约测试通过，待真实客户端联调 |
 | GLM 模型 | Claude Code、OpenCode、Cline、Pi 模型元数据 | 显示、筛选和历史契约通过；真实服务商待验 |
 | Aider | 显式xisland-aider进程包装器＋原生通知 | 离线/PTY契约通过，实机及完整交互待验收 |
-| Windsurf／Cascade | 原生snake_case hooks | 契约测试通过，待真实客户端联调 |
+| Windsurf（已停用） | 原 Cascade hooks | 2026-06-02 更名 Devin Desktop；旧会话保留，新接入请用 Devin Desktop |
 | Devin CLI；云端另列 | 原生hooks；云API只读状态 | 契约测试通过，待真实客户端联调 |
-| Amazon Q CLI／IDE | 显式 qchat 1.19.7 包装观察 | 契约测试通过；原生配置与客户端待验 |
-| Tabnine CLI／IDE／OpenCode插件 | 当前JSON hooks；后继宿主插件 | CLI契约测试通过，待实机及其他形态适配 |
-| Cody IDE／实验CLI | 显式 jsonrpc-stdio Agent 观察 | 契约测试通过；真实客户端与普通IDE会话待验 |
+| Amazon Q CLI（已并入 Kiro） | 原 qchat 1.19.7 包装观察 | 2025-11-17 更名 Kiro CLI；仅保留历史 |
+| Tabnine（Tricentis） | 旧版 CLI JSON hooks | 2026-07-30 被收购；6.x CLI 为 OpenCode 分支，自动配置仅覆盖旧版 |
+| Cody（2027-01-31 停止支持） | 显式 jsonrpc-stdio Agent 观察 | 仅企业版可继续注册；Amp 已独立，不共享通道 |
 | Cline VS Code／SDK CLI | VS Code事件文件；SDK插件另验 | 扩展契约测试通过，独立CLI/SDK及实机待验收 |
-| Continue IDE／cn CLI | 显式限时 cn serve 状态观察 | 契约测试通过；真实客户端、TUI和IDE待验 |
+| Continue（已停用） | 原限时 cn serve 状态观察 | 2026-06 被 Cursor 收购；改接 Cursor，旧会话保留 |
 | GitHub Copilot CLI | 原生JSON hooks | CLI契约测试通过，待实机及其他形态适配 |
-| Roo Code | 固定3.54.0原生任务API扩展 | 观察契约通过，实机及完整交互待验收 |
+| Roo Code（已停运） | 原固定 3.54.0 任务 API 扩展 | 2026-05-15 停运；改接 Cline 或 Kilo Code |
+| Kilo Code CLI／VS Code | OpenCode 内核上的原生全局插件 | 插件源码与适配器契约通过；真实 CLI/扩展加载、权限状态及完整交互待验 |
 | PearAI Agent／Continue fork | Roo fork实验性观察扩展 | 默认关闭；契约通过，实际发行包与其他形态待验收 |
 | Zed外部Agent与内置Agent | 显式外部ACP v1/v2包装器 | 外部观察契约通过；内置AI、完整交互及实机待验收 |
 | JetBrains AI／Junie／外部Agent | 显式外部ACP v1/v2包装器 | 外部观察契约通过；内置形态与实机待验收 |

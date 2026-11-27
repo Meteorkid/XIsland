@@ -152,6 +152,11 @@ PLIST
 /usr/libexec/PlistBuddy -c "Add :SoftwareLicensePublicKey string $SOFTWARE_LICENSE_PUBLIC_KEY" "$APP_BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :SoftwareLicenseAPIBaseURL string $SOFTWARE_LICENSE_API_BASE_URL" "$APP_BUNDLE/Contents/Info.plist"
 
+# 发布包必须写入可信 Developer ID Team ID，否则自动更新会 fail closed。
+if [[ -n "${X_ISLAND_UPDATE_TEAM_ID:-}" ]]; then
+    /usr/libexec/PlistBuddy -c "Add :XIslandUpdateTeamIdentifier string $X_ISLAND_UPDATE_TEAM_ID" "$APP_BUNDLE/Contents/Info.plist"
+fi
+
 if [[ -f "$APP_BUNDLE/Contents/Resources/AppIcon.icns" ]]; then
     /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$APP_BUNDLE/Contents/Info.plist"
 fi

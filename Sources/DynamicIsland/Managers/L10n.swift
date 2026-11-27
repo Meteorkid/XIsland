@@ -39,7 +39,7 @@ enum L10n {
 
     // MARK: - Helper
 
-    private static func localized(_ key: String,
+    static func localized(_ key: String,
                                   zh: String, ko: String, ja: String, fr: String, en: String) -> String {
         switch effectiveLanguage {
         case "zh": return zh
@@ -123,9 +123,8 @@ enum L10n {
     }
 
     static var ollamaFirstModel: String {
-        localized("ollamaFirstModel", zh: "第一个已安装模型", ko: "첫 번째 설치된 모델",
-                  ja: "最初のインストール済みモデル", fr: "Premier modèle installé",
-                  en: "First installed model")
+        localized("ollamaFirstModel", zh: "请选择模型", ko: "모델 선택",
+                  ja: "モデルを選択", fr: "Choisir un modèle", en: "Select a model")
     }
 
     static var ollamaPullHelp: String {
@@ -135,11 +134,11 @@ enum L10n {
     }
 
     static var ollamaModelDesc: String {
-        localized("ollamaModelDesc", zh: "留空则使用第一个已安装模型；右侧按钮可下载推荐模型。",
-                  ko: "비우면 첫 번째 설치된 모델을 사용합니다.",
-                  ja: "空欄なら最初のインストール済みモデルを使います。",
-                  fr: "Vide = premier modèle installé ; le bouton à droite permet d'en télécharger un.",
-                  en: "Empty uses the first installed model; the button on the right downloads a recommended one.")
+        localized("ollamaModelDesc", zh: "选择已安装的模型；未选择时不会自动调用本地模型。",
+                  ko: "설치된 모델을 선택하세요. 선택하지 않으면 로컬 모델을 자동 호출하지 않습니다.",
+                  ja: "インストール済みモデルを選択。未選択時はローカルモデルを自動実行しません。",
+                  fr: "Choisissez un modèle installé ; aucun appel local automatique sans sélection.",
+                  en: "Choose an installed model; no local model is called automatically without a selection.")
     }
 
     static var ollamaMissing: String {
@@ -203,6 +202,185 @@ enum L10n {
                   en: "Which API provider to use.")
     }
 
+    static var aboutVersion: String {
+        localized("aboutVersion", zh: "版本", ko: "버전", ja: "バージョン",
+                  fr: "Version", en: "Version")
+    }
+
+    static var aboutSocket: String {
+        localized("aboutSocket", zh: "Socket", ko: "소켓", ja: "ソケット",
+                  fr: "Socket", en: "Socket")
+    }
+
+    static var aboutBridge: String {
+        localized("aboutBridge", zh: "Bridge", ko: "브리지", ja: "ブリッジ",
+                  fr: "Bridge", en: "Bridge")
+    }
+
+    static var aboutCurrentVersion: String {
+        localized("aboutCurrentVersion", zh: "当前版本", ko: "현재 버전", ja: "現在のバージョン",
+                  fr: "Version actuelle", en: "Current version")
+    }
+
+    static var aboutLatestRelease: String {
+        localized("aboutLatestRelease", zh: "最新版本", ko: "최신 릴리스", ja: "最新リリース",
+                  fr: "Dernière version", en: "Latest release")
+    }
+
+    static var aboutLastChecked: String {
+        localized("aboutLastChecked", zh: "上次检查", ko: "마지막 확인", ja: "最終確認",
+                  fr: "Dernière vérification", en: "Last checked")
+    }
+
+    static var aboutStatus: String {
+        localized("aboutStatus", zh: "状态", ko: "상태", ja: "状態",
+                  fr: "Statut", en: "Status")
+    }
+
+    static var aboutAutoCheck: String {
+        localized("aboutAutoCheck", zh: "自动检查", ko: "자동 확인", ja: "自動確認",
+                  fr: "Vérification auto", en: "Auto check")
+    }
+
+    static var aboutActions: String {
+        localized("aboutActions", zh: "操作", ko: "작업", ja: "操作",
+                  fr: "Actions", en: "Actions")
+    }
+
+    static var summaryStatusPrefix: String {
+        localized("summaryStatusPrefix", zh: "状态", ko: "상태", ja: "状態",
+                  fr: "Statut", en: "Status")
+    }
+
+    static var summaryConsentTitle: String {
+        localized("summaryConsentTitle",
+                  zh: "启用 LLM 摘要？",
+                  ko: "LLM 요약을 사용하시겠습니까?",
+                  ja: "LLM 要約を有効にしますか？",
+                  fr: "Activer le résumé LLM ?",
+                  en: "Enable LLM summaries?")
+    }
+
+    static var summaryConsentMessage: String {
+        localized("summaryConsentMessage",
+                  zh: "启用后，每个完成会话的任务描述和最近 30 条工具事件（含命令输出、文件路径）会发送到你选择的服务商；选择 Ollama 时只发送到本机。可在任意时间关闭。",
+                  ko: "사용하면 완료된 작업의 설명과 최근 도구 이벤트 30개(명령 출력·파일 경로 포함)가 선택한 제공자로 전송됩니다. Ollama 선택 시 로컬로만 전송됩니다.",
+                  ja: "有効にすると、完了したタスクの説明と直近30件のツールイベント（コマンド出力・ファイルパスを含む）が選択したプロバイダーに送信されます。Ollama はローカルのみです。",
+                  fr: "Une fois activé, la description de la tâche et les 30 derniers événements d'outils (sorties de commandes, chemins de fichiers) sont envoyés au fournisseur choisi ; Ollama reste local.",
+                  en: "When enabled, the task description and the last 30 tool events (including command output and file paths) are sent to the selected provider. Ollama stays on this Mac. You can turn this off at any time.")
+    }
+
+    static var summaryConsentConfirm: String {
+        localized("summaryConsentConfirm", zh: "启用并同意", ko: "사용 및 동의", ja: "有効にして同意",
+                  fr: "Activer et accepter", en: "Enable and agree")
+    }
+
+    static var summaryKeySaved: String {
+        localized("summaryKeySaved", zh: "已保存到钥匙串", ko: "키체인에 저장됨",
+                  ja: "キーチェーンに保存しました", fr: "Enregistré dans le trousseau",
+                  en: "Saved to Keychain")
+    }
+
+    static var summaryKeySaveFailed: String {
+        localized("summaryKeySaveFailed", zh: "保存失败，请检查钥匙串权限后重试。",
+                  ko: "저장 실패. 키체인 권한을 확인하세요.",
+                  ja: "保存に失敗しました。キーチェーンの権限を確認してください。",
+                  fr: "Échec de l'enregistrement. Vérifiez l'accès au trousseau.",
+                  en: "Could not save. Check Keychain access and try again.")
+    }
+
+    static func summaryProviderTitle(_ id: String) -> String {
+        switch id {
+        case "zhipu":
+            return localized("summaryProviderZhipu", zh: "智谱 GLM-4-Flash（免费）",
+                             ko: "Zhipu GLM-4-Flash (Free)", ja: "Zhipu GLM-4-Flash（無料）",
+                             fr: "Zhipu GLM-4-Flash (gratuit)", en: "Zhipu GLM-4-Flash (Free)")
+        case "gemini":
+            return localized("summaryProviderGemini", zh: "Google Gemini（免费额度）",
+                             ko: "Google Gemini (Free tier)", ja: "Google Gemini（無料枠）",
+                             fr: "Google Gemini (offre gratuite)", en: "Google Gemini (Free tier)")
+        case "groq":
+            return localized("summaryProviderGroq", zh: "Groq（免费额度）",
+                             ko: "Groq (Free tier)", ja: "Groq（無料枠）",
+                             fr: "Groq (offre gratuite)", en: "Groq (Free tier)")
+        case "openrouter":
+            return localized("summaryProviderOpenRouter", zh: "OpenRouter（:free 模型）",
+                             ko: "OpenRouter (:free 모델)", ja: "OpenRouter（:free モデル）",
+                             fr: "OpenRouter (modèles :free)", en: "OpenRouter (:free models)")
+        case "siliconflow":
+            return localized("summaryProviderSiliconFlow", zh: "硅基流动（免费额度）",
+                             ko: "SiliconFlow (Free tier)", ja: "SiliconFlow（無料枠）",
+                             fr: "SiliconFlow (offre gratuite)", en: "SiliconFlow (Free tier)")
+        case "ollama":
+            return localized("summaryProviderOllama", zh: "本地 Ollama（完全免费）",
+                             ko: "로컬 Ollama (무료)", ja: "ローカル Ollama（無料）",
+                             fr: "Ollama local (gratuit)", en: "Local Ollama (Free)")
+        case "openai":
+            return localized("summaryProviderOpenAI", zh: "OpenAI（付费）",
+                             ko: "OpenAI (유료)", ja: "OpenAI（有料）",
+                             fr: "OpenAI (payant)", en: "OpenAI (Paid)")
+        case "anthropic":
+            return localized("summaryProviderAnthropic", zh: "Anthropic（付费）",
+                             ko: "Anthropic (유료)", ja: "Anthropic（有料）",
+                             fr: "Anthropic (payant)", en: "Anthropic (Paid)")
+        default:
+            return id
+        }
+    }
+
+    static func summaryProviderNote(_ id: String) -> String? {
+        switch id {
+        case "zhipu":
+            return localized("summaryProviderZhipuNote", zh: "注册即免费，中文摘要质量好，国内直连。",
+                             ko: "Free after signup; good Chinese summaries; direct access in China.",
+                             ja: "登録後無料。中国語の要約品質が良く、中国国内から直結。",
+                             fr: "Gratuit après inscription ; bons résumés en chinois ; accès direct en Chine.",
+                             en: "Free after signup; good Chinese summaries; direct access in China.")
+        case "gemini":
+            return localized("summaryProviderGeminiNote", zh: "有免费额度，需要可访问 Google 的网络。",
+                             ko: "Has a free tier; requires network access to Google.",
+                             ja: "無料枠あり。Google へのネットワークアクセスが必要。",
+                             fr: "Offre gratuite ; nécessite un accès réseau à Google.",
+                             en: "Has a free tier; requires network access to Google.")
+        case "groq":
+            return localized("summaryProviderGroqNote", zh: "免费额度、响应很快，英文摘要更稳。",
+                             ko: "Free tier and very fast; stronger for English summaries.",
+                             ja: "無料枠で高速。英語の要約が安定。",
+                             fr: "Offre gratuite et très rapide ; meilleur en anglais.",
+                             en: "Free tier and very fast; stronger for English summaries.")
+        case "openrouter":
+            return localized("summaryProviderOpenRouterNote", zh: "可选带 :free 后缀的免费模型，额度受上游限制。",
+                             ko: "Choose models with the :free suffix; quota depends on upstream.",
+                             ja: ":free サフィックスの無料モデルを選択。枠は上流に依存。",
+                             fr: "Choisissez des modèles :free ; le quota dépend du fournisseur.",
+                             en: "Choose models with the :free suffix; quota depends on upstream.")
+        case "siliconflow":
+            return localized("summaryProviderSiliconFlowNote", zh: "国内可直连，注册赠送额度。",
+                             ko: "Direct access in China; signup credit included.",
+                             ja: "中国国内から直結。登録時にクレジット付与。",
+                             fr: "Accès direct en Chine ; crédit offert à l'inscription.",
+                             en: "Direct access in China; signup credit included.")
+        case "ollama":
+            return localized("summaryProviderOllamaNote", zh: "需要先 ollama pull 一个模型，并在下方选择它。",
+                             ko: "Run ollama pull first, then select the model below.",
+                             ja: "先に ollama pull でモデルを取得し、下で選択してください。",
+                             fr: "Exécutez d'abord ollama pull, puis sélectionnez le modèle ci-dessous.",
+                             en: "Run ollama pull first, then select the model below.")
+        case "openai":
+            return localized("summaryProviderOpenAINote", zh: "按 token 计费，质量稳定。",
+                             ko: "Billed per token; stable quality.",
+                             ja: "トークン課金。品質が安定。",
+                             fr: "Facturé au token ; qualité stable.",
+                             en: "Billed per token; stable quality.")
+        case "anthropic":
+            return localized("summaryProviderAnthropicNote", zh: "按 token 计费。",
+                             ko: "Billed per token.", ja: "トークン課金。",
+                             fr: "Facturé au token.", en: "Billed per token.")
+        default:
+            return nil
+        }
+    }
+
     static var summaryAPIKey: String {
         localized("summaryAPIKey", zh: "API Key", ko: "API 키", ja: "API キー",
                   fr: "Clé API", en: "API key")
@@ -262,6 +440,12 @@ enum L10n {
     static var mascotChooseImage: String {
         localized("mascotChooseImage", zh: "选择图片…", ko: "이미지 선택…", ja: "画像を選択…",
                   fr: "Choisir une image…", en: "Choose image…")
+    }
+
+    static var mascotSaveFailed: String {
+        localized("mascotSaveFailed", zh: "无法保存自定义图标", ko: "사용자 아이콘을 저장할 수 없습니다",
+                  ja: "カスタムアイコンを保存できません", fr: "Impossible d’enregistrer l’icône",
+                  en: "Could not save custom icon")
     }
 
     static var mascotClearImage: String {
@@ -378,6 +562,115 @@ enum L10n {
             en: "Deny")
     }
 
+    static var permissionDenyWithReason: String {
+        localized("permissionDenyWithReason",
+            zh: "拒绝并说明", ko: "이유와 함께 거부", ja: "理由を添えて拒否",
+            fr: "Refuser avec explication", en: "Deny with reason")
+    }
+
+    static var permissionDenyReasonPlaceholder: String {
+        localized("permissionDenyReasonPlaceholder",
+            zh: "告诉 Agent 为什么拒绝，或换一种做法", ko: "거부 이유 또는 다른 방법을 에이전트에 알려 주세요",
+            ja: "拒否する理由や別の方法をエージェントに伝えてください",
+            fr: "Expliquez à l’agent pourquoi refuser ou quoi faire à la place",
+            en: "Tell the agent why, or what to do instead")
+    }
+
+    static var permissionSubmitDeny: String {
+        localized("permissionSubmitDeny",
+            zh: "提交拒绝", ko: "거부 제출", ja: "拒否を送信", fr: "Envoyer le refus",
+            en: "Submit denial")
+    }
+
+    static var permissionCancel: String {
+        localized("permissionCancel",
+            zh: "取消", ko: "취소", ja: "キャンセル", fr: "Annuler",
+            en: "Cancel")
+    }
+
+    static var permissionEditInput: String {
+        localized("permissionEditInput",
+            zh: "修改后批准", ko: "수정 후 허용", ja: "変更して許可",
+            fr: "Modifier puis approuver", en: "Approve with changes")
+    }
+
+    static var permissionEditHint: String {
+        localized("permissionEditHint",
+            zh: "只修改这次调用的参数；Claude 仍会重新检查 deny/ask 规则",
+            ko: "이번 호출의 인자만 수정합니다. Claude가 deny/ask 규칙을 다시 검사합니다",
+            ja: "今回の呼び出しの引数だけを変更します。Claude は deny/ask ルールを再確認します",
+            fr: "Modifie uniquement les paramètres de cet appel ; Claude réévalue les règles deny/ask",
+            en: "Only changes this call; Claude still rechecks deny/ask rules")
+    }
+
+    static var permissionEditCommandLabel: String {
+        localized("permissionEditCommandLabel",
+            zh: "命令", ko: "명령", ja: "コマンド", fr: "Commande",
+            en: "Command")
+    }
+
+    static var permissionEditJSONLabel: String {
+        localized("permissionEditJSONLabel",
+            zh: "工具参数 JSON", ko: "도구 인자 JSON", ja: "ツール引数 JSON",
+            fr: "Paramètres JSON de l’outil", en: "Tool input JSON")
+    }
+
+    static var permissionApproveEdited: String {
+        localized("permissionApproveEdited",
+            zh: "批准修改", ko: "수정 승인", ja: "変更を承認", fr: "Approuver la modification",
+            en: "Approve edit")
+    }
+
+    static var permissionInvalidInput: String {
+        localized("permissionInvalidInput",
+            zh: "参数必须是 JSON 对象", ko: "인자는 JSON 객체여야 합니다",
+            ja: "引数は JSON オブジェクトである必要があります",
+            fr: "Les paramètres doivent être un objet JSON",
+            en: "Input must be a JSON object")
+    }
+
+    static var permissionEmptyCommand: String {
+        localized("permissionEmptyCommand",
+            zh: "命令不能为空", ko: "명령은 비워 둘 수 없습니다", ja: "コマンドを空にできません",
+            fr: "La commande ne peut pas être vide", en: "Command cannot be empty")
+    }
+
+    static var permissionDenyAndStop: String {
+        localized("permissionDenyAndStop",
+            zh: "拒绝并停止", ko: "거부 후 중지", ja: "拒否して停止",
+            fr: "Refuser et arrêter", en: "Deny and stop")
+    }
+
+    static var permissionStopThisTurn: String {
+        localized("permissionStopThisTurn",
+            zh: "同时停止本轮", ko: "이번 턴도 중지", ja: "このターンも停止",
+            fr: "Arrêter aussi ce tour", en: "Stop this turn too")
+    }
+
+    static var permissionStopHint: String {
+        localized("permissionStopHint",
+            zh: "拒绝后停止 Claude 当前回合，不再让它换一种做法继续",
+            ko: "거부 후 Claude의 현재 턴을 중지하여 다른 방식으로 계속하지 않게 합니다",
+            ja: "拒否後に Claude の現在のターンを停止し、別の方法で続行させません",
+            fr: "Refuse puis arrête le tour actuel de Claude au lieu de le laisser réessayer",
+            en: "Deny and stop Claude's current turn instead of letting it try another approach")
+    }
+
+    static var permissionAllowForSession: String {
+        localized("permissionAllowForSession",
+            zh: "本会话允许此命令", ko: "이 세션에서 이 명령 허용", ja: "このセッションでこのコマンドを許可",
+            fr: "Autoriser cette commande pour la session", en: "Allow this command for this session")
+    }
+
+    static var permissionAllowForSessionHint: String {
+        localized("permissionAllowForSessionHint",
+            zh: "只允许完全相同、无通配符的 Bash 命令；会话结束即失效，不写入设置文件",
+            ko: "완전히 같고 와일드카드가 없는 Bash 명령만 허용합니다. 세션이 끝나면 사라지며 설정 파일에 기록하지 않습니다",
+            ja: "完全に同じでワイルドカードを含まない Bash コマンドだけを許可します。セッション終了時に失効し、設定ファイルには書きません",
+            fr: "Autorise uniquement une commande Bash identique et sans joker ; expire avec la session et n’écrit aucun fichier de réglages",
+            en: "Allow only an identical, wildcard-free Bash command; expires with the session and writes no settings file")
+    }
+
     static var planApprove: String {
         localized("planApprove",
             zh: "批准计划", ko: "계획 승인", ja: "計画を承認", fr: "Approuver le plan",
@@ -452,6 +745,66 @@ enum L10n {
             en: "Includes file changes. Expand to read the full diff.")
     }
 
+    static var permissionDiffPreview: String {
+        localized("permissionDiffPreview",
+            zh: "改动预览", ko: "변경 미리보기", ja: "変更プレビュー",
+            fr: "Aperçu des modifications", en: "Change preview")
+    }
+
+    static var permissionDiffReplaceAll: String {
+        localized("permissionDiffReplaceAll",
+            zh: "替换全部匹配", ko: "모든 일치 항목 바꾸기", ja: "一致箇所をすべて置換",
+            fr: "Remplacer toutes les occurrences", en: "Replace all matches")
+    }
+
+    static var permissionDiffTruncated: String {
+        localized("permissionDiffTruncated",
+            zh: "预览已截断，完整内容见下方工具参数", ko: "미리보기가 잘렸습니다. 전체 내용은 아래 도구 매개변수를 확인하세요.", ja: "プレビューは切り詰められました。全体は下のツールパラメーターを確認してください。", fr: "Aperçu tronqué. Voir les paramètres de l’outil ci-dessous.",
+            en: "Preview truncated. See the full tool parameters below.")
+    }
+
+    static var permissionDiffNoChanges: String {
+        localized("permissionDiffNoChanges",
+            zh: "无可见改动", ko: "표시할 변경 없음", ja: "表示できる変更なし",
+            fr: "Aucune modification visible", en: "No visible changes")
+    }
+
+    static var permissionDiffEmptyWrite: String {
+        localized("permissionDiffEmptyWrite",
+            zh: "将写入空文件", ko: "빈 파일을 씁니다", ja: "空のファイルを書き込みます",
+            fr: "Écrit un fichier vide", en: "Writes an empty file")
+    }
+
+    static var permissionDiffNotebookDelete: String {
+        localized("permissionDiffNotebookDelete",
+            zh: "删除指定 Notebook 单元格", ko: "지정한 Notebook 셀을 삭제합니다", ja: "指定した Notebook セルを削除します",
+            fr: "Supprime la cellule Notebook indiquée", en: "Deletes the specified Notebook cell")
+    }
+
+    static var permissionDiffWriteHint: String {
+        localized("permissionDiffWriteHint",
+            zh: "Write 预览的是完整写入内容，可能覆盖现有文件", ko: "Write는 전체 작성 내용을 미리 보여 주며 기존 파일을 덮어쓸 수 있습니다", ja: "Write は書き込む内容全体を表示し、既存ファイルを上書きする可能性があります",
+            fr: "Write affiche le contenu complet à écrire et peut remplacer le fichier existant", en: "Write previews the full content to write and may overwrite the existing file")
+    }
+
+    static var permissionDiffPartialHint: String {
+        localized("permissionDiffPartialHint",
+            zh: "仅预览工具参数中的改动片段，未读取目标文件", ko: "도구 매개변수의 변경 일부만 미리 보며 대상 파일을 읽지 않습니다", ja: "ツールパラメーター内の変更部分のみを表示し、対象ファイルは読みません",
+            fr: "Aperçu limité aux fragments de modification des paramètres ; le fichier cible n’est pas lu", en: "Preview only the change fragments in the tool parameters; the target file is not read")
+    }
+
+    static func permissionDiffHunk(_ index: Int) -> String {
+        localized("permissionDiffHunk",
+            zh: "修改 \(index)", ko: "변경 \(index)", ja: "変更 \(index)",
+            fr: "Modification \(index)", en: "Change \(index)")
+    }
+
+    static func permissionDiffMoreHunks(_ count: Int) -> String {
+        localized("permissionDiffMoreHunks",
+            zh: "还有 \(count) 处修改未显示", ko: "표시하지 않은 변경 \(count)개 더 있음", ja: "未表示の変更が \(count) 件あります",
+            fr: "\(count) modification(s) supplémentaire(s) non affichée(s)", en: "\(count) more change(s) not shown")
+    }
+
     static var permissionRawInput: String {
         localized("permissionRawInput",
             zh: "完整工具参数", ko: "전체 도구 매개변수", ja: "完全なツールパラメーター", fr: "Paramètres complets de l’outil",
@@ -518,6 +871,140 @@ enum L10n {
         localized("permission",
             zh: "权限审批", ko: "권한 승인", ja: "権限承認", fr: "Autorisation",
             en: "Permission")
+    }
+
+    static var permissionDeferToNative: String {
+        localized("permissionDeferToNative",
+            zh: "交回 Cursor 确认", ko: "Cursor로 넘기기", ja: "Cursor に戻す", fr: "Renvoyer à Cursor",
+            en: "Hand off to Cursor")
+    }
+
+    static func permissionQueueCount(_ count: Int) -> String {
+        localized("permissionQueueCount",
+            zh: "另有 \(count) 个待审批", ko: "대기 중 \(count)건 더 있음",
+            ja: "保留中 \(count) 件", fr: "\(count) autre(s) en attente",
+            en: "\(count) more waiting")
+    }
+
+    static func subagentPermission(_ agentID: String) -> String {
+        localized("subagentPermission",
+            zh: "子代理 · \(agentID)", ko: "하위 에이전트 · \(agentID)",
+            ja: "サブエージェント · \(agentID)", fr: "Sous-agent · \(agentID)",
+            en: "Subagent · \(agentID)")
+    }
+
+    static var approvalHistory: String {
+        localized("approvalHistory",
+            zh: "最近审批", ko: "최근 승인", ja: "最近の承認", fr: "Décisions récentes",
+            en: "Recent decisions")
+    }
+
+    static var paneApprovalHistory: String {
+        localized("paneApprovalHistory",
+            zh: "审批记录", ko: "승인 기록", ja: "承認履歴", fr: "Historique d’approbation",
+            en: "Approvals")
+    }
+
+    static var approvalHistoryDesc: String {
+        localized("approvalHistoryDesc",
+            zh: "本地账本只保存决定、来源和 payload 哈希，不复制完整命令或文件内容。",
+            ko: "로컬 원장은 결정, 출처, payload 해시만 저장하며 전체 명령이나 파일 내용은 복사하지 않습니다.",
+            ja: "ローカル台帳は決定・出所・payload ハッシュのみを保存し、完全なコマンドやファイル内容は複製しません。",
+            fr: "Le registre local conserve la décision, l’origine et le hachage du payload, sans copier la commande ni le contenu du fichier.",
+            en: "The local ledger stores decisions, origins and payload hashes only; it never copies full commands or file contents.")
+    }
+
+    static var approvalChainValid: String {
+        localized("approvalChainValid",
+            zh: "哈希链完整", ko: "해시 체인 정상", ja: "ハッシュチェーン正常", fr: "Chaîne de hachage intacte",
+            en: "Hash chain intact")
+    }
+
+    static var approvalChainBroken: String {
+        localized("approvalChainBroken",
+            zh: "哈希链断裂", ko: "해시 체인 손상", ja: "ハッシュチェーン破損", fr: "Chaîne de hachage rompue",
+            en: "Hash chain broken")
+    }
+
+    static var approvalLedgerUnavailable: String {
+        localized("approvalLedgerUnavailable",
+            zh: "账本不可用", ko: "원장을 사용할 수 없음", ja: "台帳を利用できません", fr: "Registre indisponible",
+            en: "Ledger unavailable")
+    }
+
+    static var approvalFilterAll: String {
+        localized("approvalFilterAll",
+            zh: "全部决定", ko: "모든 결정", ja: "すべての決定", fr: "Toutes les décisions",
+            en: "All decisions")
+    }
+
+    static var approvalSearchPlaceholder: String {
+        localized("approvalSearchPlaceholder",
+            zh: "搜索工具 / 会话 / 来源", ko: "도구 / 세션 / 출처 검색",
+            ja: "ツール / セッション / 出所を検索", fr: "Rechercher outil / session / origine",
+            en: "Search tool / session / origin")
+    }
+
+    static var approvalRefresh: String {
+        localized("approvalRefresh",
+            zh: "刷新", ko: "새로고침", ja: "更新", fr: "Actualiser",
+            en: "Refresh")
+    }
+
+    static var approvalExport: String {
+        localized("approvalExport",
+            zh: "导出完整 JSONL", ko: "전체 JSONL 내보내기", ja: "完全な JSONL を書き出す",
+            fr: "Exporter le JSONL complet", en: "Export full JSONL")
+    }
+
+    static var approvalReveal: String {
+        localized("approvalReveal",
+            zh: "在 Finder 中显示", ko: "Finder에서 보기", ja: "Finder に表示", fr: "Afficher dans le Finder",
+            en: "Show in Finder")
+    }
+
+    static var approvalEmpty: String {
+        localized("approvalEmpty",
+            zh: "还没有审批记录。", ko: "아직 승인 기록이 없습니다.", ja: "承認履歴はまだありません。",
+            fr: "Aucune décision pour le moment.", en: "No decisions recorded yet.")
+    }
+
+    static var approvalExportOK: String {
+        localized("approvalExportOK",
+            zh: "已导出", ko: "내보냄", ja: "書き出し完了", fr: "Exporté",
+            en: "Exported")
+    }
+
+    static var approvalExportFailed: String {
+        localized("approvalExportFailed",
+            zh: "导出失败", ko: "내보내기 실패", ja: "書き出し失敗", fr: "Échec de l’export",
+            en: "Export failed")
+    }
+
+    static func approvalDecision(_ decision: ApprovalAuditDecision) -> String {
+        switch decision {
+        case .approved:
+            return localized("approvalDecision.approved",
+                zh: "已允许", ko: "승인됨", ja: "許可", fr: "Autorisé", en: "Allowed")
+        case .denied:
+            return localized("approvalDecision.denied",
+                zh: "已拒绝", ko: "거부됨", ja: "拒否", fr: "Refusé", en: "Denied")
+        case .deferred:
+            return localized("approvalDecision.deferred",
+                zh: "交回原生", ko: "네이티브로 넘김", ja: "ネイティブへ", fr: "Renvoyé", en: "Native")
+        case .expired:
+            return localized("approvalDecision.expired",
+                zh: "已超时", ko: "시간 초과", ja: "タイムアウト", fr: "Expiré", en: "Expired")
+        case .nativeResolved:
+            return localized("approvalDecision.nativeResolved",
+                zh: "原生已处理", ko: "네이티브 처리됨", ja: "ネイティブ処理済み", fr: "Traité nativement", en: "Native resolved")
+        case .nativeTurnEnded:
+            return localized("approvalDecision.nativeTurnEnded",
+                zh: "原生轮次结束", ko: "네이티브 턴 종료", ja: "ネイティブターン終了", fr: "Tour natif terminé", en: "Native turn ended")
+        case .cancelled:
+            return localized("approvalDecision.cancelled",
+                zh: "已取消", ko: "취소됨", ja: "キャンセル", fr: "Annulé", en: "Cancelled")
+        }
     }
 
     static var question: String {
@@ -3027,11 +3514,13 @@ enum L10n {
 extension L10n {
     static func sessionJumpMessage(_ result: SessionJumpResult) -> String {
         switch result {
-        case .conversationRequested, .terminalFocused: return ""
+        case .conversationRequested, .companionRequested, .terminalFocused: return ""
         case .conversationFocused:
             return localized("jumpConversationFocused", zh: "已在客户端中定位并打开对应会话。", ko: "클라이언트에서 해당 대화를 찾아 열었습니다.", ja: "クライアント内で該当する会話を開きました。", fr: "Conversation localisée et ouverte dans le client.", en: "Located and opened the matching conversation in the client.")
         case .projectOpened:
             return localized("jumpProjectOpened", zh: "已切换到客户端并打开项目目录；该客户端不支持直达会话，请在聊天列表中选择。", ko: "클라이언트를 열고 프로젝트 폴더를 열었습니다. 이 클라이언트는 대화로 바로 이동할 수 없습니다.", ja: "クライアントを開きプロジェクトを表示しました。このクライアントは会話への直接移動に対応していません。", fr: "Client ouvert sur le dossier du projet ; la navigation directe vers la conversation n'est pas prise en charge.", en: "Client opened on the project folder; this client does not support jumping straight to a conversation.")
+        case .applicationRaised:
+            return localized("jumpApplicationRaised", zh: "已切换到对应客户端，但未能唯一定位会话行；没有点击其他会话。", ko: "해당 클라이언트로 전환했지만 대화 행을 고유하게 찾지 못했습니다. 다른 대화를 클릭하지 않았습니다.", ja: "クライアントへ切り替えましたが、会話行を一意に特定できませんでした。他の会話は選択していません。", fr: "Client activé, mais la ligne de conversation n'a pas pu être identifiée de façon unique ; aucune autre conversation n'a été sélectionnée.", en: "Switched to the client, but the conversation row could not be uniquely identified. No other session was selected.")
         case .missingIdentity:
             return localized("jumpMissingIdentity", zh: "缺少对应聊天或终端标签的定位标识，请从原客户端重新运行一次任务。", ko: "정확한 세션 식별자가 없습니다. 클라이언트에서 작업을 다시 실행하세요.", ja: "会話やタブの識別子がありません。元のクライアントでタスクを再実行してください。", fr: "Identifiant de conversation ou d’onglet manquant. Relancez une tâche dans le client.", en: "The conversation or terminal tab identifier is missing. Run a task again in the original client.")
         case .unavailable:
@@ -3040,8 +3529,12 @@ extension L10n {
             return localized("jumpApplicationUnavailable", zh: "无法打开对应客户端，未切换到其他软件或窗口。", ko: "대상 클라이언트를 열 수 없습니다.", ja: "対象のクライアントを開けませんでした。", fr: "Impossible d’ouvrir le client demandé.", en: "The target client could not be opened. No other app or window was selected.")
         case .automationDenied:
             return localized("jumpAutomationDenied", zh: "请在系统设置的“隐私与安全性 → 自动化”中允许 X Island 控制对应终端。", ko: "시스템 설정의 개인정보 보호 및 보안 → 자동화에서 터미널 제어를 허용하세요.", ja: "システム設定のプライバシーとセキュリティ → オートメーションで対象ターミナルの制御を許可してください。", fr: "Autorisez le contrôle du terminal dans Réglages système → Confidentialité et sécurité → Automatisation.", en: "Allow X Island to control this terminal in System Settings → Privacy & Security → Automation.")
+        case .accessibilityDenied:
+            return localized("jumpAccessibilityDenied", zh: "请在系统设置的“隐私与安全性 → 辅助功能”中允许 X Island 控制对应客户端。", ko: "시스템 설정의 개인정보 보호 및 보안 → 손쉬운 사용에서 X Island의 클라이언트 제어를 허용하세요.", ja: "システム設定のプライバシーとセキュリティ → アクセシビリティで X Island にクライアントの制御を許可してください。", fr: "Autorisez X Island à contrôler ce client dans Réglages système → Confidentialité et sécurité → Accessibilité.", en: "Allow X Island to control this client in System Settings → Privacy & Security → Accessibility.")
         case .targetNotFound:
             return localized("jumpTargetNotFound", zh: "对应终端标签页已关闭，或无法唯一定位；未打开其他会话。", ko: "터미널 탭을 찾지 못했거나 일치 항목이 여러 개입니다.", ja: "対象のターミナルタブが閉じているか、一意に特定できませんでした。", fr: "L’onglet est fermé ou ne peut pas être identifié de façon unique.", en: "The terminal tab is closed or could not be uniquely identified. No other session was selected.")
+        case .conversationAmbiguous:
+            return localized("jumpConversationAmbiguous", zh: "界面里有多个同名会话条目，未点击任何一个；请在客户端中手动选择。", ko: "같은 이름의 대화 항목이 여러 개 있어 아무것도 클릭하지 않았습니다. 클라이언트에서 직접 선택하세요.", ja: "同名の会話項目が複数あるため、いずれもクリックしていません。クライアントで手動選択してください。", fr: "Plusieurs entrées de conversation portent le même nom ; aucune n'a été cliquée. Sélectionnez-la dans le client.", en: "Several conversation rows share that title, so none was clicked. Select the conversation manually in the client.")
         case .commandFailed:
             return localized("jumpCommandFailed", zh: "未能定位该终端会话，请确认标签页仍打开且客户端的远程控制可用。", ko: "터미널 세션을 찾지 못했습니다. 탭과 원격 제어를 확인하세요.", ja: "ターミナルセッションを移動できませんでした。タブとリモート制御を確認してください。", fr: "Session introuvable. Vérifiez l’onglet et le contrôle à distance du terminal.", en: "The terminal session could not be focused. Check that its tab is open and remote control is available.")
         }

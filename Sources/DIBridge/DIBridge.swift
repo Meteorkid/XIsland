@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import DIShared
 
 /// `di-bridge` 命令行工具：被各 AI 工具的 hook 以一次性子进程方式拉起。
@@ -43,6 +44,13 @@ struct DIBridge {
         }
         if command == "mcp-server" {
             exit(MCPApprovalGraphServer.run(arguments: Array(CommandLine.arguments.dropFirst(2))))
+        }
+        if command == "doubao-work-mcp" {
+            // 豆包工作的自定义 STDIO 连接器：只暴露 xisland_activity 的活动上报。
+            exit(MCPApprovalGraphServer.run(arguments: [
+                "--observe-agent", "doubao_work",
+                "--agent", "doubao_work",
+            ] + Array(CommandLine.arguments.dropFirst(2))))
         }
         if command == "acp-config" {
             exit(ACPConfigurationCommand.run(arguments: Array(CommandLine.arguments.dropFirst(2)), bridgePath: CommandLine.arguments[0]))
@@ -92,6 +100,7 @@ struct DIBridge {
             exit(agentType == "workbuddy" ? 0 : 1)
         }
         message.agentType = agentType
+        enrichProcessContext(&message)
 
         // 不同工具的决定由 JSON、退出码或两者共同表达，不能统一把 exit 0 当作批准。
         let isInteractive = message.type == .permissionRequest
@@ -127,14 +136,35 @@ struct DIBridge {
             guard let response else {
                 fputs("[di-bridge] No response received\n", stderr)
                 if agentType == "devin", message.type == .permissionRequest { emitDevinUnavailablePermission() }
+                if let output = abstentionOutput(agentType: agentType, messageType: message.type,
+                                                 adapter: args["adapter"]) {
+                    print(output)
+                    exit(0)
+                }
                 exit(1)
             }
 
             switch response.type {
             case .permissionResponse:
-                let approved = response.approved ?? false
-                if args["adapter"] == "opencode_plugin", response.approved == nil { exit(1) }
-                let output = permissionHookResponse(agentType: agentType, approved: approved, adapter: args["adapter"])
+                guard let approved = response.approved else {
+                    // X Island 的「交回原生确认」不是拒绝：Claude 兼容 hook 输出空决策，
+                    // Cursor 输出 permission: ask，宿主继续弹自己的确认框。
+                    if let output = abstentionOutput(agentType: agentType, messageType: message.type,
+                                                     adapter: args["adapter"]) {
+                        print(output)
+                        dumpStdin(hook: "PERM_DEFER", data: ["agent": agentType])
+                        exit(0)
+                    }
+                    if agentType == "devin" { emitDevinUnavailablePermission() }
+                    exit(1)
+                }
+                let output = permissionHookResponse(agentType: agentType, approved: approved,
+                                                   adapter: args["adapter"], hookType: hookType,
+                                                   stdinData: stdinData,
+                                                   denyMessage: response.denyMessage,
+                                                   updatedInput: response.updatedInput,
+                                                   updatedPermissions: response.updatedPermissions,
+                                                   interrupt: response.interrupt == true)
                 if let stdout = output.stdout { print(stdout) }
                 dumpStdin(hook: "PERM_EXIT", data: ["approved": "\(approved)"])
                 exit(output.exitCode)
@@ -175,6 +205,12 @@ struct DIBridge {
 
             case .planResponse:
                 let approved = response.planApproved ?? false
+                if message.type == .planReview, supportsClaudePlanReview(agentType: agentType),
+                   let output = buildClaudeCodePlanResponse(approved: approved, feedback: response.feedback,
+                                                           stdinData: stdinData) {
+                    print(output)
+                    exit(0)
+                }
                 if let feedback = response.feedback {
                     print(feedback)
                 }
@@ -212,6 +248,18 @@ struct DIBridge {
     /// 某些 hook（如 stop / sessionstart / userpromptsubmit）期望一个 JSON 输出，
     /// 即便桥接未连接上服务端也要回一个 `{}`，避免父脚本解析失败。
     private static func printJsonPlaceholderIfNeeded(_ hookType: String, agentType: String, adapter: String? = nil) {
+        if agentType == "cursor",
+           ["beforeShellExecution", "beforeMCPExecution", "beforeReadFile", "beforeTabFileRead", "subagentStart"].contains(hookType) {
+            // 应用未运行或连接中断时交回 Cursor 原生确认，不在没有用户裁决的情况下自动放行或永久阻断。
+            print("{\"permission\":\"ask\"}")
+            return
+        }
+        if agentType == "antigravity" {
+            // PreToolUse 的 decision 是必填字段；未连接时用中性 "allow" 交回默认策略，
+            // 其余事件回空对象即可。
+            print(hookType == "PreToolUse" ? "{\"decision\":\"allow\"}" : "{}")
+            return
+        }
         if needsJsonOutput(hookType, agentType: agentType, adapter: adapter) {
             print("{}")
         }
@@ -242,13 +290,19 @@ struct DIBridge {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return -1 }
 
+        let socketPath = socketPath()
+        guard DISocketConfig.isValidSocketPath(socketPath) else {
+            close(fd)
+            return -1
+        }
+
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
-        let pathBytes = socketPath().utf8CString
+        let pathBytes = socketPath.utf8CString
         withUnsafeMutablePointer(to: &address.sun_path) { sunPath in
             pathBytes.withUnsafeBufferPointer { source in
                 UnsafeMutableRawPointer(sunPath)
-                    .copyMemory(from: source.baseAddress!, byteCount: min(source.count, 104))
+                    .copyMemory(from: source.baseAddress!, byteCount: source.count)
             }
         }
 
@@ -291,27 +345,33 @@ struct DIBridge {
         defer { buffer.deallocate() }
 
         // 在宿主 300 秒 hook 超时之前返回，留出拒绝/取消响应的写回时间。
-        // 使用总截止时间，避免分片持续到达使每次 recv 都重新获得完整等待时长。
+        // 使用总截止时间，避免分片持续到达使每次 poll 都重新获得完整等待时长。
         guard timeoutSeconds.isFinite, timeoutSeconds > 0 else { return nil }
         let deadline = ProcessInfo.processInfo.systemUptime + timeoutSeconds
         var accumulated = Data()
         while true {
             let remaining = deadline - ProcessInfo.processInfo.systemUptime
             guard remaining > 0 else { return nil }
-            var timeout = timeval(tv_sec: Int(remaining), tv_usec: Int32(max(1, (remaining - floor(remaining)) * 1_000_000)))
-            guard setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size)) == 0 else { return nil }
-            let received = recv(fd, buffer, chunkSize, 0)
-            if received < 0, errno == EINTR { continue }
+            // 对端写完即关闭的 AF_UNIX 短连接上，setsockopt(SO_RCVTIMEO) 会返回 EINVAL
+            // （实测 macOS），旧实现因此在读取前就返回 nil、丢掉已到达的整帧。
+            // 用 poll 承担超时，再以 MSG_DONTWAIT 读取已就绪数据；与 App 的 SocketServer 一致。
+            var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&descriptor, 1, Int32(min(remaining * 1000 + 1, Double(Int32.max))))
+            if ready < 0, errno == EINTR { continue }
+            guard ready > 0 else { return nil }
+            let received = recv(fd, buffer, chunkSize, MSG_DONTWAIT)
+            if received < 0, errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK { continue }
             if received < 0 { return nil }
-            guard received > 0 else { break }
+            guard received > 0 else {
+                // 对端写完即关闭：EOF 不能丢弃此前已完整到达的帧。
+                return accumulated.isEmpty ? nil : accumulated
+            }
             accumulated.append(buffer, count: received)
             if accumulated.count > maxMessageBytes { return nil }
             if let newline = accumulated.firstIndex(of: 0x0A) {
                 return Data(accumulated.prefix(through: newline))
             }
         }
-
-        return accumulated.isEmpty ? nil : accumulated
     }
 
     static func needsJsonOutput(_ hookType: String, agentType: String? = nil, adapter: String? = nil) -> Bool {
@@ -319,7 +379,7 @@ struct DIBridge {
         if agentType == "kiro" || agentType == "workbuddy" { return false }
         // 新版 Kimi 会把 stdout 当作上下文；纯观察入口不能注入占位 JSON。
         if agentType == "kimi", adapter == "kimi_code" { return false }
-        if let agentType, ["claude_code", "codex", "qwen", "qoder", "droid", "gemini_cli", "tabnine", "devin", "copilot_cli", "trae", "kimi"].contains(agentType) {
+        if let agentType, ["claude_code", "codex", "qwen", "qoder", "droid", "gemini_cli", "tabnine", "devin", "copilot_cli", "trae", "kimi", "antigravity"].contains(agentType) {
             return true
         }
         let hook = hookType.lowercased()
@@ -336,14 +396,96 @@ struct DIBridge {
     // MARK: - 会话标识
 
     static var currentTermSessionId: String {
-        var currentTTY: String?
+        resolveTermSessionId(environment: ProcessInfo.processInfo.environment, tty: currentControllingTTY)
+    }
+
+    /// The bridge's own stdio are pipes in every supported host, so this normally
+    /// returns nil. It is still useful when di-bridge is run interactively.
+    static var currentControllingTTY: String? {
         for fd: Int32 in [2, 1, 0] {
             if isatty(fd) != 0, let tty = ttyname(fd) {
-                currentTTY = String(cString: tty)
-                break
+                return String(cString: tty)
             }
         }
-        return resolveTermSessionId(environment: ProcessInfo.processInfo.environment, tty: currentTTY)
+        return nil
+    }
+
+    /// Resolve the outer terminal for a multiplexer session. `termSessionId`
+    /// remains the inner tmux/WezTerm identity; this is only the host tab that
+    /// must be focused after selecting the pane.
+    static func resolveHostTermSessionId(
+        environment: [String: String], tty: String?, tmuxPresent: Bool
+    ) -> String {
+        // A tmux server outlives the client that started it: TERM_SESSION_ID,
+        // ITERM_SESSION_ID and WEZTERM_PANE in its environment point at the
+        // original tab, not at whichever client is viewing this pane now.
+        // Focusing that stale tab would be worse than resolving client_tty
+        // at click time, so tmux host identity is deliberately deferred.
+        if tmuxPresent { return "" }
+        func isToken(_ value: String) -> Bool {
+            !value.isEmpty && value.utf8.count <= 506 && !value.unicodeScalars.contains {
+                CharacterSet.controlCharacters.contains($0) || CharacterSet.whitespacesAndNewlines.contains($0)
+            }
+        }
+        if let id = environment["ITERM_SESSION_ID"], isToken(id) {
+            return "iterm:\(id)"
+        }
+        for (key, prefix) in [("WEZTERM_PANE", "wezterm"), ("KITTY_WINDOW_ID", "kitty")] {
+            if let id = environment[key], !id.isEmpty,
+               id.utf8.allSatisfy({ (48...57).contains($0) }) {
+                return "\(prefix):\(id)"
+            }
+        }
+        if let id = environment["TERM_SESSION_ID"], isToken(id) {
+            return "ts:\(id)"
+        }
+        if let tty, ProcessTreeResolver.isValidTTY(tty) {
+            return "tty:\(tty)"
+        }
+        return ""
+    }
+
+    /// Record process identity while the process is alive. Resolving TTY later
+    /// from a stored PID would race PID reuse and could focus an unrelated tab.
+    static func enrichProcessContext(_ message: inout DIMessage) {
+        if message.processId == nil { message.processId = getppid() }
+        guard message.type == .sessionStart else { return }
+
+        let environment = ProcessInfo.processInfo.environment
+        let tmuxPresent = (environment["TMUX_PANE"] ?? "").hasPrefix("%")
+        let treeTTY = tmuxPresent ? nil : ProcessTreeResolver.controllingTTY(startingAt: getppid())
+        let tty = currentControllingTTY ?? treeTTY
+
+        if message.hostTermSessionId == nil {
+            let host = resolveHostTermSessionId(
+                environment: environment, tty: tty, tmuxPresent: tmuxPresent)
+            if !host.isEmpty { message.hostTermSessionId = host }
+        }
+        if message.tmuxSocketPath == nil, tmuxPresent,
+           let socketPath = tmuxSocketPath(from: environment["TMUX"]) {
+            message.tmuxSocketPath = socketPath
+        }
+
+        let current = message.termSessionId ?? ""
+        if !tmuxPresent, let tty,
+           (current.isEmpty || current.hasPrefix("ts:") || current.hasPrefix("tty:")) {
+            message.termSessionId = "tty:\(tty)"
+        }
+    }
+
+    /// `$TMUX` is `<socket>,<pid>,<index>`. Only the socket is useful to the
+    /// navigator; reject anything that cannot be a literal absolute path so a
+    /// malformed environment can never turn into extra CLI arguments.
+    static func tmuxSocketPath(from value: String?) -> String? {
+        guard let value else { return nil }
+        let parts = value.split(separator: ",", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count >= 2 else { return nil }
+        let path = String(parts[0]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard path.hasPrefix("/"), !path.isEmpty, path.utf8.count <= 1024,
+              !path.unicodeScalars.contains(where: {
+                  CharacterSet.controlCharacters.contains($0) || CharacterSet.whitespacesAndNewlines.contains($0)
+              }) else { return nil }
+        return path
     }
 
     static func resolveTermSessionId(environment: [String: String], tty: String?) -> String {
@@ -479,6 +621,9 @@ struct DIBridge {
             case ("kiro", "kiro_cli"): return try KiroHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
             case ("trae", "trae_cn"): return try TraeHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
             case ("opencode", "opencode_plugin"): return try OpenCodeHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+            case ("kilo_code", "kilo_plugin"):
+                return try OpenCodeHookAdapter.normalize(hookType: hookType, stdinData: stdinData,
+                                                         agentType: "kilo_code", sessionPrefix: "kilo")
             case ("copilot", "vscode_local"): return try VSCodeHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
             default: throw NativePayloadError.invalidField("adapter")
             }
@@ -499,6 +644,9 @@ struct DIBridge {
         }
         if agentType == "pi" {
             return try PiHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
+        }
+        if agentType == "antigravity" {
+            return try AntigravityHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
         }
         if agentType == "copilot_cli" {
             return try CopilotCliHookAdapter.normalize(hookType: hookType, stdinData: stdinData)
@@ -584,6 +732,7 @@ struct DIBridge {
             // Qwen/Qoder 按上报会话与子 ID 配对；共同会话上下文不等于直接父代理 ID。
             message.parentSessionId = ["qwen", "qoder"].contains(agentType) ? nil : sessionId
             message.subagentId = "\(agentType)-\(child)"
+            message.nativeAgentId = child
             if agentType == "qoder" {
                 // 类型仅作展示；Qoder 未声明该字段必须存在，不能把它作为身份的门槛。
                 if data?["agent_type"] != nil { message.prompt = try nativeText("agent_type", allowEmpty: true) }
@@ -611,7 +760,18 @@ struct DIBridge {
             message.nativeEvent = event
             message.nativeTurnId = codexTurnID
         }
+        // Claude 的 Stop 是本轮结束的回执；SubagentStop 的 agent_id 在子代理分支保留。
+        // 保留这两个身份，岛才能在原生提示关闭后精确清理对应审批，而不误伤并发子代理。
+        if agentType == "claude_code", event == "Stop" {
+            message.nativeEvent = event
+            if message.nativeAgentId == nil {
+                message.nativeAgentId = permissionOriginAgentID(data)
+            }
+        }
         if let id = data?["tool_use_id"] as? String, !id.isEmpty { message.toolCallId = id }
+        if message.toolInputHash == nil {
+            message.toolInputHash = toolInputHash(data?["tool_input"]) ?? message.toolInput.flatMap { toolInputHash($0) }
+        }
         guard nativeAgents.contains(agentType) else { return message }
         if message.type == .toolStart || message.type == .toolComplete {
             message.toolInput = outputText(data?["tool_input"]) ?? message.toolInput
@@ -683,7 +843,8 @@ struct DIBridge {
         }
         if hook.contains("permission") {
             return buildPermissionRequest(sessionId: sessionId, data: stdinData,
-                                          allowsQuestionRedirect: agentType == "claude_code")
+                                          allowsQuestionRedirect: agentType == "claude_code",
+                                          allowsPlanRedirect: supportsClaudePlanReview(agentType: agentType))
         }
         if hook.contains("question") || hook.contains("ask") {
             return buildQuestion(sessionId: sessionId, data: stdinData)
@@ -724,9 +885,29 @@ struct DIBridge {
         msg.agentType = agentType
 
         // 空字符串视同缺失：否则 ?? 链会被空串截断，TERM_PROGRAM 永远用不上。
+        let environment = ProcessInfo.processInfo.environment
         let terminalFromData = data?["terminal"] as? String
+        let termProgram = environment["TERM_PROGRAM"]
+        let bundleID = environment["__CFBundleIdentifier"]
+        // tmux overwrites TERM_PROGRAM with "tmux", but the GUI terminal that
+        // launched the tmux server still leaves its bundle ID in the server
+        // environment. Prefer that over reporting an unusable "tmux" host.
+        let tmuxHostName = termProgram?.lowercased() == "tmux"
+            ? bundleID.map(terminalName(forBundleID:))
+            : nil
+        // Claude Desktop 的 Code/Cowork 标签页可能给内嵌 CLI 留下一个通用
+        // TERM_PROGRAM（例如 Apple_Terminal），但宿主 bundle id 是可靠的。
+        // 必须在 termProgram 之前判断，否则会被误判成普通终端。
+        let desktopHostName: String? = {
+            if bundleID?.lowercased() == "com.anthropic.claudefordesktop" { return "Claude Desktop" }
+            if let host = environment["CLAUDE_CODE_HOST_SESSION_ID"], !host.isEmpty { return "Claude Desktop" }
+            return nil
+        }()
         msg.terminal = (terminalFromData?.isEmpty == false ? terminalFromData : nil)
-            ?? ProcessInfo.processInfo.environment["TERM_PROGRAM"]
+            ?? desktopHostName
+            ?? tmuxHostName
+            ?? termProgram
+            ?? bundleID.map(terminalName(forBundleID:))
             ?? "Terminal"
 
         let termSession = currentTermSessionId
@@ -747,6 +928,19 @@ struct DIBridge {
         msg.prompt = agentType == "codex" ? CodexPromptText.normalized(prompt) : prompt
         extractTokens(data, into: &msg)
         return msg
+    }
+
+    static func terminalName(forBundleID bundleID: String) -> String {
+        switch bundleID.lowercased() {
+        case "com.apple.terminal": return "Terminal"
+        case "com.googlecode.iterm2": return "iTerm2"
+        case "com.mitchellh.ghostty": return "Ghostty"
+        case "dev.warp.warp-stable", "dev.warp.warp": return "Warp"
+        case "com.anthropic.claudefordesktop": return "Claude Desktop"
+        case "org.wezfurlong.wezterm": return "WezTerm"
+        case "net.kovidgoyal.kitty": return "kitty"
+        default: return bundleID
+        }
     }
 
     static func extractUserPrompt(_ data: [String: Any]?) -> String {
@@ -783,6 +977,8 @@ struct DIBridge {
         } else {
             msg.toolInput = data?["input"] as? String
         }
+        msg.toolInputHash = toolInputHash(data?["tool_input"]) ?? msg.toolInput.flatMap { toolInputHash($0) }
+        if let agentID = permissionOriginAgentID(data) { msg.nativeAgentId = agentID }
         return msg
     }
 
@@ -795,6 +991,8 @@ struct DIBridge {
             ?? outputText(data?["tool_response"])
             ?? outputText(data?["result"])
             ?? outputText(data?["error"])
+        msg.toolInputHash = toolInputHash(data?["tool_input"]) ?? msg.toolInput.flatMap { toolInputHash($0) }
+        if let agentID = permissionOriginAgentID(data) { msg.nativeAgentId = agentID }
         msg.linesAdded = data?["lines_added"] as? Int
         msg.linesRemoved = data?["lines_removed"] as? Int
         extractTokens(data, into: &msg)
@@ -808,11 +1006,43 @@ struct DIBridge {
         return String(decoding: data, as: UTF8.self)
     }
 
-    static func buildPermissionRequest(sessionId: String, data: [String: Any]?, allowsQuestionRedirect: Bool = true) -> DIMessage {
+    /// 工具参数规范化后哈希：对象按键排序；字符串若是 JSON 对象也先解析再排序。
+    /// 这样 PreToolUse 的 tool_input 与 PermissionRequest 的 tool_input 即使来自
+    /// 不同序列化路径，也能得到同一个关联键。
+    static func toolInputHash(_ value: Any?) -> String? {
+        guard let value, !(value is NSNull) else { return nil }
+        if let text = value as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            if let data = trimmed.data(using: .utf8),
+               let object = try? JSONSerialization.jsonObject(with: data),
+               JSONSerialization.isValidJSONObject(object) {
+                return toolInputHash(object)
+            }
+            return sha256(trimmed)
+        }
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else { return nil }
+        return sha256(String(decoding: data, as: UTF8.self))
+    }
+
+    private static func sha256(_ text: String) -> String {
+        let digest = SHA256.hash(data: Data(text.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func buildPermissionRequest(sessionId: String, data: [String: Any]?,
+                                       allowsQuestionRedirect: Bool = true,
+                                       allowsPlanRedirect: Bool = false) -> DIMessage {
         let toolName = data?["tool_name"] as? String ?? data?["tool"] as? String ?? "unknown"
 
         if allowsQuestionRedirect, isQuestionTool(toolName) {
             return buildQuestionFromPermission(sessionId: sessionId, toolName: toolName, data: data)
+        }
+        if allowsPlanRedirect, isPlanReviewTool(toolName),
+           extractToolInput(data) != nil,
+           let plan = planMarkdown(fromPermissionInput: data), !plan.isEmpty {
+            return buildPlanReviewFromPermission(sessionId: sessionId, data: data, plan: plan)
         }
 
         var msg = DIMessage(type: .permissionRequest, sessionId: sessionId)
@@ -830,9 +1060,22 @@ struct DIBridge {
         }
         msg.permDescription = desc
         msg.toolInput = rawInput
+        msg.toolInputHash = toolInputHash(data?["tool_input"]) ?? rawInput.flatMap { toolInputHash($0) }
         msg.diff = data?["diff"] as? String
         msg.filePath = findString(in: sources, keys: ["file_path", "path", "filePath"])
+        // Claude 子代理的 PermissionRequest 带 agent_id；请求仍落在父会话，
+        // 但必须保留来源，否则多个子代理并发审批会看起来像同一个请求。
+        if let origin = permissionOriginAgentID(data) {
+            msg.nativeAgentId = origin
+        }
         return msg
+    }
+
+    static func permissionOriginAgentID(_ data: [String: Any]?) -> String? {
+        guard let value = data?["agent_id"] as? String else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.utf8.count <= 4096, !trimmed.utf8.contains(0) else { return nil }
+        return trimmed
     }
 
     static func descriptionFromToolInput(_ input: [String: Any]?) -> String? {
@@ -858,6 +1101,42 @@ struct DIBridge {
     static func isQuestionTool(_ name: String) -> Bool {
         // MCP/第三方工具的显示名不能决定它是否获得问答回传的许可语义。
         name == "AskUserQuestion"
+    }
+
+    /// ExitPlanMode 在 Claude 兼容客户端里通过 PermissionRequest 等待用户确认。
+    static func supportsClaudePlanReview(agentType: String) -> Bool {
+        ["claude_code", "qwen", "qoder", "trae"].contains(agentType.lowercased())
+    }
+
+    static func isPlanReviewTool(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return lower == "exitplanmode" || lower == "exit_plan_mode"
+    }
+
+    static func planMarkdown(fromPermissionInput data: [String: Any]?) -> String? {
+        for key in ["plan", "plan_markdown", "markdown"] {
+            if let text = data?[key] as? String,
+               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               !text.utf8.contains(0) {
+                return text
+            }
+        }
+        guard let input = extractToolInput(data) else { return nil }
+        for key in ["plan", "markdown", "content"] {
+            if let text = input[key] as? String,
+               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               !text.utf8.contains(0) {
+                return text
+            }
+        }
+        return nil
+    }
+
+    static func buildPlanReviewFromPermission(sessionId: String, data: [String: Any]?, plan: String) -> DIMessage {
+        var msg = DIMessage(type: .planReview, sessionId: sessionId)
+        msg.planMarkdown = plan
+        msg.toolInput = permissionInputText(data)
+        return msg
     }
 
     private static func claudeQuestionInput(_ data: [String: Any]?) -> [String: Any]? {
@@ -944,6 +1223,27 @@ struct DIBridge {
         dicts.compactMap {
             $0["label"] as? String ?? $0["value"] as? String ?? $0["text"] as? String ?? $0["description"] as? String
         }
+    }
+
+    /// 解析 PermissionRequest 的 updatedInput；只接受 JSON 对象，且限制体积。
+    static func parseToolInputObject(_ raw: String) -> [String: Any]? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.utf8.contains(0), trimmed.utf8.count <= 64_000,
+              let data = trimmed.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              JSONSerialization.isValidJSONObject(object) else { return nil }
+        return object
+    }
+
+    /// 解析 PermissionRequest 的 updatedPermissions；只接受非空 JSON 对象数组。
+    static func parseUpdatedPermissions(_ raw: String) -> [[String: Any]]? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.utf8.contains(0), trimmed.utf8.count <= 64_000,
+              let data = trimmed.data(using: .utf8),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+              !array.isEmpty,
+              JSONSerialization.isValidJSONObject(array) else { return nil }
+        return array
     }
 
     static func extractToolInput(_ data: [String: Any]?) -> [String: Any]? {
@@ -1054,17 +1354,55 @@ struct DIBridge {
         return ["claude_code", "trae", "codex", "qwen", "qoder"].contains(agent)
     }
 
+    /// 超时、用户放弃或显式「交回原生」时的输出。
+    ///
+    /// 这是 claude-permission-popup 的核心安全语义：失败路径绝不自动批准，也不把
+    /// 「无法裁决」伪装成拒绝；Claude 兼容 hook 输出空对象 abstain，Cursor 只支持
+    /// deny/ask，因此输出 `permission: ask` 让宿主继续弹原生确认。
+    static func abstentionOutput(agentType: String, messageType: DIMessageType,
+                                 adapter: String? = nil) -> String? {
+        let agent = agentType.lowercased()
+        if agent == "cursor", messageType == .permissionRequest {
+            return #"{"permission":"ask"}"#
+        }
+        if usesClaudeCodePermissionStdout(agentType: agent) || adapter == "opencode_plugin" {
+            return "{}"
+        }
+        return nil
+    }
+
     struct PermissionHookResponse {
         let stdout: String?
         let exitCode: Int32
     }
 
-    static func permissionHookResponse(agentType: String, approved: Bool, adapter: String? = nil) -> PermissionHookResponse {
+    static func permissionHookResponse(agentType: String, approved: Bool, adapter: String? = nil,
+                                       hookType: String? = nil,
+                                       stdinData: [String: Any]? = nil,
+                                       denyMessage: String? = nil,
+                                       updatedInput: String? = nil,
+                                       updatedPermissions: String? = nil,
+                                       interrupt: Bool = false) -> PermissionHookResponse {
+        if agentType == "cursor", let hookType,
+           let response = try? CursorHookAdapter.permissionResponse(hookType: hookType, approved: approved) {
+            return response
+        }
         if agentType == "opencode", adapter == "opencode_plugin" { return OpenCodeHookAdapter.permissionResponse(approved: approved) }
         if agentType.lowercased() == "devin" { return DevinHookAdapter.permissionResponse(approved: approved) }
         if usesClaudeCodePermissionStdout(agentType: agentType) {
+            let planTool = supportsClaudePlanReview(agentType: agentType)
+                && isPlanReviewTool(stdinData?["tool_name"] as? String ?? "")
             // 成功执行 hook 与批准命令是两回事；拒绝也用 exit 0 交付结构化 decision。
-            return PermissionHookResponse(stdout: buildClaudeCodePermissionResponse(approved: approved), exitCode: 0)
+            return PermissionHookResponse(
+                stdout: buildClaudeCodePermissionResponse(approved: approved,
+                                                          includeExitPlanInput: planTool,
+                                                          stdinData: stdinData,
+                                                          denyMessage: agentType == "claude_code" ? denyMessage : nil,
+                                                          updatedInput: agentType == "claude_code" ? updatedInput : nil,
+                                                          updatedPermissions: agentType == "claude_code" ? updatedPermissions : nil,
+                                                          interrupt: agentType == "claude_code" ? interrupt : false),
+                exitCode: 0
+            )
         }
         return PermissionHookResponse(stdout: nil, exitCode: approved ? 0 : 1)
     }
@@ -1075,19 +1413,82 @@ struct DIBridge {
         exit(output.exitCode)
     }
 
-    static func buildClaudeCodePermissionResponse(approved: Bool) -> String {
+    static func buildClaudeCodePermissionResponse(approved: Bool,
+                                                  includeExitPlanInput: Bool = false,
+                                                  stdinData: [String: Any]? = nil,
+                                                  denyMessage: String? = nil,
+                                                  updatedInput: String? = nil,
+                                                  updatedPermissions: String? = nil,
+                                                  interrupt: Bool = false) -> String {
+        var decision: [String: Any] = ["behavior": approved ? "allow" : "deny"]
+        func failClosed(_ message: String) {
+            decision["behavior"] = "deny"
+            decision.removeValue(forKey: "updatedInput")
+            decision.removeValue(forKey: "updatedPermissions")
+            decision["message"] = message
+        }
+        if approved {
+            if let updatedInput {
+                // updatedInput 会替换完整 tool_input；只接受 JSON 对象，解析失败时拒绝，
+                // 不回落成“批准原始命令”。
+                if let object = parseToolInputObject(updatedInput) {
+                    decision["updatedInput"] = object
+                } else {
+                    failClosed("X Island could not apply the edited tool input; the request was denied.")
+                }
+            } else if includeExitPlanInput, let input = extractToolInput(stdinData) {
+                decision["updatedInput"] = input
+            }
+            if let updatedPermissions {
+                // 只转发解析成功的数组；具体“单条 session Bash 精确规则”已由岛侧校验。
+                if let array = parseUpdatedPermissions(updatedPermissions) {
+                    decision["updatedPermissions"] = array
+                } else {
+                    failClosed("X Island could not apply the session permission rule; the request was denied.")
+                }
+            }
+        }
+        if !approved, let denyMessage {
+            let trimmed = denyMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, !trimmed.utf8.contains(0) {
+                decision["message"] = String(trimmed.prefix(1000))
+            }
+        }
+        if !approved, interrupt {
+            // 官方合同只在 deny 分支读取 interrupt；允许分支携带它没有意义，也不发送。
+            decision["interrupt"] = true
+        }
         let payload: [String: Any] = [
             "hookSpecificOutput": [
                 "hookEventName": "PermissionRequest",
-                "decision": [
-                    "behavior": approved ? "allow" : "deny"
-                ] as [String: Any]
+                "decision": decision
             ] as [String: Any]
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else {
             return "{}"
         }
+        return text
+    }
+
+    /// ExitPlanMode 的 allow 必须带回原始 tool_input，否则 Claude Code 会忽略 hook 决定并继续弹原生确认。
+    static func buildClaudeCodePlanResponse(approved: Bool, feedback: String?, stdinData: [String: Any]?) -> String? {
+        guard let input = extractToolInput(stdinData) else { return nil }
+        var decision: [String: Any] = ["behavior": approved ? "allow" : "deny"]
+        if approved {
+            decision["updatedInput"] = input
+        } else if let feedback, !feedback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !feedback.utf8.contains(0) {
+            decision["message"] = feedback
+        }
+        let payload: [String: Any] = [
+            "hookSpecificOutput": [
+                "hookEventName": "PermissionRequest",
+                "decision": decision
+            ] as [String: Any]
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let text = String(data: data, encoding: .utf8) else { return nil }
         return text
     }
 
@@ -1158,6 +1559,7 @@ struct DIBridge {
             withIntermediateDirectories: true
         )
         let line = logLine(hook: hook, data: data)
+        rotateDebugLogIfNeeded(at: logPath)
         if let handle = FileHandle(forWritingAtPath: logPath),
            let bytes = line.data(using: .utf8) {
             handle.seekToEndOfFile()
@@ -1165,6 +1567,23 @@ struct DIBridge {
             handle.closeFile()
         } else {
             FileManager.default.createFile(atPath: logPath, contents: line.data(using: .utf8))
+        }
+    }
+
+    /// 单个 bridge 调试日志上限 8MB；超过后轮转一份，过大的历史文件直接丢弃。
+    static func rotateDebugLogIfNeeded(
+        at path: String,
+        maxBytes: Int = 8 * 1024 * 1024,
+        fileManager: FileManager = .default
+    ) {
+        guard let attributes = try? fileManager.attributesOfItem(atPath: path),
+              let size = attributes[.size] as? NSNumber,
+              size.intValue > maxBytes else { return }
+        let rotated = path + ".1"
+        try? fileManager.removeItem(atPath: rotated)
+        try? fileManager.moveItem(atPath: path, toPath: rotated)
+        if size.intValue > maxBytes * 2 {
+            try? fileManager.removeItem(atPath: rotated)
         }
     }
 

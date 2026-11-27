@@ -1,8 +1,8 @@
 # 注意：版本号应与 VERSION 文件保持一致
 # 更新步骤：1. 修改 VERSION 文件 2. 更新此文件的 version 和 sha256
 cask "x-island" do
-  version "2.2.0"
-  sha256 "e88cbdd5e9b047d26c7fdb59dec7e469b2906aedc412d2e52a9c1723f71d9abf"
+  version "2.3.0"
+  sha256 "7e7fd0c34910c66355c2f36df90b0d84b0d1c43888ac3d8ff9bafe18c37a935b"
 
   url "https://github.com/Meteorkid/XIsland/releases/download/v#{version}/XIsland-#{version}.dmg",
       verified: "github.com/Meteorkid/XIsland/"
@@ -22,5 +22,11 @@ cask "x-island" do
   zap trash: [
     "~/.xisland",
     "~/Library/Preferences/dev.xisland.app.plist",
+    "~/Library/Application Support/XIsland",
+    # 2.2.0 及更早版本使用的通用 SwiftData 路径；迁移失败或用户回退时可能仍存在。
+    "~/Library/Application Support/default.store",
+    "~/Library/Application Support/default.store-wal",
+    "~/Library/Application Support/default.store-shm",
+    "~/Library/Application Support/HistoryBackups",
   ]
 end

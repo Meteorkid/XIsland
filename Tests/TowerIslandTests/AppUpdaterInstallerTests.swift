@@ -35,7 +35,11 @@ final class AppUpdaterInstallerTests: XCTestCase {
             try stub("codesign", body: #"""
                 for last do :; done
                 printf 'sign:%s\n' "$last" >> "$EVENTS"
-                [ "$FAILURE" != sign ]
+                [ "$FAILURE" != sign ] || exit 1
+                if [ "$1" = "-dv" ] || [ "$1" = "--display" ]; then
+                    printf 'TeamIdentifier=TESTTEAM123\n'
+                fi
+                exit 0
                 """#)
             try stub("mv", body: #"""
                 case "$1" in
@@ -82,14 +86,15 @@ final class AppUpdaterInstallerTests: XCTestCase {
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path.path)
         }
 
-        func run(failure: String = "") throws -> (status: Int32, output: String) {
+        func run(failure: String = "", expectedTeamIdentifier: String = "TESTTEAM123") throws -> (status: Int32, output: String) {
             let script = root.appendingPathComponent("installer.sh")
             try AppUpdater.makeInstallerScript(
                 currentPID: .max,
                 mountedAppPath: source.path,
                 appPath: app.path,
                 mountDirectory: source.deletingLastPathComponent().path,
-                tempDirectory: temporary.path
+                tempDirectory: temporary.path,
+                expectedTeamIdentifier: expectedTeamIdentifier
             ).write(to: script, atomically: true, encoding: .utf8)
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -319,6 +324,9 @@ final class AppUpdaterInstallerTests: XCTestCase {
         let updater = AppUpdater(
             runCommand: { launchPath, arguments in
                 commands.append(launchPath, arguments)
+                if launchPath == "/usr/bin/codesign" && arguments.contains("-dv") {
+                    return "TeamIdentifier=TESTTEAM123\n"
+                }
                 return "/dev/disk-test\tApple_HFS\t/Volumes/X Island Test"
             },
             downloadFile: { _, destination in try Data("abc".utf8).write(to: destination) },
@@ -360,6 +368,9 @@ final class AppUpdaterInstallerTests: XCTestCase {
         let updater = AppUpdater(
             runCommand: { launchPath, arguments in
                 commands.append(launchPath, arguments)
+                if launchPath == "/usr/bin/codesign" && arguments.contains("-dv") && failure != "sign" {
+                    return "TeamIdentifier=TESTTEAM123\n"
+                }
                 if (failure == "mount" && arguments.first == "attach") || (failure == "sign" && launchPath == "/usr/bin/codesign")
                     || (failure == "detach" && arguments.first == "detach") {
                     throw CocoaError(.fileReadUnknown)

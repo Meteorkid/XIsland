@@ -17,6 +17,8 @@ struct AgentIcon: View {
     @AppStorage("disableAnimations") private var disableAnimations = false
     @AppStorage("taskAttentionEnabled") private var taskAttentionEnabled = true
     @AppStorage("mascotIconStyle") private var iconStyleRaw = MascotIconStyle.mascot.rawValue
+    @State private var mascotRevision = 0
+    private static let appIconCache = NSCache<NSString, NSImage>()
 
     private var iconStyle: MascotIconStyle {
         MascotIconStyle(rawValue: iconStyleRaw) ?? .mascot
@@ -111,7 +113,7 @@ struct AgentIcon: View {
     @ViewBuilder
     private var appLogoContent: some View {
         if let url = appURL {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+            Image(nsImage: Self.appIcon(for: url))
                 .resizable()
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
@@ -123,16 +125,30 @@ struct AgentIcon: View {
 
     @ViewBuilder
     private var customIconContent: some View {
-        if let image = CustomMascotStore.image {
-            Image(nsImage: image)
-                .resizable()
-                .interpolation(.high)
-                .aspectRatio(contentMode: .fill)
-                .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
-        } else {
-            mascotContent
+        let _ = mascotRevision
+        Group {
+            if let image = CustomMascotStore.image {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+            } else {
+                mascotContent
+            }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .customMascotDidChange)) { _ in
+            mascotRevision += 1
+        }
+    }
+
+    private static func appIcon(for url: URL) -> NSImage {
+        let key = url.path as NSString
+        if let cached = appIconCache.object(forKey: key) { return cached }
+        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        appIconCache.setObject(icon, forKey: key)
+        return icon
     }
 
     private var appURL: URL? {

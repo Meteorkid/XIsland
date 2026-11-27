@@ -59,6 +59,16 @@ final class SessionManager {
         case success(AgentSession)
         case failure(ApprovalGraphResponsePayload)
     }
+
+    /// PreToolUse 到达后暂存的工具意图。PermissionRequest 本身没有 tool_use_id，
+    /// 只能用 session + tool + tool_input 哈希 + agent_id 找唯一对应的前置调用。
+    private struct ToolIntent {
+        let tool: String
+        let inputHash: String
+        let agentID: String?
+        let toolCallID: String
+        let timestamp: Date
+    }
     var sessions: [AgentSession] = []
     var selectedSessionId: String?
     var focusedInteraction: InteractionFocus?
@@ -78,6 +88,13 @@ final class SessionManager {
     /// MCP 写入的显式任务图；与审批决定、文件操作完全分离。
     private(set) var approvalGraphDocuments: [String: ApprovalGraphDocument] = [:]
     @ObservationIgnored var approvalGraphStore: ApprovalGraphStore? = ApprovalGraphStore.defaultStore()
+    /// 本地审批决定账本；测试可注入临时文件，隔离运行默认不落盘。
+    @ObservationIgnored var approvalAuditStore: ApprovalAuditStore?
+    @ObservationIgnored private var approvalAuditCache: [String: [ApprovalAuditRecord]] = [:]
+    /// 每个会话最多保留 12 个尚未完成的 PreToolUse 关联线索，10 分钟后自动失效。
+    @ObservationIgnored private var recentToolIntents: [String: [ToolIntent]] = [:]
+    private static let maxToolIntents = 12
+    private static let toolIntentTTL: TimeInterval = 10 * 60
     @ObservationIgnored private var loadedApprovalGraphSessions: Set<String> = []
     @ObservationIgnored private var approvalGraphLoadErrors: [String: String] = [:]
     @ObservationIgnored var onIntegrationActivity: ((AgentType) -> Void)?
@@ -218,8 +235,10 @@ final class SessionManager {
             TerminalJumpManager.captureFrontWindowNumber(for: $0, terminal: $1)
         },
         observationClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
-        observationWallClock: @escaping () -> Date = Date.init
+        observationWallClock: @escaping () -> Date = Date.init,
+        approvalAuditStore: ApprovalAuditStore? = ApprovalAuditStore.defaultStore()
     ) {
+        self.approvalAuditStore = approvalAuditStore
         allowsExternalApplicationAccess = !testConfiguration.isEnabled && !AppPreferences.isIsolated
         self.captureWindowNumber = captureWindowNumber
         self.observationClock = observationClock
@@ -331,7 +350,13 @@ final class SessionManager {
         // 面板展开期间使用冻结顺序：状态/时间变化不再重排，避免点击瞬间列表位移导致点错会话。
         if let frozen = frozenSessionOrder {
             let positions = Dictionary(uniqueKeysWithValues: frozen.enumerated().map { ($0.element, $0.offset) })
-            result.sort { (positions[$0.id] ?? Int.max) < (positions[$1.id] ?? Int.max) }
+            result.sort { a, b in
+                let positionA = positions[a.id] ?? Int.max
+                let positionB = positions[b.id] ?? Int.max
+                if positionA != positionB { return positionA < positionB }
+                // 冻结期间出现的新会话没有位置，用最近活动时间做确定性 tie-breaker。
+                return a.lastActivityTime > b.lastActivityTime
+            }
         }
 
         return result
@@ -561,9 +586,44 @@ final class SessionManager {
 
     private func cleanupStaleSessionsImmediately() {
         expireObservationSources()
+        expirePermissionLeases()
         reSelectIfCurrentCompleted()
         AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
         purgeOrphanedCacheEntries()
+    }
+
+    /// hook 的 `PermissionRequest` 超时是 300 秒；bridge 退出后 socket 不会回传
+    /// “已超时”，岛上的卡片必须靠自己的租约释放，否则会永久悬空。
+    /// 这不是探测原生提示是否已回答，只是给待审批状态一个与客户端超时对齐的上界。
+    private func expirePermissionLeases(now: Date = Date()) {
+        var changed = false
+        for session in sessions {
+            let expiredQueued = session.pendingPermissionQueue.filter { $0.expiresAt <= now }
+            if !expiredQueued.isEmpty {
+                expiredQueued.forEach { request in
+                    recordApprovalDecision(request, session: session, decision: .expired, at: now)
+                    request.cancel?()
+                }
+                session.pendingPermissionQueue.removeAll { $0.expiresAt <= now }
+                changed = true
+            }
+
+            guard let current = session.pendingPermission, current.expiresAt <= now else { continue }
+            recordApprovalDecision(current, session: session, decision: .expired, at: now)
+            current.cancel?()
+            session.pendingPermission = nil
+            promoteQueuedPermissionIfNeeded(session)
+            if session.pendingPermission == nil {
+                session.status = session.pendingQuestion != nil ? .waitingAnswer
+                    : session.pendingPlanReview != nil ? .waitingPlanReview : .active
+            }
+            changed = true
+        }
+
+        guard changed else { return }
+        selectNextInteraction()
+        publishToCompanion()
+        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
     }
 
     /// 面板排序档位：0 出错、1–3 待审批、4 完成待查看、5–7 运行中、8–9 静止。
@@ -824,6 +884,11 @@ final class SessionManager {
         }
         if shouldIgnoreMirroredSession(message) {
             return
+        }
+        if sourceAgent == .claudeCode,
+           ["Stop", "SubagentStop"].contains(message.nativeEvent ?? ""),
+           message.nativeMessageReplay != true {
+            resolvePermissionsOnClaudeTurnEnd(message)
         }
 
         let tracksKimiApproval = isKimiCodeMessage(message)
@@ -1368,15 +1433,7 @@ final class SessionManager {
 
         let session = findOrCreateSessionForInteraction(message)
         rememberCodexTurn(message, session: session)
-        let duplicateReminder = session.pendingPermission.map { previous in
-            Self.sameNativeRequest(previous.nativeRequestId, message.nativeRequestId)
-                && previous.requestingAgent == realAgent && previous.tool == (message.tool ?? "unknown")
-                && previous.description == (message.permDescription ?? "") && previous.diff == message.diff
-                && previous.filePath == message.filePath && previous.toolInput == message.toolInput
-        } ?? false
-        let refreshCheckpoint = resumeSession(session, as: .waitingPermission)
-        session.pendingPermission?.cancel?()
-        session.pendingPermission = PendingPermission(
+        var request = PendingPermission(
             requestingAgent: realAgent,
             tool: message.tool ?? "unknown",
             description: message.permDescription ?? "",
@@ -1386,16 +1443,48 @@ final class SessionManager {
             delivery: delivery,
             cancel: cancel,
             nativeRequestId: message.nativeRequestId,
-            toolInput: message.toolInput
+            toolInput: message.toolInput,
+            originAgentID: message.nativeAgentId,
+            canApprove: realAgent != .cursor
         )
-        if refreshCheckpoint { persistSession(session) }
-        selectNextInteraction()
-        audioEngine?.play(.permissionRequest, session: session)
-        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+        request.toolInputHash = message.toolInputHash
+        request.diffPreview = PermissionDiffPreview.make(
+            tool: request.tool, filePath: request.filePath, toolInput: request.toolInput)
+        if let direct = message.toolCallId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !direct.isEmpty {
+            request.nativeToolCallID = direct
+        } else {
+            request.nativeToolCallID = takeToolIntent(
+                sessionID: session.id, tool: request.tool,
+                inputHash: message.toolInputHash, agentID: message.nativeAgentId
+            )?.toolCallID
+        }
+        let duplicateReminder = session.pendingPermission.map {
+            Self.samePermissionRequest($0, as: request)
+        } ?? false
+            || session.pendingPermissionQueue.contains { Self.samePermissionRequest($0, as: request) }
 
-        if !duplicateReminder {
+        if session.pendingPermission == nil {
+            let refreshCheckpoint = resumeSession(session, as: .waitingPermission)
+            session.pendingPermission = request
+            if refreshCheckpoint { persistSession(session) }
+            selectNextInteraction()
+            audioEngine?.play(.permissionRequest, session: session)
+            AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+
+            if !duplicateReminder {
+                recordTaskAttention(TaskAttentionEvent(sessionID: session.id, kind: .permission,
+                    requestID: session.pendingPermission?.id, nativeRequestID: message.nativeRequestId))
+            }
+        } else if duplicateReminder || session.pendingPermissionQueue.count >= Self.maxQueuedPermissions {
+            // 重复事件和队列上限都不能再占一个阻塞 hook；关闭新连接，让客户端走自己的兜底。
+            cancel?()
+        } else {
+            // AgentBar 的请求队列语义：后来者排队，不取消已经把 socket 阻塞住的前一个请求。
+            session.pendingPermissionQueue.append(request)
             recordTaskAttention(TaskAttentionEvent(sessionID: session.id, kind: .permission,
-                requestID: session.pendingPermission?.id, nativeRequestID: message.nativeRequestId))
+                requestID: request.id, nativeRequestID: message.nativeRequestId))
+            AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
         }
         if message.type == .permissionRequest,
            [message.tool, message.permDescription, message.nativeRequestId].compactMap({ $0 })
@@ -1527,9 +1616,20 @@ final class SessionManager {
 
         switch message.nativeRequestKind {
         case "permission":
-            guard let request = session.pendingPermission, request.nativeRequestId == nativeRequestId else { return }
-            request.cancel?()
-            session.pendingPermission = nil
+            if let request = session.pendingPermission, request.nativeRequestId == nativeRequestId {
+                recordApprovalDecision(request, session: session, decision: .nativeResolved)
+                request.cancel?()
+                session.pendingPermission = nil
+                promoteQueuedPermissionIfNeeded(session)
+            } else if let index = session.pendingPermissionQueue.firstIndex(where: {
+                $0.nativeRequestId == nativeRequestId
+            }) {
+                let request = session.pendingPermissionQueue.remove(at: index)
+                recordApprovalDecision(request, session: session, decision: .nativeResolved)
+                request.cancel?()
+            } else {
+                return
+            }
         case "question":
             guard let request = session.pendingQuestion, request.nativeRequestId == nativeRequestId else { return }
             request.cancel?()
@@ -1553,8 +1653,24 @@ final class SessionManager {
         reportIntegrationActivity(message, session: session)
     }
 
-    func approvePermission(session: AgentSession, requestID: UUID? = nil) {
-        submitPermission(session: session, approved: true, requestID: requestID)
+    @discardableResult
+    func approvePermission(session: AgentSession, requestID: UUID? = nil,
+                           updatedInput: String? = nil) -> Bool {
+        submitPermission(session: session, approved: true, requestID: requestID,
+                         updatedInput: updatedInput)
+    }
+
+    /// 只对 Claude Code 的 Bash 请求开放“本会话允许完全相同命令”。
+    /// 规则写入 `session` destination，不写 settings 文件；含通配符/换行的命令拒绝。
+    @discardableResult
+    func approvePermissionForSession(session: AgentSession, requestID: UUID? = nil) -> Bool {
+        guard let request = session.pendingPermission, requestID == nil || request.id == requestID,
+              request.requestingAgent == .claudeCode, request.tool == "Bash",
+              request.originAgentID == nil,
+              let command = PermissionInputEditing.exactBashCommand(toolInput: request.toolInput),
+              let permissions = sessionBashPermissions(command: command) else { return false }
+        return submitPermission(session: session, approved: true, requestID: requestID,
+                                updatedPermissions: permissions)
     }
 
     /// 处理来自伴端（iPhone / Watch）的命令。
@@ -1580,8 +1696,13 @@ final class SessionManager {
                 respondToPlan(session: session, approved: approved, feedback: nil)
                 return true
             }
-            guard session.pendingPermission != nil else { return false }
-            if approved { approvePermission(session: session) } else { denyPermission(session: session) }
+            guard let pending = session.pendingPermission else { return false }
+            if approved {
+                guard pending.canApprove else { return false }
+                approvePermission(session: session)
+            } else {
+                denyPermission(session: session)
+            }
             return true
 
         case .answer(let sessionID, let text):
@@ -1597,17 +1718,123 @@ final class SessionManager {
         }
     }
 
-    func denyPermission(session: AgentSession, requestID: UUID? = nil) {
-        submitPermission(session: session, approved: false, requestID: requestID)
+    func denyPermission(session: AgentSession, requestID: UUID? = nil, message: String? = nil,
+                        interrupt: Bool = false) {
+        _ = submitPermission(session: session, approved: false, requestID: requestID,
+                             message: message, interrupt: interrupt)
     }
 
-    private func submitPermission(session: AgentSession, approved: Bool, requestID: UUID?) {
-        guard let request = session.pendingPermission, requestID == nil || request.id == requestID else { return }
+    /// 交回客户端原生确认。Cursor 的 hook 只承认 deny；Claude 兼容 hook 用空输出 abstain。
+    /// 这不是“批准”，也不写任何 always-allow 规则。
+    func deferPermission(session: AgentSession, requestID: UUID? = nil) {
+        guard let request = session.pendingPermission, requestID == nil || request.id == requestID,
+              request.delivery != nil, !request.canApprove else { return }
         submitInteraction(session: session, kind: .permission, requestID: request.id,
                           state: request.state, delivery: request.delivery,
-                          decision: .permission(approved), sound: approved ? .approved : .denied) {
+                          decision: .permissionDeferred, sound: .answered, onSuccess: {}) {}
+    }
+
+    @discardableResult
+    private func submitPermission(session: AgentSession, approved: Bool, requestID: UUID?,
+                                  message: String? = nil,
+                                  updatedInput: String? = nil,
+                                  updatedPermissions: String? = nil,
+                                  interrupt: Bool = false) -> Bool {
+        guard let request = session.pendingPermission, requestID == nil || request.id == requestID,
+              approved == false || request.canApprove, request.state.canSubmit else { return false }
+        let decision: InteractionDecision
+        if approved, let updatedPermissions {
+            // 只接受一条本会话、精确 Bash、allow 的 addRules；不把持久化 destination 带进来。
+            guard request.requestingAgent == .claudeCode,
+                  let normalized = normalizedUpdatedPermissions(updatedPermissions) else { return false }
+            decision = .permissionRemembered(normalized)
+        } else if approved, let updatedInput {
+            // 只有 Claude Code 的 PermissionRequest 合同确认 allow 可携带 updatedInput；
+            // 参数非法时保持卡片，绝不把“编辑失败”降级成批准原始命令。
+            guard request.requestingAgent == .claudeCode,
+                  let normalized = normalizedUpdatedInput(updatedInput) else { return false }
+            decision = .permissionEdited(normalized)
+        } else if !approved, interrupt {
+            // interrupt 只在 deny 分支生效；未核实该字段的来源不伪造“停止本轮”。
+            guard request.requestingAgent == .claudeCode else { return false }
+            decision = .permissionInterrupted(normalizedDenyMessage(message))
+        } else {
+            // 只有 Claude Code 的原生合同确认 deny.message 会回传给模型；其他来源不冒充支持。
+            let denyMessage = approved || request.requestingAgent != .claudeCode
+                ? nil : normalizedDenyMessage(message)
+            decision = approved
+                ? .permission(true)
+                : (denyMessage.map { .permissionDenial($0) } ?? .permission(false))
+        }
+        submitInteraction(session: session, kind: .permission, requestID: request.id,
+                          state: request.state, delivery: request.delivery,
+                          decision: decision, sound: approved ? .approved : .denied) {
             request.respond(approved)
         }
+        return true
+    }
+
+    /// `PermissionRequest.decision.updatedInput` 会替换完整 tool_input；解析后再规范化，
+    /// 只接受 JSON 对象，并限制体积，避免把数组、标量或超长内容发给宿主。
+    private func normalizedUpdatedInput(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.utf8.contains(0), trimmed.utf8.count <= 64_000,
+              let data = trimmed.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              JSONSerialization.isValidJSONObject(object),
+              let normalizedData = try? JSONSerialization.data(withJSONObject: object,
+                                                               options: [.sortedKeys]),
+              let normalized = String(data: normalizedData, encoding: .utf8),
+              normalized.utf8.count <= 64_000 else { return nil }
+        return normalized
+    }
+
+    /// 构造唯一允许的会话规则：一条 `addRules`、Bash 精确命令、allow、session。
+    private func sessionBashPermissions(command: String) -> String? {
+        let entry: [String: Any] = [
+            "type": "addRules",
+            "rules": [["toolName": "Bash", "ruleContent": command]],
+            "behavior": "allow",
+            "destination": "session"
+        ]
+        guard JSONSerialization.isValidJSONObject([entry]),
+              let data = try? JSONSerialization.data(withJSONObject: [entry],
+                                                      options: [.sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        return text
+    }
+
+    /// 只接受本会话里单条精确 Bash allow 规则；任何其他 updatedPermissions 都拒绝。
+    private func normalizedUpdatedPermissions(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.utf8.contains(0), trimmed.utf8.count <= 64_000,
+              let data = trimmed.data(using: .utf8),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+              array.count == 1,
+              let entry = array.first,
+              entry["type"] as? String == "addRules",
+              entry["behavior"] as? String == "allow",
+              entry["destination"] as? String == "session",
+              let rules = entry["rules"] as? [[String: Any]],
+              rules.count == 1,
+              let rule = rules.first,
+              rule["toolName"] as? String == "Bash",
+              let ruleContent = rule["ruleContent"] as? String,
+              PermissionInputEditing.isExactBashCommand(ruleContent),
+              JSONSerialization.isValidJSONObject(array),
+              let normalizedData = try? JSONSerialization.data(withJSONObject: array,
+                                                               options: [.sortedKeys]),
+              let normalized = String(data: normalizedData, encoding: .utf8),
+              normalized.utf8.count <= 64_000 else { return nil }
+        return normalized
+    }
+
+    /// 限制长度并去掉 NUL；空白原因退回普通拒绝，避免把无内容字符串当成反馈。
+    private func normalizedDenyMessage(_ message: String?) -> String? {
+        guard let message else { return nil }
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.utf8.contains(0) else { return nil }
+        return String(trimmed.prefix(1000))
     }
 
     func answerQuestion(session: AgentSession, answer: String, requestID: UUID? = nil) {
@@ -1680,8 +1907,27 @@ final class SessionManager {
                 return
             }
             onSuccess()
+            let auditDecision: ApprovalAuditDecision? = {
+                guard kind == .permission else { return nil }
+                switch decision {
+                case .permission(true), .permissionEdited, .permissionRemembered: return .approved
+                case .permission(false), .permissionDenial, .permissionInterrupted: return .denied
+                case .permissionDeferred: return .deferred
+                default: return nil
+                }
+            }()
+            if let auditDecision, let request = session.pendingPermission {
+                let auditedInput: String? = {
+                    if case .permissionEdited(let input) = decision { return input }
+                    return request.toolInput
+                }()
+                self.recordApprovalDecision(request, session: session, decision: auditDecision,
+                                            toolInput: auditedInput)
+            }
             switch kind {
-            case .permission: session.pendingPermission = nil
+            case .permission:
+                session.pendingPermission = nil
+                self.promoteQueuedPermissionIfNeeded(session)
             case .question: session.pendingQuestion = nil
             case .plan: session.pendingPlanReview = nil
             }
@@ -1709,12 +1955,23 @@ final class SessionManager {
         }
     }
 
+    /// 当前权限请求处理完后，把同一会话最早排队的请求晋级为可见的待审批项。
+    /// 队列里每个请求仍持有自己的阻塞 socket，因此不能在这里 cancel。
+    private func promoteQueuedPermissionIfNeeded(_ session: AgentSession) {
+        guard session.pendingPermission == nil, !session.pendingPermissionQueue.isEmpty else { return }
+        let next = session.pendingPermissionQueue.removeFirst()
+        session.pendingPermission = next
+        session.status = .waitingPermission
+        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+    }
+
     func dismissSession(_ session: AgentSession) {
         performPersistedOperation { [self, session] in
             guard !session.hasPendingInteraction, sessions.contains(where: { $0 === session }) else { return }
             persistSession(session) { [self, session] saved in
                 guard saved, !session.hasPendingInteraction, sessions.contains(where: { $0 === session }) else { return }
                 sessions.removeAll { $0.id == session.id }
+                forgetSessionState(session.id)
                 rebuildSessionIndex()
                 lastAssistantReplySoundAt.removeValue(forKey: session.id)
                 taskAttentionEvents.removeValue(forKey: session.id)
@@ -1978,6 +2235,9 @@ final class SessionManager {
             }
         }
         if let ts = message.termSessionId, !ts.isEmpty { session.termSessionId = ts }
+        if let host = message.hostTermSessionId, !host.isEmpty { session.hostTermSessionId = host }
+        if let socketPath = message.tmuxSocketPath, !socketPath.isEmpty { session.tmuxSocketPath = socketPath }
+        if let pid = message.processId { session.processId = pid }
         if allowsExternalApplicationAccess, session.sourceInstanceId == nil, session.windowNumber == nil {
             session.windowNumber = captureWindowNumber(session.agentType, session.terminal)
         }
@@ -2046,11 +2306,71 @@ final class SessionManager {
         if !alreadyCompleted, !wasUnavailable { reportIntegrationActivity(message, session: session) }
     }
 
+    /// Claude 的 Stop 表示本轮已经结束：原生 PermissionRequest 弹窗此时不可能还开着。
+    ///
+    /// AgentBar 在 stop 时清整个 session 的 attention；X Island 有并发子代理和审批队列，
+    /// 因此只清理 `originAgentID` 相同的 Claude 权限请求，其他子代理的队列原样保留。
+    /// 这是生命周期兜底，不区分原生端是允许、拒绝还是取消，也不会伪造一个审批结论。
+    private func resolvePermissionsOnClaudeTurnEnd(_ message: DIMessage) {
+        guard ["Stop", "SubagentStop"].contains(message.nativeEvent ?? ""),
+              let session = sessionById(message.sessionId) else { return }
+        let originAgentID = message.nativeAgentId
+        // 子代理结束必须带 agent_id；缺失时无法证明属于谁，保留租约兜底。
+        if message.nativeEvent == "SubagentStop", originAgentID == nil { return }
+        var resolved = false
+
+        if let current = session.pendingPermission,
+           current.requestingAgent == .claudeCode,
+           current.originAgentID == originAgentID {
+            recordApprovalDecision(current, session: session, decision: .nativeTurnEnded)
+            current.cancel?()
+            session.pendingPermission = nil
+            resolved = true
+        }
+
+        let queued = session.pendingPermissionQueue.filter {
+            $0.requestingAgent == .claudeCode && $0.originAgentID == originAgentID
+        }
+        if !queued.isEmpty {
+            session.pendingPermissionQueue.removeAll {
+                $0.requestingAgent == .claudeCode && $0.originAgentID == originAgentID
+            }
+            for request in queued {
+                recordApprovalDecision(request, session: session, decision: .nativeTurnEnded)
+                request.cancel?()
+            }
+            resolved = true
+        }
+
+        guard resolved else { return }
+        promoteQueuedPermissionIfNeeded(session)
+        if session.pendingPermission != nil {
+            session.status = .waitingPermission
+        } else if session.pendingQuestion != nil {
+            session.status = .waitingAnswer
+        } else if session.pendingPlanReview != nil {
+            session.status = .waitingPlanReview
+        } else {
+            session.status = .completionUnconfirmed
+            session.currentTool = nil
+        }
+        selectNextInteraction()
+        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+    }
+
     private func cancelPendingInteractions(_ session: AgentSession) {
+        if let request = session.pendingPermission {
+            recordApprovalDecision(request, session: session, decision: .cancelled)
+        }
         session.pendingPermission?.cancel?()
+        session.pendingPermissionQueue.forEach { request in
+            recordApprovalDecision(request, session: session, decision: .cancelled)
+            request.cancel?()
+        }
         session.pendingQuestion?.cancel?()
         session.pendingPlanReview?.cancel?()
         session.pendingPermission = nil
+        session.pendingPermissionQueue.removeAll()
         session.pendingQuestion = nil
         session.pendingPlanReview = nil
         if focusedInteraction?.sessionID == session.id { focusedInteraction = nil }
@@ -2075,6 +2395,48 @@ final class SessionManager {
             recordTaskAttention(TaskAttentionEvent(sessionID: session.id, kind: .completion,
                 completedAt: session.completedAt))
         }
+    }
+
+    /// 记录一次已经送达的审批决定。审计失败不影响 socket 回执。
+    private func recordApprovalDecision(_ request: PendingPermission, session: AgentSession,
+                                        decision: ApprovalAuditDecision, at date: Date = Date(),
+                                        toolInput: String? = nil) {
+        guard let store = approvalAuditStore else { return }
+        let latency = Int(max(0, date.timeIntervalSince(request.createdAt)) * 1000)
+        guard let record = store.append(
+            sessionID: session.id,
+            agentType: session.agentType.rawValue,
+            tool: request.tool,
+            originAgentID: request.originAgentID,
+            nativeRequestID: request.nativeRequestId,
+            decision: decision,
+            latencyMilliseconds: latency,
+            toolInput: toolInput ?? request.toolInput
+        ) else { return }
+        let existing = approvalAuditCache[session.id] ?? []
+        approvalAuditCache[session.id] = Array(([record] + existing).prefix(5))
+        NotificationCenter.default.post(name: .xislandApprovalAuditDidChange, object: nil)
+    }
+
+    /// 读取当前会话最近的审批决定；无账本或隔离运行时返回空。
+    func approvalAuditRecords(for session: AgentSession, limit: Int = 3) -> [ApprovalAuditRecord] {
+        if let cached = approvalAuditCache[session.id] {
+            return Array(cached.prefix(limit))
+        }
+        guard let store = approvalAuditStore else { return [] }
+        let records = store.records(sessionID: session.id, limit: limit)
+        approvalAuditCache[session.id] = records
+        return records
+    }
+
+    /// 读取全局账本最近的记录；供审批历史页使用。
+    func approvalAuditRecords(limit: Int = 200) -> [ApprovalAuditRecord] {
+        approvalAuditStore?.records(limit: limit) ?? []
+    }
+
+    /// 校验全局账本的哈希链；无账本时返回 unavailable，不伪装成通过。
+    func approvalAuditVerification() -> ApprovalAuditVerification {
+        approvalAuditStore?.verify() ?? .unavailable
     }
 
     /// 每轮完成时保存地图快照，供下一轮审批时对比节点变化。
@@ -2204,6 +2566,7 @@ final class SessionManager {
             toRemove.formUnion(completedSessions[20...].map(\.id))
         }
         if !toRemove.isEmpty {
+            for id in toRemove { forgetSessionState(id) }
             sessions.removeAll { toRemove.contains($0.id) }
             // 会话被淘汰后必须同步伴端，否则手机上会一直显示已经消失的会话。
             publishToCompanion()
@@ -2224,8 +2587,96 @@ final class SessionManager {
         planAttentionNativeIDs = planAttentionNativeIDs.filter { activeIds.contains($0.key) }
     }
 
+    /// 记录 PreToolUse 的 tool_use_id、工具名、参数哈希和子代理来源。
+    /// 只有真正开始执行的调用才进入索引；会话结束或超过 10 分钟会丢失。
+    private func recordToolIntent(_ message: DIMessage, session: AgentSession) {
+        guard message.nativeMessageReplay != true,
+              let callID = message.toolCallId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !callID.isEmpty, callID.utf8.count <= 4096, !callID.utf8.contains(0),
+              let inputHash = message.toolInputHash, !inputHash.isEmpty else { return }
+        let now = Date()
+        var intents = (recentToolIntents[session.id] ?? []).filter {
+            now.timeIntervalSince($0.timestamp) <= Self.toolIntentTTL && $0.toolCallID != callID
+        }
+        intents.append(ToolIntent(
+            tool: message.tool ?? "unknown",
+            inputHash: inputHash,
+            agentID: message.nativeAgentId,
+            toolCallID: callID,
+            timestamp: now
+        ))
+        if intents.count > Self.maxToolIntents {
+            intents.removeFirst(intents.count - Self.maxToolIntents)
+        }
+        recentToolIntents[session.id] = intents
+    }
+
+    /// 唯一匹配时才取出线索；多个同工具同参数的并发子代理不能猜。
+    private func takeToolIntent(sessionID: String, tool: String,
+                                inputHash: String?, agentID: String?) -> ToolIntent? {
+        guard let inputHash, !inputHash.isEmpty else { return nil }
+        let now = Date()
+        var intents = (recentToolIntents[sessionID] ?? []).filter {
+            now.timeIntervalSince($0.timestamp) <= Self.toolIntentTTL
+        }
+        let matches = intents.filter {
+            $0.tool == tool && $0.inputHash == inputHash && $0.agentID == agentID
+        }
+        guard matches.count == 1, let match = matches.first,
+              let index = intents.firstIndex(where: { $0.toolCallID == match.toolCallID }) else {
+            recentToolIntents[sessionID] = intents
+            return nil
+        }
+        let intent = intents.remove(at: index)
+        recentToolIntents[sessionID] = intents
+        return intent
+    }
+
+    /// 权限请求先到、PreToolUse 后到（桥接并发）时，反向补上 tool_use_id。
+    private func associatePendingPermissionWithToolStart(_ session: AgentSession) {
+        if var current = session.pendingPermission, current.nativeToolCallID == nil,
+           let intent = takeToolIntent(sessionID: session.id, tool: current.tool,
+                                       inputHash: current.toolInputHash, agentID: current.originAgentID) {
+            current.nativeToolCallID = intent.toolCallID
+            session.pendingPermission = current
+        }
+        for index in session.pendingPermissionQueue.indices {
+            var queued = session.pendingPermissionQueue[index]
+            guard queued.nativeToolCallID == nil else { continue }
+            guard let intent = takeToolIntent(sessionID: session.id, tool: queued.tool,
+                                              inputHash: queued.toolInputHash,
+                                              agentID: queued.originAgentID) else { continue }
+            queued.nativeToolCallID = intent.toolCallID
+            session.pendingPermissionQueue[index] = queued
+        }
+    }
+
+    /// 工具真的执行完成（成功或失败）是“原生提示已经放行”的执行证据。
+    /// 只在 tool_use_id 精确匹配当前请求时清卡；绝不按会话一把清空。
+    private func resolveNativeExecutedPermission(_ message: DIMessage, session: AgentSession) {
+        guard message.nativeMessageReplay != true,
+              let callID = message.toolCallId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !callID.isEmpty,
+              let request = session.pendingPermission,
+              request.nativeToolCallID == callID else { return }
+
+        recordApprovalDecision(request, session: session, decision: .nativeResolved)
+        request.cancel?()
+        session.pendingPermission = nil
+        promoteQueuedPermissionIfNeeded(session)
+        if session.pendingPermission == nil {
+            session.status = session.pendingQuestion != nil ? .waitingAnswer
+                : session.pendingPlanReview != nil ? .waitingPlanReview : .active
+        }
+        selectNextInteraction()
+        publishToCompanion()
+        AppDelegate.shared?.refreshDiagnostics(islandState: diagnosticsIslandState)
+    }
+
     private func handleToolStart(_ message: DIMessage) {
         let session = findOrCreateSession(message)
+        recordToolIntent(message, session: session)
+        associatePendingPermissionWithToolStart(session)
         if let id = message.toolCallId, let index = session.events.firstIndex(where: { $0.toolCallId == id }) {
             if message.nativeEvent == "acp" || message.nativeEvent == "continue_snapshot" {
                 session.updateEvent(at: index) { $0.tool = message.tool ?? session.events[index].tool }
@@ -2252,6 +2703,10 @@ final class SessionManager {
 
     private func handleToolComplete(_ message: DIMessage) {
         let session = findOrCreateSession(message)
+        resolveNativeExecutedPermission(message, session: session)
+        if let callID = message.toolCallId {
+            recentToolIntents[session.id]?.removeAll { $0.toolCallID == callID }
+        }
         let preservesTerminalState = session.status == .completed || session.status == .observationUnavailable
         clearStaleInteraction(session)
         let matchingIndex = session.events.lastIndex {
@@ -2565,9 +3020,13 @@ final class SessionManager {
         var clearedInteraction = false
 
         switch session.status {
-        case .waitingPermission where session.pendingPermission?.nativeRequestId == nil:
+        case .waitingPermission where session.pendingPermission?.nativeRequestId == nil
+            && session.pendingPermission?.toolInputHash == nil
+            && session.pendingPermission?.nativeToolCallID == nil:
             session.pendingPermission?.cancel?()
+            session.pendingPermissionQueue.forEach { $0.cancel?() }
             session.pendingPermission = nil
+            session.pendingPermissionQueue.removeAll()
             session.status = .active
             clearedInteraction = true
         case .waitingAnswer where session.pendingQuestion?.nativeRequestId == nil:
@@ -2741,13 +3200,17 @@ final class SessionManager {
     private func removeIndexForSession(_ sessionId: String) {
         sessionIndex.removeValue(forKey: sessionId)
         suffixCache.removeValue(forKey: sessionId)
+        recapInFlight.remove(sessionId)
+        SessionSummarizer.forget(sessionId)
     }
 
     /// 会话完成时异步生成一次 LLM 摘要；无密钥或失败时静默跳过，卡片回退本地归纳。
     private func scheduleLLMRecap(for session: AgentSession) {
-        guard SessionSummarizer.isAvailable else { return }
+        guard SessionSummarizer.isAvailable, !recapInFlight.contains(session.id) else { return }
         let sessionID = session.id
+        recapInFlight.insert(sessionID)
         Task { @MainActor [weak self] in
+            defer { self?.recapInFlight.remove(sessionID) }
             guard let self, let target = self.sessionById(sessionID),
                   let recap = await SessionSummarizer.summarize(target) else { return }
             target.recapText = recap
@@ -2757,9 +3220,11 @@ final class SessionManager {
 
     /// 手动生成摘要：用于已完成但没有摘要的旧会话。
     func generateRecap(for session: AgentSession) {
-        guard SessionSummarizer.isEnabled else { return }
+        guard SessionSummarizer.isAvailable, !recapInFlight.contains(session.id) else { return }
         let sessionID = session.id
+        recapInFlight.insert(sessionID)
         Task { @MainActor [weak self] in
+            defer { self?.recapInFlight.remove(sessionID) }
             guard let self, let target = self.sessionById(sessionID) else { return }
             if let recap = await SessionSummarizer.summarize(target, force: true) {
                 target.recapText = recap
@@ -2771,6 +3236,14 @@ final class SessionManager {
     /// 后台静默回填：启动后先等一会儿，再串行把历史会话的摘要补齐。
     private var recapSchedulerTask: Task<Void, Never>?
     private var recapBackfillTask: Task<Void, Never>?
+    private var recapInFlight = Set<String>()
+
+    private func forgetSessionState(_ sessionID: String) {
+        recapInFlight.remove(sessionID)
+        recentToolIntents.removeValue(forKey: sessionID)
+        approvalAuditCache.removeValue(forKey: sessionID)
+        SessionSummarizer.forget(sessionID)
+    }
 
     func startRecapBackfillScheduler() {
         guard recapSchedulerTask == nil else { return }
@@ -2782,6 +3255,14 @@ final class SessionManager {
                 try? await Task.sleep(nanoseconds: 600_000_000_000)
             }
         }
+    }
+
+    /// 关闭自动摘要后取消后台循环；再次开启时重新启动。
+    func stopRecapBackfillScheduler() {
+        recapSchedulerTask?.cancel()
+        recapSchedulerTask = nil
+        recapBackfillTask?.cancel()
+        recapBackfillTask = nil
     }
 
     /// 串行处理，每次最多 20 个，避免长时间占满模型与 GPU。
@@ -2863,6 +3344,16 @@ final class SessionManager {
 
     // MARK: - 任务提醒
 
+    private static let maxQueuedPermissions = 16
+
+    private static func samePermissionRequest(_ lhs: PendingPermission, as rhs: PendingPermission) -> Bool {
+        sameNativeRequest(lhs.nativeRequestId, rhs.nativeRequestId)
+            && lhs.requestingAgent == rhs.requestingAgent && lhs.tool == rhs.tool
+            && lhs.description == rhs.description && lhs.diff == rhs.diff
+            && lhs.filePath == rhs.filePath && lhs.toolInput == rhs.toolInput
+            && lhs.originAgentID == rhs.originAgentID
+    }
+
     private static func sameNativeRequest(_ lhs: String?, _ rhs: String?) -> Bool {
         guard let lhs, !lhs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         return lhs == rhs
@@ -2894,9 +3385,15 @@ final class SessionManager {
             return session.status == .completed && session.completionNeedsReview
                 && session.completedAt == event.completedAt && !session.hasPendingInteraction
         case .permission:
-            if event.requestID != nil, let pending = session.pendingPermission {
-                return Self.sameNativeRequest(event.nativeRequestID, pending.nativeRequestId)
-                    || event.requestID == pending.id
+            if event.requestID != nil {
+                if let pending = session.pendingPermission,
+                   Self.sameNativeRequest(event.nativeRequestID, pending.nativeRequestId)
+                    || event.requestID == pending.id {
+                    return true
+                }
+                return session.pendingPermissionQueue.contains {
+                    Self.sameNativeRequest(event.nativeRequestID, $0.nativeRequestId) || event.requestID == $0.id
+                }
             }
             guard event.requestID == nil, !session.hasPendingInteraction,
                   session.status == .waitingPermission else { return false }

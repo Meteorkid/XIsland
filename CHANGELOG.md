@@ -1,5 +1,52 @@
 # Changelog
 
+## v2.3.0 (2026-11-27)
+
+### 新增
+
+- **豆包工作接入**：豆包工作没有公开的原生 hooks，新增 `doubao-work-mcp` 连接器入口——在客户端「本地电脑」模式添加 STDIO 自定义连接器后，显式调用 `xisland_activity` 的活动会显示在岛上。仅观察，不接管审批、问答与取消；连接器断开即结束，不推断任务完成。可在设置页准备 `connector.json` 与操作说明。
+- **Cursor shell / MCP 审批**：`beforeShellExecution` 与 `beforeMCPExecution` 从固定放行的观察 hook 改为可等待岛上裁决的权限 hook；经本机 Cursor 3.15.6 源码核对，宿主只消费 `deny` / `ask`，因此岛上只提供「拒绝」与「交回原生确认」，不再伪造 `allow` 批准。
+- **并发审批队列**：参考 AgentBar 的 request/answer 队列语义，同一会话的多个权限请求不再互相取消；当前请求处理后队列中的下一个自动晋级，队列上限 16，重复/溢出请求交回客户端原生流程。
+- **子代理审批归因**：Claude 子代理 `PermissionRequest` 的 `agent_id` 现在随请求进入岛上，审批卡显示「子代理 · agent-id」，请求仍归属父会话；不同子代理的同名工具请求不再被误去重。
+- **审批租约**：每个权限请求带 310 秒租约，与 hook 的 300 秒超时对齐；过期当前项和队列项自动清理，未过期项继续晋级，避免 bridge 退出后卡片永久悬挂。
+- **审批审计账本**：参考 OpenLeash / gate4ai / open-guardrail 的 decision evidence，新增 `ApprovalAuditStore` 向 `~/.xisland/approval-audit.jsonl` 追加带 SHA-256 前序哈希的决定记录，覆盖批准、拒绝、交回原生、超时、原生已处理和取消。记录只存 `toolInput` 哈希，不复制完整命令；审批卡和会话详情显示当前会话最近决定。
+- **全局审批记录页**：参考 Agent Belay / OpenLeash 的审批历史与审计导出，新增偏好设置「审批记录」页，读取最近 500 条全量记录、按决定过滤、按工具/会话/来源搜索，显示 SHA-256 链完整性；支持完整原始 JSONL 导出和 Finder 定位。链校验只证明当前文件自洽，不冒充外部防篡改证据。
+- **轮次结束清卡**：参考 AgentBar 的 stop 生命周期，Claude `Stop` / `SubagentStop` 到达时按 `originAgentID` 清理当前与队列中的 Claude 权限请求，审计记 `native_turn_ended`；并发子代理和 Cursor 请求互不误清。它只证明本轮原生提示已关闭，不区分允许、拒绝或取消。
+- **原生执行回执清卡**：参考 AgentBar 的 `resolved` 生命周期，用 Claude `PreToolUse` 的 `tool_use_id` 和规范化 `tool_input` 哈希关联无 ID 的 `PermissionRequest`；对应 `PostToolUse` / `PostToolUseFailure` 到达时记 `nativeResolved` 并精确清卡。只允许唯一匹配，歧义和无关工具完成不会误清。
+- **超时与放弃回退**：参考 claude-permission-popup，Claude Code/Codex/Qwen/Qoder/Trae 在超时或用户放弃时输出空决策并 exit 0，Cursor 输出 `permission: ask`；无人裁决时绝不静默批准或静默拒绝。
+- **Claude 兼容计划审查**：Claude Code、Qwen Code、Qoder CN、Trae 的 `ExitPlanMode` PermissionRequest 映射为计划审查；批准时回传 `updatedInput`，拒绝时回传反馈，避免只显示“允许”却仍弹原生确认。
+- **拒绝原因回传**：参考 Claude `PermissionRequest` 官方 `decision.message` 合同与 `jetbrains-cc-gui` 的 deny-with-feedback 链路，Claude Code 审批卡新增「拒绝并说明」内联输入；原因经 `DIMessage.denyMessage`、socket 与 bridge 写回 `decision.message`，空白原因退回普通拒绝，上限 1000 字符且拒绝 NUL。只对 Claude Code 生效；Cursor 无已核实 message 合同，继续 deny-only，不伪造支持；原因不写入本地审计账本。
+- **修改参数后批准**：参考 Claude `PermissionRequest` 官方 `decision.updatedInput` 合同与 Agent SDK 的 Approve with changes，Claude Code 审批卡新增「修改后批准」。Bash 只编辑 `command` 并保留 `description` 等字段，其他工具编辑完整 JSON 对象；参数经 `DIMessage.updatedInput`、socket 与 bridge 写入 allow 决策，Claude 执行前仍会重新按 deny/ask 规则评估。非法 JSON、NUL、超过 64,000 UTF-8 字节或非对象时保持卡片，绝不降级为批准原始命令；只对已核实合同的 Claude Code 开放，审计 `payloadHash` 记录实际执行的编辑后参数。真实 TUI 端到端待验。
+- **拒绝并停止本轮**：参考 Claude `PermissionRequest` 官方 `decision.interrupt` 合同，Claude Code 审批卡新增「拒绝并停止」与「拒绝并说明 → 同时停止本轮」。`interrupt` 只在 deny 分支写入，allow 分支绝不携带；有意同时使用 `message` 和 `interrupt`。只对 Claude Code 开放，其他来源不接受中断并保持卡片；它只停止 Claude 当前回合，不承诺终止后台子代理、后台 Bash 任务或已脱离 shell 的进程。真实 TUI 端到端待验。
+- **本会话允许精确 Bash 命令**：参考 AgentBar / agent-hooks 的 Always Allow 交互，但只做 Claude Code 会话内的显式授权。审批卡新增「本会话允许此命令」，经 `decision.updatedPermissions` 写入一条 `addRules`：`behavior=allow`、`destination=session`、单条 `Bash` 精确命令。命令必须完全相同、无 `*`、无换行、非空且不超过 2,000 字节；非 Bash、非 Claude、子代理请求或非法规则保持卡片，不降级为普通批准。子代理审批卡不显示该入口，避免子代理替父会话扩权。不写 `localSettings` / `projectSettings` / `userSettings`，不跨会话、不自动裁决；审计仍只记原始 `toolInput` 哈希和 approved，不复制规则正文。真实 TUI 端到端待验。
+- **文件改动内联预览**：参考 Cline（Apache-2.0）和 Claude Code Desktop/VS Code Manual 模式的“先看 diff 再接受”，`Edit` / `Write` / `MultiEdit` / `NotebookEdit` 审批卡从 `tool_input` 生成只读预览：红色旧行、绿色新行、`+N −M` 计数、`replace_all` 和多修改分块。请求到达时缓存解析结果，不读取目标文件、不改变 allow/deny；`Write` 明确提示展示完整写入内容且可能覆盖现有文件。输入限制为 200,000 字节、8 个修改块、每侧 12 行、单行 400 字符，超出只显示截断预览，完整原文仍在工具参数中。
+- **Antigravity 接入**：按官方 hooks 文档写入 `~/.gemini/config/hooks.json` 的命名分组 `xisland`，覆盖 SessionStart / PreInvocation / PreToolUse / PostToolUse / Stop 五类事件。PreToolUse 只返回中性 `allow`，不做岛上审批；Stop 一律标「完成未确认」，因为官方没有 SessionEnd。
+- **Kilo Code 接入**：Kilo Code（OpenCode 内核的 VS Code 扩展与 CLI）没有 shell hooks，新增原生全局插件 `~/.config/kilo/plugin/xisland.js`，上报会话、提示、工具、助手文本与等待状态；插件只观察，权限、问答与取消留在 Kilo。设置页自动写入，需重启宿主或重载 VS Code 窗口。
+- **更精确的会话跳转**：hook 侧沿父进程树解析控制 TTY，新增 Ghostty、Warp 与 tmux（切换 client/session/window/pane 后聚焦外层标签）适配；Claude Desktop 的 Code/Cowork 用应用自己的 `local_*` 索引换 `claude://` 链接；Claude Code VS Code 仅在已完成状态使用官方会话链接（上游 #65542 尚未修复“已打开且忙碌”会被新建空白对话），VS Code 集成终端由 1.1.0+ 伴生扩展按 tty/pid/唯一 cwd 显示已有终端；其余 IDE 仍为项目级打开，并在 AX 树里只点击唯一匹配的会话行/标签，同名或不可按下时放弃而不是猜。
+- **既有插件归属收口**：Kilo 插件进入统一的源归属校验，用户改过的文件在修复/卸载时保留。
+
+### 变更
+
+- **合并与改名后的重新适配**：Windsurf 应用（2026-06-02 更名 Devin Desktop）归入 Devin Desktop；Amazon Q CLI（2025-11-17 更名 Kiro CLI）改走 Kiro；TRAE Work（2026-08-25 并入豆包工作）改走豆包工作；通义灵码更名 Qoder CN。
+- **停用入口**：Windsurf、Continue（2026-06 被 Cursor 收购）、Roo Code（2026-05-15 停运）、Amazon Q 旧包装器不再出现在接入列表，类型本身保留以读取历史会话；接入说明指向 Cline / Cursor / Kiro / Devin Desktop 等替代入口。
+- **降级保留**：Gemini CLI 只保留企业版与付费 API Key（个人版 2026-06-18 停止）；Cody 保留到 2027-01-31 停止支持；Tabnine 自动配置只覆盖被 Tricentis 收购前的旧版 CLI，6.x 按 OpenCode 分支核对。
+- **接入数量**：35 个来源条目中 30 个可接入、5 个已停用保留历史（此前为 34 / 29）。
+- **历史库迁移到应用专属目录**：生产历史库从通用 `~/Library/Application Support/default.store` 迁到 `~/Library/Application Support/XIsland/XIsland.store`。启动前用 SQLite 在线备份生成含 WAL 的独立文件，`PRAGMA integrity_check` 通过后原子替换；旧库仅在新库校验成功后删除，迁移失败时保留可读取的旧库。旧 `HistoryBackups` 合并进应用目录，`default.store.pre-*` 恢复点改名为 `XIsland.store.pre-*`。
+
+### 修复
+
+- **测试目标无法编译**：`TaskAttentionBounceTests` 仍断言已移除的 `Pose.rotation`，`TerminalAppDetectionTests` / `SessionJumpRoutingTests` 的 `SessionSnapshot` 缺少 `title`；按当前源码修正后测试目标恢复可编译。
+- **Antigravity 应用标识**：`TerminalJumpManager` 原先使用的 `com.antigravity.Antigravity` 与实际安装包 `com.google.antigravity` 不符，已按已核实的 bundle id 修正。
+- **AF_UNIX 短连接丢帧**：对端写完即关闭时，macOS 对 `SO_RCVTIMEO` 返回 `EINVAL`；`DIBridge.readFramedMessage` 在读取前就退出，审批响应与观察消息会整帧丢失。改用 `poll` 承担超时并以 `MSG_DONTWAIT` 读取；`VSCodeObservationCommand` 的关闭等待同样去掉该选项，补 socketpair 回归测试。
+- **Cursor 权限 hook 被观察模板覆盖**：旧配置把 `beforeShellExecution` / `beforeMCPExecution` 映射为 `preToolUse`，并 `>/dev/null` 丢弃 bridge 输出后固定放行；新配置保留 bridge 的等待与权限 JSON，并只在连接失败时回 `permission: ask`。
+- **ExitPlanMode 批准被原生确认覆盖**：PermissionRequest 的 allow 缺少 `updatedInput` 时 Claude Code 会忽略 hook 决定；现按原始 `tool_input` 回传，缺字段时不再假装批准。
+- **历史恢复点无上限增长**：启动时按总大小修剪恢复点，默认保留 2GB；最新一份无论多大都保留，其余按修改时间从旧到新删除。SQLite 文件至少 50MB 且 freelist 至少 256 页时才 `VACUUM`，拿不到独占锁则跳过，避免每次启动重写全库。长期未结束的 active / idle / error 会话在超过 `max(保留天数 × 3, 90)` 天后清理，等待交互的会话除外。
+- **自动更新只验证签名自洽**：`codesign --verify` 不能区分 ad-hoc 与可信发布。更新包现在必须带 Team ID，且与 Info.plist 的 `XIslandUpdateTeamIdentifier` 或当前运行 App 的 Team ID 一致；没有可信 Team ID 时 fail closed。安装脚本同样执行该校验，不留空守卫绕过路径。发布构建可用 `X_ISLAND_UPDATE_TEAM_ID` 注入可信值。
+- **UI 测试与生产 App 冲突**：`test-ui.sh` 默认拒绝在生产 X Island 正在运行时启动，避免两个实例争抢刘海窗口导致超时；仅在显式设置 `X_ISLAND_UI_TEST_ALLOW_RUNNING_APP=1` 时放行。
+- **卸载残留清理**：Homebrew Cask zap 增加旧 `default.store*`、旧 `HistoryBackups` 与 `~/Library/Application Support/XIsland`，覆盖迁移前后的路径。
+
+详细内容、限制与验证边界见 [2.3.0 更新说明](docs/releases/2.3.0.md)。
+
 ## v2.2.0 (2026-11-21)
 
 ### 新增

@@ -1,7 +1,9 @@
 import * as crypto from "crypto";
+import { execFile } from "child_process";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
+import { parseFocusRequest, selectTerminal, ttyFromPSOutput, TerminalCandidate } from "./focus";
 import { Agent, observeTasks, TaskAPI } from "./task-observer";
 import { ObservationTransport } from "./transport";
 
@@ -11,6 +13,20 @@ const targets: { id: string; version: string; agent: Agent; setting: string }[] 
 ];
 let cleanup: (() => Promise<void>) | undefined;
 
+function ttyForPID(pid: number): Promise<string | undefined> {
+    return new Promise(resolve => {
+        execFile("/bin/ps", ["-o", "tty=", "-p", String(pid)], { timeout: 2000 }, (error, stdout) => {
+            resolve(error ? undefined : ttyFromPSOutput(String(stdout)));
+        });
+    });
+}
+
+function terminalCWD(terminal: vscode.Terminal): string | undefined {
+    const cwd = (terminal.creationOptions as { cwd?: string | vscode.Uri }).cwd;
+    if (typeof cwd === "string") return cwd;
+    return cwd && typeof cwd === "object" && "fsPath" in cwd ? cwd.fsPath : undefined;
+}
+
 export function activate(context: vscode.ExtensionContext): void {
     cleanup?.();
     let stopped = false;
@@ -18,15 +34,46 @@ export function activate(context: vscode.ExtensionContext): void {
     const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     const attached = new Map<Agent, { api: TaskAPI; dispose(): void }>();
     let connection = "等待原生任务事件";
+    let focusMessage = "";
     let problems: string[] = [];
     const render = () => {
         if (stopped) return;
         status.text = `$(pulse) X Island · ${attached.size} 来源`;
-        status.tooltip = [connection, ...problems, "只观察已核实版本的侧栏任务；审批和回答请在原应用处理。"].join("\n");
+        status.tooltip = [connection, focusMessage, ...problems, "只观察已核实版本的侧栏任务；审批和回答请在原应用处理。"].join("\n");
     };
     const transport = new ObservationTransport(path.join(os.homedir(), ".xisland", "di.sock"), value => {
         connection = value; render();
     });
+    // 只显示已经存在的终端。URI 可以来自本机 X Island，也可以来自任何网页；
+    // 因此这里不接受“新建终端”“发送命令”或任意 shell 参数，只接受 tty/pid/cwd
+    // 的唯一定位，匹配不到就保持原状。
+    const focusTerminal = async (uri: vscode.Uri): Promise<void> => {
+        const request = parseFocusRequest(uri.path, uri.query);
+        if (!request) { focusMessage = "忽略无效的终端聚焦请求"; render(); return; }
+        if (process.platform !== "darwin" || vscode.env.remoteName) {
+            focusMessage = "仅在本地 macOS 窗口定位集成终端"; render(); return;
+        }
+        const terminals = [...vscode.window.terminals];
+        const candidates: TerminalCandidate[] = await Promise.all(terminals.map(async (terminal, index) => {
+            let pid: number | undefined;
+            try { pid = await terminal.processId; } catch { /* 扩展终端可能没有 PID。 */ }
+            return {
+                index, name: terminal.name, pid,
+                tty: pid === undefined ? undefined : await ttyForPID(pid),
+                cwd: terminalCWD(terminal),
+            };
+        }));
+        const selected = selectTerminal(candidates, request);
+        if (selected === undefined) {
+            focusMessage = "未找到唯一匹配的集成终端；未新建或切换其他标签"; render(); return;
+        }
+        terminals[selected].show(false);
+        focusMessage = `已定位终端「${terminals[selected].name}」`;
+        render();
+    };
+    const focusRegistration = typeof vscode.window.registerUriHandler === "function"
+        ? vscode.window.registerUriHandler({ handleUri: uri => { void focusTerminal(uri); } })
+        : undefined;
     // 持久来源命名空间，不以本次窗口启动时间或工作目录伪造原生 taskId。
     const source = crypto.createHash("sha256").update(JSON.stringify([
         vscode.env.machineId, vscode.env.appName, context.globalStorageUri.toString(),
@@ -68,6 +115,7 @@ export function activate(context: vscode.ExtensionContext): void {
     cleanup = () => {
         if (stopped) return drained ?? Promise.resolve();
         stopped = true; clearInterval(timer); changes.dispose(); settings.dispose();
+        focusRegistration?.dispose();
         for (const [agent, entry] of attached) { transport.discard(agent); entry.dispose(); }
         attached.clear(); status.dispose();
         drained = transport.drain();

@@ -63,6 +63,11 @@ public enum DISocketConfig {
     public static var socketPath: String {
         socketDir + "/di.sock"
     }
+
+    /// Darwin 的 `sun_path` 为 104 字节且含结尾 NUL；超长路径必须显式失败，不能截断。
+    public static func isValidSocketPath(_ path: String) -> Bool {
+        path.hasPrefix("/") && !path.contains("\0") && path.utf8.count < 104
+    }
 }
 
 // MARK: - 消息类型
@@ -147,6 +152,13 @@ public struct DIMessage: Codable, Sendable {
     // 会话 / 终端上下文
     public var terminal: String?
     public var termSessionId: String?
+    /// 发起 hook 的进程（通常是 Agent 或其 shell）；用于在没有终端环境变量时反查 TTY。
+    public var processId: Int32?
+    /// tmux 等复用器外层宿主的终端身份；`termSessionId` 仍表示内层 pane。
+    public var hostTermSessionId: String?
+    /// tmux server socket captured from `$TMUX`; keeps multi-server setups from
+    /// sending `select-pane` to the default server by accident.
+    public var tmuxSocketPath: String?
     public var workingDir: String?
     public var prompt: String?
 
@@ -154,6 +166,9 @@ public struct DIMessage: Codable, Sendable {
     public var toolCallId: String?
     public var tool: String?
     public var toolInput: String?
+    /// `tool_input` 规范化后的 SHA-256；用于把缺少 tool_use_id 的权限请求
+    /// 与 PreToolUse 的 tool_use_id 对齐，不保存原始参数。
+    public var toolInputHash: String?
     public var toolResult: String?
     public var linesAdded: Int?
     public var linesRemoved: Int?
@@ -167,6 +182,14 @@ public struct DIMessage: Codable, Sendable {
     public var diff: String?
     public var filePath: String?
     public var approved: Bool?
+    /// Claude PermissionRequest 的 deny.message；只用于拒绝，不参与允许分支。
+    public var denyMessage: String?
+    /// Claude PermissionRequest 的 decision.updatedInput；只用于允许，必须是一个 JSON 对象字符串。
+    public var updatedInput: String?
+    /// Claude PermissionRequest 的 decision.interrupt；只用于拒绝，true 表示同时停止本轮。
+    public var interrupt: Bool?
+    /// Claude PermissionRequest 的 decision.updatedPermissions；只用于允许，内容是 JSON 数组字符串。
+    public var updatedPermissions: String?
 
     // 问答
     public var questionText: String?

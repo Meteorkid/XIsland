@@ -30,7 +30,7 @@ final class TaskAttentionBounceTests: XCTestCase {
         for progress in [0.0, 0.5, 1.0] {
             let pose = TaskAttentionBounceFrame.pose(progress: progress, size: 24)
             XCTAssertEqual(pose.lift, 0, accuracy: 0.0001)
-            XCTAssertEqual(pose.rotation, 0, accuracy: 0.0001)
+            XCTAssertEqual(pose.scale, 1, accuracy: 0.0001)
         }
         let first = TaskAttentionBounceFrame.pose(progress: 0.25, size: 24)
         let second = TaskAttentionBounceFrame.pose(progress: 0.75, size: 24)
@@ -46,7 +46,7 @@ final class TaskAttentionBounceTests: XCTestCase {
                 let pose = TaskAttentionBounceFrame.pose(progress: Double(step) / 100, size: size)
                 XCTAssertLessThanOrEqual(pose.lift, 0)
                 XCTAssertGreaterThanOrEqual(pose.lift, -min(5, size * 0.16))
-                XCTAssertLessThanOrEqual(abs(pose.rotation), 5)
+                XCTAssertLessThanOrEqual(pose.scale, 1.2)
             }
         }
     }

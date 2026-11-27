@@ -12,7 +12,7 @@ final class CursorHookAdapterTests: XCTestCase {
         ]]
         let merged = try CursorHookConfiguration.merging(into: original, bridgePath: "/bin/di-bridge")
         let hooks = try XCTUnwrap(merged["hooks"] as? [String: Any])
-        XCTAssertEqual((hooks["beforeShellExecution"] as? [[String: Any]])?.count, 1)
+        XCTAssertEqual((hooks["beforeShellExecution"] as? [[String: Any]])?.count, 2)
         XCTAssertEqual(merged["custom"] as? Bool, true)
         XCTAssertTrue(CursorHookConfiguration.isConfigured(in: merged, bridgePath: "/bin/di-bridge"))
         XCTAssertEqual(try json(merged), try json(CursorHookConfiguration.merging(into: merged, bridgePath: "/bin/di-bridge")))
@@ -86,6 +86,58 @@ final class CursorHookAdapterTests: XCTestCase {
         }
         XCTAssertEqual(try normalize("sessionEnd", fields: ["session_id": "conversation"]).observedState, "completed")
     }
+
+    func testShellAndMCPPermissionHooksBecomeInteractiveRequests() throws {
+        let shell = try normalize("beforeShellExecution", fields: ["command": "rm -rf build"])
+        XCTAssertEqual(shell.type, .permissionRequest)
+        XCTAssertEqual(shell.tool, "Shell")
+        XCTAssertEqual(shell.permDescription, "rm -rf build")
+        XCTAssertNotNil(shell.toolInput)
+
+        let mcp = try normalize("beforeMCPExecution", fields: [
+            "tool_name": "github__create_issue",
+            "tool_input": ["title": "Release"],
+            "mcp_server_name": "github",
+        ])
+        XCTAssertEqual(mcp.type, .permissionRequest)
+        XCTAssertEqual(mcp.tool, "github__create_issue")
+        XCTAssertEqual(mcp.permDescription, "github__create_issue\n\ngithub\n\n{\"title\":\"Release\"}")
+        XCTAssertEqual(mcp.toolInput, "{\"title\":\"Release\"}")
+    }
+
+    func testCursorPermissionApprovalDegradesToAskBecauseHostOnlyConsumesDeny() throws {
+        for approved in [true, false] {
+            for event in ["beforeShellExecution", "beforeMCPExecution"] {
+                let response = try CursorHookAdapter.permissionResponse(hookType: event, approved: approved)
+                XCTAssertEqual(response.exitCode, 0)
+                let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(try XCTUnwrap(response.stdout).utf8)) as? [String: Any])
+                XCTAssertEqual(root["permission"] as? String, approved ? "ask" : "deny")
+                XCTAssertNil(root["decision"])
+            }
+        }
+    }
+
+    func testAbstentionFallsBackToNativePromptInsteadOfDenyingSilently() {
+        XCTAssertEqual(DIBridge.abstentionOutput(agentType: "cursor", messageType: .permissionRequest),
+                       #"{"permission":"ask"}"#)
+        XCTAssertEqual(DIBridge.abstentionOutput(agentType: "claude_code", messageType: .permissionRequest), "{}")
+        XCTAssertEqual(DIBridge.abstentionOutput(agentType: "qwen", messageType: .question), "{}")
+        XCTAssertEqual(DIBridge.abstentionOutput(agentType: "opencode", messageType: .permissionRequest,
+                                                 adapter: "opencode_plugin"), "{}")
+        XCTAssertNil(DIBridge.abstentionOutput(agentType: "devin", messageType: .permissionRequest))
+    }
+
+    func testPermissionEventsAreConfiguredWithoutDiscardingBridgeOutput() throws {
+        let config = try CursorHookConfiguration.merging(into: [:], bridgePath: "/bin/di-bridge")
+        let hooks = try XCTUnwrap(config["hooks"] as? [String: [[String: Any]]])
+        for event in CursorHookConfiguration.permissionEvents {
+            let command = try XCTUnwrap(hooks[event]?.first?["command"] as? String)
+            XCTAssertTrue(command.contains("--hook \(event)"))
+            XCTAssertFalse(command.contains(">/dev/null"))
+            XCTAssertEqual((hooks[event]?.first?["timeout"] as? NSNumber)?.intValue, 300)
+        }
+    }
+
 
     func testNativeFailureAndUserCancellationRemainDistinct() throws {
         let payload: [String: Any] = ["tool_name": "Shell", "tool_use_id": "call", "tool_input": [:], "error_message": "Stopped"]

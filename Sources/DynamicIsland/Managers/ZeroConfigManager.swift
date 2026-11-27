@@ -106,6 +106,17 @@ enum ZeroConfigManager {
             }
             return
         }
+        if agent == .antigravity {
+            let url = URL(fileURLWithPath: home).appendingPathComponent(AntigravityHookConfiguration.relativeConfigPath)
+            do {
+                try HookConfigurationFile.update(at: url, preservingTopLevelKey: AntigravityHookConfiguration.hookName) {
+                    try AntigravityHookConfiguration.merging(into: $0, bridgePath: bridgePath)
+                }
+            } catch {
+                print("[ZeroConfig] Antigravity hook configuration failed: \(error.localizedDescription)")
+            }
+            return
+        }
         if agent == .codeBuddy {
             let url = URL(fileURLWithPath: home).appendingPathComponent(CodeBuddyHookConfiguration.relativeConfigPath)
             do { try HookConfigurationFile.update(at: url) { try CodeBuddyHookConfiguration.merging(into: $0, bridgePath: bridgePath) } }
@@ -129,6 +140,7 @@ enum ZeroConfigManager {
         case .cursor: configureCursor()
         case .trae: configureTrae()
         case .openCode: configureOpenCode()
+        case .kiloCode: configureKiloCode()
         case .qoder: configureQoder()
         case .copilot: configureCopilot()
         case .kimi: configureKimi()
@@ -138,6 +150,8 @@ enum ZeroConfigManager {
         case .hermes: configureHermes()
         case .glm: break // 模型来源尚无独立客户端协议，不生成配置。
         case .workBuddy: break // 独立插件尚未通过客户端验收，不自动写入配置。
+        case .doubaoWork: break // 没有公开 hooks；连接器由用户在客户端插件页手动添加。
+        case .antigravity: break // 已在上面按命名 hook 分组写入 ~/.gemini/config/hooks.json。
         case .aider: configureAider()
         case .devin: configureDevin()
         case .tabnine: configureTabnine()
@@ -491,6 +505,13 @@ enum ZeroConfigManager {
             return KimiHookInstallation.shouldRepair(homeDirectory: homeDirectory, bridgePath: "\(homeDirectory)/.xisland/bin/di-bridge",
                                                       environment: ProcessInfo.processInfo.environment)
         }
+        if agent == .antigravity {
+            let url = URL(fileURLWithPath: homeDirectory)
+                .appendingPathComponent(AntigravityHookConfiguration.relativeConfigPath)
+            guard FileManager.default.fileExists(atPath: url.path),
+                  let config = try? HookConfigurationFile.read(at: url) else { return false }
+            return !AntigravityHookConfiguration.isConfigured(in: config, bridgePath: "\(homeDirectory)/.xisland/bin/di-bridge")
+        }
         let profile = effectiveNativeProfile(for: agent, homeDirectory: homeDirectory)
         let relativePath: String
         if let profile { relativePath = profile.relativeConfigPath }
@@ -545,6 +566,9 @@ enum ZeroConfigManager {
         case .codeBuddy:
             relativePath = CodeBuddyHookConfiguration.relativeConfigPath
             remove = { try CodeBuddyHookConfiguration.removing(from: $0) }
+        case .antigravity:
+            relativePath = AntigravityHookConfiguration.relativeConfigPath
+            remove = { try AntigravityHookConfiguration.removing(from: $0) }
         default:
             return false
         }
@@ -929,6 +953,10 @@ enum ZeroConfigManager {
         OpenCodePluginConfiguration.pluginURL(homeDirectory: home, environment: ProcessInfo.processInfo.environment)
     }
 
+    private static var kiloCodePluginURL: URL {
+        KiloPluginConfiguration.pluginURL(homeDirectory: home, environment: ProcessInfo.processInfo.environment)
+    }
+
     private static func configureOpenCode() {
         let url = openCodePluginURL
         do {
@@ -945,6 +973,21 @@ enum ZeroConfigManager {
         }
     }
 
+
+    private static func configureKiloCode() {
+        let url = kiloCodePluginURL
+        do {
+            let source = try KiloPluginConfiguration.source(bridgePath: bridgePath)
+            try HookConfigurationFile.updateText(at: url) { existing in
+                guard existing.isEmpty || KiloPluginConfiguration.isOwnedSource(existing) else {
+                    throw PluginConfigurationError.userOwnedFile
+                }
+                return source
+            }
+        } catch {
+            print("[ZeroConfig] Kilo Code plugin configuration failed: \(error.localizedDescription)")
+        }
+    }
 
     private static func removeOpenCodeLegacyRegistration(at url: URL) throws {
         // 本地插件目录自动加载，安装/卸载均清理旧版的重复注册。
@@ -1165,7 +1208,10 @@ enum ZeroConfigManager {
         let configPath = customBridgeConfigPath(for: .devin)
         ensureDir((configPath as NSString).deletingLastPathComponent)
 
-        var config = readJSON(configPath) ?? [:]
+        guard var config = readJSONForUpdate(configPath) else {
+            print("[ZeroConfig] Devin config is not valid JSON; refusing to overwrite it")
+            return
+        }
         config["xisland_bridge"] = "~/.xisland/bin/di-bridge"
         config["xisland_agent"] = "devin"
         writeJSON(configPath, config)
@@ -1178,7 +1224,10 @@ enum ZeroConfigManager {
         let configPath = customBridgeConfigPath(for: .tabnine)
         ensureDir((configPath as NSString).deletingLastPathComponent)
 
-        var config = readJSON(configPath) ?? [:]
+        guard var config = readJSONForUpdate(configPath) else {
+            print("[ZeroConfig] Tabnine config is not valid JSON; refusing to overwrite it")
+            return
+        }
         config["xisland_bridge"] = "~/.xisland/bin/di-bridge"
         config["xisland_agent"] = "tabnine"
         writeJSON(configPath, config)
@@ -1213,11 +1262,22 @@ enum ZeroConfigManager {
         return obj
     }
 
+    /// 更新已有配置时区分“文件不存在”和“文件存在但无法解析”。
+    /// 后者返回 nil，调用方必须放弃写入，否则会把用户的 JSONC/损坏配置覆盖成空对象。
+    private static func readJSONForUpdate(_ path: String) -> [String: Any]? {
+        guard FileManager.default.fileExists(atPath: path) else { return [:] }
+        guard let object = readJSON(path) else {
+            print("[ZeroConfig] Refusing to overwrite invalid JSON at \(path)")
+            return nil
+        }
+        return object
+    }
+
     private static func writeJSON(_ path: String, _ dict: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
         else { return }
         guard !Task.isCancelled else { return }
-        try? data.write(to: URL(fileURLWithPath: path))
+        try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
     }
 
     private static func autoConfigKey(for agent: AgentType) -> String {
@@ -1332,8 +1392,18 @@ enum ZeroConfigManager {
             guard let text = try? String(contentsOf: openCodePluginURL, encoding: .utf8),
                   let expected = try? OpenCodePluginConfiguration.source(bridgePath: "\(home)/.xisland/bin/di-bridge") else { return false }
             return text == expected
+        case .kiloCode:
+            guard let text = try? String(contentsOf: kiloCodePluginURL, encoding: .utf8),
+                  let expected = try? KiloPluginConfiguration.source(bridgePath: "\(home)/.xisland/bin/di-bridge") else { return false }
+            return text == expected
         case .qoder:
             // No hook system — always false
+            return false
+        case .antigravity:
+            let path = "\(home)/.gemini/config/hooks.json"
+            guard let config = readJSON(path) else { return false }
+            return AntigravityHookConfiguration.isConfigured(in: config, bridgePath: "\(home)/.xisland/bin/di-bridge")
+        case .doubaoWork:
             return false
         case .copilot:
             return VSCodeHookInstallation.isConfigured(homeDirectory: home, bridgePath: "\(home)/.xisland/bin/di-bridge")
@@ -1465,8 +1535,29 @@ enum ZeroConfigManager {
             } catch {
                 print("[ZeroConfig] OpenCode plugin removal failed: \(error.localizedDescription)")
             }
+        case .kiloCode:
+            do {
+                let text = try String(contentsOf: kiloCodePluginURL, encoding: .utf8)
+                if KiloPluginConfiguration.isOwnedSource(text) {
+                    try Task.checkCancellation()
+                    try FileManager.default.removeItem(at: kiloCodePluginURL)
+                }
+            } catch {
+                print("[ZeroConfig] Kilo Code plugin removal failed: \(error.localizedDescription)")
+            }
         case .qoder:
             // No hook config — nothing to remove
+            break
+        case .antigravity:
+            let url = URL(fileURLWithPath: home).appendingPathComponent(AntigravityHookConfiguration.relativeConfigPath)
+            do {
+                try HookConfigurationFile.update(at: url, preservingTopLevelKey: AntigravityHookConfiguration.hookName) {
+                    try AntigravityHookConfiguration.removing(from: $0)
+                }
+            } catch {
+                print("[ZeroConfig] Antigravity hook removal failed: \(error.localizedDescription)")
+            }
+        case .doubaoWork:
             break
         case .copilot:
             do { try VSCodeHookInstallation.remove(homeDirectory: home) }

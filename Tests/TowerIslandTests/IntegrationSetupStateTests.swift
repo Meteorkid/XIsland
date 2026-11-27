@@ -9,9 +9,9 @@ final class IntegrationSetupStateTests: XCTestCase {
         IntegrationSetupState.phase(descriptor: .descriptor(for: agent, language: "en"), evidence: evidence)
     }
 
-    func testCatalogCoversAll31SupportedSourcesExactlyOnce() {
+    func testCatalogCoversAllSupportedSourcesExactlyOnce() {
         let agents = IntegrationSetupDescriptor.all.map(\.agent)
-        XCTAssertEqual(agents.count, 31)
+        XCTAssertEqual(agents.count, 30)
         XCTAssertEqual(Set(agents).count, agents.count)
         XCTAssertEqual(Set(agents), Set(AgentType.allCases.filter(\.isSupported)))
         XCTAssertTrue(agents.contains(.workBuddy))
@@ -19,8 +19,9 @@ final class IntegrationSetupStateTests: XCTestCase {
     }
 
     func testManualRoutesMatchExistingInstallerBoundaries() {
-        let manual: Set<AgentType> = [.workBuddy, .kiro, .rooCode, .pearai, .zed, .jetbrainsAi,
-                                     .cody, .continue, .amazonQ, .glm]
+        // 停用来源不再出现在接入目录；豆包工作只能手动添加连接器，不能自动配置。
+        let manual: Set<AgentType> = [.workBuddy, .kiro, .pearai, .zed, .jetbrainsAi,
+                                     .cody, .glm, .doubaoWork]
         for descriptor in IntegrationSetupDescriptor.all {
             XCTAssertEqual(descriptor.canAutoConfigure, !manual.contains(descriptor.agent), descriptor.agent.rawValue)
             XCTAssertEqual(descriptor.requiresManualSetup,
@@ -87,7 +88,7 @@ final class IntegrationSetupStateTests: XCTestCase {
     func testCurrentRealEventCanConfirmAnExternallyConfiguredManualRoute() {
         let evidence = IntegrationSetupEvidence(installed: true, configured: false,
                                                configurationFingerprint: current, observedFingerprint: current)
-        for agent in [AgentType.workBuddy, .rooCode, .zed, .cody, .continue, .amazonQ, .kiro] {
+        for agent in [AgentType.workBuddy, .pearai, .zed, .cody, .kiro, .doubaoWork] {
             XCTAssertEqual(phase(agent, evidence), .connected, agent.rawValue)
         }
     }

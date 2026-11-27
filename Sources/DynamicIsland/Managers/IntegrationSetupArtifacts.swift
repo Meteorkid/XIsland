@@ -34,6 +34,8 @@ enum IntegrationSetupArtifacts {
         switch agent {
         case .workBuddy:
             files = try WorkBuddyPluginConfiguration.files(bridgePath: bridgeURL.path)
+        case .doubaoWork:
+            files = try DoubaoWorkConnectorConfiguration.files(bridgePath: bridgeURL.path)
         case .kiro:
             let document = try KiroHookConfiguration.merging(into: [:], bridgePath: bridgeURL.path,
                 cliVersion: KiroHookConfiguration.documentedCLIVersion, engine: "v3")

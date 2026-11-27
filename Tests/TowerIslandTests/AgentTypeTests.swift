@@ -37,6 +37,38 @@ final class AgentTypeTests: XCTestCase {
         XCTAssertEqual(AgentType.from("cursor-ide"), .cursor)
     }
 
+    func testFromDoubaoWorkAndAntigravityNames() {
+        XCTAssertEqual(AgentType.from("豆包工作"), .doubaoWork)
+        XCTAssertEqual(AgentType.from("Doubao Work"), .doubaoWork)
+        XCTAssertEqual(AgentType.from("doubao"), .doubaoWork)
+        // TRAE Work 先于同品牌 TRAE IDE 的 "trae" 别名命中。
+        XCTAssertEqual(AgentType.from("TRAE Work CN"), .doubaoWork)
+        XCTAssertEqual(AgentType.from("trae-work"), .doubaoWork)
+        XCTAssertEqual(AgentType.from("antigravity"), .antigravity)
+        XCTAssertEqual(AgentType.from("agy"), .antigravity)
+        XCTAssertEqual(AgentType.from("devin desktop"), .devin)
+        XCTAssertEqual(AgentType.from("kilo"), .kiloCode)
+        XCTAssertEqual(AgentType.from("Kilo Code"), .kiloCode)
+        XCTAssertEqual(AgentType.from("kilocode"), .kiloCode)
+        XCTAssertEqual(AgentType.from("kilo_code"), .kiloCode)
+    }
+
+    func testRetiredSourcesKeepHistoryButAreNotOffered() {
+        XCTAssertEqual(AgentType(rawValue: "windsurf"), .windsurf)
+        XCTAssertEqual(AgentType(rawValue: "amazon_q"), .amazonQ)
+        for (agent, successor) in [
+            (AgentType.windsurf, AgentType.devin),
+            (.amazonQ, .kiro),
+            (.continue, .cursor),
+            (.rooCode, .cline),
+        ] {
+            XCTAssertFalse(agent.isSupported, agent.rawValue)
+            XCTAssertEqual(agent.successor, successor, agent.rawValue)
+        }
+        XCTAssertTrue(AgentType.doubaoWork.isSupported)
+        XCTAssertTrue(AgentType.antigravity.isSupported)
+    }
+
     /// 短别名（zed / roo / pi / idea）必须落在词边界上，否则会吃掉无关输入
     func testFromShortAliasDoesNotMatchInsideWords() {
         XCTAssertNil(AgentType.from("optimized"))

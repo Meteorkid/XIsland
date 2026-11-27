@@ -1,11 +1,11 @@
-# X Island Bridge 1.0.1
+# X Island Bridge 1.1.0
 
-此扩展观察已核实版本的原生任务事件。不会把编辑文件、切换标签页、打开终端或扩展已激活当成 AI 正在工作。
+此扩展观察已核实版本的原生任务事件，并可接收 X Island 的 `vscode://meteorkid.xisland-vscode/focus` 请求，按 tty/pid/唯一 cwd 显示**已经存在**的集成终端。聚焦请求不新建终端、不发送命令、不读取终端输出；匹配不到或同一 tty 有多个终端时保持原状。它只是终端定位，不代表能恢复具体的 Claude/Copilot 聊天。
 
 - Roo Code：`RooVeterinaryInc.roo-cline` 3.54.0，设置 `xisland.observeRooCode` 控制订阅。
 - PearAI Roo fork：`PearAI.pearai-roo-cline` 3.15.3，实验设置 `xisland.observePearAIExperimental` 默认关闭。相同版本号不能证明发行产物与已审计源码一致，仍需核对实际宿主。
 
-仅支持受信任的本地 macOS 扩展宿主。不会自动安装、激活目标扩展或创建模型任务。观察当前侧栏 API 可见的任务；普通 UI 新建标签页和晚接入时的历史状态可能不可见。工作目录、初始任务文字的角色、完整工具调用结果不能由现有 API 可靠给出，未伪造这些信息。
+聚焦 URI 也只在本机 macOS 窗口生效；多窗口时 VS Code 只会把 URI 交给其中一个窗口，若该窗口没有匹配终端则不会跨窗口猜测。仅支持受信任的本地 macOS 扩展宿主。不会自动安装、激活目标扩展或创建模型任务。观察当前侧栏 API 可见的任务；普通 UI 新建标签页和晚接入时的历史状态可能不可见。工作目录、初始任务文字的角色、完整工具调用结果不能由现有 API 可靠给出，未伪造这些信息。
 
 每次订阅有独立的观察身份，原生任务ID单独保留。同profile的不同窗口不会共用活跃会话；普通socket重连沿用身份，窗口重载形成新观察记录。消息按原生时间标识更新；未知角色文字和隐藏 reasoning 不写入助手对话。Roo 只有权威 taskInteractive 事件才能标记输入等待；Pear 的 ask 仅显示原应用提示。批准、拒绝和回答仍在原应用完成，扩展不调用 sendMessage、pressPrimaryButton 或类似接口。
 

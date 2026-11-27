@@ -34,6 +34,8 @@ enum IntegrationSetupDiscovery {
         let homeDirectory: URL
         let path: String
         let applicationURL: @Sendable (String) -> URL?
+        /// 仅少数客户端（如豆包工作独立端）未公布 bundle id，按安装名核对。
+        var applicationNamedURL: @Sendable (String) -> URL? = { _ in nil }
         let isExecutable: @Sendable (URL) -> Bool
         let extensionIDs: Set<String>?
         let hasConfiguration: @Sendable (AgentType) -> Bool
@@ -49,6 +51,13 @@ enum IntegrationSetupDiscovery {
             })
             return Self(homeDirectory: home, path: ProcessInfo.processInfo.environment["PATH"] ?? "",
                         applicationURL: { applications[$0] },
+                        applicationNamedURL: { name in
+                            guard !name.isEmpty, !name.contains("/") else { return nil }
+                            let candidates = ["/Applications/\(name).app",
+                                              home.appendingPathComponent("Applications/\(name).app").path]
+                            return candidates.first { FileManager.default.fileExists(atPath: $0) }
+                                .map { URL(fileURLWithPath: $0) }
+                        },
                         isExecutable: { url in
                             var directory: ObjCBool = false
                             return FileManager.default.fileExists(atPath: url.path, isDirectory: &directory)
@@ -77,8 +86,9 @@ enum IntegrationSetupDiscovery {
             let appIDs = applicationIDs(for: agent)
             let applications = appIDs.compactMap { id in environment.applicationURL(id).map { (id, $0) } }
             let binary = executable(names: executableNames(for: agent), environment: environment)
+            let namedApp = namedApplication(for: agent).flatMap { environment.applicationNamedURL($0) }
             let extensionInstalled = extensionIDs(for: agent).contains { extensions.contains($0) }
-            let app = applications.first?.1 ?? (extensionInstalled
+            let app = applications.first?.1 ?? namedApp ?? (extensionInstalled
                 ? environment.applicationURL("com.microsoft.VSCode") ?? environment.applicationURL("com.microsoft.VSCodeInsiders") : nil)
             let codexBinary = agent == .codex ? applications.lazy.flatMap {
                 [$0.1.appendingPathComponent("Contents/Resources/codex-cli/bin/codex"),
@@ -105,6 +115,14 @@ enum IntegrationSetupDiscovery {
                 if installed && !automatic { detail = "自动配置仅覆盖已核对的 Codewhale 发布线。" }
             } else if agent == .amazonQ && binary?.lastPathComponent == "q" {
                 detail = "已发现旧 Amazon Q 入口；当前接入仅覆盖 qchat 1.19.7 包装器。"
+            } else if agent == .doubaoWork {
+                detail = installed
+                    ? "已发现豆包工作。该客户端没有公开 hooks，需在插件页手动添加本地连接器。"
+                    : nil
+            } else if agent == .antigravity {
+                detail = "Antigravity App / CLI / IDE 共用 ~/.gemini/config/hooks.json 的全局 hooks。"
+            } else if agent == .kiloCode {
+                detail = "Kilo Code CLI 与 VS Code 扩展共用 ~/.config/kilo/plugin；插件只观察，权限与问答仍在 Kilo 内处理。"
             }
             let hookConfigured = installed && agent != .glm && environment.hasConfiguration(agent)
             let mcpRequired = installed && ApprovalContextMapSettings.isEnabled()
@@ -169,6 +187,7 @@ enum IntegrationSetupDiscovery {
         }
         switch agent {
         case .devin: return try json(DevinHookConfiguration.merging(into: [:], bridgePath: bridgePath))
+        case .antigravity: return try json(AntigravityHookConfiguration.hooksFile(bridgePath: bridgePath))
         case .windsurf: return try json(WindsurfHookConfiguration.merging(into: [:], bridgePath: bridgePath))
         case .copilotCli: return try json(CopilotCliHookConfiguration.merging(into: [:], bridgePath: bridgePath))
         case .cursor: return try json(CursorHookConfiguration.merging(into: [:], bridgePath: bridgePath))
@@ -186,6 +205,7 @@ enum IntegrationSetupDiscovery {
             }.joined(separator: "\n")
         case .deepseek: return try DeepSeekHookConfiguration.merging(into: "", bridgePath: bridgePath)
         case .openCode: return try OpenCodePluginConfiguration.source(bridgePath: bridgePath)
+        case .kiloCode: return try KiloPluginConfiguration.source(bridgePath: bridgePath)
         case .amp: return try AmpPluginConfiguration.source(bridgePath: bridgePath)
         case .pi: return try PiPluginConfiguration.source(bridgePath: bridgePath)
         case .aider: return try AiderWrapperConfiguration.source(bridgePath: bridgePath)
@@ -195,6 +215,9 @@ enum IntegrationSetupDiscovery {
         case .kiro:
             return try json(KiroHookConfiguration.merging(into: [:], bridgePath: bridgePath,
                 cliVersion: KiroHookConfiguration.documentedCLIVersion, engine: "v3"))
+        case .doubaoWork:
+            let files = try DoubaoWorkConnectorConfiguration.files(bridgePath: bridgePath)
+            return files.keys.sorted().map { $0 + ":" + String(decoding: files[$0]!, as: UTF8.self) }.joined(separator: "\n")
         default: return "manual-integration-v1:\(agent.rawValue)"
         }
     }
@@ -215,12 +238,19 @@ enum IntegrationSetupDiscovery {
         return nil
     }
 
+    private static func namedApplication(for agent: AgentType) -> String? {
+        // 官方帮助中心确认独立端安装为 /Applications/DoubaoWork.app，但未公布 bundle id。
+        agent == .doubaoWork ? "DoubaoWork" : nil
+    }
+
     private static func executableNames(for agent: AgentType) -> [String] {
         switch agent {
         case .claudeCode: ["claude"]
         case .codex: ["codex"]
         case .geminiCli: ["gemini"]
+        case .antigravity: ["agy"]
         case .openCode: ["opencode"]
+        case .kiloCode: ["kilo"]
         case .droid: ["droid"]
         case .qoder: ["qodercli", "qoder"]
         case .codeBuddy: ["codebuddy"]
@@ -243,7 +273,7 @@ enum IntegrationSetupDiscovery {
 
     private static func applicationIDs(for agent: AgentType) -> [String] {
         switch agent {
-        case .trae: ["cn.trae.app", "com.trae.app", "cn.trae.solo.app", "cn.trae.work.app"]
+        case .trae: ["cn.trae.app", "com.trae.app", "cn.trae.solo.app"]
         case .copilot: ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders"]
         case .jetbrainsAi:
             ["com.jetbrains.intellij", "com.jetbrains.intellij.ce", "com.jetbrains.pycharm", "com.jetbrains.pycharm.ce",
@@ -262,6 +292,7 @@ enum IntegrationSetupDiscovery {
         case .cody: ["sourcegraph.cody-ai"]
         case .amazonQ: ["amazonwebservices.amazon-q-vscode"]
         case .tabnine: ["tabnine.tabnine-vscode"]
+        case .kiloCode: ["kilocode.kilo-code"]
         default: []
         }
     }
