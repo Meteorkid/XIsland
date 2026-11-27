@@ -44,3 +44,27 @@ kiro-cli chat --v3
 - 不提供原生批准/拒绝按钮，也没有证明子代理树、配置热加载或所有客户端模式。
 
 协议与测试范围见[发布验证摘要](release-verification-2.0.0.json)；官方事件定义见 [Kiro hooks](https://kiro.dev/docs/hooks/) 与 [hook actions](https://kiro.dev/docs/hooks/actions/)。
+
+## 复制给 LLM
+
+```text
+你是我的 macOS 配置助手。请为 Kiro CLI 2.31.0 V3 生成并安装 X Island 观察 hooks。
+
+已知：
+- X Island 已安装，桥接是 $HOME/.xisland/bin/di-bridge。
+- 生成的是独立的 hook 文档，不是 settings.json，也不是 agent 配置里的 hooks 字段。
+- 默认安装位置是 $HOME/.kiro/hooks/xisland-observer.json；如果设置了 KIRO_HOME，使用 $KIRO_HOME/hooks/xisland-observer.json。
+- 该入口只观察，不接管审批；Kiro IDE、Web、旧 Amazon Q 和 Classic/V2 不在本次范围。
+
+执行：
+1. 确认本机 kiro-cli 版本与会话引擎；版本不是 2.31.0 或无法确认时停止，不要用别的版本猜测。
+2. 使用 di-bridge kiro-config-v3 --cli-version 2.31.0 --engine v3 生成到 /tmp 新文件；输出 diff，不要覆盖现有文件。
+3. 如果目标文件已存在，先备份，再用导出命令合并；保留第三方 hooks，不删除用户修改过的条目。
+4. 我确认后写入上述单一作用域；不要同时复制到项目 .kiro/hooks。
+5. 用 kiro-cli chat --v3 启动，在 /config 查看 Hooks 来源，再提交一条只读任务，检查 X Island 是否出现会话。
+
+边界：
+- 不自动开启工具信任或审批；不伪造批准/拒绝按钮。
+- Stop 只表示本轮准备结束，可能不是最终完成；只有 SessionEnd 才关闭会话。
+- 完成后报告：生成文件、写入位置、备份、/config 来源和真实事件结果。
+```

@@ -179,6 +179,8 @@ To verify or manually trigger configuration:
 Under the hood, it installs a lightweight bridge binary (`di-bridge`) at `~/.xisland/bin/` and registers hooks in each agent's config file.
 The same directory also contains the `xisland` CLI used for in-place upgrades.
 
+To let an agent configure the integration for you, copy the matching block from the [LLM setup prompt library](docs/compatibility/llm-setup-prompts.md) into Claude Code, Codex, Cursor, or another agent with local terminal access. The client-side enable/trust confirmation still requires your approval.
+
 ## Architecture
 
 ```

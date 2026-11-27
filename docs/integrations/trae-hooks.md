@@ -111,3 +111,25 @@ grep -r "di-bridge" "$HOME/Library/Application Support/Trae CN/logs" | tail
 **旧版本残留多条配置**
 
 旧格式（`beforeSubmitPrompt`、`afterAgentResponse` 等扁平事件）不会被新协议读取。X Island 在写入时会移除指向自身桥接的旧条目；也可直接删除 `hooks.json` 后重新配置。
+
+## 复制给 LLM
+
+```text
+你是我的 macOS 配置助手。请为本机 Trae 配置 X Island 全局 hooks。
+
+已知：
+- X Island 已安装，桥接是 $HOME/.xisland/bin/di-bridge。
+- Trae 国内版与国际版共用全局配置 $HOME/.trae-cn/hooks.json；$HOME/.trae/hooks.json 是项目级路径，不要写它。
+- 需要六个事件：SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、Stop、Notification，version 为 1。
+
+执行：
+1. 检查 Trae 版本和实际发行版，备份 $HOME/.trae-cn/hooks.json，读取现有 hooks。
+2. 输出 diff，只合并 X Island 的六条命令（--agent trae --adapter trae_cn），保留第三方 hooks 和其他配置；移除指向 X Island 的旧扁平事件条目。
+3. 校验 JSON 后，告诉我需要在 Trae 设置 → Hooks 中确认全局配置已列出并打开开关，然后完全退出并重启 Trae。
+4. 重启后发一条只读任务，检查 X Island 面板是否出现会话；必要时查看 Trae 日志中的 di-bridge 调用。
+
+边界：
+- 不要把全局配置写到项目级 ~/.trae/hooks.json；国际版和 Solo 的结果不能直接算给 CN，反之亦然。
+- 不自动批准权限，不代替我在 Trae 里启用 Hooks 或确认安全提示。
+- 完成后报告：改动文件、备份、JSON 校验、Trae 是否重启、日志证据和真实会话结果。
+```

@@ -27,3 +27,26 @@ npm test
 `python3 Scripts/test-vscode-transport.py` 使用 `.build/debug/DIBridge`（可用 `--bridge-path` 指定）交叉验证原生入口与当前Swift读取/解码函数；`python3 Scripts/test-vscode-app.py` 在新构建的隔离应用中启用生产 peer 检查，验证直接 Node 连接被拒绝及原生桥接的完整socket与会话状态链路。两者使用合成事件，不启动Roo/Pear客户端。
 
 `python3 Scripts/test-vscode-observation.py` 验证双窗口、重载、正常退出、崩溃超时及临时历史库中的四条独立观察记录。此测试约需30—45秒，不安装扩展、不使用模型服务。
+
+## 复制给 LLM
+
+```text
+你是我的 macOS 配置助手。请为本机 X Island Bridge VS Code 扩展完成安装与验证。
+
+已知：
+- 扩展只观察 Roo Code 3.54.0 与 PearAI Roo fork 3.15.3 的原生任务，并提供已存在集成终端的聚焦请求；不创建终端、不发送命令、不读取终端输出。
+- X Island Bridge 需要配合 X Island 2.0.7 或更新版本；请先确认 App 版本。
+- 批准、拒绝和回答仍在原扩展完成；本扩展不调用 sendMessage 或主按钮。
+
+执行：
+1. 检查 VS Code / Insiders 版本、已安装扩展和现有 X Island App 版本；备份已有 VSIX 或扩展目录。
+2. 如果已有可信的本仓库构建产物，直接安装；否则运行 python3 Scripts/package-vscode-extension.py 构建离线 VSIX，不安装新依赖、不发布、不修改编辑器配置。
+3. 使用 Extensions: Install from VSIX 安装，重新加载编辑器窗口；不要从不明来源下载同名扩展。
+4. 在 X Island 设置中确认 Roo/Pear 接收开关状态；PearAI 实验来源默认关闭，只有我明确要求时才启用。
+5. 打开一个受信任的本地 macOS 工作区，发一条只读任务，检查 X Island 是否出现会话；聚焦 URI 只验证已存在终端，不新建终端。
+
+边界：
+- 不自动安装、激活目标扩展或创建模型任务；不修改用户设置和凭据。
+- 不把扩展安装成功当成真实客户端验收；观察 API 看不到的状态如实报告。
+- 完成后报告：VS Code 形态、VSIX 路径、安装结果、启用的来源、真实任务结果和未覆盖的窗口/终端情况。
+```

@@ -33,3 +33,27 @@
 - 关闭接收开关不终止 qchat。代理与 hook 继续按原进程生命周期运行。
 
 项目中的配置生成、版本门槛、租约和离线包装进程测试见 `Scripts/test-amazonq-wrapper.py`；它们不能替代固定发行客户端的实际配置加载与任务验收。公开状态见[适配矩阵](agent-matrix.json)与[验证摘要](release-verification-2.0.0.json)。
+
+## 复制给 LLM
+
+这是历史入口。复制前请确认你仍在使用固定版本 `qchat 1.19.7`；新项目应改用 Kiro。
+
+```text
+你是我的 macOS 配置助手。请先判断我是否还需要保留旧 Amazon Q CLI 的历史接入，不要默认新建配置。
+
+已知：
+- 该入口仅适用于固定版本 qchat 1.19.7；Amazon Q CLI 已于 2025-11-17 更名为 Kiro CLI，新接入应走 Kiro。
+- X Island 已安装，桥接是 $HOME/.xisland/bin/di-bridge。
+
+执行：
+1. 检查 qchat 的实际版本、agent 配置路径和现有 hooks；如果不是 1.19.7，停止并建议改用 Kiro。
+2. 如果仍是 1.19.7，选择一个明确的 agent JSON，使用 di-bridge amazonq-config-1-19-7 生成候选到新文件；输入和输出不能是同一文件。
+3. 展示候选 diff；保留 agent 名称、权限、工具和第三方 hooks，只追加 X Island 的观察事件。
+4. 我确认后再放入项目 .amazonq/cli-agents/<name>.json 或全局 ~/.aws/amazonq/cli-agents/<name>.json，并备份原文件。
+5. 用 di-bridge amazonq-1-19-7 -- /absolute/path/to/qchat chat 启动，保留原 agent 和聊天参数，再发只读任务验证。
+
+边界：
+- 不自动覆盖默认 agent、不切换授权、不伪造审批；PreToolUse 只报告准备状态。
+- 没有有效租约时不要声称已接入。
+- 完成后报告：版本、agent 文件、备份、包装命令和真实事件结果。
+```

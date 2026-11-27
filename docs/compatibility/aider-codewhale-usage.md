@@ -39,3 +39,51 @@ python3 Scripts/test-terminal-supervisor.py
 ```
 
 脚本仅使用临时目录、临时 socket 和离线替身；终端测试使用 PTY 验证信号、挂起和恢复。它们不启动真实 Aider/Codewhale 模型任务，也不代替客户端启用后的端到端验收。
+
+## 复制给 LLM
+
+下面两段分别用于 Aider 和 Codewhale。复制对应的一段即可，不要同时让 Agent 修改两套配置。
+
+### Aider
+
+```text
+你是我的 macOS 配置助手。请为本机 X Island 配置 Aider 包装入口。
+
+已知：
+- X Island 已安装，桥接是 $HOME/.xisland/bin/di-bridge。
+- Aider 入口应准备为 $HOME/.xisland/bin/xisland-aider；普通 aider 启动不经过该入口。
+- 不要修改 Aider 的 YAML、.env、模型或凭据；只准备并验证包装入口。
+
+执行：
+1. 检查 Aider 是否在 PATH 中，以及 xisland-aider 是否已存在；备份已有的可执行文件。
+2. 如缺失，使用 X Island 的接入准备流程生成 xisland-aider；生成后检查它是可执行文件，并确认调用时会保留原 Aider 参数。
+3. 用 $HOME/.xisland/bin/xisland-aider --xisland-help 做一次离线检查；不要用真实模型跑任务。
+4. 告诉我如何用该入口启动一条只读任务，并在 X Island 中检查进程会话是否出现。
+
+边界：
+- 不替换系统里的 aider，不修改 PATH，不写通知命令到用户配置。
+- Aider 的通知可能出现在自动确认前，不能据此断言任务成功或必须回答。
+- 完成后报告：入口路径、备份、检查命令和仍需我运行的只读任务。
+```
+
+### Codewhale / DeepSeek-TUI
+
+```text
+你是我的 macOS 配置助手。请为本机 X Island 配置 Codewhale 0.10.0 观察 hooks。
+
+已知：
+- X Island 已安装，桥接是 $HOME/.xisland/bin/di-bridge。
+- 仅 Codewhale 0.10.0 的已核实版本可自动匹配；它不是 DeepSeek 官方聊天产品。
+- 配置路径按优先级处理 CODEWHALE_CONFIG_PATH、DEEPSEEK_CONFIG_PATH、CODEWHALE_HOME，再选择已有的 ~/.codewhale/config.toml 或 ~/.deepseek/config.toml。
+
+执行：
+1. 检查版本和实际配置路径；版本不是 0.10.0 或无法确认时停止，不要套用通用模板。
+2. 备份目标 TOML，读取现有 hooks；只追加带 XIsland:Codewhale 标记的块，保留第三方 hooks 和其他配置。
+3. 校验 TOML 可解析，确认全局 hooks 没有被显式禁用；如果用户禁用了 hooks，不要强行开启。
+4. 启动一条只读任务，检查 X Island 是否出现会话和工具状态。
+
+边界：
+- 14 个事件只观察；不要伪造审批、问答或 tool call 的 allow。
+- 不修改模型、凭据和启动参数；不要新建高优先级文件遮蔽已有旧路径。
+- 完成后报告：版本判断、实际配置路径、备份、TOML 校验和真实事件结果。
+```

@@ -128,3 +128,29 @@ failed**. MCP failures include the target configuration path and concrete error;
 other configuration routes show a generic post-repair verification failure.
 **Check & Fix** retries the failed setup instead of leaving the failure visible
 only in logs.
+
+## 复制给 LLM
+
+仅在 X Island 的审批上下文 MCP 已获授权后使用。该 MCP 只读取和提交图节点提案，不能批准工具、执行命令或恢复文件。
+
+```text
+你是我的 macOS 配置助手。请为我指定的一个客户端配置 X Island 审批图 MCP server。
+
+已知：
+- X Island 已安装，桥接是 $HOME/.xisland/bin/di-bridge。
+- MCP server 命令是：di-bridge mcp-server --agent <client>。
+- 支持用户级配置的客户端：Codex（~/.codex/config.toml，受 CODEX_HOME 影响）、Claude Code（~/.claude.json，受 CLAUDE_CONFIG_DIR 影响）、Gemini CLI（~/.gemini/settings.json）、Cursor（~/.cursor/mcp.json）、Qwen Code（~/.qwen/settings.json）。
+- OpenCode 故意不参与自动写入，不要替它创建配置。
+
+执行：
+1. 先确认我已经在 X Island 中授予审批图 MCP 的权限，并确认目标客户端名称。
+2. 检查目标配置路径并备份；客户端目录不存在时停止，不要伪造安装。
+3. 只新增或更新 xisland_approval_graph 条目，命令指向现有 di-bridge，参数使用正确的 --agent；保留其他 MCP server、注释和凭据。
+4. 写入前展示 diff；已有同名但定义不同的条目时报告冲突，不要覆盖。
+5. 写入后重启客户端，验证 initialize、tools/list 和一次真实 approval_graph_get。仅配置文件存在不算 MCP 握手成功。
+
+边界：
+- 绝不通过该 server 批准权限、执行命令或回答问题。
+- 没有用户在 X Island 中的明确 Keep 操作，不要调用 approval_graph_write 提交节点。
+- 完成后报告：客户端、配置路径、备份、diff、握手结果和仍需我在客户端确认的信任提示。
+```

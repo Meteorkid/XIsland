@@ -2,7 +2,7 @@
 
 本页说明 X Island 的 35 个来源条目：30 个可接入，5 个已停用并只保留历史（hermes 预留、Windsurf、Continue、Roo Code、Amazon Q CLI）。不同客户端的接口能力不同：有的可以回传审批或答案，有的只能显示状态，豆包工作目前只能观察显式上报的活动。CLI、IDE、桌面端和同品牌插件分别核实，不能互相代替。
 
-更新日期：2026-11-25。30 个可接入条目都有通过项目契约测试的基础路线（GLM 按实际客户端接入）；所有目标的完整验收均未完成。2.0.1 发行构建的具体测试结果以[公开验证摘要](release-verification-2.0.1.json)为准；机器可读状态见[适配矩阵](agent-matrix.json)。
+更新日期：2026-11-27。30 个可接入条目都有通过项目契约测试的基础路线（GLM 按实际客户端接入）；所有目标的完整验收均未完成。2.0.1 发行构建的具体测试结果以[公开验证摘要](release-verification-2.0.1.json)为准；机器可读状态见[适配矩阵](agent-matrix.json)。
 
 ## 2026 年合并、改名与停用
 
@@ -26,6 +26,13 @@
 2. 原生 hooks 或插件来源按对应设置项配置；需要外部包装器的来源使用下方指南。
 3. 配置生成、文件存在或接收开关开启，只能说明入口已准备；还需在原客户端完成必要的插件启用或信任，并运行实际任务确认事件进入 X Island。
 4. 没有可靠应答接口的来源只观察状态，审批、问答和取消继续在原客户端完成。
+
+### 让 Agent 直接配置
+
+不想手写 hooks 时，可以把对应客户端的整段提示复制给能操作本机的 LLM Agent。提示会要求 Agent 先检查版本、备份、保留第三方配置，再合并 X Island 条目；客户端内的启用与信任确认仍由用户完成。
+
+- [复制给 LLM：接入配置提示库](llm-setup-prompts.md)
+- 使用专项指南的来源，提示写在该指南末尾，例如 [Trae](../integrations/trae-hooks.md)、[Kilo](kilo-setup.md)、[Kiro](kiro-setup.md)。
 
 ### 交互回传边界
 
@@ -147,6 +154,7 @@ WorkBuddy 插件及 Kiro 2.31.0 V3 模板会准备到 X Island 自有接入目�
 
 ## 安装与使用指南
 
+- [复制给 LLM：接入配置提示库](llm-setup-prompts.md)
 - [Aider 与 Codewhale](aider-codewhale-usage.md)
 - [Zed / JetBrains 外部 ACP Agent](acp-setup.md)
 - [豆包工作连接器](doubao-work-setup.md)

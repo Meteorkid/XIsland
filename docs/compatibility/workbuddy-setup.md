@@ -36,3 +36,29 @@ X Island 的“WorkBuddy 插件观察”开关只控制接收；导出命令不�
 2.0.0 的测试结果保留在[历史验证摘要](release-verification-2.0.0.json)。首次导入与信任、嵌套代理及完整客户端交互仍列入[验收缺口](acceptance-gaps.md)；已启用环境中的两轮真实任务完成提醒见下方专项记录。
 
 2026-10-27 对 WorkBuddy 5.9.2 的主任务 FinalStop 调用链及完成提醒修复另有[专项验证记录](../verification/2026-10-27-workbuddy-completion.md)。该记录区分自动测试与真实客户端验收，不代表所有嵌套代理、压缩恢复和并发回合已验证。
+
+## 复制给 LLM
+
+WorkBuddy 需要手动导入插件；Agent 可以导出和核对文件，但不能代替你在 WorkBuddy 里完成“添加市场”和信任。
+
+```text
+你是我的 macOS 配置助手。请为本机 X Island 导出 WorkBuddy 观察插件，并核对待导入内容。
+
+已知：
+- X Island 已安装，桥接是 $HOME/.xisland/bin/di-bridge。
+- 导出命令是 di-bridge workbuddy-plugin <目标绝对路径>，目标必须尚不存在且父目录存在。
+- 固定核对基线是 WorkBuddy 5.7.6 / 5.7.7；当前版本或新安装环境的首次导入仍需单独验收。
+- 插件只观察，不接管审批或问答。
+
+执行：
+1. 检查 WorkBuddy 版本和现有插件目录，选择一个不会被覆盖的新绝对路径，备份已有导出（若存在）。
+2. 运行导出命令，确认生成 .codebuddy-plugin/marketplace.json、.codebuddy-plugin/plugin.json 和 hooks/hooks.json，且命令指向现有 di-bridge。
+3. 检查 11 条观察命令和插件清单，输出目录树和关键 diff；不要修改 WorkBuddy 自己的配置。
+4. 告诉我需要在 WorkBuddy 插件管理页的“添加市场”中选择整个导出目录，核对插件后启用并信任。
+5. 我完成导入后，发一条只读任务，检查 X Island 是否出现会话和完成提醒。
+
+边界：
+- 不覆盖已有目录、文件或符号链接；导出成功不等于已安装或已接通。
+- 不伪造审批、问答或取消；不自动启用插件。
+- 完成后报告：导出目录、文件列表、核对结果、仍需我手动完成的导入/信任步骤和真实事件结果。
+```

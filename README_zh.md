@@ -177,6 +177,8 @@ X Island 在首次启动时会**自动配置**所有已检测到的 Agent 的 ho
 底层原理：安装一个轻量的 bridge 可执行文件（`di-bridge`）到 `~/.xisland/bin/`，并在各 Agent 的配置文件中注册 hook。
 同一个目录下也会安装 `xisland` 命令，用于直接升级应用。
 
+如果希望让 Agent 代你配置，可把[LLM 配置提示库](docs/compatibility/llm-setup-prompts.md)中对应软件的整段提示复制给 Claude Code、Codex、Cursor 等能操作本机的 Agent。客户端内的启用与信任仍需你本人确认。
+
 ## 架构
 
 ```

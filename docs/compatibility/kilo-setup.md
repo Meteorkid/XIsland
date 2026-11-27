@@ -37,3 +37,25 @@ X Island 的自动配置写入：
 - 插件未加载：确认 `~/.config/kilo/plugin/xisland.js` 存在，且没有设置 `KILO_PURE=1`；重启宿主而不是只新开一个会话。
 - 有会话但没有工具：确认 Kilo 允许插件运行，并检查 Kilo 日志里是否有 `[XIsland] Kilo observer` 诊断。
 - 权限状态出现但无法在岛上批准：这是预期行为，请回到 Kilo 完成确认。
+
+## 复制给 LLM
+
+```text
+你是我的 macOS 配置助手。请为本机 X Island 配置 Kilo Code 原生观察插件。
+
+已知：
+- X Island 已安装，桥接是 $HOME/.xisland/bin/di-bridge。
+- 插件路径是 $HOME/.config/kilo/plugin/xisland.js；如果设置了 XDG_CONFIG_HOME，使用 $XDG_CONFIG_HOME/kilo/plugin/xisland.js。
+- CLI 与 VS Code 扩展共用该插件；它只观察，不接管权限、问答、计划审阅或取消。
+
+执行：
+1. 检查 Kilo 版本、插件目录和已有同名文件，备份将被修改的文件。
+2. 生成或更新 X Island 插件；已有同名文件不是 X Island 完整模板时保留并报告冲突，不要覆盖用户内容。
+3. 重启 Kilo CLI，或在 VS Code 执行 Developer: Reload Window；确认没有设置 KILO_PURE=1。
+4. 发一条只读任务，检查 X Island 是否出现 Kilo 会话和工具活动。
+
+边界：
+- 不修改其他插件、模型或凭据；不添加 permission.reply 或审批逻辑。
+- 不伪造任务完成；只有 Kilo 删除/归档会话才发送 session_end，崩溃时按空闲租约收敛。
+- 完成后报告：插件路径、是否覆盖、备份路径、重载方式和真实事件结果。
+```
