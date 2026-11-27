@@ -31,6 +31,18 @@ final class ACPCustomAgentConfigurationTests: XCTestCase {
         XCTAssertEqual(try json(original), try json(ACPCustomAgentConfiguration.unwrapping(original, host: "zed", source: "p")))
     }
 
+    func testNonStringCommandIsRejectedWithoutForceCast() throws {
+        let commands: [Any] = [42, ["/tmp/agent"], NSNull(), true]
+        for command in commands {
+            let entry: [String: Any] = ["type": "custom", "command": command, "args": ["acp"]]
+            XCTAssertThrowsError(try ACPCustomAgentConfiguration.wrapping(entry, host: "zed", source: "Profile", bridgePath: "/tmp/di-bridge")) { error in
+                guard case ACPCustomAgentConfiguration.ConfigurationError.invalidEntry = error else {
+                    return XCTFail("expected invalidEntry, got \(error)")
+                }
+            }
+        }
+    }
+
     func testCLIOptionsRequireAnExplicitHostRegistrationAndExecutableBoundary() throws {
         let arguments = ["--host", "zed", "--source", "Profile", "--", "agent", "--flag", "value with spaces"]
         let options = try ACPRunner.options(arguments)

@@ -12,10 +12,10 @@
 - [x] 新增 `Scripts/preflight-release.sh`：只读检查 `VERSION`、Cask 版本、发行说明章节和 `SHA256SUMS.txt`；可选运行 `swift build -c release --product XIsland -j 2`。失败时非零退出，不发布、不修改文件。
 - [x] 用一个故意不匹配的临时版本测试失败路径；确认正常版本通过。新增 `Scripts/test-preflight-release.sh` 覆盖版本不匹配和缺少 DMG 两条失败路径，并接入 `docs.yml`。
 
-## G3 — ACP 配置强制转换硬化
+## G3 — ACP 配置强制转换硬化（已完成）
 
-- [ ] 检查 `Sources/DIShared/ACPCustomAgentConfiguration.swift` 的 `result["command"] as! String`；改为显式校验/安全转换，不改变合法输入行为。
-- [ ] 在 `Tests/TowerIslandTests` 补 malformed / 非字符串 `command` 的回归测试，运行相关测试类。
+- [x] 检查 `Sources/DIShared/ACPCustomAgentConfiguration.swift` 的 `result["command"] as! String`；改为显式校验/安全转换，不改变合法输入行为。
+- [x] 在 `Tests/TowerIslandTests` 补 malformed / 非字符串 `command` 的回归测试，运行相关测试类。
 
 ## G4 — 文档检查器的负向测试
 

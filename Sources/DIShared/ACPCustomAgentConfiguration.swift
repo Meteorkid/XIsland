@@ -16,7 +16,8 @@ public enum ACPCustomAgentConfiguration {
         let arguments = entry["args"] as? [String] ?? []
         guard arguments.allSatisfy({ !$0.utf8.contains(0) }) else { throw ConfigurationError.invalidEntry }
         var result = try unwrapping(entry, host: host, source: source)
-        let originalCommand = result["command"] as! String
+        guard let originalCommand = result["command"] as? String,
+              !originalCommand.isEmpty, !originalCommand.utf8.contains(0) else { throw ConfigurationError.invalidEntry }
         guard !isBridge(originalCommand) else { throw ConfigurationError.invalidEntry }
         let originalArguments = result["args"] as? [String] ?? []
         result["command"] = bridgePath
