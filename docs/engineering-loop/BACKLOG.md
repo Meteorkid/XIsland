@@ -27,10 +27,10 @@
 - [x] 增加一个仓库内检查：`docs/releases/<VERSION>.md` 中的 DMG SHA256 与 `SHA256SUMS.txt` 一致（仅在文件存在时检查）；同时验证 Cask sha256 与校验和一致。`preflight-release.sh` 已覆盖这三项，并新增 Cask 对 `SHA256SUMS.txt` 的直接交叉检查。
 - [x] 把检查接入 `docs.yml` 或现有测试脚本，避免发布时人工抄错。`test-preflight-release.sh` 增加 Cask、发行说明、`SHA256SUMS.txt` 三类校验和漂移失败路径，CI 已调用。
 
-## G6 — Swift 测试基线审计
+## G6 — Swift 测试基线审计（已完成）
 
-- [ ] 运行一次完整的 `XIslandTests` 与 `MeteorLicenseCoreTests`，记录执行/跳过/失败、耗时和任何 flaky 现象。
-- [ ] 若有失败，只修最小根因并补测试；若全绿，写一份 `docs/engineering-loop/test-baseline.md`，不修改运行时代码。
+- [x] 运行一次完整的 `XIslandTests` 与 `MeteorLicenseCoreTests`，记录执行/跳过/失败、耗时和任何 flaky 现象。结果：`XIslandTests` 2219 项、20 跳过、0 失败；`MeteorLicenseCoreTests` 31 项、1 跳过、0 失败；墙钟 208.54 秒。
+- [x] 若有失败，只修最小根因并补测试；若全绿，写一份 `docs/engineering-loop/test-baseline.md`，不修改运行时代码。本次全绿，已写基线文档，未改运行时代码。
 
 ## G7 — 运行时风险扫描
 

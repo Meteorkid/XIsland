@@ -2,12 +2,12 @@
 
 - started_at: 2026-11-28T01:09:29+08:00
 - planned_iterations: 8
-- completed_iterations: 5
-- next_iteration: 6
+- completed_iterations: 6
+- next_iteration: 7
 - status: active
 - branch: codex/release-2.0.19
-- last_iteration: 5
-- last_task: G5 发布说明与校验和一致性
-- last_check: `python3 Scripts/check-docs.py` 通过（108 个 Markdown 文件）；`bash Scripts/test-preflight-release.sh` 通过 fixture 基线 + 5 条失败路径（版本不匹配、缺少 DMG、Cask/发行说明/SHA256SUMS 校验和漂移）；`bash Scripts/preflight-release.sh --require-dmg` 通过。
-- next_task: G6 Swift 测试基线审计
-- notes: G5 在 `preflight-release.sh` 增加 Cask 与 `SHA256SUMS.txt` 的直接交叉检查，并补齐三类校验和漂移回归；未修改 `VERSION`、Cask 或发布产物。后续轮次不得推送、打 tag 或发布。
+- last_iteration: 6
+- last_task: G6 Swift 测试基线审计
+- last_check: `python3 Scripts/check-docs.py` 通过（109 个 Markdown 文件）；`swift test -j 2` 退出码 0，`XIslandTests` 2219 项/20 跳过/0 失败，`MeteorLicenseCoreTests` 31 项/1 跳过/0 失败，合计 2250 项/21 跳过/0 失败，墙钟 208.54 秒；基线文档 `docs/engineering-loop/test-baseline.md`。
+- next_task: G7 运行时风险扫描
+- notes: G6 全绿，只新增测试基线文档，未修改运行时代码；日志 `/tmp/xisland-g6-full.log` 仅本机临时留存。后续轮次不得推送、打 tag 或发布。
