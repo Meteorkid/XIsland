@@ -20,13 +20,18 @@ enum SSHValidationError: LocalizedError {
     }
 }
 
-private enum SSHInputValidator {
-    private static let hostPattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9._-]+$")
-    private static let userPattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9._-]+$")
-    private static let pathPattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9._/~:-]+$")
-    private static let remotePathPattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9._/~:$-]+$")
+enum SSHInputValidator {
+    private static let hostPattern = compilePattern("^[a-zA-Z0-9._-]+$")
+    private static let userPattern = compilePattern("^[a-zA-Z0-9._-]+$")
+    private static let pathPattern = compilePattern("^[a-zA-Z0-9._/~:-]+$")
+    private static let remotePathPattern = compilePattern("^[a-zA-Z0-9._/~:$-]+$")
 
-    private static func matches(_ string: String, regex: NSRegularExpression) -> Bool {
+    static func compilePattern(_ pattern: String) -> NSRegularExpression? {
+        try? NSRegularExpression(pattern: pattern)
+    }
+
+    static func matches(_ string: String, regex: NSRegularExpression?) -> Bool {
+        guard let regex else { return false }
         let range = NSRange(string.startIndex..., in: string)
         return regex.firstMatch(in: string, range: range) != nil
     }

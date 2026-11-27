@@ -32,10 +32,10 @@
 - [x] 运行一次完整的 `XIslandTests` 与 `MeteorLicenseCoreTests`，记录执行/跳过/失败、耗时和任何 flaky 现象。结果：`XIslandTests` 2219 项、20 跳过、0 失败；`MeteorLicenseCoreTests` 31 项、1 跳过、0 失败；墙钟 208.54 秒。
 - [x] 若有失败，只修最小根因并补测试；若全绿，写一份 `docs/engineering-loop/test-baseline.md`，不修改运行时代码。本次全绿，已写基线文档，未改运行时代码。
 
-## G7 — 运行时风险扫描
+## G7 — 运行时风险扫描（已完成）
 
-- [ ] 扫描 `Sources/` 中的 `try!`、`as!`、`fatalError`，只挑一个可证明可失败的路径做安全化；没有可安全改动时记录原因并跳过。
-- [ ] 任何代码改动必须有对应测试，禁止只做格式化或大范围重构。
+- [x] 扫描 `Sources/` 中的 `try!`、`as!`、`fatalError`，只挑一个可证明可失败的路径做安全化；没有可安全改动时记录原因并跳过。结果：将 `SSHInputValidator` 的 4 个静态 `try!` 正则改为可失败 `compilePattern()` + `nil` 时 fail-closed；`AXConversationFocus` 的 `as!` 有 CFTypeID 前置 guard，保留并记录原因；详见 `docs/engineering-loop/runtime-risk-scan.md`。
+- [x] 任何代码改动必须有对应测试，禁止只做格式化或大范围重构。新增 3 项 SSH 校验测试，目标测试 8 项、全量 2253 项均 0 失败。
 
 ## G8 — 收口与质量报告
 

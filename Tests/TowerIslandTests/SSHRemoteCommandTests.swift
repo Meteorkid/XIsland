@@ -39,4 +39,22 @@ final class SSHRemoteCommandTests: XCTestCase {
 
         XCTAssertEqual(server.remoteBridgePath, "~/.xisland/bin/di-bridge")
     }
+
+    func testRegexCompilationFailsClosedInsteadOfCrashingOnMalformedPattern() {
+        XCTAssertNil(SSHInputValidator.compilePattern("[unterminated"))
+        XCTAssertFalse(SSHInputValidator.matches("example.com", regex: nil))
+    }
+
+    func testSSHValidatorRejectsShellMetacharacters() {
+        XCTAssertThrowsError(try SSHInputValidator.validateHost("example.com; rm -rf /"))
+        XCTAssertThrowsError(try SSHInputValidator.validateUser("deploy$(whoami)"))
+        XCTAssertThrowsError(try SSHInputValidator.validateRemotePath("~/bridge; touch /tmp/pwned", label: "bridge"))
+    }
+
+    func testSSHValidatorAcceptsExpectedValues() throws {
+        XCTAssertEqual(try SSHInputValidator.validateHost("example.com"), "example.com")
+        XCTAssertEqual(try SSHInputValidator.validateUser("deploy-user"), "deploy-user")
+        XCTAssertEqual(try SSHInputValidator.validateRemotePath(" ~/.xisland/bin/di-bridge ", label: "bridge"),
+                       "~/.xisland/bin/di-bridge")
+    }
 }
