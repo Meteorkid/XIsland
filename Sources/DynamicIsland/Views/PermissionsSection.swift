@@ -74,7 +74,7 @@ struct PermissionsSection: View {
         }
     }
 
-    private enum State {
+    private enum PermissionState {
         case granted, missing, onDemand
     }
 
@@ -85,7 +85,7 @@ struct PermissionsSection: View {
             .padding(.vertical, 8)
     }
 
-    private func row(title: String, detail: String, state: State,
+    private func row(title: String, detail: String, state: PermissionState,
                      open: @escaping () -> Void, reveal: (() -> Void)?,
                      openTitle: String = L10n.permissionOpenSettings) -> some View {
         HStack(alignment: .top, spacing: 10) {
@@ -122,7 +122,7 @@ struct PermissionsSection: View {
         }
     }
 
-    private func label(for state: State) -> String {
+    private func label(for state: PermissionState) -> String {
         switch state {
         case .granted: return L10n.permissionGranted
         case .missing: return L10n.permissionMissing
@@ -130,7 +130,7 @@ struct PermissionsSection: View {
         }
     }
 
-    private func color(for state: State) -> Color {
+    private func color(for state: PermissionState) -> Color {
         switch state {
         case .granted: return .green
         case .missing: return .orange
