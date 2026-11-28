@@ -24,10 +24,10 @@
 - [x] 在 `.github/workflows/docs.yml` 增加循环状态校验及负向测试步骤。已加入 `check-loop-state.py` 和 `test-check-loop-state.py`。
 - [x] 本地运行确认。YAML 可解析，8 条 CI 命令全部在本地通过。
 
-### G13 — 统一质量门禁入口
+### G13 — 统一质量门禁入口（已完成）
 
-- [ ] 新增 `Scripts/run-quality-gates.sh`：串联文档检查、文档负向测试、Swift 安全门禁、安全门禁负向测试、循环状态检查、发布预检负向测试；可选 `--build`。
-- [ ] 对脚本做 `bash -n` 和一次无构建运行，确认任一失败会非零退出。
+- [x] 新增 `Scripts/run-quality-gates.sh`：串联文档检查、文档负向测试、Swift 安全门禁、安全门禁负向测试、循环状态检查、循环状态负向测试、发布预检及发布预检负向测试；`--build` 可选触发 release build。
+- [x] 对脚本做 `bash -n` 和一次无构建运行，确认任一失败会非零退出。新增 `Scripts/test-run-quality-gates.sh`，覆盖正常仓库、完整 fixture 以及末端发布预检失败的非零传播。
 
 ### G14 — 强制解包审计（第二轮）
 
