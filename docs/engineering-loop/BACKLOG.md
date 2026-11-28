@@ -37,7 +37,7 @@
 - [x] 扫描 `Sources/` 中的 `try!`、`as!`、`fatalError`，只挑一个可证明可失败的路径做安全化；没有可安全改动时记录原因并跳过。结果：将 `SSHInputValidator` 的 4 个静态 `try!` 正则改为可失败 `compilePattern()` + `nil` 时 fail-closed；`AXConversationFocus` 的 `as!` 有 CFTypeID 前置 guard，保留并记录原因；详见 `docs/engineering-loop/runtime-risk-scan.md`。
 - [x] 任何代码改动必须有对应测试，禁止只做格式化或大范围重构。新增 3 项 SSH 校验测试，目标测试 8 项、全量 2253 项均 0 失败。
 
-## G8 — 收口与质量报告
+## G8 — 收口与质量报告（已完成）
 
-- [ ] 跑最终 `python3 Scripts/check-docs.py`、目标测试和 `swift build -c release --product XIsland -j 2`。
-- [ ] 汇总 8 轮提交、测试结果、未完成项和风险；把 `STATE.md` 的 `status` 设为 `complete`。不做发布。
+- [x] 跑最终 `python3 Scripts/check-docs.py`、目标测试和 `swift build -c release --product XIsland -j 2`。结果：文档检查 110 个文件通过；全量测试 2253 项、21 跳过、0 失败；release build 通过。
+- [x] 汇总 8 轮提交、测试结果、未完成项和风险；把 `STATE.md` 的 `status` 设为 `complete`。不做发布。质量报告为 `docs/engineering-loop/quality-report.md`。
