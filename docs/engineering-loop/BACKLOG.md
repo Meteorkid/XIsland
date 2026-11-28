@@ -34,10 +34,10 @@
 - [x] 在 `Sources/` 继续扫描其他强制解包 / 崩溃路径，只挑一个可证明可失败的路径安全化；没有可安全改动时记录原因。选中 `DISocketConfig.socketDir` 的 `preconditionFailure`：非法测试目录会直接终止进程，现改为回退到独立临时目录。
 - [x] 任何代码改动必须有对应测试，禁止大范围重构。新增 `testSocketDirectoryFallbackKeepsIsolationForInvalidTestPath`，`AppTestConfigurationTests` 18 项通过；release build 通过。
 
-### G15 — Cycle 2 测试基线刷新
+### G15 — Cycle 2 测试基线刷新（已完成）
 
-- [ ] 运行完整 `swift test -j 2`，记录执行/跳过/失败和耗时。
-- [ ] 更新 `docs/engineering-loop/test-baseline.md`，保留旧基线并标注新结果。
+- [x] 运行完整 `swift test -j 2`，记录执行/跳过/失败和耗时。结果：`XIslandTests` 2223 项/20 跳过/0 失败，`MeteorLicenseCoreTests` 31 项/1 跳过/0 失败，合计 2254 项/21 跳过/0 失败，墙钟 223.08 秒。
+- [x] 更新 `docs/engineering-loop/test-baseline.md`，保留旧基线并标注新结果。Cycle 2 基线与历史 G6 基线分区记录。
 
 ### G16 — Cycle 2 收口与质量报告
 
