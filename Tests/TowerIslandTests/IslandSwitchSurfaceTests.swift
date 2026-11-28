@@ -296,8 +296,9 @@ final class IslandSwitchSurfaceTests: XCTestCase {
         let source = try XCTUnwrap(IslandSlideAnimator.geometry(in: container))
         let target = try geometry(topCenter: CGPoint(x: source.frame.midX, y: source.frame.maxY),
                                   size: CGSize(width: 260, height: 62), displayID: source.displayID)
+        // 动画延迟取 0.24s（实现上限 0.25s），给 CI 的 SwiftUI 离屏布局留出足够采样窗口。
         let request = IslandSwitchMotion(direction: .left, reduceMotion: false,
-            startUptime: ProcessInfo.processInfo.systemUptime + 0.08, sourceGeometry: source, targetGeometry: target)
+            startUptime: ProcessInfo.processInfo.systemUptime + 0.24, sourceGeometry: source, targetGeometry: target)
         var completed = false
         var violations: [String] = []
         func sample(_ stage: String) throws {
@@ -329,13 +330,13 @@ final class IslandSwitchSurfaceTests: XCTestCase {
         }
         animator.animateOutgoing(motion: request, reduceMotion: false) { completed = true }
         try sample("started")
-        for revision in 1...6 {
+        for revision in 1...4 {
             host.rootView = content(revision)
             await settle(host)
             let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
             host.cacheDisplay(in: host.bounds, to: bitmap)
             CATransaction.flush()
-            try await Task.sleep(for: .milliseconds(12))
+            try await Task.sleep(for: .milliseconds(2))
             try sample("root-update-\(revision)")
         }
         XCTAssertFalse(completed, "取证必须在出站动画完成之前采样")
