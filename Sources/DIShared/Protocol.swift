@@ -19,13 +19,30 @@ public enum DISocketConfig {
 
     /// 运行时目录：生产使用用户目录，测试必须使用独立临时目录。
     public static var socketDir: String {
+        resolvedSocketDirectoryOrFallback(
+            arguments: ProcessInfo.processInfo.arguments,
+            environment: ProcessInfo.processInfo.environment
+        )
+    }
+
+    /// 与 `resolvedSocketDirectory` 相同，但无效的测试目录会回退到独立临时目录。
+    ///
+    /// 测试模式下的配置错误不应让进程在读取 socket 路径时崩溃；回退目录仍是
+    /// `/tmp/xi-test-<pid>`，不会触碰生产用户目录。
+    public static func resolvedSocketDirectoryOrFallback(
+        arguments: [String],
+        environment: [String: String],
+        homeDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path
+    ) -> String {
         do {
             return try resolvedSocketDirectory(
-                arguments: ProcessInfo.processInfo.arguments,
-                environment: ProcessInfo.processInfo.environment
+                arguments: arguments,
+                environment: environment,
+                homeDirectory: homeDirectory
             )
         } catch {
-            preconditionFailure(error.localizedDescription)
+            let isTestMode = arguments.contains("--ui-test-mode") || environment["X_ISLAND_TEST_MODE"] == "1"
+            return isTestMode ? defaultTestRuntimeDirectory : homeDirectory + "/.xisland"
         }
     }
 

@@ -99,6 +99,32 @@ final class AppTestConfigurationTests: XCTestCase {
         ))
     }
 
+    func testSocketDirectoryFallbackKeepsIsolationForInvalidTestPath() {
+        let fallback = DISocketConfig.resolvedSocketDirectoryOrFallback(
+            arguments: ["--ui-test-mode"],
+            environment: ["X_ISLAND_TEST_RUNTIME_DIR": "/Users/example/.xisland"],
+            homeDirectory: "/Users/example"
+        )
+        XCTAssertEqual(fallback, DISocketConfig.defaultTestRuntimeDirectory)
+        XCTAssertTrue(fallback.hasPrefix("/tmp/"))
+
+        XCTAssertEqual(
+            DISocketConfig.resolvedSocketDirectoryOrFallback(
+                arguments: ["--ui-test-mode"],
+                environment: ["X_ISLAND_TEST_RUNTIME_DIR": "/tmp/xi-tests-fallback"]
+            ),
+            "/tmp/xi-tests-fallback"
+        )
+        XCTAssertEqual(
+            DISocketConfig.resolvedSocketDirectoryOrFallback(
+                arguments: [],
+                environment: [:],
+                homeDirectory: "/Users/example"
+            ),
+            "/Users/example/.xisland"
+        )
+    }
+
     func testDisabledModeIgnoresInvalidIsolationConfiguration() throws {
         let configuration = AppTestConfiguration.make(
             arguments: ["XIsland"],

@@ -1,4 +1,4 @@
-# G7 运行时风险扫描
+# 运行时风险扫描（G7 / G14）
 
 - 扫描日期：2026-11-28
 - 扫描范围：`Sources/**/*.swift`，共 267 个 Swift 文件
@@ -44,3 +44,19 @@ G9 新增 `Scripts/check-swift-safety.py`，把 `try!`、`fatalError(`、`as!` �
 
 - `AXConversationFocus` 的强制转换依赖 CoreFoundation 类型 ID 校验；若未来移除该 guard，需要同时重新评估。
 - 静态正则若因未来编辑变成非法 pattern，SSH 校验会 fail-closed 拒绝所有操作。这是预期行为，错误信息仍为对应字段的 `invalidHost` / `invalidUser` / `invalidPath`。
+
+## G14 第二轮强制解包审计
+
+- 审计日期：2026-11-28
+- 扫描范围：`Sources/**/*.swift` 中的 `!` 解包、`try!`、`as!`、`preconditionFailure`、`fatalError`、`removeFirst` / `removeLast` 等崩溃路径。
+- 选中路径：`Sources/DIShared/Protocol.swift` 的 `DISocketConfig.socketDir`。旧实现把 `resolvedSocketDirectory` 抛出的配置错误直接交给 `preconditionFailure`；当测试模式设置 `X_ISLAND_TEST_MODE=1` 且 `X_ISLAND_TEST_RUNTIME_DIR` 非法时，任何读取 socket 路径的调用都会终止进程。
+- 处置：新增 `resolvedSocketDirectoryOrFallback(arguments:environment:homeDirectory:)`。测试模式下回退到 `/tmp/xi-test-<pid>`，仍在独立临时目录；生产路径仍为 `<home>/.xisland`。`socketDir` 改走该入口，不再调用 `preconditionFailure`。
+- 回归测试：`AppTestConfigurationTests.testSocketDirectoryFallbackKeepsIsolationForInvalidTestPath` 覆盖非法测试目录回退、合法测试目录和正常生产目录；测试类 18 项全部通过。
+- 未选路径：`IntegrationSetupPresentation.pendingRows` 的 `!` 由前置 filter 保证非空；`SessionManager` 的日历 `!` 只做本地日期偏移；`QuotaTracker` / `UpdateManager` 的 URL `!` 使用固定或 Foundation 可编码字符串；`AppDelegate` / `AppTestConfiguration` 的 `preconditionFailure` 属于测试隔离配置的显式失败语义，本轮不扩大改动范围。
+
+## G14 验证结果
+
+- `swift test --filter AppTestConfigurationTests -j 2`：18 项执行、0 失败。
+- `swift build -c release --product XIsland -j 2`：通过，71.18 秒。
+- `python3 Scripts/check-swift-safety.py`：通过，267 个 Swift 文件。
+- `python3 Scripts/check-docs.py`：通过，111 个 Markdown 文件。

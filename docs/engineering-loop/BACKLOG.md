@@ -29,10 +29,10 @@
 - [x] 新增 `Scripts/run-quality-gates.sh`：串联文档检查、文档负向测试、Swift 安全门禁、安全门禁负向测试、循环状态检查、循环状态负向测试、发布预检及发布预检负向测试；`--build` 可选触发 release build。
 - [x] 对脚本做 `bash -n` 和一次无构建运行，确认任一失败会非零退出。新增 `Scripts/test-run-quality-gates.sh`，覆盖正常仓库、完整 fixture 以及末端发布预检失败的非零传播。
 
-### G14 — 强制解包审计（第二轮）
+### G14 — 强制解包审计（第二轮）（已完成）
 
-- [ ] 在 `Sources/` 继续扫描其他强制解包 / 崩溃路径，只挑一个可证明可失败的路径安全化；没有可安全改动时记录原因。
-- [ ] 任何代码改动必须有对应测试，禁止大范围重构。
+- [x] 在 `Sources/` 继续扫描其他强制解包 / 崩溃路径，只挑一个可证明可失败的路径安全化；没有可安全改动时记录原因。选中 `DISocketConfig.socketDir` 的 `preconditionFailure`：非法测试目录会直接终止进程，现改为回退到独立临时目录。
+- [x] 任何代码改动必须有对应测试，禁止大范围重构。新增 `testSocketDirectoryFallbackKeepsIsolationForInvalidTestPath`，`AppTestConfigurationTests` 18 项通过；release build 通过。
 
 ### G15 — Cycle 2 测试基线刷新
 
