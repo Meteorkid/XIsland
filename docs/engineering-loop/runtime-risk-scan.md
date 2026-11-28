@@ -36,6 +36,10 @@
 - `swift build -c release --product XIsland -j 2`：通过，65.05 秒。
 - `python3 Scripts/check-docs.py`：通过，110 个 Markdown 文件。
 
+## 自动化门禁
+
+G9 新增 `Scripts/check-swift-safety.py`，把 `try!`、`fatalError(`、`as!` 扫描固化为本地门禁；已有 `as!` 使用同行 `swift-safety: allow` 标记并保留理由。负向测试见 `Scripts/test-check-swift-safety.py`，CI 接入留待 G10。
+
 ## 残余风险
 
 - `AXConversationFocus` 的强制转换依赖 CoreFoundation 类型 ID 校验；若未来移除该 guard，需要同时重新评估。

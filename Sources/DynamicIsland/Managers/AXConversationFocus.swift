@@ -250,7 +250,7 @@ enum AXConversationFocus {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
               let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
-        return (value as! AXUIElement)
+        return (value as! AXUIElement) // swift-safety: allow CFTypeID-checked cast
     }
 
     private static func children(of element: AXUIElement) -> [AXUIElement]? {

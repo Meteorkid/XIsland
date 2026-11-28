@@ -2,6 +2,50 @@
 
 完成任务后把对应项改为 `[x]`，并在 `STATE.md` 写入结果。不要一次做多个。
 
+## Cycle 2 — G9–G16（进行中）
+
+### G9 — Swift 运行时安全 token 门禁（已完成）
+
+- [x] 新增 `Scripts/check-swift-safety.py`：扫描 `Sources/**/*.swift` 的 `try!`、`fatalError(`、`as!`；支持 `--root` 和 `swift-safety: allow` 同行豁免。仓库正常路径通过 267 个 Swift 文件。
+- [x] 新增 `Scripts/test-check-swift-safety.py`：覆盖干净文件、`try!`、`fatalError`、`as!`、豁免标记和仓库正常路径。测试通过。
+
+### G10 — 接入安全门禁 CI
+
+- [ ] 在 `.github/workflows/docs.yml` 增加安全门禁及负向测试步骤。
+- [ ] 本地运行两个脚本，确认 workflow 引用路径和命令正确。
+
+### G11 — 循环控制面校验器
+
+- [ ] 新增 `Scripts/check-loop-state.py`：校验 `STATE.md` 必需字段、`status`、`completed_iterations` / `next_iteration` / `cycle_end_iteration` 的一致性。
+- [ ] 新增 `Scripts/test-check-loop-state.py`：覆盖正常状态、缺字段、非法状态、越界轮次和完成状态。
+
+### G12 — 接入循环状态 CI
+
+- [ ] 在 `.github/workflows/docs.yml` 增加循环状态校验及负向测试步骤。
+- [ ] 本地运行确认。
+
+### G13 — 统一质量门禁入口
+
+- [ ] 新增 `Scripts/run-quality-gates.sh`：串联文档检查、文档负向测试、Swift 安全门禁、安全门禁负向测试、循环状态检查、发布预检负向测试；可选 `--build`。
+- [ ] 对脚本做 `bash -n` 和一次无构建运行，确认任一失败会非零退出。
+
+### G14 — 强制解包审计（第二轮）
+
+- [ ] 在 `Sources/` 继续扫描其他强制解包 / 崩溃路径，只挑一个可证明可失败的路径安全化；没有可安全改动时记录原因。
+- [ ] 任何代码改动必须有对应测试，禁止大范围重构。
+
+### G15 — Cycle 2 测试基线刷新
+
+- [ ] 运行完整 `swift test -j 2`，记录执行/跳过/失败和耗时。
+- [ ] 更新 `docs/engineering-loop/test-baseline.md`，保留旧基线并标注新结果。
+
+### G16 — Cycle 2 收口与质量报告
+
+- [ ] 跑最终文档检查、目标测试和 release build。
+- [ ] 汇总 Cycle 2 提交、测试结果、未完成项和风险；把 `STATE.md` 的 `status` 设为 `complete`。
+
+## Cycle 1 — G1–G8（已完成）
+
 ## G1 — 文档质量门禁（已完成）
 
 - [x] 新增 `Scripts/check-docs.py`，检查 Markdown 围栏、仓库内相对链接、发行说明必需章节、VERSION/Cask 一致性和 LLM 提示覆盖。
