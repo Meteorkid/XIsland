@@ -29,6 +29,10 @@ jobs:
         run: python3 Scripts/check-swift-safety.py
       - name: Test Swift safety gate failure paths
         run: python3 Scripts/test-check-swift-safety.py
+      - name: Check engineering loop state
+        run: python3 Scripts/check-loop-state.py
+      - name: Test engineering loop state failure paths
+        run: python3 Scripts/test-check-loop-state.py
       - name: Check release metadata
         run: bash Scripts/preflight-release.sh
       - name: Test release preflight failure paths
