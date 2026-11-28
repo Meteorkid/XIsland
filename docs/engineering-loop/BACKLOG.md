@@ -9,10 +9,10 @@
 - [x] 新增 `Scripts/check-swift-safety.py`：扫描 `Sources/**/*.swift` 的 `try!`、`fatalError(`、`as!`；支持 `--root` 和 `swift-safety: allow` 同行豁免。仓库正常路径通过 267 个 Swift 文件。
 - [x] 新增 `Scripts/test-check-swift-safety.py`：覆盖干净文件、`try!`、`fatalError`、`as!`、豁免标记和仓库正常路径。测试通过。
 
-### G10 — 接入安全门禁 CI
+### G10 — 接入安全门禁 CI（已完成）
 
-- [ ] 在 `.github/workflows/docs.yml` 增加安全门禁及负向测试步骤。
-- [ ] 本地运行两个脚本，确认 workflow 引用路径和命令正确。
+- [x] 在 `.github/workflows/docs.yml` 增加安全门禁及负向测试步骤。已加入 `check-swift-safety.py` 和 `test-check-swift-safety.py` 两个步骤。
+- [x] 本地运行两个脚本，确认 workflow 引用路径和命令正确。YAML 可解析，6 条 CI 命令全部在本地通过。
 
 ### G11 — 循环控制面校验器
 

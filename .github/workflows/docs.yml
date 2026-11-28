@@ -25,6 +25,10 @@ jobs:
         run: python3 Scripts/check-docs.py
       - name: Test documentation checker failure paths
         run: python3 Scripts/test-check-docs.py
+      - name: Check Swift runtime safety tokens
+        run: python3 Scripts/check-swift-safety.py
+      - name: Test Swift safety gate failure paths
+        run: python3 Scripts/test-check-swift-safety.py
       - name: Check release metadata
         run: bash Scripts/preflight-release.sh
       - name: Test release preflight failure paths

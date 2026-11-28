@@ -38,7 +38,7 @@
 
 ## 自动化门禁
 
-G9 新增 `Scripts/check-swift-safety.py`，把 `try!`、`fatalError(`、`as!` 扫描固化为本地门禁；已有 `as!` 使用同行 `swift-safety: allow` 标记并保留理由。负向测试见 `Scripts/test-check-swift-safety.py`，CI 接入留待 G10。
+G9 新增 `Scripts/check-swift-safety.py`，把 `try!`、`fatalError(`、`as!` 扫描固化为本地门禁；已有 `as!` 使用同行 `swift-safety: allow` 标记并保留理由。负向测试见 `Scripts/test-check-swift-safety.py`。G10 已把安全门禁与负向测试接入 `.github/workflows/docs.yml`。
 
 ## 残余风险
 
