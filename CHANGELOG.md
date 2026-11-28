@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.3.3 (2026-11-28)
+
+### 修复
+
+- **SwiftUI `@State` 名称遮蔽**：`PermissionsSection` 内私有 `enum State` 在 Xcode 16.4 / Swift 6.1 中遮蔽 `@State`；改名为 `PermissionState`，同步更新 `row`、`label(for:)`、`color(for:)` 的签名。
+- **Swift 6.1 实验特性依赖**：`QuotaTracker` 的 `isolated deinit` 改为普通 `deinit`，通过已标记 `nonisolated(unsafe)` 的 `timer` 在销毁时 `invalidate()`；不再要求 `-enable-experimental-feature IsolatedDeinit`。正常轮询、额度读取和 UI 行为不变。
+- 2.3.2 的二进制可运行，但源码在 Swift 6.1 上无法干净编译；2.3.3 用空 scratch 目录重新完整构建并重新出包，不沿用 2.3.2 缓存对象。
+
+验证：干净 release 构建通过（82.69 秒）；全量 2254 项/21 跳过/0 失败（206.06 秒）；GitHub Actions Xcode 16.4 / Swift 6.1.2 的 Build 与 Test 通过。详细内容见 [2.3.3 更新说明](docs/releases/2.3.3.md)。
+
 ## v2.3.2 (2026-11-28)
 
 ### 新增
