@@ -14,9 +14,19 @@ final class UpdateManagerURLTests: XCTestCase {
         XCTAssertEqual(release.tagName, "v1.2.8")
         XCTAssertEqual(release.htmlURL, URL(string: "https://github.com/Meteorkid/XIsland/releases/tag/v1.2.8"))
         XCTAssertEqual(release.publishedAt, checkedAt)
-        // 不再伪造 DMG URL，assets 为空时 dmgURL 应为 nil
-        XCTAssertNil(release.dmgURL)
-        XCTAssertTrue(release.assets.isEmpty)
+        XCTAssertEqual(
+            release.dmgURL,
+            URL(string: "https://github.com/Meteorkid/XIsland/releases/download/v1.2.8/XIsland-1.2.8.dmg")
+        )
+        XCTAssertEqual(
+            release.manifestURL,
+            URL(string: "https://github.com/Meteorkid/XIsland/releases/download/v1.2.8/XIsland-1.2.8.manifest.json")
+        )
+        XCTAssertEqual(
+            release.signatureURL,
+            URL(string: "https://github.com/Meteorkid/XIsland/releases/download/v1.2.8/XIsland-1.2.8.manifest.sig")
+        )
+        XCTAssertEqual(release.assets.count, 3)
     }
 
     @MainActor
@@ -45,8 +55,10 @@ final class UpdateManagerURLTests: XCTestCase {
         let release = try UpdateManager.githubReleaseDecoder.decode(UpdateManager.ReleaseInfo.self, from: payload)
 
         XCTAssertEqual(release.tagName, "v1.2.9")
-        // 不再伪造 DMG URL，assets 为空时 dmgURL 应为 nil
-        XCTAssertNil(release.dmgURL)
-        XCTAssertTrue(release.assets.isEmpty)
+        XCTAssertEqual(
+            release.dmgURL,
+            URL(string: "https://github.com/Meteorkid/XIsland/releases/download/v1.2.9/XIsland-1.2.9.dmg")
+        )
+        XCTAssertEqual(release.assets.count, 3)
     }
 }

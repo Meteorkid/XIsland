@@ -409,13 +409,13 @@ struct AppUpdater {
     }
 
     /// 读取待安装 App 的 CFBundleShortVersionString。
-    static func appVersion(at path: String) -> String? {
+    func appVersion(at path: String) -> String? {
         let infoPlist = URL(fileURLWithPath: path)
             .appendingPathComponent("Contents/Info.plist")
             .path
-        guard let output = try? Self.executeCommand(
-            launchPath: "/usr/libexec/PlistBuddy",
-            arguments: ["-c", "Print :CFBundleShortVersionString", infoPlist]
+        guard let output = try? runCommand(
+            "/usr/libexec/PlistBuddy",
+            ["-c", "Print :CFBundleShortVersionString", infoPlist]
         ) else {
             return nil
         }
@@ -584,7 +584,7 @@ extension AppUpdater {
         }
 
         if requiresSignedManifest {
-            guard let actualVersion = Self.appVersion(at: mountedAppPath),
+            guard let actualVersion = appVersion(at: mountedAppPath),
                   Self.updateVersion(actualVersion, matches: version) else {
                 throw AppUpdaterError.updateSignatureFailed
             }

@@ -404,13 +404,28 @@ final class UpdateManager {
             throw URLError(.badServerResponse)
         }
 
-        // 注意：不再伪造 DMG URL。如果没有真实的 DMG 资产，assets 数组为空，
-        // 用户将看到 "Download..." 而非 "Install..."，点击后会打开发布页面。
+        // GitHub API 的匿名配额只有 60 次/小时；配额耗尽时仍要用可预测的
+        // Release 资产 URL 还原 DMG、清单和签名，避免界面直接失去 Install 按钮。
+        let normalizedVersion = normalize(version: tag)
+        let assetNames = [
+            AppUpdater.dmgFilename(for: normalizedVersion),
+            "XIsland-\(normalizedVersion).manifest.json",
+            "XIsland-\(normalizedVersion).manifest.sig"
+        ]
+        let assetBase = "https://github.com/Meteorkid/XIsland/releases/download/\(tag)/"
+        let assets: [[String: String]] = assetNames.compactMap { name in
+            guard let url = URL(string: assetBase + name) else { return nil }
+            return [
+                "name": name,
+                "browser_download_url": url.absoluteString
+            ]
+        }
+
         var payload: [String: Any] = [
             "tag_name": tag,
             "html_url": finalURL.absoluteString,
             "published_at": ISO8601DateFormatter().string(from: checkedAt),
-            "assets": []
+            "assets": assets
         ]
         if let body {
             payload["body"] = body

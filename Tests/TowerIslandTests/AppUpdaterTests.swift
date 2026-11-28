@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import XIsland
 
@@ -288,5 +289,79 @@ final class AppUpdaterTests: XCTestCase {
         XCTAssertTrue(script.contains(#"EXPECTED_KEY_ID='xisland-update-test'"#))
         XCTAssertTrue(script.contains("HAS_SIGNED_MANIFEST=1"))
         XCTAssertTrue(script.contains(#""$VERIFIER_PATH" "$MANIFEST_PATH" "$SIGNATURE_PATH" "$DMG_PATH""#))
+    }
+
+    func testSignedInstallVerifiesManifestAndPassesItToInstaller() async throws {
+        let key = Curve25519.Signing.PrivateKey()
+        let keyID = "test-key"
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let dmgData = Data("fake-dmg".utf8)
+        let dmgSHA = SHA256.hash(data: dmgData).map { String(format: "%02x", $0) }.joined()
+        let manifestData = Data(
+            """
+            {"schema":1,"version":"2.3.4","dmg":"XIsland-2.3.4.dmg","sha256":"\(dmgSHA)","key_id":"\(keyID)"}
+            """.utf8
+        )
+        let signature = try key.signature(for: manifestData).base64EncodedString()
+        let manifestURL = URL(string: "https://github.com/XIsland-2.3.4.manifest.json")!
+        let signatureURL = URL(string: "https://github.com/XIsland-2.3.4.manifest.sig")!
+        let dmgURL = URL(string: "https://github.com/XIsland-2.3.4.dmg")!
+        let helperPath = URLRecorder()
+
+        let updater = AppUpdater(
+            runCommand: { launchPath, arguments in
+                if launchPath == "/usr/libexec/PlistBuddy" {
+                    return "2.3.4\n"
+                }
+                if arguments.contains("attach") {
+                    return "/dev/disk16\tGUID_partition_scheme\t\n/dev/disk16s1\tApple_HFS\t/Volumes/X Island"
+                }
+                return ""
+            },
+            downloadFile: { sourceURL, destinationURL in
+                try FileManager.default.createDirectory(
+                    at: destinationURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                switch sourceURL.lastPathComponent {
+                case "XIsland-2.3.4.manifest.json":
+                    try manifestData.write(to: destinationURL)
+                case "XIsland-2.3.4.manifest.sig":
+                    try Data(signature.utf8).write(to: destinationURL)
+                default:
+                    try dmgData.write(to: destinationURL)
+                }
+            },
+            relaunchApp: { _ in },
+            launchInstallerHelper: { scriptPath in
+                helperPath.append(URL(fileURLWithPath: scriptPath))
+            },
+            terminateApp: { },
+            prepareTermination: { true },
+            temporaryDirectoryProvider: { tempRoot },
+            fileExists: { path in
+                path == "/Volumes/X Island/X Island.app" || path == AppUpdater.updateVerifierPath
+            }
+        )
+
+        try await updater.install(
+            version: "2.3.4",
+            releaseURL: dmgURL,
+            appPath: "/Applications/X Island.app",
+            manifestURL: manifestURL,
+            signatureURL: signatureURL,
+            expectedPublicKey: key.publicKey.rawRepresentation.base64EncodedString(),
+            expectedKeyID: keyID,
+            onStage: { _ in }
+        )
+
+        let scriptURL = try XCTUnwrap(helperPath.all().first)
+        let script = try String(contentsOf: scriptURL, encoding: .utf8)
+        XCTAssertTrue(script.contains("HAS_SIGNED_MANIFEST=1"))
+        XCTAssertTrue(script.contains("XIsland-2.3.4.manifest.json"))
+        XCTAssertTrue(script.contains("XIsland-2.3.4.dmg"))
     }
 }
