@@ -37,7 +37,9 @@ final class QuotaTracker {
         fetchTask = nil
     }
 
-    isolated deinit {
+    deinit {
+        // Timer.invalidate() 可从 deinit 调用；该属性已标记 nonisolated(unsafe)，
+        // 以兼容 Swift 6.1（isolated deinit 在该工具链仍需实验开关）。
         timer?.invalidate()
     }
 
