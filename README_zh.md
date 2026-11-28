@@ -111,6 +111,8 @@ X Island 以一个紧凑的药丸形状悬浮在屏幕顶部。当 AI Agent 工�
 2. 打开 DMG，将 **X Island** 拖入应用程序文件夹
 3. 启动 X Island
 
+从 2.3.4 起，每个 Release 还会提供 `XIsland-<version>.manifest.json` 和 `XIsland-<version>.manifest.sig`。应用内更新会先验证 Ed25519 签名，再挂载 DMG；仍可手动安装 DMG。
+
 > **macOS 安全提示：** 由于应用未经 Apple 开发者签名，首次打开时 macOS 会拦截。解除方法：
 >
 > ```bash

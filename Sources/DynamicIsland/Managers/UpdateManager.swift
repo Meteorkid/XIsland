@@ -48,9 +48,29 @@ final class UpdateManager {
 
         var dmgURL: URL? {
             let expectedName = AppUpdater.dmgFilename(for: normalizedVersion)
-            let candidate = assets.first(where: { $0.name.compare(expectedName, options: .caseInsensitive) == .orderedSame })?.browserDownloadURL
-                ?? assets.first(where: { $0.name.localizedCaseInsensitiveContains(".dmg") })?.browserDownloadURL
-            guard let candidate, let host = candidate.host?.lowercased(),
+            return assetURL(named: expectedName)
+                ?? assetURL(matching: ".dmg")
+        }
+
+        var manifestURL: URL? {
+            assetURL(named: "XIsland-\(normalizedVersion).manifest.json")
+        }
+
+        var signatureURL: URL? {
+            assetURL(named: "XIsland-\(normalizedVersion).manifest.sig")
+        }
+
+        private func assetURL(named expectedName: String) -> URL? {
+            assetURL(where: { $0.name.compare(expectedName, options: .caseInsensitive) == .orderedSame })
+        }
+
+        private func assetURL(matching fragment: String) -> URL? {
+            assetURL(where: { $0.name.localizedCaseInsensitiveContains(fragment) })
+        }
+
+        private func assetURL(where predicate: (Asset) -> Bool) -> URL? {
+            guard let candidate = assets.first(where: predicate)?.browserDownloadURL,
+                  let host = candidate.host?.lowercased(),
                   Self.allowedDownloadHosts.contains(host) else {
                 return nil
             }
@@ -96,6 +116,8 @@ final class UpdateManager {
 
     @ObservationIgnored private let fetchReleaseData: ReleaseFetcher
     @ObservationIgnored private let updater: AppUpdater
+    @ObservationIgnored private let updatePublicKey: String?
+    @ObservationIgnored private let updateKeyID: String?
     @ObservationIgnored private var autoCheckTimer: Timer?
     @ObservationIgnored private var isInstalling = false
 
@@ -108,10 +130,14 @@ final class UpdateManager {
     private static let latestReleaseURL = URL(string: "https://github.com/Meteorkid/XIsland/releases/latest")!
     init(
         fetchReleaseData: @escaping ReleaseFetcher = UpdateManager.fetchLatestReleaseData,
-        updater: AppUpdater = AppUpdater()
+        updater: AppUpdater = AppUpdater(),
+        updatePublicKey: String? = AppUpdater.expectedUpdatePublicKey,
+        updateKeyID: String? = AppUpdater.expectedUpdateKeyID
     ) {
         self.fetchReleaseData = fetchReleaseData
         self.updater = updater
+        self.updatePublicKey = updatePublicKey
+        self.updateKeyID = updateKeyID
         // 注册默认设置
         AppPreferences.defaults.register(defaults: [
             "autoCheckForUpdates": true
@@ -260,18 +286,23 @@ final class UpdateManager {
             return
         }
 
-        let expectedSHA256: String?
+        let publicKey = updatePublicKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let signedManifestRequired = !(publicKey?.isEmpty ?? true)
+        if signedManifestRequired, (release.manifestURL == nil || release.signatureURL == nil) {
+            state = .failed(message: "This release does not include a signed update manifest. Please download and install the DMG manually.")
+            return
+        }
+
+        var expectedSHA256: String?
         if let body = release.body {
             let dmgFilename = AppUpdater.dmgFilename(for: release.normalizedVersion)
             expectedSHA256 = Self.extractSHA256(from: body, for: dmgFilename)
-            if expectedSHA256 == nil {
+            if expectedSHA256 == nil, !signedManifestRequired {
                 os_log(.info, "SHA256 not found in release notes for %{public}@", dmgFilename)
-                // SHA256 缺失时提示用户
                 state = .failed(message: "Release notes 中未包含 SHA256 校验和，无法验证下载完整性。请手动下载安装。")
                 return
             }
-        } else {
-            expectedSHA256 = nil
+        } else if !signedManifestRequired {
             state = .failed(message: "Release notes 为空，无法验证下载完整性。请手动下载安装。")
             return
         }
@@ -286,6 +317,10 @@ final class UpdateManager {
                 releaseURL: dmgURL,
                 appPath: installedAppPath,
                 expectedSHA256: expectedSHA256,
+                manifestURL: signedManifestRequired ? release.manifestURL : nil,
+                signatureURL: signedManifestRequired ? release.signatureURL : nil,
+                expectedPublicKey: publicKey,
+                expectedKeyID: updateKeyID,
                 onStage: stageHandler
             )
             state = .idle

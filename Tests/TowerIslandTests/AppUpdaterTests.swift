@@ -185,6 +185,7 @@ final class AppUpdaterTests: XCTestCase {
             (.relaunchFailed, "The update installed, but the app could not relaunch."),
             (.integrityCheckFailed, "The downloaded update failed integrity verification."),
             (.codeSigningFailed, "The installed app failed code signing verification."),
+            (.updateSignatureFailed, "The update manifest signature did not verify."),
             (.terminationCancelled, "History was not saved. The update was cancelled.")
         ]
 
@@ -264,5 +265,28 @@ final class AppUpdaterTests: XCTestCase {
         )
         XCTAssertTrue(script.contains(#"EXPECTED_TEAM='ABC123DEF'"#))
         XCTAssertTrue(script.contains("TeamIdentifier mismatch"), "应包含 Team ID 不匹配时的拒绝分支")
+    }
+
+    func testInstallerScriptReverifiesSignedManifestBeforeReplacingApp() {
+        let script = AppUpdater.makeInstallerScript(
+            currentPID: 4242,
+            mountedAppPath: "/Volumes/X/X Island.app",
+            appPath: "/Applications/X Island.app",
+            mountDirectory: "/Volumes/X",
+            tempDirectory: "/tmp/xi",
+            expectedVersion: "2.3.4",
+            manifestPath: "/tmp/xi/XIsland-2.3.4.manifest.json",
+            signaturePath: "/tmp/xi/XIsland-2.3.4.manifest.sig",
+            dmgPath: "/tmp/xi/XIsland-2.3.4.dmg",
+            expectedPublicKey: "PUBLICKEY",
+            expectedKeyID: "xisland-update-test",
+            verifierPath: "/Applications/X Island.app/Contents/MacOS/xisland-update-verify"
+        )
+
+        XCTAssertTrue(script.contains(#"EXPECTED_VERSION='2.3.4'"#))
+        XCTAssertTrue(script.contains(#"EXPECTED_PUBLIC_KEY='PUBLICKEY'"#))
+        XCTAssertTrue(script.contains(#"EXPECTED_KEY_ID='xisland-update-test'"#))
+        XCTAssertTrue(script.contains("HAS_SIGNED_MANIFEST=1"))
+        XCTAssertTrue(script.contains(#""$VERIFIER_PATH" "$MANIFEST_PATH" "$SIGNATURE_PATH" "$DMG_PATH""#))
     }
 }

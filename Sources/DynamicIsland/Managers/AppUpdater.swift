@@ -2,6 +2,7 @@ import AppKit
 import CryptoKit
 import Dispatch
 import Foundation
+import UpdateSecurity
 
 // MARK: - 更新阶段
 
@@ -22,6 +23,7 @@ enum AppUpdaterError: LocalizedError, Equatable {
     case relaunchFailed
     case integrityCheckFailed
     case codeSigningFailed
+    case updateSignatureFailed
     case terminationCancelled
 
     var errorDescription: String? {
@@ -40,6 +42,8 @@ enum AppUpdaterError: LocalizedError, Equatable {
             return "The downloaded update failed integrity verification."
         case .codeSigningFailed:
             return "The installed app failed code signing verification."
+        case .updateSignatureFailed:
+            return "The update manifest signature did not verify."
         case .terminationCancelled:
             return "History was not saved. The update was cancelled."
         }
@@ -54,12 +58,39 @@ struct AppUpdater {
     /// `X_ISLAND_UPDATE_TEAM_ID` 写入；未配置时回退到当前运行 App 的 Team ID。
     static let teamIdentifierInfoKey = "XIslandUpdateTeamIdentifier"
 
+    /// Info.plist 中的 Ed25519 更新公钥（base64 原始 32 字节）。
+    /// 私钥不进入仓库，只用于发布机签名 manifest。
+    static let updatePublicKeyInfoKey = "XIslandUpdatePublicKey"
+    static let updateKeyIDInfoKey = "XIslandUpdateKeyID"
+
     static var expectedTeamIdentifier: String? {
         guard let value = Bundle.main.object(forInfoDictionaryKey: teamIdentifierInfoKey) as? String else {
             return nil
         }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    static var expectedUpdatePublicKey: String? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: updatePublicKeyInfoKey) as? String else {
+            return nil
+        }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    static var expectedUpdateKeyID: String? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: updateKeyIDInfoKey) as? String else {
+            return nil
+        }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    static var updateVerifierPath: String {
+        Bundle.main.bundleURL
+            .appendingPathComponent("Contents/MacOS/xisland-update-verify")
+            .path
     }
 
     /// 代码签名校验结果。
@@ -331,22 +362,39 @@ struct AppUpdater {
         return nil
     }
 
-    /// 校验待安装应用的代码签名与签名者身份。
+    /// 校验待安装应用的代码签名完整性；若配置了 Team ID，同时校验签名者身份。
     ///
     /// `codesign --verify` 只验证签名自洽（资源封印与签名匹配），ad-hoc 自签名同样能通过。
-    /// 因此更新包必须带有 Team ID，且与 Info.plist 配置或当前运行 App 的 Team ID 一致；
-    /// 当前 App 为 ad-hoc 且没有配置可信 Team ID 时拒绝自动更新（fail closed）。
-    func verifySignature(at path: String, expectedTeamIdentifier: String? = nil) -> SignatureVerification {
+    /// 因此当 `allowSignedManifest` 为 true 时，调用方必须已经验证过独立的更新清单签名，
+    /// 并用该清单的 SHA256 覆盖实际 DMG；否则 ad-hoc 包一律拒绝（fail closed）。
+    func verifySignature(
+        at path: String,
+        expectedTeamIdentifier: String? = nil,
+        allowSignedManifest: Bool = false
+    ) -> SignatureVerification {
         do {
             _ = try runCommand("/usr/bin/codesign", ["--verify", "--deep", "--strict", path])
         } catch {
             return .rejected(reason: "codesign --verify failed for \(path)")
         }
 
-        let trustedTeam = expectedTeamIdentifier
-            ?? Self.expectedTeamIdentifier
-            ?? currentApplicationTeamIdentifier()
-        guard let trustedTeam, !trustedTeam.isEmpty else {
+        let configuredTeam = expectedTeamIdentifier ?? Self.expectedTeamIdentifier
+        if let configuredTeam, !configuredTeam.isEmpty {
+            guard let output = try? runCommand("/usr/bin/codesign", ["-dv", "--verbose=4", path]),
+                  let actual = Self.parseTeamIdentifier(from: output) else {
+                return .rejected(reason: "downloaded app carries no TeamIdentifier; expected \(configuredTeam)")
+            }
+            guard actual == configuredTeam else {
+                return .rejected(reason: "TeamIdentifier mismatch: expected \(configuredTeam), got \(actual)")
+            }
+            return .accepted(teamIdentifier: actual)
+        }
+
+        if allowSignedManifest {
+            return .accepted(teamIdentifier: nil)
+        }
+
+        guard let trustedTeam = currentApplicationTeamIdentifier(), !trustedTeam.isEmpty else {
             return .rejected(reason: "no trusted TeamIdentifier configured or present on the running app; refusing ad-hoc update")
         }
 
@@ -358,6 +406,21 @@ struct AppUpdater {
             return .rejected(reason: "TeamIdentifier mismatch: expected \(trustedTeam), got \(actual)")
         }
         return .accepted(teamIdentifier: actual)
+    }
+
+    /// 读取待安装 App 的 CFBundleShortVersionString。
+    static func appVersion(at path: String) -> String? {
+        let infoPlist = URL(fileURLWithPath: path)
+            .appendingPathComponent("Contents/Info.plist")
+            .path
+        guard let output = try? Self.executeCommand(
+            launchPath: "/usr/libexec/PlistBuddy",
+            arguments: ["-c", "Print :CFBundleShortVersionString", infoPlist]
+        ) else {
+            return nil
+        }
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// 读取当前运行 App 的 Team ID；ad-hoc 包返回 nil。
@@ -378,6 +441,10 @@ extension AppUpdater {
         releaseURL: URL,
         appPath: String,
         expectedSHA256: String? = nil,
+        manifestURL: URL? = nil,
+        signatureURL: URL? = nil,
+        expectedPublicKey: String? = nil,
+        expectedKeyID: String? = nil,
         onStage: @escaping @MainActor (AppUpdaterStage) -> Void
     ) async throws {
         if let installImpl {
@@ -385,8 +452,17 @@ extension AppUpdater {
             return
         }
 
+        let trustedPublicKey = expectedPublicKey ?? Self.expectedUpdatePublicKey
+        let trustedKeyID = expectedKeyID ?? Self.expectedUpdateKeyID
+        let requiresSignedManifest = trustedPublicKey != nil
+        if requiresSignedManifest, (manifestURL == nil || signatureURL == nil) {
+            throw AppUpdaterError.updateSignatureFailed
+        }
+
         let tempDirectory = try temporaryDirectoryProvider()
         let dmgURL = tempDirectory.appendingPathComponent(Self.dmgFilename(for: version))
+        let manifestPath = tempDirectory.appendingPathComponent("XIsland-\(version).manifest.json")
+        let signaturePath = tempDirectory.appendingPathComponent("XIsland-\(version).manifest.sig")
         var mountedDirectory: String?
         var helperOwnsCleanup = false
         defer {
@@ -408,16 +484,81 @@ extension AppUpdater {
         }
 
         await MainActor.run { onStage(.downloading) }
+
+        if let trustedPublicKey, let manifestURL, let signatureURL {
+            do {
+                try await downloadFile(manifestURL, manifestPath)
+                try await downloadFile(signatureURL, signaturePath)
+            } catch {
+                throw AppUpdaterError.downloadFailed
+            }
+
+            let manifestData: Data
+            let signature: String
+            do {
+                manifestData = try Data(contentsOf: manifestPath)
+                signature = try String(contentsOf: signaturePath, encoding: .utf8)
+            } catch {
+                throw AppUpdaterError.updateSignatureFailed
+            }
+
+            // 先验签清单，再下载 DMG。清单签名是后续 SHA256 和版本号的信任锚。
+            do {
+                try UpdateSignatureVerifier.verifySignature(
+                    manifestData: manifestData,
+                    signatureBase64: signature,
+                    publicKeyBase64: trustedPublicKey
+                )
+            } catch {
+                NSLog("XIsland update: manifest signature rejected — %@", error.localizedDescription)
+                throw AppUpdaterError.updateSignatureFailed
+            }
+        }
+
         do {
             try await downloadFile(releaseURL, dmgURL)
         } catch {
             throw AppUpdaterError.downloadFailed
         }
 
-        // SHA256 完整性校验
-        if let expectedHash = expectedSHA256 {
-            guard let actualHash = Self.computeSHA256(of: dmgURL), actualHash == expectedHash else {
-                try? FileManager.default.removeItem(at: dmgURL)
+        let actualHash = Self.computeSHA256(of: dmgURL)
+        guard let actualHash else {
+            throw AppUpdaterError.integrityCheckFailed
+        }
+
+        if let trustedPublicKey {
+            let expectedDMG = Self.dmgFilename(for: version)
+            let manifestData: Data
+            let signature: String
+            do {
+                manifestData = try Data(contentsOf: manifestPath)
+                signature = try String(contentsOf: signaturePath, encoding: .utf8)
+            } catch {
+                throw AppUpdaterError.updateSignatureFailed
+            }
+
+            do {
+                let manifest = try UpdateSignatureVerifier.verify(
+                    manifestData: manifestData,
+                    signatureBase64: signature,
+                    publicKeyBase64: trustedPublicKey,
+                    expectedVersion: version,
+                    expectedDMGFilename: expectedDMG,
+                    expectedKeyID: trustedKeyID,
+                    actualDMGSHA256: actualHash
+                )
+                if let expectedSHA256, expectedSHA256.lowercased() != manifest.sha256.lowercased() {
+                    throw AppUpdaterError.integrityCheckFailed
+                }
+                NSLog("XIsland update: signed manifest verified; key=%@", manifest.keyID)
+            } catch let error as AppUpdaterError {
+                throw error
+            } catch {
+                NSLog("XIsland update: signed manifest rejected — %@", error.localizedDescription)
+                throw AppUpdaterError.updateSignatureFailed
+            }
+        } else if let expectedHash = expectedSHA256 {
+            guard actualHash.lowercased() == expectedHash.lowercased() else {
                 throw AppUpdaterError.integrityCheckFailed
             }
         }
@@ -442,13 +583,25 @@ extension AppUpdater {
             throw AppUpdaterError.appNotFound
         }
 
-        // 校验挂载应用的代码签名与（若已配置）签名者身份
-        switch verifySignature(at: mountedAppPath) {
+        if requiresSignedManifest {
+            guard let actualVersion = Self.appVersion(at: mountedAppPath),
+                  Self.updateVersion(actualVersion, matches: version) else {
+                throw AppUpdaterError.updateSignatureFailed
+            }
+        }
+
+        // 校验挂载应用的代码签名完整性；独立清单已经提供发布者身份时，
+        // 不再要求 ad-hoc 包必须有 Team ID。
+        switch verifySignature(at: mountedAppPath, allowSignedManifest: requiresSignedManifest) {
         case .accepted(let teamIdentifier):
-            NSLog("XIsland update: signature verified, TeamIdentifier=%@", teamIdentifier ?? "unknown")
+            NSLog("XIsland update: signature verified, TeamIdentifier=%@", teamIdentifier ?? "signed-manifest")
         case .rejected(let reason):
             NSLog("XIsland update: signature rejected — %@", reason)
             throw AppUpdaterError.codeSigningFailed
+        }
+
+        if requiresSignedManifest, !fileExists(Self.updateVerifierPath) {
+            throw AppUpdaterError.installFailed
         }
 
         await MainActor.run { onStage(.installing) }
@@ -461,7 +614,14 @@ extension AppUpdater {
                 appPath: appPath,
                 mountDirectory: mountDirectory,
                 tempDirectory: tempDirectory.path,
-                expectedTeamIdentifier: Self.expectedTeamIdentifier ?? currentApplicationTeamIdentifier()
+                expectedTeamIdentifier: Self.expectedTeamIdentifier ?? currentApplicationTeamIdentifier(),
+                expectedVersion: requiresSignedManifest ? version : nil,
+                manifestPath: requiresSignedManifest ? manifestPath.path : nil,
+                signaturePath: requiresSignedManifest ? signaturePath.path : nil,
+                dmgPath: requiresSignedManifest ? dmgURL.path : nil,
+                expectedPublicKey: requiresSignedManifest ? trustedPublicKey : nil,
+                expectedKeyID: requiresSignedManifest ? trustedKeyID : nil,
+                verifierPath: requiresSignedManifest ? Self.updateVerifierPath : nil
             )
         } catch {
             throw AppUpdaterError.installFailed
@@ -484,6 +644,11 @@ extension AppUpdater {
 
         terminateApp()
     }
+
+    private static func updateVersion(_ actual: String, matches expected: String) -> Bool {
+        UpdateSignatureVerifier.normalize(version: actual)
+            == UpdateSignatureVerifier.normalize(version: expected)
+    }
 }
 
 // MARK: - 安装脚本生成
@@ -496,7 +661,14 @@ extension AppUpdater {
         appPath: String,
         mountDirectory: String,
         tempDirectory: String,
-        expectedTeamIdentifier: String? = nil
+        expectedTeamIdentifier: String? = nil,
+        expectedVersion: String? = nil,
+        manifestPath: String? = nil,
+        signaturePath: String? = nil,
+        dmgPath: String? = nil,
+        expectedPublicKey: String? = nil,
+        expectedKeyID: String? = nil,
+        verifierPath: String? = nil
     ) throws {
         let script = makeInstallerScript(
             currentPID: currentPID,
@@ -504,7 +676,14 @@ extension AppUpdater {
             appPath: appPath,
             mountDirectory: mountDirectory,
             tempDirectory: tempDirectory,
-            expectedTeamIdentifier: expectedTeamIdentifier
+            expectedTeamIdentifier: expectedTeamIdentifier,
+            expectedVersion: expectedVersion,
+            manifestPath: manifestPath,
+            signaturePath: signaturePath,
+            dmgPath: dmgPath,
+            expectedPublicKey: expectedPublicKey,
+            expectedKeyID: expectedKeyID,
+            verifierPath: verifierPath
         )
 
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
@@ -517,7 +696,14 @@ extension AppUpdater {
         appPath: String,
         mountDirectory: String,
         tempDirectory: String,
-        expectedTeamIdentifier: String? = nil
+        expectedTeamIdentifier: String? = nil,
+        expectedVersion: String? = nil,
+        manifestPath: String? = nil,
+        signaturePath: String? = nil,
+        dmgPath: String? = nil,
+        expectedPublicKey: String? = nil,
+        expectedKeyID: String? = nil,
+        verifierPath: String? = nil
     ) -> String {
         """
         #!/bin/sh
@@ -527,6 +713,17 @@ extension AppUpdater {
         APP_PATH=\(shellQuoted(appPath))
         MOUNT_DIR=\(shellQuoted(mountDirectory))
         EXPECTED_TEAM=\(shellQuoted(expectedTeamIdentifier ?? ""))
+        EXPECTED_VERSION=\(shellQuoted(expectedVersion ?? ""))
+        MANIFEST_PATH=\(shellQuoted(manifestPath ?? ""))
+        SIGNATURE_PATH=\(shellQuoted(signaturePath ?? ""))
+        DMG_PATH=\(shellQuoted(dmgPath ?? ""))
+        EXPECTED_PUBLIC_KEY=\(shellQuoted(expectedPublicKey ?? ""))
+        EXPECTED_KEY_ID=\(shellQuoted(expectedKeyID ?? ""))
+        VERIFIER_PATH=\(shellQuoted(verifierPath ?? ""))
+        HAS_SIGNED_MANIFEST=0
+        if [ -n "$EXPECTED_PUBLIC_KEY" ]; then
+          HAS_SIGNED_MANIFEST=1
+        fi
         TRANSACTION_DIR=""
         REPLACEMENT_STARTED=0
         SUCCEEDED=0
@@ -582,19 +779,43 @@ extension AppUpdater {
         xattr -cr "$STAGED_APP" || true
         codesign --verify --deep --strict "$STAGED_APP"
 
-        # 签名者身份校验：ad-hoc 包一律拒绝，Team ID 必须与可信值一致。
-        # codesign --verify 只验证签名自洽，ad-hoc 自签名同样能通过，不能作为防伪造发布的依据。
-        ACTUAL_TEAM=$(codesign -dv --verbose=4 "$STAGED_APP" 2>&1 | awk -F= '$1 ~ /TeamIdentifier/ {print $2; exit}')
-        if [ -z "$ACTUAL_TEAM" ] || [ "$ACTUAL_TEAM" = "not set" ]; then
-          echo "Update rejected: downloaded app carries no TeamIdentifier (expected ${EXPECTED_TEAM:-a Developer ID})" >&2
-          exit 1
+        # 独立清单验签 + DMG 实际 SHA256 复验。安装脚本在 App 退出后再次执行，
+        # 防止下载完成到替换之间的文件替换或 TOCTOU。
+        if [ "$HAS_SIGNED_MANIFEST" = 1 ]; then
+          if [ -z "$EXPECTED_VERSION" ] || [ -z "$MANIFEST_PATH" ] || [ -z "$SIGNATURE_PATH" ] || [ -z "$DMG_PATH" ]; then
+            echo "Update rejected: signed update manifest metadata is incomplete" >&2
+            exit 1
+          fi
+          if [ ! -x "$VERIFIER_PATH" ]; then
+            echo "Update rejected: update verifier is missing at $VERIFIER_PATH" >&2
+            exit 1
+          fi
+          if [ ! -f "$MANIFEST_PATH" ] || [ ! -f "$SIGNATURE_PATH" ] || [ ! -f "$DMG_PATH" ]; then
+            echo "Update rejected: signed update files are missing" >&2
+            exit 1
+          fi
+          "$VERIFIER_PATH" "$MANIFEST_PATH" "$SIGNATURE_PATH" "$DMG_PATH" "$EXPECTED_VERSION" "$EXPECTED_PUBLIC_KEY" "$EXPECTED_KEY_ID"
+          ACTUAL_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$STAGED_APP/Contents/Info.plist" 2>/dev/null || true)
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "Update rejected: app version mismatch (expected $EXPECTED_VERSION, got ${ACTUAL_VERSION:-unknown})" >&2
+            exit 1
+          fi
         fi
-        if [ -z "$EXPECTED_TEAM" ]; then
+
+        # 签名者身份校验：配置了 Team ID 时必须匹配；未配置时只允许已经通过
+        # 独立清单验签的更新，纯 ad-hoc 且无清单签名的包一律拒绝。
+        if [ -n "$EXPECTED_TEAM" ]; then
+          ACTUAL_TEAM=$(codesign -dv --verbose=4 "$STAGED_APP" 2>&1 | awk -F= '$1 ~ /TeamIdentifier/ {print $2; exit}')
+          if [ -z "$ACTUAL_TEAM" ] || [ "$ACTUAL_TEAM" = "not set" ]; then
+            echo "Update rejected: downloaded app carries no TeamIdentifier (expected ${EXPECTED_TEAM:-a Developer ID})" >&2
+            exit 1
+          fi
+          if [ "$ACTUAL_TEAM" != "$EXPECTED_TEAM" ]; then
+            echo "Update rejected: TeamIdentifier mismatch (expected $EXPECTED_TEAM, got $ACTUAL_TEAM)" >&2
+            exit 1
+          fi
+        elif [ "$HAS_SIGNED_MANIFEST" != 1 ]; then
           echo "Update rejected: no trusted TeamIdentifier configured" >&2
-          exit 1
-        fi
-        if [ "$ACTUAL_TEAM" != "$EXPECTED_TEAM" ]; then
-          echo "Update rejected: TeamIdentifier mismatch (expected $EXPECTED_TEAM, got $ACTUAL_TEAM)" >&2
           exit 1
         fi
 

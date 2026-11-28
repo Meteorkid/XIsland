@@ -49,6 +49,10 @@ if [[ -z "$VERSION" ]]; then
 fi
 RELEASE_NOTES="$ROOT/docs/releases/${VERSION}.md"
 DMG="$ROOT/.build/XIsland-${VERSION}.dmg"
+MANIFEST="$ROOT/.build/XIsland-${VERSION}.manifest.json"
+SIGNATURE="$ROOT/.build/XIsland-${VERSION}.manifest.sig"
+PUBLIC_KEY_FILE="$ROOT/Config/UpdateSigningPublicKey.txt"
+KEY_ID_FILE="$ROOT/Config/UpdateSigningKeyID.txt"
 
 MODE="metadata"
 if (( BUILD )); then MODE="$MODE + build"; fi
@@ -120,6 +124,73 @@ if [[ -f "$DMG" ]]; then
     fi
     echo "  dmg:      $DMG"
     echo "  dmg sha:  $ACTUAL_SHA"
+
+    if [[ ! -f "$MANIFEST" ]]; then
+        fail "missing signed update manifest: $MANIFEST"
+    fi
+    if [[ ! -f "$SIGNATURE" ]]; then
+        fail "missing update manifest signature: $SIGNATURE"
+    fi
+    if [[ ! -f "$PUBLIC_KEY_FILE" ]]; then
+        fail "missing update public key: $PUBLIC_KEY_FILE"
+    fi
+    if [[ ! -f "$KEY_ID_FILE" ]]; then
+        fail "missing update key id: $KEY_ID_FILE"
+    fi
+
+    MANIFEST_SHA="$(python3 - "$MANIFEST" "$VERSION" "XIsland-${VERSION}.dmg" <<'PY'
+import json
+import sys
+
+path, version, dmg = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(path, encoding="utf-8") as handle:
+        manifest = json.load(handle)
+except (OSError, ValueError):
+    raise SystemExit(1)
+if manifest.get("schema") != 1:
+    raise SystemExit(1)
+if manifest.get("version") != version:
+    raise SystemExit(1)
+if manifest.get("dmg") != dmg:
+    raise SystemExit(1)
+sha = str(manifest.get("sha256", ""))
+if len(sha) != 64 or any(c not in "0123456789abcdefABCDEF" for c in sha):
+    raise SystemExit(1)
+print(sha.lower())
+PY
+)" || fail "update manifest fields do not match version or DMG name"
+
+    if [[ -n "${RELEASE_SHA:-}" && "$MANIFEST_SHA" != "$RELEASE_SHA" ]]; then
+        fail "update manifest sha256 does not match release notes"
+    fi
+    if [[ -n "$SUMS_SHA" && "$MANIFEST_SHA" != "$SUMS_SHA" ]]; then
+        fail "update manifest sha256 does not match SHA256SUMS.txt"
+    fi
+    if [[ "$ACTUAL_SHA" != "$MANIFEST_SHA" ]]; then
+        fail "update manifest sha256 does not match actual DMG"
+    fi
+
+    PUBLIC_KEY="$(tr -d '[:space:]' < "$PUBLIC_KEY_FILE")"
+    KEY_ID="$(tr -d '[:space:]' < "$KEY_ID_FILE")"
+    MANIFEST_KEY_ID="$(python3 - "$MANIFEST" <<'PY'
+import json
+import sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        print(json.load(handle).get("key_id", ""))
+except (OSError, ValueError):
+    raise SystemExit(1)
+PY
+)" || fail "cannot read update manifest key_id"
+    if [[ "$MANIFEST_KEY_ID" != "$KEY_ID" ]]; then
+        fail "update manifest key_id '$MANIFEST_KEY_ID' does not match '$KEY_ID'"
+    fi
+    if ! swift "$ROOT/Scripts/update-signing.swift" verify "$PUBLIC_KEY" "$MANIFEST" "$SIGNATURE"; then
+        fail "update manifest signature did not verify"
+    fi
+    echo "  manifest: $MANIFEST"
+    echo "  manifest sha: $MANIFEST_SHA"
 elif (( REQUIRE_DMG )); then
     fail "missing DMG: $DMG"
 else

@@ -38,3 +38,7 @@ __pycache__/
 
 # 早期布局方案草稿：保留本地文件，不混入本次发布
 /docs/superpowers/specs/2026-07-16-collapsed-layout-session-count-rotation-design.md
+
+# 更新签名私钥不得进入仓库
+*.private.key
+Config/*.private*

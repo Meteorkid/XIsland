@@ -113,6 +113,8 @@ These are the intended integration routes. See the [compatibility matrix](docs/c
 2. Open the DMG and drag **X Island** to your Applications folder
 3. Launch X Island
 
+From 2.3.4 onward, releases also publish `XIsland-<version>.manifest.json` and `XIsland-<version>.manifest.sig`. The in-app updater verifies that Ed25519 signature before mounting the DMG; manual DMG installation remains available.
+
 > **macOS Gatekeeper notice:** Since the app is not signed with an Apple Developer certificate, macOS will block it on first launch. To bypass:
 >
 > ```bash

@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.3.4 (2026-11-28)
+
+### 新增
+
+- **Ed25519 更新签名**：新增 `UpdateSecurity` 模块和 `xisland-update-verify` 校验器；更新清单签名覆盖版本、DMG 文件名和 SHA256。
+- **发布资产扩展**：每个 Release 同时提供 DMG、`XIsland-<version>.manifest.json` 和 `XIsland-<version>.manifest.sig`，构建时把更新公钥写入 Info.plist。
+
+### 变更
+
+- **恢复应用内更新**：不再强制 ad-hoc 包必须有 Developer ID Team ID；有 Ed25519 清单签名时允许更新，没有清单签名且没有可信 Team ID 时仍 fail closed。
+- **双重校验**：更新器下载前先验清单签名，安装脚本在 App 退出后再次验签并复查 DMG SHA256 与 App 版本。
+
+### 修复
+
+- **2.3.0 更新自锁**：2.3.0 自己为 ad-hoc 且没有可信 Team ID，却要求下一版本必须有 Team ID，导致 2.3.0 → 2.3.1+ 的应用内更新被切断；2.3.4 用独立更新公钥替代该信任锚。
+- 2.3.4 本身仍需手动安装一次；从 2.3.4 开始后续版本可在应用内更新。
+
+验证：`UpdateSignatureVerifierTests` 覆盖签名、篡改、版本、SHA 和 key ID 负向路径；安装事务与回滚测试保留。详细内容见 [2.3.4 更新说明](docs/releases/2.3.4.md)。
+
 ## v2.3.3 (2026-11-28)
 
 ### 修复

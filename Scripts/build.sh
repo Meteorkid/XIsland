@@ -43,6 +43,41 @@ if url.scheme != 'https' or not url.hostname or url.username or url.password or 
     raise SystemExit('SOFTWARE_LICENSE_API_BASE_URL must be an HTTPS origin without credentials, query, or fragment.')
 PY
 
+# 更新公钥不是秘密；私钥只保存在发布机上。公钥缺失时自动更新会退回
+# Team ID fail-closed，ad-hoc 包将无法更新，因此发布构建必须显式配置。
+UPDATE_PUBLIC_KEY_FILE="${X_ISLAND_UPDATE_PUBLIC_KEY_FILE:-$PROJECT_DIR/Config/UpdateSigningPublicKey.txt}"
+UPDATE_KEY_ID_FILE="${X_ISLAND_UPDATE_KEY_ID_FILE:-$PROJECT_DIR/Config/UpdateSigningKeyID.txt}"
+if [[ -n "${X_ISLAND_UPDATE_PUBLIC_KEY:-}" ]]; then
+    UPDATE_PUBLIC_KEY="$X_ISLAND_UPDATE_PUBLIC_KEY"
+elif [[ -f "$UPDATE_PUBLIC_KEY_FILE" ]]; then
+    UPDATE_PUBLIC_KEY="$(tr -d '[:space:]' < "$UPDATE_PUBLIC_KEY_FILE")"
+else
+    echo "Set X_ISLAND_UPDATE_PUBLIC_KEY or create $UPDATE_PUBLIC_KEY_FILE before building." >&2
+    exit 1
+fi
+if [[ -n "${X_ISLAND_UPDATE_KEY_ID:-}" ]]; then
+    UPDATE_KEY_ID="$X_ISLAND_UPDATE_KEY_ID"
+elif [[ -f "$UPDATE_KEY_ID_FILE" ]]; then
+    UPDATE_KEY_ID="$(tr -d '[:space:]' < "$UPDATE_KEY_ID_FILE")"
+else
+    echo "Set X_ISLAND_UPDATE_KEY_ID or create $UPDATE_KEY_ID_FILE before building." >&2
+    exit 1
+fi
+export UPDATE_PUBLIC_KEY UPDATE_KEY_ID
+python3 - <<'PY'
+import base64
+import os
+
+try:
+    key = base64.b64decode(os.environ['UPDATE_PUBLIC_KEY'], validate=True)
+except ValueError:
+    raise SystemExit('X_ISLAND_UPDATE_PUBLIC_KEY must be base64-encoded Ed25519 public key material.')
+if len(key) != 32 or not any(key):
+    raise SystemExit('X_ISLAND_UPDATE_PUBLIC_KEY must be a 32-byte Ed25519 public key.')
+if not os.environ['UPDATE_KEY_ID'].strip():
+    raise SystemExit('X_ISLAND_UPDATE_KEY_ID must not be empty.')
+PY
+
 cd "$PROJECT_DIR"
 
 # shellcheck source=/dev/null
@@ -87,10 +122,12 @@ fi
 
 cp "$BUILD_DIR/release/XIsland" "$APP_BUNDLE/Contents/MacOS/XIsland"
 cp "$BUILD_DIR/release/DIBridge" "$APP_BUNDLE/Contents/MacOS/di-bridge"
+cp "$BUILD_DIR/release/XIslandUpdateVerifier" "$APP_BUNDLE/Contents/MacOS/xisland-update-verify"
 cp "$CLI_SRC" "$APP_CLI_DIR/xisland"
 cp "$CLI_LIB_DIR/xisland-cli.sh" "$APP_CLI_DIR/lib/xisland-cli.sh"
 codesign -s "$CODE_SIGN_IDENTITY" -f "$APP_BUNDLE/Contents/MacOS/di-bridge" 2>/dev/null || true
 codesign -s "$CODE_SIGN_IDENTITY" -f "$APP_BUNDLE/Contents/MacOS/XIsland" 2>/dev/null || true
+codesign -s "$CODE_SIGN_IDENTITY" -f "$APP_BUNDLE/Contents/MacOS/xisland-update-verify" 2>/dev/null || true
 
 cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -151,6 +188,10 @@ PLIST
 
 /usr/libexec/PlistBuddy -c "Add :SoftwareLicensePublicKey string $SOFTWARE_LICENSE_PUBLIC_KEY" "$APP_BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :SoftwareLicenseAPIBaseURL string $SOFTWARE_LICENSE_API_BASE_URL" "$APP_BUNDLE/Contents/Info.plist"
+
+# 独立更新签名公钥：更新器用它在安装前验证 manifest 的 Ed25519 签名。
+/usr/libexec/PlistBuddy -c "Add :XIslandUpdatePublicKey string $UPDATE_PUBLIC_KEY" "$APP_BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :XIslandUpdateKeyID string $UPDATE_KEY_ID" "$APP_BUNDLE/Contents/Info.plist"
 
 # 发布包必须写入可信 Developer ID Team ID，否则自动更新会 fail closed。
 if [[ -n "${X_ISLAND_UPDATE_TEAM_ID:-}" ]]; then
@@ -236,6 +277,15 @@ if [[ "${X_ISLAND_BUILD_DMG:-0}" == "1" ]]; then
     echo "  Size:   $(du -h "$DMG_PATH" | cut -f1)"
     echo "  SHA256: $SHA256"
     echo ""
+    UPDATE_PRIVATE_KEY="${X_ISLAND_UPDATE_SIGNING_KEY:-$HOME/.xisland/update-signing/xisland-update-2026-11.private.key}"
+    if [[ -f "$UPDATE_PRIVATE_KEY" ]]; then
+        bash Scripts/sign-update.sh "$NORMALIZED_VERSION" "$DMG_PATH"
+    else
+        echo "Warning: update signing private key not found; DMG has no manifest/signature." >&2
+        echo "  Expected: $UPDATE_PRIVATE_KEY" >&2
+    fi
+    echo ""
     echo "To upload to GitHub release:"
     echo "  gh release upload v$VERSION $DMG_PATH"
+    echo "  gh release upload v$VERSION \"$BUILD_DIR/XIsland-${NORMALIZED_VERSION}.manifest.json\" \"$BUILD_DIR/XIsland-${NORMALIZED_VERSION}.manifest.sig\""
 fi
