@@ -14,10 +14,10 @@
 - [x] 在 `.github/workflows/docs.yml` 增加安全门禁及负向测试步骤。已加入 `check-swift-safety.py` 和 `test-check-swift-safety.py` 两个步骤。
 - [x] 本地运行两个脚本，确认 workflow 引用路径和命令正确。YAML 可解析，6 条 CI 命令全部在本地通过。
 
-### G11 — 循环控制面校验器
+### G11 — 循环控制面校验器（已完成）
 
-- [ ] 新增 `Scripts/check-loop-state.py`：校验 `STATE.md` 必需字段、`status`、`completed_iterations` / `next_iteration` / `cycle_end_iteration` 的一致性。
-- [ ] 新增 `Scripts/test-check-loop-state.py`：覆盖正常状态、缺字段、非法状态、越界轮次和完成状态。
+- [x] 新增 `Scripts/check-loop-state.py`：校验 `STATE.md` 必需字段、`status`、`completed_iterations` / `next_iteration` / `cycle_end_iteration` 的一致性。覆盖字段缺失/重复、非法状态、轮次越界、计数器不一致和完成态收敛规则。
+- [x] 新增 `Scripts/test-check-loop-state.py`：覆盖正常状态、缺字段、非法状态、越界轮次、计数器不一致、完成状态和仓库正常路径。全部通过。
 
 ### G12 — 接入循环状态 CI
 
