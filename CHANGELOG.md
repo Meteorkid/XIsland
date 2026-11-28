@@ -1,5 +1,29 @@
 # Changelog
 
+## v2.3.2 (2026-11-28)
+
+### 新增
+
+- **统一质量门禁**：新增 `Scripts/run-quality-gates.sh`，一条命令串联文档、Swift 安全、循环状态、发布预检和负向测试；`--build` 可追加 release build。
+- **文档与发布校验**：Markdown 围栏、仓库内相对链接、发行说明必需章节、VERSION/Cask 一致性、LLM 提示覆盖和 DMG 实际 SHA 均可自动检查。
+- **Swift 安全 token 门禁**：扫描 `try!`、`fatalError(`、`as!`，要求例外逐条带同行豁免标记。
+- **循环状态控制面校验**：校验 `STATE.md` 的必需字段、状态取值和轮次一致性；GitHub Actions 已接入文档、Swift 安全和循环状态的正负向检查。
+
+### 变更
+
+- 发布说明、质量报告和测试基线统一落在 `docs/engineering-loop/`，后续补丁可按同一流程复现检查。
+- `docs.yml` 增加文档、安全和循环状态检查；保留既有发布预检工作流。
+
+### 修复
+
+- **ACP 配置崩溃**：`ACPCustomAgentConfiguration` 不再强制转换 `command`；非字符串输入按非法配置拒绝。
+- **SSH 校验崩溃**：`SSHInputValidator` 的正则改为可失败编译；pattern 非法时校验返回 `false` 并抛出 `SSHValidationError`，不会在静态初始化时终止进程。
+- **测试 socket 路径崩溃**：`DISocketConfig.socketDir` 对非法测试目录回退到 `/tmp/xi-test-<pid>`；生产路径不变。主进程和 bridge 会得到不同 PID 路径，表现为测试无法连接，而不是提前崩溃。
+
+本补丁不新增或变更 AI 客户端接入，接入矩阵仍为 35 个来源条目、30 个可接入、5 个停用保留历史。签名仍为 ad-hoc，自动更新继续 fail-closed，需手动覆盖安装。
+
+验证：全量 2254 项/21 跳过/0 失败，目标 26 项/0 失败，文档与 Swift 安全门禁通过，DMG 挂载版本为 2.3.2。详细内容、限制与验证边界见 [2.3.2 更新说明](docs/releases/2.3.2.md)。
+
 ## v2.3.1 (2026-11-27)
 
 ### 新增
