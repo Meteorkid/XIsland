@@ -6,12 +6,12 @@
 - cycle_start_iteration: 9
 - cycle_end_iteration: 16
 - planned_iterations: 16
-- completed_iterations: 15
-- next_iteration: 16
-- status: active
+- completed_iterations: 16
+- next_iteration: 17
+- status: complete
 - branch: codex/release-2.0.19
-- last_iteration: 15
-- last_task: G15 Cycle 2 测试基线刷新
-- last_check: `swift test -j 2` 通过：`XIslandTests` 2223 项/20 跳过/0 失败，`MeteorLicenseCoreTests` 31 项/1 跳过/0 失败，合计 2254 项/21 跳过/0 失败，墙钟 223.08 秒；`python3 Scripts/check-docs.py` 通过（111 个 Markdown 文件）；`python3 Scripts/check-swift-safety.py` 通过（267 个 Swift 文件）；`python3 Scripts/check-loop-state.py` 通过（cycle 2，iteration 15/16，active）。
-- next_task: G16 Cycle 2 收口与质量报告
-- notes: Cycle 2 从 G9 开始，到 G16 结束；G15 只刷新测试基线文档，未修改运行代码、`VERSION`、Cask 或发布产物。后续轮次不得推送、打 tag 或发布。
+- last_iteration: 16
+- last_task: G16 Cycle 2 收口与质量报告
+- last_check: `bash Scripts/run-quality-gates.sh` 通过（文档 112 个 Markdown 文件、Swift 安全 267 个文件、循环状态 cycle 2/iteration 16/16/status complete、发布预检及负向测试）；`swift test --filter 'AppTestConfigurationTests|SSHRemoteCommandTests' -j 2` 通过（26 项、0 失败）；`swift build -c release --product XIsland -j 2` 通过（2.96 秒）；G15 全量基线 2254 项/21 跳过/0 失败。
+- next_task: 无（Cycle 2 已收口）
+- notes: Cycle 2 已完成 G9–G16，未推送、未打 tag、未修改 `VERSION`/Cask、未发布 DMG。Cycle 2 质量报告见 `docs/engineering-loop/quality-report-cycle2.md`。

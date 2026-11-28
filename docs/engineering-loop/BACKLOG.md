@@ -2,7 +2,7 @@
 
 完成任务后把对应项改为 `[x]`，并在 `STATE.md` 写入结果。不要一次做多个。
 
-## Cycle 2 — G9–G16（进行中）
+## Cycle 2 — G9–G16（已完成）
 
 ### G9 — Swift 运行时安全 token 门禁（已完成）
 
@@ -39,10 +39,10 @@
 - [x] 运行完整 `swift test -j 2`，记录执行/跳过/失败和耗时。结果：`XIslandTests` 2223 项/20 跳过/0 失败，`MeteorLicenseCoreTests` 31 项/1 跳过/0 失败，合计 2254 项/21 跳过/0 失败，墙钟 223.08 秒。
 - [x] 更新 `docs/engineering-loop/test-baseline.md`，保留旧基线并标注新结果。Cycle 2 基线与历史 G6 基线分区记录。
 
-### G16 — Cycle 2 收口与质量报告
+### G16 — Cycle 2 收口与质量报告（已完成）
 
-- [ ] 跑最终文档检查、目标测试和 release build。
-- [ ] 汇总 Cycle 2 提交、测试结果、未完成项和风险；把 `STATE.md` 的 `status` 设为 `complete`。
+- [x] 跑最终文档检查、目标测试和 release build。统一质量门禁通过；目标测试 26 项、0 失败；release build 2.96 秒。
+- [x] 汇总 Cycle 2 提交、测试结果、未完成项和风险；把 `STATE.md` 的 `status` 设为 `complete`。质量报告为 `docs/engineering-loop/quality-report-cycle2.md`。
 
 ## Cycle 1 — G1–G8（已完成）
 
